@@ -1,0 +1,61 @@
+# ============================================================
+# .gitignore — Atlas Trader
+# ============================================================
+
+# Secrets — NE JAMAIS COMMITTER
+.env
+.env.local
+.env.*.local
+
+# Base de données locale
+storage/*.db
+storage/*.db-shm
+storage/*.db-wal
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Build / distribution
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Images générées
+images/
+logo_b64.txt
+logo_block.txt
+
+# Fichiers de travail temporaires
+fix_css.py
+fix_tabs.py
+gen_logo.py
+patch_icons.py
+patch_logo.py
+patch_redesign.py
+verify_patch.py
+CDC.txt

@@ -1,0 +1,235 @@
+# ============================================================
+# Atlas Trader — Configuration principale
+# Tous les paramètres sont modifiables via l'interface Admin
+# ============================================================
+
+project:
+  name: "Atlas Trader"
+  version: "1.0.0-MVP"
+  asset: "BTC/USDT"
+  loop_interval_seconds: 900  # 15 minutes
+
+# ----------------------------------------------------------
+# Broad Web Crawler
+# ----------------------------------------------------------
+crawler:
+  provider: "duckduckgo"       # duckduckgo (gratuit) | tavily | firecrawl | serpapi
+  fallback_provider: "duckduckgo"
+  n_themes: 10                 # 8-15
+  max_pages_per_theme: 10      # 5-20
+  frequency: "per_cycle"       # daily | per_cycle  ← crawl frais a chaque analyse
+  llm_summarizer_model: "claude-3-5-haiku-20241022"  # modèle léger pour résumés
+  request_timeout_seconds: 15
+  templates:                   # Templates de recherche éditables en Admin
+    - "{asset} macro outlook {year}"
+    - "geopolitics energy price {year}"
+    - "inflation central bank policy {year}"
+    - "crypto regulation news {year}"
+    - "tech innovation AI disruption {year}"
+    - "global market sentiment {year}"
+    - "DeFi on-chain activity {year}"
+    - "institutional crypto adoption {year}"
+    - "risk-off risk-on sentiment {year}"
+    - "blockchain network metrics {year}"
+
+# ----------------------------------------------------------
+# Fast News Listener
+# ----------------------------------------------------------
+news:
+  polling_interval_seconds: 1800  # 30min — réduit le sur-trading sur bruit court-terme
+  keywords_per_asset:
+    "BTC/USDT": ["bitcoin", "BTC", "crypto", "blockchain", "halving", "ETF"]
+  sources_rss:
+    # -- Crypto anglophone --
+    - "https://feeds.feedburner.com/CoinDesk"
+    - "https://cointelegraph.com/rss"
+    - "https://cryptonews.com/news/feed/"
+    - "https://bitcoinmagazine.com/.rss/full/"
+    - "https://decrypt.co/feed"
+    - "https://www.theblock.co/rss.xml"
+    - "https://ambcrypto.com/feed/"
+    # -- Chine --
+    - "https://news.8btc.com/feed"                        # 8BTC — leader crypto chinois (EN)
+    - "https://www.coindesk.com/arc/outboundfeeds/rss/"  # CoinDesk global
+    - "https://en.caixin.com/rss/finance.xml"            # Caixin — finance Chine (EN)
+    # -- Russie / Europe de l'Est --
+    - "https://forklog.com/feed/"                        # Forklog — crypto RU/EN
+    - "https://bits.media/rss/"                          # Bits.media — crypto russophone
+    # -- Macro global (impact BTC fort) --
+    - "https://feeds.zerohedge.com/feeds/zerohedge.xml"  # ZeroHedge — macro contrarien
+    - "https://www.rt.com/rss/business/"                 # RT Business (EN)
+    - "https://www.scmp.com/rss/92/feed"                 # South China Morning Post — finance
+    - "https://feeds.bbci.co.uk/news/business/rss.xml"   # BBC Business
+    - "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best" # Reuters
+    # -- Asie --
+    - "https://asia.nikkei.com/rss/feed/technology"      # Nikkei Asia tech/crypto
+  max_items_per_cycle: 30
+  relevance_score_threshold: 0.4
+  sources_nitter:
+    - saylor
+    - BitcoinMagazine
+    - whale_alert
+    - woonomic
+    - CryptoHayes
+    - RayDalio
+    - zerohedge
+    - LynAldenContact
+    - WuBlockchain
+    - colin_wu_
+  sources_reddit:
+    - Bitcoin
+    - CryptoCurrency
+    - btc
+  cryptopanic:
+    enabled: true
+    max_items: 15
+
+# ----------------------------------------------------------
+# MiroFish
+# ----------------------------------------------------------
+mirofish:
+  n_agents: 5000             # 1000-50000
+  n_steps: 100               # étapes de simulation
+  seed_news_weight: 0.6      # poids news vs crawler dans le seed
+  air_du_temps_weight: 0.4
+  inject_custom_vars: {}     # variables additionnelles injectables
+  async_mode: false          # true si le repo le supporte
+  timeout_seconds: 120
+
+# ----------------------------------------------------------
+# Multi-Agent Analysis (LangGraph)
+# ----------------------------------------------------------
+agents:
+  market_data:
+    enabled: true
+    weight_in_scoring: 1.0  # poids relatif dans la couche agents
+  fundamental:
+    enabled: true
+    weight_in_scoring: 0.8
+  x_sentiment:
+    enabled: true
+    weight_in_scoring: 0.7
+  contrarian:
+    enabled: true
+    weight_in_scoring: 0.9
+  fear_greed:
+    enabled: true
+    weight_in_scoring: 0.85  # Fear & Greed Index (signal contrarien)
+  polymarket:
+    enabled: true
+    weight_in_scoring: 0.85  # Marchés prédictifs BTC (probabilités calibrées)
+
+# ----------------------------------------------------------
+# Scoring — Poids globaux (ajustables par post-mortem)
+# Les poids sont bornés entre 0.05 et 0.60
+# ----------------------------------------------------------
+scoring:
+  weights:
+    mirofish: 0.15    # réduit car simulateur dégradé
+    market: 0.45      # market data + RSI plus fiable
+    agents: 0.25
+    contrarian: 0.15
+  min_weight: 0.05
+  max_weight: 0.60
+  normalization_window: 30  # cycles pour z-score
+
+# ----------------------------------------------------------
+# Decision & Risk Engine
+# ----------------------------------------------------------
+risk:
+  mode: "balanced"           # conservative | balanced | aggressive
+  kelly_max_fraction: 0.25   # fraction Kelly maximale
+  max_drawdown_pct: 15.0     # circuit breaker si DD > X%
+  position_size_pct: 5.0     # % capital par trade
+  atr_multiplier_sl: 2.0     # multiplicateur ATR pour Stop Loss
+  atr_multiplier_tp: 3.0     # multiplicateur ATR pour Take Profit
+  atr_period: 14
+  buy_threshold: 68          # score ≥ N → BUY (pas de position ouverte)
+  exit_threshold: 52         # score < N → SELL pour clore une position longue (ex sell_threshold)
+  human_in_the_loop: false   # validation manuelle avant exécution
+  # Filtre de tendance MA50 journalière
+  # "off"      → désactivé, tous les BUY sont autorisés
+  # "block"    → BUY totalement bloqué si prix < MA50
+  # "gradual"  → BUY bloqué sauf signal très fort (score ≥ ma50_strong_signal_threshold)
+  #              dans ce cas taille réduite × ma50_gradual_size_factor
+  ma50_filter_mode: "gradual"
+  ma50_strong_signal_threshold: 72   # score minimum pour BUY sous MA50 (mode gradual) — calibré sur plafond ~75
+  ma50_gradual_size_factor: 0.5      # multiplicateur de taille sous MA50 (0.0-1.0)
+  max_open_positions: 3              # nombre max de positions ouvertes simultanément (0 = illimité)
+
+# ----------------------------------------------------------
+# Assets & Univers
+# ----------------------------------------------------------
+assets:
+  universe:
+    - symbol: "BTC/USDT"
+      exchange: "binance"
+      timeframe: "15m"
+      theme_mapping: ["bitcoin", "crypto", "blockchain"]
+  active_asset: "BTC/USDT"
+
+# ----------------------------------------------------------
+# Exchange (CCXT)
+# ----------------------------------------------------------
+exchange:
+  name: "binance"
+  testnet: true
+  websocket: true
+  fallback_polling_seconds: 15
+  paper_capital_usd: 10000.0  # capital initial simulé
+  limit_order_offset_pct: 0.10  # % d'amélioration du prix (Maker) : BUY en-dessous, SELL au-dessus
+  limit_fill_timeout_s: 120    # secondes max d'attente avant annulation en simulation
+
+# ----------------------------------------------------------
+# Logging & Monitoring
+# ----------------------------------------------------------
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
+  file_path: "logs/zeitgeist.log"
+  max_bytes: 5242880          # 5 Mo
+  backup_count: 5
+  sqlite_db: "storage/zeitgeist.db"
+  format: "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+  # Notifications externes (optionnel)
+  telegram_enabled: false
+  discord_enabled: false
+  alert_score_threshold: 85  # score > N → notification
+
+# ----------------------------------------------------------
+# LLM Backend
+# ----------------------------------------------------------
+llm:
+  provider: "deepseek"        # anthropic | deepseek | github | xai | ollama
+  model: "deepseek-chat"      # deepseek-chat | deepseek-reasoner
+  # fallback_provider: "ollama"  # si DeepSeek injoignable, bascule sur Ollama
+  temperature: 0.3
+  max_tokens: 4096
+  request_timeout_seconds: 60  # timeout réseau par requête LLM (hard limit: 90s dans le code)
+  # Budget par cycle pour éviter explosion des coûts
+  max_tokens_per_cycle: 15000
+  cache_responses: true
+  cache_ttl_seconds: 3600
+
+# ----------------------------------------------------------
+# Post-Mortem Agent
+# ----------------------------------------------------------
+post_mortem:
+  enabled: true
+  delay_hours: 24             # analyse effectuée X heures après la décision
+  min_history_for_adjustment: 10  # N décisions min avant ajustement des poids
+  learning_rate: 0.05         # amplitude max d'ajustement par itération
+
+# ----------------------------------------------------------
+# Monitor rapide (thread parallèle au daemon)
+# ----------------------------------------------------------
+monitor:
+  interval_seconds: 60          # fréquence de vérification prix + news
+  breaking_news_threshold: 0.8  # score relevance au-dessus duquel on force un cycle
+  sl_tp_check_enabled: true     # surveiller si prix croise SL ou TP
+
+# ----------------------------------------------------------
+# Interface Admin
+# ----------------------------------------------------------
+admin:
+  password_hash: ""           # sha256 du mot de passe, rempli au premier lancement
+  session_timeout_minutes: 60

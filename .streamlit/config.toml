@@ -1,0 +1,10 @@
+[client]
+# "minimal" : masque la toolbar native (Rerun, dark/light, Deploy…)
+# nos propres contrôles la remplacent dans le dashboard
+toolbarMode = "minimal"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+enableStaticServing = true

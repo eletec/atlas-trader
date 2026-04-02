@@ -1,0 +1,91 @@
+# ============================================================
+# .dockerignore — Atlas Trader
+# Exclure les fichiers inutiles du contexte de build
+# ============================================================
+
+# Secrets & Config locaux (non embarqués dans l'image)
+.env
+.env.local
+.env.*.local
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Dépendances (reconstruites dans le container)
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+pip-log.txt
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Données persistantes (montées via volumes)
+logs/
+storage/*.db
+storage/*.db-shm
+storage/*.db-wal
+
+# Cache ChromaDB
+chroma_db/
+*.chroma/
+
+# Pytest / couverture
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+
+# macOS
+.DS_Store
+__MACOSX/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Node (si éventuellement présent)
+node_modules/
+npm-debug.log*
+
+# Documentation générée
+docs/_build/
+site/
+*.rst.bak
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*.log
+*.pid
+
+# Archives
+*.tar.gz
+*.zip
+*.rar
+
+# Images Docker de test locale
+# (garder les Dockerfile du projet)
+# Dockerfile.dev

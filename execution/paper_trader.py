@@ -1,0 +1,158 @@
+"""
+execution/paper_trader.py — Exécution simulée (paper trading) via CCXT testnet.
+"""
+from __future__ import annotations
+
+import logging
+import time
+from datetime import datetime
+
+logger = logging.getLogger("zeitgeist.paper_trader")
+
+
+class PaperTrader:
+    """Exécute des ordres simulés sur le testnet Binance via CCXT."""
+
+    def __init__(self):
+        from utils.config import load_settings, get_env
+        cfg = load_settings()
+        exchange_cfg = cfg.get("exchange", {})
+        self.exchange_name: str = exchange_cfg.get("name", "binance")
+        self.capital: float = exchange_cfg.get("paper_capital_usd", 10000.0)
+        # Offset Maker : on poste un ordre limite légèrement meilleur que le cours
+        # BUY  → limit à prix * (1 - offset)  → on attend que le marché descende vers nous
+        # SELL → limit à prix * (1 + offset)  → on attend que le marché monte vers nous
+        self.limit_offset: float = exchange_cfg.get("limit_order_offset_pct", 0.10) / 100
+        self.limit_timeout_s: int = int(exchange_cfg.get("limit_fill_timeout_s", 120))
+        self._exchange = self._init_exchange(exchange_cfg)
+
+    def _init_exchange(self, cfg: dict):
+        """Initialise la connexion CCXT."""
+        try:
+            import ccxt
+            from utils.config import get_env
+
+            exchange_class = getattr(ccxt, self.exchange_name)
+            exchange = exchange_class({
+                "apiKey": get_env("BINANCE_API_KEY", required=False) or "paper",
+                "secret": get_env("BINANCE_API_SECRET", required=False) or "paper",
+                "enableRateLimit": True,
+                "options": {"defaultType": "spot"},
+            })
+
+            if cfg.get("testnet", True):
+                exchange.set_sandbox_mode(True)
+
+            logger.info(f"Exchange {self.exchange_name} initialisé (testnet={cfg.get('testnet', True)})")
+            return exchange
+        except Exception as exc:
+            logger.warning(f"CCXT non disponible ({exc}) — mode simulation pure")
+            return None
+
+    def execute(self, decision: dict) -> dict:
+        """
+        Exécute un ordre paper trade via ordre LIMITE (stratégie Maker).
+
+        BUY  : limite à entry_price * (1 - offset) — on achète en-dessous du cours
+        SELL : limite à entry_price * (1 + offset) — on vend au-dessus du cours
+
+        En simulation pure : l'ordre est considéré rempli au prix limite
+        (BTC a suffisamment de volatilité intraday pour atteindre +/-0.1% en 30min).
+        Si le timeout est dépassé en mode CCXT réel, l'ordre est annulé (missé).
+        """
+        action = decision.get("action", "HOLD")
+        size_usd = decision.get("position_size_usd", 0)
+        entry_price = decision.get("entry_price", 0)
+
+        if action == "HOLD" or size_usd <= 0:
+            return {"status": "skipped", "reason": "HOLD or zero size"}
+
+        # Prix limite Maker : légèrement SOUS le marché pour BUY, AU-DESSUS pour SELL
+        if action == "BUY":
+            limit_price = round(entry_price * (1 - self.limit_offset), 2)
+        else:
+            limit_price = round(entry_price * (1 + self.limit_offset), 2)
+
+        # Tentative d'ordre limite réel via CCXT testnet
+        order_id = None
+        fill_price = limit_price
+        status = "executed"
+
+        if self._exchange and entry_price > 0:
+            try:
+                symbol = decision.get("symbol", "BTC/USDT")
+                qty = round(size_usd / limit_price, 6)
+                side = "buy" if action == "BUY" else "sell"
+
+                order = self._exchange.create_limit_order(
+                    symbol, side, qty, limit_price
+                )
+                order_id = order.get("id")
+                logger.info(f"Ordre limite CCXT posté — id={order_id} {side} @ {limit_price:.2f}")
+
+                # Attente de fill jusqu'au timeout
+                deadline = time.time() + self.limit_timeout_s
+                while time.time() < deadline:
+                    time.sleep(5)
+                    o = self._exchange.fetch_order(order_id, symbol)
+                    if o["status"] == "closed":
+                        fill_price = float(o.get("average", limit_price) or limit_price)
+                        logger.info(f"Ordre limite rempli @ {fill_price:.2f}")
+                        break
+                    if o["status"] == "canceled":
+                        status = "canceled"
+                        break
+                else:
+                    # Timeout — annulation
+                    try:
+                        self._exchange.cancel_order(order_id, symbol)
+                    except Exception:
+                        pass
+                    status = "timeout"
+                    logger.warning(f"Ordre limite timeout après {self.limit_timeout_s}s — annulé")
+
+            except Exception as exc:
+                logger.warning(f"Ordre CCXT échoué (simulation pure): {exc}")
+
+        if status not in ("executed",):
+            return {"status": status, "reason": f"Limite non remplie ({status})"}
+
+        result = {
+            "status": "executed",
+            "order_type": "limit",
+            "order_id": order_id or f"SIM-LMT-{int(time.time())}",
+            "action": action,
+            "fill_price": round(fill_price, 2),
+            "limit_price": limit_price,
+            "market_price": entry_price,
+            "price_improvement": round((entry_price - fill_price) * (1 if action == "BUY" else -1), 2),
+            "size_usd": size_usd,
+            "timestamp": datetime.utcnow().isoformat(),
+            "sl_price": decision.get("sl_price", 0),
+            "tp_price": decision.get("tp_price", 0),
+        }
+
+        logger.info(
+            f"Trade Maker exécuté — {action} {size_usd:.0f}$ @ {fill_price:.2f} "
+            f"(amélioration: {result['price_improvement']:+.2f}$ vs marché)"
+        )
+        return result
+
+    def get_portfolio(self) -> dict:
+        """Retourne le portefeuille paper courant."""
+        try:
+            from storage.database import get_recent_decisions, get_pnl_history
+            pnl = get_pnl_history()
+            total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl)
+            n_trades = len([d for d in get_recent_decisions(1000)
+                           if d.get("action") != "HOLD"])
+            return {
+                "capital": self.capital,
+                "current_value": self.capital + total_pnl,
+                "total_pnl": round(total_pnl, 2),
+                "total_pnl_pct": round(total_pnl / self.capital * 100, 2),
+                "n_trades": n_trades,
+            }
+        except Exception:
+            return {"capital": self.capital, "current_value": self.capital,
+                    "total_pnl": 0, "total_pnl_pct": 0, "n_trades": 0}

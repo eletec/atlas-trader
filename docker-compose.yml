@@ -60,6 +60,9 @@ services:
       - atlas_storage:/app/storage
       - atlas_logs:/app/logs
       - atlas_config:/app/config
+      # Code storage (override le volume pour database.py)
+      - ./storage/database.py:/app/storage/database.py:ro
+      - ./storage/__init__.py:/app/storage/__init__.py:ro
       # Montage optionnel des fichiers de config locaux (override)
       - ./config/settings.yaml:/app/config/settings.yaml:rw
       - ./config/prompts.yaml:/app/config/prompts.yaml:ro
@@ -87,6 +90,9 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    # Limites mémoire — évite OOM kill / Docker hang sur NAS (15GB RAM total)
+    mem_limit: 8g
+    memswap_limit: 8g
     # Pas de profil = service actif par défaut (docker compose up)
 
   # ============================================================
@@ -112,6 +118,8 @@ services:
       - DAEMON_INTERVAL=${DAEMON_INTERVAL:-900}
     volumes:
       - atlas_storage:/app/storage
+      - ./storage/database.py:/app/storage/database.py:ro
+      - ./storage/__init__.py:/app/storage/__init__.py:ro
       - atlas_logs:/app/logs
       - atlas_config:/app/config
       - ./config/settings.yaml:/app/config/settings.yaml:rw
@@ -139,6 +147,8 @@ services:
       - "${DASHBOARD_PORT:-8501}:8501"
     volumes:
       - atlas_storage:/app/storage
+      - ./storage/database.py:/app/storage/database.py:ro
+      - ./storage/__init__.py:/app/storage/__init__.py:ro
       - atlas_logs:/app/logs
       - atlas_config:/app/config
       - ./config/settings.yaml:/app/config/settings.yaml:rw
@@ -173,6 +183,8 @@ services:
       - PYTHONPATH=/app
     volumes:
       - atlas_storage:/app/storage
+      - ./storage/database.py:/app/storage/database.py:ro
+      - ./storage/__init__.py:/app/storage/__init__.py:ro
       - atlas_logs:/app/logs
       - ./config/settings.yaml:/app/config/settings.yaml:rw
     networks:

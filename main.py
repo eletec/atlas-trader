@@ -154,10 +154,10 @@ def bootstrap() -> dict:
     return cfg
 
 
-def run_single_cycle(asset: str) -> dict:
+def run_single_cycle(asset: str, trigger: str = "scheduled") -> dict:
     """Lance un seul cycle et retourne l'état final."""
     from graph.workflow import run_cycle
-    return run_cycle(asset=asset)
+    return run_cycle(asset=asset, trigger=trigger)
 
 
 def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: float) -> None:
@@ -319,13 +319,14 @@ def run_daemon(asset: str, interval: int) -> None:
         forced = _force_cycle_event.is_set()
         _force_cycle_event.clear()
 
+        _trigger = "monitor" if forced else "scheduled"
         if forced:
             logger.info(f"Cycle #{cycle_count} FORCÉ par le monitor (breaking news / SL/TP)")
         else:
             logger.info(f"Cycle #{cycle_count} démarré (planifié)")
 
         try:
-            state = run_single_cycle(asset)
+            state = run_single_cycle(asset, trigger=_trigger)
             consecutive_errors = 0
             duration = time.time() - t0
             decision = (state.get("decision") or {}).get("action", "N/A")
@@ -380,6 +381,14 @@ def _run_post_mortem_if_needed() -> None:
         else:
             # Rien à traiter ce cycle — on log quand même pour la visibilité
             log_flux_metric("post_mortem", "ok", 0, 0)
+
+        # Évaluer les prédictions TimesFM arrivées à échéance
+        try:
+            from storage.database import evaluate_timesfm_forecasts
+            evaluate_timesfm_forecasts()
+        except Exception as exc:
+            logger.debug(f"TimesFM eval skipped: {exc}")
+
     except Exception as exc:
         logger.warning(f"Post-mortem ignoré : {exc}")
 

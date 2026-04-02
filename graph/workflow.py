@@ -245,6 +245,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     from agents.contrarian_agent import ContrarianAgent
     from agents.fear_greed_agent import FearGreedAgent
     from agents.polymarket_agent import PolymarketAgent
+    from agents.timesfm_agent import TimesFMAgent
     from utils.logger import log_flux_metric
     from utils.config import load_settings
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -262,6 +263,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         "contrarian":  (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
         "fear_greed":  (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
         "polymarket":  (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
+        "timesfm":     (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", False)),
     }
 
     enabled_agents = {
@@ -272,31 +274,76 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         logger.info(f"[{state['cycle_id']}] Agent {name} désactivé")
 
     def _run_agent(name: str, AgentClass) -> tuple[str, dict]:
+        _t = time.time()
         try:
-            _t = time.time()
             agent = AgentClass()
-            result = agent.analyze(state)
+            # TimesFM gets its own hard timeout (model load + forecast can hang)
+            if name == "timesfm":
+                import concurrent.futures as _cf
+                with _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="tfm") as _p:
+                    _f = _p.submit(agent.analyze, state)
+                    try:
+                        result = _f.result(timeout=180)
+                    except (_cf.TimeoutError, TimeoutError):
+                        logger.warning(f"[{state['cycle_id']}] Agent timesfm TIMEOUT 180s")
+                        log_flux_metric("agent_timesfm", "error", 180000, 0, "timeout 180s")
+                        return name, AgentAnalysis(
+                            agent_name=name, score=50.0,
+                            signal="NEUTRAL", summary="timeout 180s", confidence=0.0
+                        )
+            else:
+                result = agent.analyze(state)
             _lat = int((time.time() - _t) * 1000)
             log_flux_metric(f"agent_{name}", "ok", _lat, 1)
+            logger.info(f"[{state['cycle_id']}] Agent {name} terminé en {_lat}ms — {result.get('signal', '?') if isinstance(result, dict) else '?'}")
             return name, result
         except Exception as exc:
-            logger.warning(f"[{state['cycle_id']}] Agent {name} échoué: {exc}")
-            log_flux_metric(f"agent_{name}", "error", 0, 0, str(exc))
+            _lat = int((time.time() - _t) * 1000)
+            logger.warning(f"[{state['cycle_id']}] Agent {name} échoué en {_lat}ms: {exc}")
+            log_flux_metric(f"agent_{name}", "error", _lat, 0, str(exc))
             return name, AgentAnalysis(
                 agent_name=name, score=50.0,
                 signal="NEUTRAL", summary="analyse indisponible", confidence=0.0
             )
 
-    # Lancement parallèle — timeout 60s par agent
+    # Lancement parallèle — timeout 180s (TimesFM a son propre timeout à 120s)
     with ThreadPoolExecutor(max_workers=len(enabled_agents), thread_name_prefix="agent") as pool:
         futures = {pool.submit(_run_agent, name, cls): name for name, cls in enabled_agents.items()}
-        for future in as_completed(futures, timeout=60):
-            name, result = future.result()
-            analyses[name] = result
-            tokens_used += result.get("tokens_used", 0) if isinstance(result, dict) else 0
+        try:
+            for future in as_completed(futures, timeout=180):
+                name, result = future.result()
+                analyses[name] = result
+                tokens_used += result.get("tokens_used", 0) if isinstance(result, dict) else 0
+        except TimeoutError:
+            logger.error(f"[{state['cycle_id']}] Agents timeout global (180s) — certains agents ignorés")
+            # Collecter les résultats déjà terminés
+            for fut, fname in futures.items():
+                if fut.done() and fname not in analyses:
+                    try:
+                        _, result = fut.result(timeout=0)
+                        analyses[fname] = result
+                    except Exception:
+                        pass
 
     latency_ms = int((time.time() - t0) * 1000)
     logger.info(f"[{state['cycle_id']}] Agents terminés en {latency_ms}ms (parallèle) — {len(analyses)} actifs")
+
+    # Persister la prédiction TimesFM pour suivi de performance
+    tfm = analyses.get("timesfm")
+    if isinstance(tfm, dict) and tfm.get("forecast_details"):
+        try:
+            from storage.database import log_timesfm_forecast
+            log_timesfm_forecast(
+                cycle_id=state["cycle_id"],
+                asset=state.get("asset", "BTC/USDT"),
+                forecast_details=tfm["forecast_details"],
+                score=tfm.get("score", 50),
+                signal=tfm.get("signal", "NEUTRAL"),
+                confidence=tfm.get("confidence", 0),
+            )
+        except Exception as exc:
+            logger.warning(f"Cannot log TimesFM forecast: {exc}")
+
     return {
         "agent_analyses": analyses,
         "llm_tokens_used": state.get("llm_tokens_used", 0) + tokens_used
@@ -519,26 +566,37 @@ def create_initial_state(asset: str) -> ZeitgeistState:
     )
 
 
-def run_cycle(asset: str = "BTC/USDT") -> ZeitgeistState:
+def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistState:
     """Exécute un cycle complet et retourne l'état final."""
     import time
-    workflow = build_workflow()
-    initial_state = create_initial_state(asset)
-    t0 = time.time()
+    from utils.cycle_lock import try_acquire, release
 
-    logger.info(f"=== CYCLE {initial_state['cycle_id']} DÉMARRÉ ({asset}) ===")
-    final_state = workflow.invoke(initial_state)
-    duration_ms = int((time.time() - t0) * 1000)
+    if not try_acquire(owner=f"daemon-{trigger}"):
+        logger.warning(f"Cycle skipped — another cycle is already running (trigger={trigger})")
+        return create_initial_state(asset)
 
-    final_state["cycle_duration_ms"] = duration_ms
-    logger.info(
-        f"=== CYCLE {initial_state['cycle_id']} TERMINÉ — "
-        f"{duration_ms}ms | score={final_state.get('global_score', 0):.1f} | "
-        f"decision={final_state.get('decision', {}).get('action', 'N/A')} | "
-        f"tokens={final_state.get('llm_tokens_used', 0)} | "
-        f"erreurs={len(final_state.get('errors', []))} ==="
-    )
-    return final_state
+    try:
+        workflow = build_workflow()
+        initial_state = create_initial_state(asset)
+        t0 = time.time()
+        start_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        logger.info(f"=== CYCLE {initial_state['cycle_id']} DÉBUT à {start_ts} — type: {trigger} ({asset}) ===")
+        final_state = workflow.invoke(initial_state)
+        duration_ms = int((time.time() - t0) * 1000)
+        end_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        final_state["cycle_duration_ms"] = duration_ms
+        logger.info(
+            f"=== CYCLE {initial_state['cycle_id']} FIN à {end_ts} — "
+            f"{duration_ms}ms | score={final_state.get('global_score', 0):.1f} | "
+            f"decision={final_state.get('decision', {}).get('action', 'N/A')} | "
+            f"tokens={final_state.get('llm_tokens_used', 0)} | "
+            f"erreurs={len(final_state.get('errors', []))} ==="
+        )
+        return final_state
+    finally:
+        release()
 
 
 # ===========================================================

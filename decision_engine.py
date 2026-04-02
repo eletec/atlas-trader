@@ -350,6 +350,8 @@ class DecisionEngine:
         ma50_size_penalty: float = 1.0,
     ) -> str:
         """Construit l'explication narrative de la décision."""
+        from utils.i18n import t
+
         mf_score = (mirofish_result or {}).get("score", 50)
         mf_narrative = (mirofish_result or {}).get("dominant_narrative", "n/a")
         price = (market_indicators or {}).get("price", 0)
@@ -359,8 +361,8 @@ class DecisionEngine:
         synthesis_text = synthesis.get("summary", "") if isinstance(synthesis, dict) else ""
 
         explanation = (
-            f"**Decision: {action}** (conviction score: {score:.0f}/100)\n\n"
-            f"**MiroFish Analysis** ({mf_score:.0f}/100): {mf_narrative}\n\n"
+            f"**{t('dec_decision')}: {action}** ({t('dec_conviction')}: {score:.0f}/100)\n\n"
+            f"**{t('dec_mirofish')}** ({mf_score:.0f}/100): {mf_narrative}\n\n"
         )
 
         # Agent scores
@@ -374,42 +376,37 @@ class DecisionEngine:
             icon = signal_icons.get(a_signal, "⚪")
             agent_rows.append(f"{icon} **{name}**: {a_score:.0f}/100")
         if agent_rows:
-            explanation += "**Agents**: " + " | ".join(agent_rows) + "\n\n"
+            explanation += f"**{t('dec_agents')}**: " + " | ".join(agent_rows) + "\n\n"
 
-        rsi_label = "oversold" if rsi < 30 else ("overbought" if rsi > 70 else "neutral")
+        rsi_key = "dec_rsi_oversold" if rsi < 30 else ("dec_rsi_overbought" if rsi > 70 else "dec_rsi_neutral")
         explanation += (
-            f"**Market**: Price={price:.2f} | RSI={rsi:.0f} ({rsi_label})\n\n"
+            f"**{t('dec_market')}**: Price={price:.2f} | RSI={rsi:.0f} ({t(rsi_key)})\n\n"
         )
 
         if synthesis_text:
-            explanation += f"**AI Summary**: {synthesis_text}\n\n"
+            explanation += f"**{t('dec_ai_summary')}**: {synthesis_text}\n\n"
 
         if action == "HOLD" and ma50_blocked:
-            explanation += (
-                f"⚠️ **MA50 Filter active**: score={score:.0f} bullish but price ({price:.0f}) "
-                f"is below daily MA50 ({ma_50:.0f}). BUY blocked — bearish macro trend."
+            explanation += t("dec_ma50_blocked").format(
+                score=f"{score:.0f}", price=f"{price:.0f}", ma50=f"{ma_50:.0f}"
             )
         elif action == "BUY" and ma50_size_penalty < 1.0:
-            explanation += (
-                f"⚠️ **Strong signal below MA50**: score={score:.0f} \u2265 strong threshold. "
-                f"BUY allowed but size reduced \u00d7{ma50_size_penalty:.1f} "
-                f"(price {price:.0f} below MA50 {ma_50:.0f})."
+            explanation += t("dec_ma50_strong").format(
+                score=f"{score:.0f}", factor=f"{ma50_size_penalty:.1f}",
+                price=f"{price:.0f}", ma50=f"{ma_50:.0f}"
             )
         elif action == "HOLD":
-            explanation += (
-                f"Score {score:.0f} is within the neutral zone "
-                f"[{self.exit_threshold}\u2013{self.buy_threshold}]. Monitoring maintained."
+            explanation += t("dec_neutral_zone").format(
+                score=f"{score:.0f}", lo=f"{self.exit_threshold:.0f}",
+                hi=f"{self.buy_threshold:.0f}"
             )
         elif action == "BUY":
-            explanation += (
-                f"Signals converge toward bullish sentiment. "
-                f"High conviction score ({score:.0f}/100) above buy threshold ({self.buy_threshold})."
+            explanation += t("dec_buy_signal").format(
+                score=f"{score:.0f}", threshold=f"{self.buy_threshold:.0f}"
             )
         else:
-            explanation += (
-                f"Signals indicate bearish pressure. "
-                f"Conviction score ({score:.0f}/100) below exit threshold "
-                f"({self.exit_threshold}) \u2014 long position closed."
+            explanation += t("dec_sell_signal").format(
+                score=f"{score:.0f}", threshold=f"{self.exit_threshold:.0f}"
             )
 
         return explanation

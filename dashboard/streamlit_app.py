@@ -5,10 +5,18 @@ Interface User (lecture seule) + Interface Admin (protégée par mot de passe).
 from __future__ import annotations
 
 import hashlib
+import sys
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from queue import Queue, Empty
+
+# Garantir que /app (ou le parent du dossier courant) est en tête du sys.path
+# pour éviter les conflits avec des packages "utils" de dépendances tierces
+_APP_ROOT = str(Path(__file__).resolve().parent.parent)
+if _APP_ROOT not in sys.path:
+    sys.path.insert(0, _APP_ROOT)
 
 
 # Logo 34×34 extrait de atlas.ico (base64 PNG ~3KB — aucune dépendance fichier)
@@ -67,7 +75,7 @@ try:
     from dashboard.flux_manager import render_flux_manager_page
 except Exception:
     from flux_manager import render_flux_manager_page
-from utils.i18n import t, set_lang, get_lang
+from utils.i18n import t, set_lang, get_lang, SUPPORTED_LANGS
 
 # ===========================================================
 # CONFIG PAGE
@@ -392,13 +400,14 @@ def _save_settings(settings: dict) -> bool:
 # COMPOSANTS UI USER
 # ===========================================================
 
-def _run_cycle_with_trace(asset: str) -> dict:
+@st.dialog("⚡ Force Run", width="large")
+def _force_run_dialog(asset: str):
     """
-    Exécute un cycle complet noeud par noeud en affichant
-    une trace en temps réel via st.status().
-    Retourne le state final (même interface que run_cycle()).
+    Popup modal qui exécute un cycle complet noeud par noeud
+    en affichant une trace en temps réel.
     """
-    import time
+    import time as _time
+    from utils.cycle_lock import try_acquire, release
     from graph.workflow import (
         create_initial_state,
         node_fetch_news, node_crawl_web, node_run_mirofish,
@@ -406,102 +415,166 @@ def _run_cycle_with_trace(asset: str) -> dict:
         node_calculate_score, node_decide, node_execute,
         should_continue_after_news, should_execute,
     )
+    import logging
+    _logger = logging.getLogger("zeitgeist.workflow")
+
+    # Cross-process lock — prevent concurrent cycles with daemon
+    if not try_acquire(owner="dashboard-force"):
+        from utils.cycle_lock import lock_info
+        info = lock_info()
+        if info:
+            owner = info["owner"].replace("daemon-", "")
+            st.warning(f"⏳ {t('run_already_running')} ({owner}, {info['age_s']}s)")
+        else:
+            st.warning(t("run_already_running"))
+        st.session_state.pop("_force_run_asset", None)
+        return
+
+    try:
+        _force_run_dialog_inner(asset, _time, _logger,
+                                create_initial_state,
+                                node_fetch_news, node_crawl_web, node_run_mirofish,
+                                node_fetch_market_data, node_analyze_agents, node_synthesize,
+                                node_calculate_score, node_decide, node_execute,
+                                should_continue_after_news, should_execute)
+    finally:
+        release()
+
+
+def _force_run_dialog_inner(asset, _time, _logger,
+                            create_initial_state,
+                            node_fetch_news, node_crawl_web, node_run_mirofish,
+                            node_fetch_market_data, node_analyze_agents, node_synthesize,
+                            node_calculate_score, node_decide, node_execute,
+                            should_continue_after_news, should_execute):
+    """Inner logic for Force Run dialog (separated for lock management)."""
+    start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
+    _logger.info(f"=== CYCLE DASHBOARD DÉBUT à {start_ts} — type: dashboard-force ({asset}) ===")
 
     STEPS = [
-        ("fetch_news",      "News rapides (RSS / NewsAPI)",        node_fetch_news),
-        ("crawl_web",       "Crawl web thématique",                node_crawl_web),
-        ("run_mirofish",    "Simulation MiroFish (swarm)",         node_run_mirofish),
-        ("fetch_market",    "Données marché (OHLCV / orderbook)",  node_fetch_market_data),
-        ("agents",          "Analyse agents (fundamental, X…)",    node_analyze_agents),
-        ("synthesize",      "Synthèse LLM finale",                 node_synthesize),
-        ("score",           "Calcul du score global",              node_calculate_score),
-        ("decide",          "Décision (BUY / SELL / HOLD)",        node_decide),
+        ("fetch_news",      t("run_step_news"),        node_fetch_news),
+        ("crawl_web",       t("run_step_crawl"),       node_crawl_web),
+        ("run_mirofish",    t("run_step_mirofish"),    node_run_mirofish),
+        ("fetch_market",    t("run_step_market"),      node_fetch_market_data),
+        ("agents",          t("run_step_agents"),      node_analyze_agents),
+        ("synthesize",      t("run_step_synth"),       node_synthesize),
+        ("score",           t("run_step_score"),       node_calculate_score),
+        ("decide",          t("run_step_decide"),      node_decide),
     ]
 
     state = create_initial_state(asset)
-    t_total = time.time()
+    # Injection CSS pour réduire les marges entre les éléments markdown du dialog
+    st.markdown("""<style>
+    [data-testid="stDialog"] [data-testid="stMarkdown"] p {
+        font-size: 13px; line-height: 1.3; font-family: 'SFMono-Regular',Consolas,monospace;
+        margin: 0; padding: 0;
+    }
+    [data-testid="stDialog"] [data-testid="stMarkdown"] {
+        margin-bottom: -12px;
+    }
+    </style>""", unsafe_allow_html=True)
+    log_container = st.container()
+    t_total = _time.time()
 
-    with st.status("Cycle en cours…", expanded=True) as status:
-        for key, label, fn in STEPS:
-            status.write(f"⏳ **{label}**")
-            t0 = time.time()
-            try:
-                patch = fn(state)
-                if patch:
-                    state.update(patch)
-                elapsed = int((time.time() - t0) * 1000)
+    def _log(txt):
+        log_container.markdown(txt, unsafe_allow_html=True)
+    def _log_sub(txt):
+        log_container.markdown(f"<span style='font-size:12px;color:#888;padding-left:12px'>{txt}</span>", unsafe_allow_html=True)
 
-                # Arrêt conditionnel après fetch_news
-                if key == "fetch_news":
-                    if should_continue_after_news(state) == "abort":
-                        status.write(f"⚠️ Aucune news — cycle interrompu")
-                        break
+    for key, label, fn in STEPS:
+        _log(f"⏳ <b>{label}</b>")
+        t0 = _time.time()
+        try:
+            patch = fn(state)
+            if patch:
+                state.update(patch)
+            elapsed = int((_time.time() - t0) * 1000)
+            elapsed_s = elapsed / 1000
 
-                # Info contextuelle par étape
-                if key == "fetch_news":
-                    n = len(state.get("news_items", []))
-                    status.write(f"✅ **{label}** — {n} news ({elapsed}ms)")
-                elif key == "crawl_web":
-                    s = state.get("crawler_status", "?")
-                    status.write(f"✅ **{label}** — statut: {s} ({elapsed}ms)")
-                elif key == "run_mirofish":
-                    mf = state.get("mirofish_result") or {}
-                    sig = mf.get("signal", "?")
-                    conf = mf.get("confidence", 0)
-                    status.write(f"✅ **{label}** — signal: {sig} conf: {conf:.0%} ({elapsed}ms)")
-                elif key == "fetch_market":
-                    mi = state.get("market_indicators") or {}
-                    price = mi.get("price", 0)
-                    rsi = mi.get("rsi_14", 0)
-                    status.write(f"✅ **{label}** — BTC: ${price:,.0f} RSI: {rsi:.1f} ({elapsed}ms)")
-                elif key == "agents":
-                    n = len(state.get("agent_analyses", {}))
-                    errs = len(state.get("errors", []))
-                    status.write(f"✅ **{label}** — {n} agents, {errs} erreurs ({elapsed}ms)")
-                elif key == "synthesize":
-                    status.write(f"✅ **{label}** — tokens: {state.get('llm_tokens_used', 0)} ({elapsed}ms)")
-                elif key == "score":
-                    sc = state.get("global_score", 0)
-                    status.write(f"✅ **{label}** — score: {sc:.1f}/100 ({elapsed}ms)")
-                elif key == "decide":
-                    dec = (state.get("decision") or {})
-                    action = dec.get("action", "HOLD")
-                    status.write(f"✅ **{label}** — **{action}** ({elapsed}ms)")
-                    # Exécution conditionnelle
-                    if should_execute(state) == "execute":
-                        status.write(f"⏳ **Exécution du trade ({action})**")
-                        t0e = time.time()
-                        try:
-                            patch = node_execute(state)
-                            if patch:
-                                state.update(patch)
-                            elapsed_e = int((time.time() - t0e) * 1000)
-                            tr = state.get("trade_result") or {}
-                            status.write(f"✅ **Trade exécuté** — {tr.get('status','?')} ({elapsed_e}ms)")
-                        except Exception as exc:
-                            status.write(f"❌ **Exécution échouée** — {exc}")
-            except Exception as exc:
-                elapsed = int((time.time() - t0) * 1000)
-                status.write(f"❌ **{label}** — {exc} ({elapsed}ms)")
-                state.setdefault("errors", []).append(f"{key}: {exc}")
+            # Arrêt conditionnel après fetch_news
+            if key == "fetch_news":
+                if should_continue_after_news(state) == "abort":
+                    _log(f"⚠️ {t('run_no_news_abort')}")
+                    break
 
-        total_ms = int((time.time() - t_total) * 1000)
-        errs = state.get("errors", [])
-        final_action = (state.get("decision") or {}).get("action", "N/A")
-        final_score  = state.get("global_score", 0)
-        if errs:
-            status.update(
-                label=f"Cycle terminé avec {len(errs)} erreur(s) — {final_action} | score {final_score:.0f} | {total_ms}ms",
-                state="error", expanded=False,
-            )
-        else:
-            status.update(
-                label=f"Cycle terminé — {final_action} | score {final_score:.0f} | {total_ms}ms",
-                state="complete", expanded=False,
-            )
+            # Info contextuelle par étape
+            if key == "fetch_news":
+                n = len(state.get("news_items", []))
+                _log(f"✅ <b>{label}</b> — {t('run_news_count').format(n=n)} ({elapsed_s:.1f}s)")
+            elif key == "crawl_web":
+                s = state.get("crawler_status", "?")
+                _log(f"✅ <b>{label}</b> — {t('run_status')}: {s} ({elapsed_s:.1f}s)")
+            elif key == "run_mirofish":
+                mf = state.get("mirofish_result") or {}
+                sig = mf.get("signal", "?")
+                conf = mf.get("confidence", 0)
+                _log(f"✅ <b>{label}</b> — {t('run_signal')}: {sig} {t('run_conf')}: {conf:.0%} ({elapsed_s:.1f}s)")
+            elif key == "fetch_market":
+                mi = state.get("market_indicators") or {}
+                price = mi.get("price", 0)
+                rsi = mi.get("rsi_14", 0)
+                _log(f"✅ <b>{label}</b> — BTC: ${price:,.0f} RSI: {rsi:.1f} ({elapsed_s:.1f}s)")
+            elif key == "agents":
+                analyses = state.get("agent_analyses", {})
+                errs = len(state.get("errors", []))
+                for aname, adata in analyses.items():
+                    if isinstance(adata, dict):
+                        asig = adata.get("signal", "?")
+                        asc  = adata.get("score", 50)
+                        aconf = adata.get("confidence", 0)
+                        asum = adata.get("summary", "")
+                        if asig == "NEUTRAL" and aconf == 0:
+                            _log_sub(f"⚠️ {aname} — fallback ({asum})")
+                        else:
+                            _log_sub(f"✓ {aname} — {asig} (score {asc:.0f}, conf {aconf:.0%})")
+                _log(f"✅ <b>{label}</b> — {t('run_agents_count').format(n=len(analyses), e=errs)} ({elapsed_s:.1f}s)")
+            elif key == "synthesize":
+                _log(f"✅ <b>{label}</b> — tokens: {state.get('llm_tokens_used', 0)} ({elapsed_s:.1f}s)")
+            elif key == "score":
+                sc = state.get("global_score", 0)
+                _log(f"✅ <b>{label}</b> — score: {sc:.1f}/100 ({elapsed_s:.1f}s)")
+            elif key == "decide":
+                dec = (state.get("decision") or {})
+                action = dec.get("action", "HOLD")
+                _log(f"✅ <b>{label}</b> — <b>{action}</b> ({elapsed_s:.1f}s)")
+                if should_execute(state) == "execute":
+                    _log(f"⏳ <b>{t('run_trade_exec')} ({action})</b>")
+                    t0e = _time.time()
+                    try:
+                        patch = node_execute(state)
+                        if patch:
+                            state.update(patch)
+                        elapsed_e = (_time.time() - t0e)
+                        tr = state.get("trade_result") or {}
+                        _log(f"✅ <b>{t('run_trade_done')}</b> — {tr.get('status','?')} ({elapsed_e:.1f}s)")
+                    except Exception as exc:
+                        _log(f"❌ <b>{t('run_trade_failed')}</b> — {exc}")
+        except Exception as exc:
+            elapsed_s = (_time.time() - t0)
+            _log(f"❌ <b>{label}</b> — {exc} ({elapsed_s:.1f}s)")
+            state.setdefault("errors", []).append(f"{key}: {exc}")
+
+    total_ms = int((_time.time() - t_total) * 1000)
+    errs = state.get("errors", [])
+    final_action = (state.get("decision") or {}).get("action", "N/A")
+    final_score  = state.get("global_score", 0)
+
+    total_s = total_ms / 1000
+    st.divider()
+    if errs:
+        st.error(f"{t('run_done_errors').format(n=len(errs))} — {final_action} | score {final_score:.0f} | {total_s:.1f}s")
+    else:
+        st.success(f"{t('run_done')} — {final_action} | score {final_score:.0f} | {total_s:.1f}s")
 
     state["cycle_duration_ms"] = total_ms
-    return state
+    end_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
+    _logger.info(
+        f"=== CYCLE DASHBOARD FIN à {end_ts} — "
+        f"{total_s:.1f}s | score={state.get('global_score', 0):.1f} | "
+        f"decision={final_action} | erreurs={len(errs)} ==="
+    )
+    st.session_state.pop("_force_run_asset", None)
+    st.cache_data.clear()
 
 
 def render_header():
@@ -538,20 +611,11 @@ def render_header():
 
     if _action == "force_run":
         st.query_params.pop("_action", None)
-        try:
-            cfg   = _get_settings()
-            asset = cfg.get("project", {}).get("asset", "BTC/USDT")
-            state = _run_cycle_with_trace(asset)
-            st.cache_data.clear()
-            decision = state.get("decision") or {}
-            st.toast(
-                f"\u26a1 Score\u00a0: {state.get('global_score', 0):.0f}"
-                f" | {decision.get('action', 'N/A')}",
-                icon="\u2705",
-            )
-            st.rerun()
-        except Exception as exc:
-            st.toast(f"Erreur Force Run\u00a0: {exc}", icon="\U0001f6a8")
+        cfg   = _get_settings()
+        st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
+
+    if st.session_state.get("_force_run_asset"):
+        _force_run_dialog(st.session_state["_force_run_asset"])
 
     # ─ URLs ─────────────────────────────────────────────────────────────────
     adm   = "1" if show_admin else "0"
@@ -572,6 +636,12 @@ def render_header():
     u_t_system = f"?lang={lang_param}&theme=system&admin={adm}&menu=0{_sid_param}"
     u_l_fr     = f"?lang=fr&theme={theme}&admin={adm}&menu=0{_sid_param}"
     u_l_en     = f"?lang=en&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_l_de     = f"?lang=de&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_l_es     = f"?lang=es&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_l_it     = f"?lang=it&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_l_pt     = f"?lang=pt&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_l_nl     = f"?lang=nl&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_l_zh     = f"?lang=zh&theme={theme}&admin={adm}&menu=0{_sid_param}"
 
     # ─ CSS variables ────────────────────────────────────────────────────────
     if theme == "light":
@@ -584,6 +654,10 @@ def render_header():
     else:
         nav_bg  = "#0e1117"; nav_fg = "#FAFAFA"
         nav_bdr = "rgba(128,128,128,0.3)"; dd_bg = "#1e2128"; dd_sep = "rgba(255,255,255,0.1)"
+
+    # ─ Cycle running? ─────────────────────────────────────────────────────
+    from utils.cycle_lock import is_locked as _cycle_is_locked
+    _cycle_running = _cycle_is_locked()
 
     # ─ Styles helper ────────────────────────────────────────────────────────
     S_BTN = (f"text-decoration:none;border-radius:5px;padding:5px 11px;"
@@ -633,8 +707,14 @@ def render_header():
   <div style="{S_SEP}"></div>
   <div style="{S_LBL}"><i class="fas fa-globe" style="margin-right:5px;"></i>Langue</div>
   <div style="{S_ROW}">
-    {pill(u_l_fr, '<i class="fas fa-flag" style="font-size:11px;"></i> FR', lang_param == "fr")}
-    {pill(u_l_en, '<i class="fas fa-flag" style="font-size:11px;"></i> EN', lang_param == "en")}
+    {pill(u_l_fr, '🇫🇷', lang_param == "fr")}
+    {pill(u_l_en, '🇬🇧', lang_param == "en")}
+    {pill(u_l_de, '🇩🇪', lang_param == "de")}
+    {pill(u_l_es, '🇪🇸', lang_param == "es")}
+    {pill(u_l_it, '🇮🇹', lang_param == "it")}
+    {pill(u_l_pt, '🇵🇹', lang_param == "pt")}
+    {pill(u_l_nl, '🇳🇱', lang_param == "nl")}
+    {pill(u_l_zh, '🇨🇳', lang_param == "zh")}
   </div>
 {f'''  <div style="{S_SEP}"></div>
   <a href="{u_logout}" style="text-decoration:none;display:block;padding:10px 16px;
@@ -645,12 +725,21 @@ def render_header():
 </div>"""
 
     # ─ Rendu final ──────────────────────────────────────────────────────────
+    # Auto-refresh toutes les 15s quand un cycle tourne → arrêt auto quand fini
     st.markdown(f"""
 <style>
 header[data-testid="stHeader"]{{display:none!important;}}
 .main .block-container,[data-testid="stMainBlockContainer"]{{padding-top:56px!important;padding-bottom:0!important;}}
 [data-testid="stTabs"]{{margin-top:-1rem!important;}}
 [data-testid="stMainBlockContainer"] > div:first-child {{gap:0!important;}}
+@keyframes atlas-pulse {{
+  0%,100% {{ color:#22c55e; opacity:1; }}
+  50%     {{ color:#22c55e; opacity:0.3; }}
+}}
+.atlas-bolt-active {{
+  animation: atlas-pulse 1.2s ease-in-out infinite !important;
+  background: rgba(34,197,94,0.15) !important;
+}}
 </style>
 <nav style="position:fixed;top:0;left:0;right:0;height:48px;
             background:{nav_bg};z-index:9999;
@@ -671,11 +760,13 @@ header[data-testid="stHeader"]{{display:none!important;}}
   </span>
   <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{datetime.now().strftime('%d/%m/%Y %H:%M')}</span>
   <a href="{u_refresh}" style="{S_BTN}" title="Rafra\u00eechir" target="_self"><i class="fas fa-rotate-right"></i></a>
-  <a href="{u_force}"   style="{S_BTN}" title="Force Run" target="_self"><i class="fas fa-bolt"></i></a>
+  <a href="{u_force}" style="{S_BTN}" title="Force Run" target="_self"
+     class="{'atlas-bolt-active' if _cycle_running else ''}"><i class="fas fa-bolt"></i></a>
   <a href="{u_hamburger}" style="{S_HBG}" title="Menu" target="_self"><i class="fas fa-bars"></i></a>
 </nav>
 {dropdown_html}
 """, unsafe_allow_html=True)
+
 
 
 def _card_colors(theme: str) -> tuple[str, str, str, str, str]:
@@ -722,6 +813,11 @@ def render_climate_metrics(last_cycle: dict | None):
             time_ago = f"{diff} min" if diff < 60 else f"{diff // 60} h"
         except Exception:
             pass
+
+    # Indicateur cycle en cours
+    from utils.cycle_lock import is_locked as _is_cycle_locked
+    if _is_cycle_locked():
+        time_ago += ' <span style="color:#22c55e;font-size:11px;">⟳ en cours</span>'
 
     act_map = {
         "BUY":  ("#2ecc71", "fas fa-arrow-trend-up"),
@@ -1144,22 +1240,8 @@ def render_force_run_button():
     """Bouton pour forcer un cycle immédiatement."""
     if st.button("Force Run", type="primary", use_container_width=True,
                  help="Déclenche un cycle de trading immédiat"):
-        with st.spinner("Cycle en cours..."):
-            try:
-                from graph.workflow import run_cycle
-                cfg = _get_settings()
-                asset = cfg.get("project", {}).get("asset", "BTC/USDT")
-                state = run_cycle(asset=asset)
-                st.cache_data.clear()
-                decision = state.get("decision") or {}
-                st.success(
-                    f"Cycle terminé — "
-                    f"Score: {state.get('global_score', 0):.0f} | "
-                    f"Décision: {decision.get('action', 'N/A')}"
-                )
-                st.rerun()
-            except Exception as exc:
-                st.error(f"❌ Erreur : {exc}")
+        cfg = _get_settings()
+        st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
 
 
 # ===========================================================
@@ -1186,6 +1268,7 @@ def render_admin_panel():
         f"⚖ {t('tab_risk')}",
         f"⬡ {t('tab_agents')}",
         f"≡ {t('tab_logging')}",
+        f"⏱ {t('tab_timesfm')}",
         f"⇄ {t('tab_flux')}",
         f"👤 {t('tab_users')}",
     ])
@@ -1415,7 +1498,7 @@ def render_admin_panel():
     with sub_tabs[6]:  # Agents
         st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
         agents = settings.get("agents", {})
-        for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket"]:
+        for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket", "timesfm"]:
             cfg = agents.get(agent_name, {})
             col1, col2 = st.columns([2, 1])
             with col1:
@@ -1444,11 +1527,85 @@ def render_admin_panel():
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
         settings["logging"] = log_cfg
 
-    with sub_tabs[8]:  # Flux Manager
+    with sub_tabs[8]:  # TimesFM
+        st.markdown(f'<h4><i class="fas fa-chart-line" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_timesfm_title")}</h4>', unsafe_allow_html=True)
+        tfm = settings.get("timesfm", {})
+        tfm["forecast_horizon"] = st.number_input(
+            t("cfg_tfm_horizon"), 1, 96,
+            int(tfm.get("forecast_horizon", 24)), 1,
+            help=t("cfg_tfm_horizon_help")
+        )
+        settings["timesfm"] = tfm
+
+        # ── Performance TimesFM ──
+        st.markdown("---")
+        st.markdown(f'<h4><i class="fas fa-bullseye" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_tfm_perf_title")}</h4>', unsafe_allow_html=True)
+        try:
+            from storage.database import get_timesfm_stats, evaluate_timesfm_forecasts
+            # Évaluer les forecasts arrivés à échéance
+            n_eval = evaluate_timesfm_forecasts()
+            if n_eval:
+                st.toast(f"{n_eval} forecast(s) evaluated", icon="🎯")
+
+            stats = get_timesfm_stats()
+
+            if stats["total"] == 0:
+                st.info(t("cfg_tfm_no_data"))
+            else:
+                theme = _get_theme()
+                bg, bdr, txt, muted, ic = _card_colors(theme)
+                kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
+
+                dir_acc = f"{stats['direction_accuracy']:.0f}%" if stats["direction_accuracy"] is not None else "—"
+                mae_val = f"{stats['mae']:.2f}%" if stats["mae"] is not None else "—"
+                lat_val = f"{stats['avg_latency_ms']}ms" if stats["avg_latency_ms"] else "—"
+                conf_val = f"{stats['avg_confidence']:.0%}" if stats["avg_confidence"] is not None else "—"
+
+                grid = (
+                    _html_card("fas fa-chart-simple", t("cfg_tfm_total"), str(stats["total"]), **kw) +
+                    _html_card("fas fa-check-double", t("cfg_tfm_evaluated"), str(stats["evaluated"]), **kw) +
+                    _html_card("fas fa-bullseye", t("cfg_tfm_dir_acc"), dir_acc, **kw) +
+                    _html_card("fas fa-ruler", t("cfg_tfm_mae"), mae_val, **kw) +
+                    _html_card("fas fa-gauge", t("cfg_tfm_confidence"), conf_val, **kw) +
+                    _html_card("fas fa-bolt", t("cfg_tfm_latency"), lat_val, **kw)
+                )
+                st.markdown(
+                    f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));'
+                    f'gap:10px;margin-bottom:16px;">{grid}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Tableau — dernières prédictions évaluées
+                if stats.get("recent"):
+                    st.markdown(f"**{t('cfg_tfm_recent')}**")
+                    for r in stats["recent"]:
+                        hit = "✅" if r["direction_hit"] else "❌"
+                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(r.get("signal", ""), "⚪")
+                        st.markdown(
+                            f"{hit} {sig_icon} `{r['timestamp'][:16]}` — "
+                            f"Pred: **{r['pct_change']:+.2f}%** → Real: **{r['actual_change']:+.2f}%** "
+                            f"(${r['current_price']:,.0f} → ${r['actual_price']:,.0f})"
+                        )
+
+                # Prédictions en attente
+                if stats.get("pending"):
+                    st.markdown(f"**{t('cfg_tfm_pending')}**")
+                    for p in stats["pending"]:
+                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(p.get("signal", ""), "⚪")
+                        st.markdown(
+                            f"⏳ {sig_icon} `{p['timestamp'][:16]}` — "
+                            f"Pred: **{p['pct_change']:+.2f}%** "
+                            f"(${p['current_price']:,.0f} → ${p['predicted_price']:,.0f}) "
+                            f"horizon: {p['horizon_candles']}×15min"
+                        )
+        except Exception as exc:
+            st.warning(f"TimesFM stats unavailable: {exc}")
+
+    with sub_tabs[9]:  # Flux Manager
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
-    with sub_tabs[9]:  # Utilisateurs
+    with sub_tabs[10]:  # Utilisateurs
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin

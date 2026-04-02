@@ -118,6 +118,16 @@ agents:
   polymarket:
     enabled: true
     weight_in_scoring: 0.85  # Marchés prédictifs BTC (probabilités calibrées)
+  timesfm:
+    enabled: true             # TimesFM 2.0-500m price forecast (torch + timesfm)
+    weight_in_scoring: 0.9   # Foundation model signal — high weight when enabled
+
+# ----------------------------------------------------------
+# TimesFM — Price Forecasting Foundation Model
+# ----------------------------------------------------------
+timesfm:
+  forecast_horizon: 24       # candles ahead (24 × 15min = 6h)
+  # model loaded lazily on first call, kept in memory
 
 # ----------------------------------------------------------
 # Scoring — Poids globaux (ajustables par post-mortem)

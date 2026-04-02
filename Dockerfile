@@ -5,7 +5,7 @@
 # ============================================================
 
 # ----- Stage 1 : Builder -----
-FROM python:3.12-slim AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -33,6 +33,12 @@ RUN pip install --upgrade pip && \
 RUN pip install --prefix=/install --no-cache-dir git+https://github.com/666ghj/MiroFish.git || \
     echo "WARNING: MiroFish unavailable, fallback mode active"
 
+# Pré-télécharger le modèle TimesFM 500M (~2GB) dans le cache HuggingFace
+# pour éviter le téléchargement au premier lancement du container
+RUN PYTHONPATH=/install/lib/python3.11/site-packages \
+    python -c "from huggingface_hub import snapshot_download; snapshot_download('google/timesfm-2.0-500m-pytorch')" || \
+    echo "WARNING: TimesFM model download failed, will retry at runtime"
+
 # Installer Playwright browsers (pour le fallback crawling)
 RUN pip install --prefix=/install --no-cache-dir playwright && \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
@@ -40,7 +46,7 @@ RUN pip install --prefix=/install --no-cache-dir playwright && \
 
 
 # ----- Stage 2 : Runtime -----
-FROM python:3.12-slim AS runtime
+FROM python:3.11-slim AS runtime
 
 LABEL maintainer="Atlas Trader"
 LABEL description="Système de trading IA autonome — MiroFish + LangGraph"
@@ -50,6 +56,7 @@ LABEL version="1.0.0-MVP"
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
+    HF_HOME=/home/atlas/.cache/huggingface \
     PORT_DASHBOARD=8501 \
     LOG_LEVEL=INFO \
     ENVIRONMENT=production
@@ -64,6 +71,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copier les wheels installés depuis le builder
 COPY --from=builder /install /usr/local
+
+# Copier le cache HuggingFace (modèle TimesFM pré-téléchargé)
+COPY --from=builder /root/.cache/huggingface /home/atlas/.cache/huggingface
 
 # Créer l'utilisateur non-root pour la sécurité
 RUN groupadd -r atlas && useradd -r -g atlas -d /app -s /bin/bash atlas
@@ -88,7 +98,7 @@ RUN chmod +x ./docker/entrypoint.sh ./docker/healthcheck.sh
 
 # Créer les répertoires persistables (montés en volumes)
 RUN mkdir -p /app/logs /app/storage /data && \
-    chown -R atlas:atlas /app /data
+    chown -R atlas:atlas /app /data /home/atlas
 
 # Exposer le port Streamlit
 EXPOSE 8501

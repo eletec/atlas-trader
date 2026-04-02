@@ -78,10 +78,33 @@ DDL_STATEMENTS = [
         context_json TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS timesfm_forecasts (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id        TEXT    NOT NULL,
+        timestamp       TEXT    NOT NULL,
+        asset           TEXT    NOT NULL,
+        horizon_candles INTEGER NOT NULL,
+        current_price   REAL    NOT NULL,
+        predicted_price REAL    NOT NULL,
+        pct_change      REAL    NOT NULL,
+        q10             REAL,
+        q90             REAL,
+        confidence      REAL,
+        score           REAL,
+        signal          TEXT,
+        actual_price    REAL,                  -- rempli par post-mortem
+        actual_change   REAL,                  -- rempli par post-mortem
+        direction_hit   INTEGER,               -- 1 = correct, 0 = faux (post-mortem)
+        evaluated_at    TEXT,                  -- timestamp du post-mortem
+        latency_ms      INTEGER DEFAULT 0
+    )
+    """,
     # Index pour les requêtes fréquentes
     "CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_flux_name_ts ON flux_metrics(flux_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_tfm_ts ON timesfm_forecasts(timestamp DESC)",
 ]
 
 
@@ -329,3 +352,196 @@ class SQLiteLogHandler(logging.Handler):
                 conn.commit()
         except Exception:
             pass  # Ne jamais crasher à cause du logging
+
+
+# ===========================================================
+# TIMESFM FORECASTS — tracking & évaluation
+# ===========================================================
+
+def log_timesfm_forecast(
+    cycle_id: str,
+    asset: str,
+    forecast_details: dict,
+    score: float,
+    signal: str,
+    confidence: float,
+) -> None:
+    """Persiste une prédiction TimesFM pour évaluation ultérieure."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO timesfm_forecasts
+                (cycle_id, timestamp, asset, horizon_candles,
+                 current_price, predicted_price, pct_change,
+                 q10, q90, confidence, score, signal, latency_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    cycle_id,
+                    datetime.utcnow().isoformat(),
+                    asset,
+                    forecast_details.get("horizon_candles", 24),
+                    forecast_details.get("current_price", 0),
+                    forecast_details.get("predicted_price", 0),
+                    forecast_details.get("pct_change", 0),
+                    forecast_details.get("q10"),
+                    forecast_details.get("q90"),
+                    confidence,
+                    score,
+                    signal,
+                    forecast_details.get("latency_ms", 0),
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"Cannot log TimesFM forecast: {exc}")
+
+
+def evaluate_timesfm_forecasts() -> int:
+    """
+    Post-mortem : évalue les prédictions TimesFM arrivées à échéance.
+    Compare predicted_price vs prix réel après horizon_candles × 15min.
+    Retourne le nombre de forecasts évalués.
+    """
+    import ccxt
+
+    try:
+        exchange = ccxt.binance({"enableRateLimit": True})
+    except Exception as exc:
+        logger.warning(f"Cannot init exchange for TimesFM eval: {exc}")
+        return 0
+
+    evaluated = 0
+    now = datetime.utcnow()
+
+    try:
+        with get_connection() as conn:
+            # Forecasts non encore évalués
+            rows = conn.execute(
+                """
+                SELECT id, timestamp, asset, horizon_candles, current_price,
+                       predicted_price, pct_change, signal
+                FROM timesfm_forecasts
+                WHERE actual_price IS NULL
+                ORDER BY timestamp ASC
+                LIMIT 50
+                """
+            ).fetchall()
+
+            for row in rows:
+                fc_time = datetime.fromisoformat(row["timestamp"])
+                horizon_minutes = row["horizon_candles"] * 15
+                target_time = fc_time + __import__("datetime").timedelta(minutes=horizon_minutes)
+
+                if now < target_time:
+                    continue  # pas encore arrivé à échéance
+
+                # Récupérer le prix réel à l'échéance
+                try:
+                    ohlcv = exchange.fetch_ohlcv(
+                        row["asset"], "15m",
+                        since=int(target_time.timestamp() * 1000),
+                        limit=1,
+                    )
+                    if not ohlcv:
+                        continue
+                    actual_price = float(ohlcv[0][4])  # close
+                except Exception:
+                    continue
+
+                actual_change = ((actual_price - row["current_price"]) / row["current_price"]) * 100
+                predicted_dir = 1 if row["pct_change"] >= 0 else -1
+                actual_dir = 1 if actual_change >= 0 else -1
+                direction_hit = 1 if predicted_dir == actual_dir else 0
+
+                conn.execute(
+                    """
+                    UPDATE timesfm_forecasts
+                    SET actual_price = ?, actual_change = ?,
+                        direction_hit = ?, evaluated_at = ?
+                    WHERE id = ?
+                    """,
+                    (actual_price, round(actual_change, 4), direction_hit,
+                     now.isoformat(), row["id"]),
+                )
+                evaluated += 1
+
+            if evaluated:
+                conn.commit()
+                logger.info(f"TimesFM post-mortem: {evaluated} forecasts evaluated")
+
+    except Exception as exc:
+        logger.warning(f"TimesFM evaluation error: {exc}")
+
+    return evaluated
+
+
+def get_timesfm_stats() -> dict:
+    """
+    Retourne les statistiques de performance TimesFM.
+    - total: nb total de prédictions
+    - evaluated: nb évaluées
+    - direction_accuracy: % de bonnes directions
+    - mae: erreur absolue moyenne (%)
+    - avg_confidence: confiance moyenne
+    - avg_latency_ms: latence moyenne
+    - recent: les 10 dernières prédictions évaluées
+    """
+    try:
+        with get_connection() as conn:
+            # Stats globales
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN actual_price IS NOT NULL THEN 1 ELSE 0 END) as evaluated,
+                    AVG(CASE WHEN direction_hit IS NOT NULL THEN direction_hit END) as direction_accuracy,
+                    AVG(CASE WHEN actual_change IS NOT NULL
+                        THEN ABS(pct_change - actual_change) END) as mae,
+                    AVG(confidence) as avg_confidence,
+                    AVG(latency_ms) as avg_latency_ms
+                FROM timesfm_forecasts
+                """
+            ).fetchone()
+
+            stats = {
+                "total": row["total"] or 0,
+                "evaluated": row["evaluated"] or 0,
+                "direction_accuracy": round(row["direction_accuracy"] * 100, 1) if row["direction_accuracy"] is not None else None,
+                "mae": round(row["mae"], 3) if row["mae"] is not None else None,
+                "avg_confidence": round(row["avg_confidence"], 2) if row["avg_confidence"] is not None else None,
+                "avg_latency_ms": int(row["avg_latency_ms"]) if row["avg_latency_ms"] is not None else None,
+            }
+
+            # Dernières prédictions évaluées
+            recent = conn.execute(
+                """
+                SELECT timestamp, current_price, predicted_price, pct_change,
+                       actual_price, actual_change, direction_hit, confidence, signal
+                FROM timesfm_forecasts
+                WHERE actual_price IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT 10
+                """
+            ).fetchall()
+            stats["recent"] = [dict(r) for r in recent]
+
+            # Dernières prédictions en attente
+            pending = conn.execute(
+                """
+                SELECT timestamp, current_price, predicted_price, pct_change,
+                       confidence, signal, horizon_candles
+                FROM timesfm_forecasts
+                WHERE actual_price IS NULL
+                ORDER BY timestamp DESC
+                LIMIT 5
+                """
+            ).fetchall()
+            stats["pending"] = [dict(r) for r in pending]
+
+            return stats
+
+    except Exception as exc:
+        logger.warning(f"Cannot get TimesFM stats: {exc}")
+        return {"total": 0, "evaluated": 0, "recent": [], "pending": []}

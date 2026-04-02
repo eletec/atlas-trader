@@ -86,6 +86,93 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
                              "en": "Cannot load live data"},
     "no_explanation":       {"fr": "Aucune explication disponible.", "en": "No explanation available."},
     "ma50_short":           {"fr": "MA50",                       "en": "MA50"},
+
+    # ── Admin panel – LLM ──
+    "cfg_llm_title":        {"fr": "Configuration LLM",          "en": "LLM Configuration"},
+    "cfg_provider":         {"fr": "Provider",                   "en": "Provider"},
+    "cfg_model":            {"fr": "Modèle",                     "en": "Model"},
+    "cfg_temperature":      {"fr": "Température",                "en": "Temperature"},
+    "cfg_max_tokens":       {"fr": "Max tokens",                 "en": "Max tokens"},
+    "cfg_timeout_llm":      {"fr": "Timeout LLM (s)",            "en": "LLM Timeout (s)"},
+    "cfg_timeout_help":     {"fr": "Délai max avant abandon d'un appel LLM. Si dépassé, le cycle continue avec la synthèse de secours.",
+                             "en": "Max delay before aborting an LLM call. If exceeded, the cycle continues with the fallback summary."},
+    "cfg_cache_responses":  {"fr": "Cache réponses",             "en": "Cache responses"},
+
+    # ── Admin panel – Crawler ──
+    "cfg_crawler_title":    {"fr": "Configuration Crawler",      "en": "Crawler Configuration"},
+    "cfg_n_themes":         {"fr": "Nb thèmes",                  "en": "Themes count"},
+    "cfg_pages_theme":      {"fr": "Pages/thème",                "en": "Pages/theme"},
+    "cfg_frequency":        {"fr": "Fréquence",                  "en": "Frequency"},
+    "cfg_templates":        {"fr": "Templates (un par ligne)",   "en": "Templates (one per line)"},
+
+    # ── Admin panel – News ──
+    "cfg_news_title":       {"fr": "Configuration News",         "en": "News Configuration"},
+    "cfg_polling_interval": {"fr": "Intervalle polling (s)",     "en": "Polling interval (s)"},
+    "cfg_items_max_cycle":  {"fr": "Items max/cycle",            "en": "Max items/cycle"},
+    "cfg_keywords_btc":     {"fr": "Mots-clés BTC/USDT (séparés par virgules)",
+                             "en": "BTC/USDT keywords (comma separated)"},
+
+    # ── Admin panel – Sources ──
+    "cfg_sources_title":    {"fr": "Sources de collecte d'informations",
+                             "en": "Data Collection Sources"},
+    "cfg_rss_title":        {"fr": "Flux RSS",                   "en": "RSS Feeds"},
+    "cfg_rss_area":         {"fr": "Un flux RSS par ligne (URL complète)",
+                             "en": "One RSS feed per line (full URL)"},
+    "cfg_rss_count":        {"fr": "{n} flux RSS configurés",    "en": "{n} RSS feeds configured"},
+    "cfg_nitter_title":     {"fr": "Comptes Twitter/X via Nitter","en": "Twitter/X accounts via Nitter"},
+    "cfg_nitter_area":      {"fr": "Un compte par ligne (sans @)","en": "One account per line (without @)"},
+    "cfg_nitter_count":     {"fr": "{n} comptes Nitter configurés","en": "{n} Nitter accounts configured"},
+    "cfg_reddit_title":     {"fr": "Subreddits Reddit (RSS)",    "en": "Reddit Subreddits (RSS)"},
+    "cfg_reddit_area":      {"fr": "Un subreddit par ligne (sans r/)","en": "One subreddit per line (without r/)"},
+    "cfg_reddit_count":     {"fr": "{n} subreddits configurés",  "en": "{n} subreddits configured"},
+    "cfg_cp_enable":        {"fr": "Activer CryptoPanic",        "en": "Enable CryptoPanic"},
+    "cfg_cp_max":           {"fr": "Items max",                  "en": "Max items"},
+
+    # ── Admin panel – MiroFish ──
+    "cfg_mirofish_title":   {"fr": "Configuration MiroFish",     "en": "MiroFish Configuration"},
+    "cfg_mf_agents":        {"fr": "Nb agents",                  "en": "Agent count"},
+    "cfg_mf_steps":         {"fr": "Nb steps",                   "en": "Step count"},
+    "cfg_mf_news_weight":   {"fr": "Poids news dans seed",       "en": "News weight in seed"},
+    "cfg_mf_adt_weight":    {"fr": "Poids Air du Temps",         "en": "Air du Temps weight"},
+
+    # ── Admin panel – Risk ──
+    "cfg_risk_title":       {"fr": "Configuration Risk Engine",  "en": "Risk Engine Configuration"},
+    "cfg_kelly_max":        {"fr": "Kelly max",                  "en": "Kelly max"},
+    "cfg_pos_size":         {"fr": "Position size (%)",          "en": "Position size (%)"},
+    "cfg_max_dd":           {"fr": "Max drawdown (%)",           "en": "Max drawdown (%)"},
+    "cfg_buy_threshold":    {"fr": "Seuil BUY",                  "en": "BUY threshold"},
+    "cfg_exit_threshold":   {"fr": "Seuil SELL (sortie)",        "en": "SELL threshold (exit)"},
+    "cfg_hitl":             {"fr": "Human-in-the-loop",          "en": "Human-in-the-loop"},
+    "cfg_max_open_pos":     {"fr": "Max positions ouvertes simultanément (0 = illimité)",
+                             "en": "Max simultaneous open positions (0 = unlimited)"},
+    "cfg_max_open_help":    {"fr": "Si ce nombre est atteint, les nouveaux BUY sont bloqués jusqu'à clôture d'une position",
+                             "en": "When this limit is reached, new BUY orders are blocked until a position is closed"},
+    "cfg_ma50_title":       {"fr": "Filtre tendance MA50 journalière",
+                             "en": "Daily MA50 Trend Filter"},
+    "cfg_ma50_mode":        {"fr": "Mode filtre MA50",           "en": "MA50 filter mode"},
+    "cfg_ma50_score_min":   {"fr": "Score min BUY sous MA50",    "en": "Min BUY score below MA50"},
+    "cfg_ma50_score_help":  {"fr": "Score minimum requis pour BUY quand prix < MA50 (mode gradual)",
+                             "en": "Minimum score required for BUY when price < MA50 (gradual mode)"},
+    "cfg_ma50_size_factor": {"fr": "Facteur taille sous MA50",   "en": "Size factor below MA50"},
+    "cfg_ma50_size_help":   {"fr": "Multiplicateur appliqué à la taille de position quand prix < MA50",
+                             "en": "Multiplier applied to position size when price < MA50"},
+
+    # ── Admin panel – Agents ──
+    "cfg_agents_title":     {"fr": "Activation des agents",      "en": "Agent Activation"},
+    "cfg_agent_toggle":     {"fr": "Agent {name}",               "en": "Agent {name}"},
+    "cfg_agent_weight":     {"fr": "Poids {name}",               "en": "Weight {name}"},
+
+    # ── Admin panel – Logging ──
+    "cfg_logging_title":    {"fr": "Configuration Logging",      "en": "Logging Configuration"},
+    "cfg_log_level":        {"fr": "Niveau log",                 "en": "Log level"},
+    "cfg_alert_threshold":  {"fr": "Seuil alerte Telegram/Discord","en": "Telegram/Discord alert threshold"},
+
+    # ── Admin panel – Users ──
+    "tab_users":            {"fr": "Utilisateurs",               "en": "Users"},
+
+    # ── Misc admin ──
+    "cfg_load_error":       {"fr": "Impossible de charger settings.yaml",
+                             "en": "Unable to load settings.yaml"},
 }
 
 _current_lang: str = "fr"

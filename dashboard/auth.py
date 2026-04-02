@@ -14,8 +14,10 @@ Users   : config/users.yaml — géré automatiquement.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import sqlite3
 import threading
 import time
 import uuid
@@ -31,37 +33,69 @@ _USERS_FILE = Path(__file__).parent.parent / "config" / "users.yaml"
 _COOKIE_NAME = "atlas_auth_v1"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Store de sessions côté serveur (en mémoire)
-# Survit aux rechargements de page, pas aux redémarrages du container.
-# Clé : UUID session, Valeur : {username, roles, exp}
+# Store de sessions SQLite (survit aux redémarrages Streamlit et aux multi-workers)
 # ─────────────────────────────────────────────────────────────────────────────
-_SESSION_STORE: dict[str, dict] = {}
+_SESSION_DB = Path(__file__).parent.parent / "storage" / "atlas_sessions.db"
 _SESSION_LOCK = threading.Lock()
 
 
+def _init_session_db() -> None:
+    """Crée la table sessions si absente."""
+    _SESSION_DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(str(_SESSION_DB)) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                username   TEXT NOT NULL,
+                roles      TEXT NOT NULL,
+                exp        REAL NOT NULL
+            )
+        """)
+
+
 def _store_session(username: str, roles: list[str], expiry_days: int) -> str:
-    """Crée une session côté serveur, retourne le session_id (UUID)."""
+    """Crée une session SQLite, retourne le session_id (UUID)."""
     session_id = str(uuid.uuid4())
     exp = time.time() + expiry_days * 86400
+    _init_session_db()
     with _SESSION_LOCK:
-        # Nettoyer les sessions expirées
-        now = time.time()
-        expired = [k for k, v in list(_SESSION_STORE.items()) if v.get("exp", 0) < now]
-        for k in expired:
-            _SESSION_STORE.pop(k, None)
-        _SESSION_STORE[session_id] = {"username": username, "roles": roles, "exp": exp}
+        with sqlite3.connect(str(_SESSION_DB)) as conn:
+            conn.execute("DELETE FROM sessions WHERE exp < ?", (time.time(),))
+            conn.execute(
+                "INSERT OR REPLACE INTO sessions (session_id, username, roles, exp) VALUES (?,?,?,?)",
+                (session_id, username, json.dumps(roles), exp),
+            )
     return session_id
 
 
 def _get_stored_session(session_id: str) -> dict | None:
-    """Récupère une session serveur par son ID. None si expirée/invalide."""
+    """Récupère une session SQLite. None si expirée/invalide."""
     if not session_id:
         return None
-    with _SESSION_LOCK:
-        sess = _SESSION_STORE.get(session_id)
-        if sess and sess.get("exp", 0) > time.time():
-            return {"username": sess["username"], "roles": sess["roles"]}
+    try:
+        _init_session_db()
+        with sqlite3.connect(str(_SESSION_DB)) as conn:
+            row = conn.execute(
+                "SELECT username, roles, exp FROM sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row and row[2] > time.time():
+                return {"username": row[0], "roles": json.loads(row[1])}
+    except Exception as exc:
+        logger.debug(f"Session lookup failed: {exc}")
     return None
+
+
+def _delete_session(session_id: str) -> None:
+    """Supprime une session SQLite."""
+    if not session_id:
+        return
+    try:
+        _init_session_db()
+        with sqlite3.connect(str(_SESSION_DB)) as conn:
+            conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+    except Exception:
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -229,9 +263,7 @@ def has_role(session: dict | None, role: str) -> bool:
 
 def logout(cm) -> None:
     sid = st.session_state.get("_session_id", "")
-    if sid:
-        with _SESSION_LOCK:
-            _SESSION_STORE.pop(sid, None)
+    _delete_session(sid)
     for k in ("_auth_session", "_auth_step", "_auth_pending_user",
               "_auth_totp_new_secret", "_session_id"):
         st.session_state.pop(k, None)

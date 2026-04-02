@@ -173,6 +173,88 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #1c2128 !important; }
         hr { border-color: rgba(255,255,255,0.1) !important; }
         code, pre { background-color: #161b22 !important; color: #FAFAFA !important; }
+        /* Textarea (listes RSS, Nitter, Reddit…) */
+        textarea, [data-baseweb="textarea"] textarea {
+            background-color: #161b22 !important;
+            color: #FAFAFA !important;
+            border-color: rgba(255,255,255,0.15) !important;
+        }
+        /* Icône œil (champ password) et boutons internes des inputs */
+        [data-testid="stTextInput"] button,
+        [data-testid="stPasswordInput"] button,
+        [data-baseweb="input"] button {
+            background-color: transparent !important;
+            color: #FAFAFA !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        /* Selectbox : fond du contrôle */
+        [data-baseweb="select"] > div:first-child {
+            background-color: #21262d !important;
+            border-color: rgba(255,255,255,0.15) !important;
+        }
+        [data-baseweb="select"] span,
+        [data-baseweb="select"] div { color: #FAFAFA !important; }
+        /* Selectbox : menu déroulant */
+        [data-baseweb="popover"],
+        ul[data-baseweb="menu"] {
+            background-color: #21262d !important;
+            border-color: rgba(255,255,255,0.15) !important;
+        }
+        ul[data-baseweb="menu"] li,
+        [data-baseweb="option"] {
+            background-color: #21262d !important;
+            color: #FAFAFA !important;
+        }
+        ul[data-baseweb="menu"] li:hover,
+        [data-baseweb="option"]:hover {
+            background-color: #30363d !important;
+        }
+        /* Slider labels */
+        [data-testid="stSlider"] span { color: #FAFAFA !important; }
+        /* Number input arrows */
+        [data-testid="stNumberInput"] button {
+            background-color: #21262d !important;
+            color: #FAFAFA !important;
+            border-color: rgba(255,255,255,0.15) !important;
+        }
+        /* Form container (login + admin forms) */
+        [data-testid="stForm"] {
+            background-color: #161b22 !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            border-radius: 10px !important;
+        }
+        /* Tous les input internes (texte, password) */
+        input, input[type="text"], input[type="password"] {
+            background-color: #21262d !important;
+            color: #FAFAFA !important;
+            border-color: rgba(255,255,255,0.2) !important;
+        }
+        /* Icône œil (visibilité mot de passe) + boutons internes */
+        [data-testid="stTextInput"] button svg,
+        [data-testid="stPasswordInput"] button svg,
+        [data-baseweb="input"] button svg {
+            fill: #FAFAFA !important;
+        }
+        [data-testid="stTextInput"] button,
+        [data-testid="stPasswordInput"] button,
+        [data-baseweb="input"] button {
+            background-color: #21262d !important;
+            color: #FAFAFA !important;
+            border: none !important;
+        }
+        /* Tab navigation */
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            background-color: #0e1117 !important;
+        }
+        [data-testid="stTabs"] button[role="tab"] {
+            color: rgba(255,255,255,0.6) !important;
+            background-color: transparent !important;
+        }
+        [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+            color: #FAFAFA !important;
+            border-bottom-color: #ff4b4b !important;
+        }
     """
 
 
@@ -187,6 +269,35 @@ def _inject_theme_css():
         @media (prefers-color-scheme: dark)  {{ {_DARK_CSS}  }}
         </style>
         """, unsafe_allow_html=True)
+
+    # CSS global pour les tooltips Streamlit (rendus dans body via portal React)
+    if theme != "light":
+        st.markdown("""
+<style id="atlas-tooltip-global">
+/* Conteneur racine du tooltip — une seule bordure ici */
+div[data-radix-popper-content-wrapper] {
+    background-color: #21262d !important;
+    color: #e6edf3 !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.55) !important;
+    padding: 7px 11px !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+}
+/* Tous les enfants : pas de bordure ni background propre */
+div[data-radix-popper-content-wrapper] *,
+[role="tooltip"],
+[role="tooltip"] * {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #e6edf3 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ===========================================================
 # SESSION STATE
@@ -408,6 +519,18 @@ def render_header():
     st.session_state["show_admin"] = show_admin
 
     # ─ Actions ─────────────────────────────────────────────────────────────
+    if _action == "logout":
+        st.query_params.pop("_action", None)
+        try:
+            from dashboard.auth import logout as _logout
+            import extra_streamlit_components as _stx
+            _cm = _stx.CookieManager(key="atlas_cm")
+            _logout(_cm)
+        except Exception:
+            pass
+        st.query_params.clear()
+        st.rerun()
+
     if _action == "refresh":
         st.query_params.pop("_action", None)
         st.cache_data.clear()
@@ -442,7 +565,8 @@ def render_header():
     u_force    = f"?_action=force_run&{base}"
     u_hamburger = f"?{m_close if menu_open else m_open}"
     # menu items (chaque clic ferme le menu)
-    u_admin    = f"?lang={lang_param}&theme={theme}&admin={'0' if show_admin else '1'}&menu=0{_sid_param}"
+    u_admin    = f"?lang={lang_param}&theme={theme}&admin=1&menu=0{_sid_param}"
+    u_logout   = f"?_action=logout&{base}"
     u_t_light  = f"?lang={lang_param}&theme=light&admin={adm}&menu=0{_sid_param}"
     u_t_dark   = f"?lang={lang_param}&theme=dark&admin={adm}&menu=0{_sid_param}"
     u_t_system = f"?lang={lang_param}&theme=system&admin={adm}&menu=0{_sid_param}"
@@ -498,7 +622,7 @@ def render_header():
             box-shadow:0 6px 30px rgba(0,0,0,0.35);
             padding:6px 0;display:flex;flex-direction:column;">
   <a href="{u_admin}" style="text-decoration:none;display:block;padding:10px 16px;
-     font-size:14px;color:{nav_fg};{admin_bg}" target="_self">{admin_label}</a>
+     font-size:14px;color:{nav_fg};{admin_bg}" target="_blank">{admin_label}</a>
   <div style="{S_SEP}"></div>
   <div style="{S_LBL}"><i class="fas fa-palette" style="margin-right:5px;"></i>Thème</div>
   <div style="{S_ROW}">
@@ -512,13 +636,21 @@ def render_header():
     {pill(u_l_fr, '<i class="fas fa-flag" style="font-size:11px;"></i> FR', lang_param == "fr")}
     {pill(u_l_en, '<i class="fas fa-flag" style="font-size:11px;"></i> EN', lang_param == "en")}
   </div>
+{f'''  <div style="{S_SEP}"></div>
+  <a href="{u_logout}" style="text-decoration:none;display:block;padding:10px 16px;
+     font-size:14px;color:{nav_fg};" target="_self">
+    <i class="fas fa-right-from-bracket" style="margin-right:8px;opacity:0.7;"></i>
+    {t("logout_btn")} &mdash; {st.session_state.get("username", "")}
+  </a>''' if st.session_state.get('admin_authenticated') else ''}
 </div>"""
 
     # ─ Rendu final ──────────────────────────────────────────────────────────
     st.markdown(f"""
 <style>
 header[data-testid="stHeader"]{{display:none!important;}}
-.main .block-container,[data-testid="stMainBlockContainer"]{{padding-top:56px!important;}}
+.main .block-container,[data-testid="stMainBlockContainer"]{{padding-top:56px!important;padding-bottom:0!important;}}
+[data-testid="stTabs"]{{margin-top:-1rem!important;}}
+[data-testid="stMainBlockContainer"] > div:first-child {{gap:0!important;}}
 </style>
 <nav style="position:fixed;top:0;left:0;right:0;height:48px;
             background:{nav_bg};z-index:9999;
@@ -879,54 +1011,65 @@ def render_trades_list(trades: list[dict]):
         st.info(t("no_trades"))
         return
 
-    pnl_col = t("col_pnl")
-    action_col = t("col_action")
-    rows = []
-    pnl_values = []
-    for trade in trades:
-        pnl = trade.get("result_24h")
-        pnl_values.append(pnl)
-        rows.append({
-            t("col_date"):   trade.get("timestamp", "")[:16].replace("T", " "),
-            action_col:      trade.get("action", ""),
-            t("col_entry"):  f'${trade.get("entry_price", 0):,.2f}' if trade.get("entry_price") else "—",
-            t("col_size"):   f'${trade.get("position_size", 0):,.0f}' if trade.get("position_size") else "—",
-            "SL":            f'${trade.get("sl_price", 0):,.2f}' if trade.get("sl_price") else "—",
-            "TP":            f'${trade.get("tp_price", 0):,.2f}' if trade.get("tp_price") else "—",
-            pnl_col:         pnl if pnl is not None else None,
-            t("col_score"):  f'{trade.get("score", 0):.0f}/100',
-        })
+    theme = _get_theme()
+    if theme == "light":
+        tbl_bg   = "#ffffff"; tbl_fg   = "#212529"
+        head_bg  = "#f1f3f5"; row_alt  = "#f8f9fa"
+        border   = "#dee2e6"; sep      = "#e9ecef"
+    else:
+        tbl_bg   = "#161b22"; tbl_fg   = "#e6edf3"
+        head_bg  = "#0d1117"; row_alt  = "#1b2129"
+        border   = "rgba(255,255,255,0.08)"; sep = "rgba(255,255,255,0.05)"
 
-    df = pd.DataFrame(rows)
+    cols = [t("col_date"), t("col_action"), t("col_entry"), t("col_size"),
+            "SL", "TP", t("col_pnl"), t("col_score")]
 
-    def _color_pnl(val):
-        if val is None or not isinstance(val, (int, float)):
-            return "color: inherit"
-        return "color: #2ecc71; font-weight:600" if val >= 0 else "color: #e74c3c; font-weight:600"
-
-    def _format_pnl(val):
-        if val is None:
-            return t("pending")
-        return f"${val:+,.2f}"
-
-    def _color_action(val):
-        if val == "BUY":
-            return "color: #2ecc71; font-weight:600"
-        if val == "SELL":
-            return "color: #e74c3c; font-weight:600"
-        return "color: inherit"
-
-    styled = (
-        df.style
-        .map(_color_pnl, subset=[pnl_col])
-        .map(_color_action, subset=[action_col])
-        .format({pnl_col: _format_pnl})
+    header_cells = "".join(
+        f'<th style="padding:9px 12px;font-size:12px;font-weight:600;'
+        f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
+        f'opacity:.65;background:{head_bg};white-space:nowrap;'
+        f'border-bottom:2px solid {border};">{c}</th>'
+        for c in cols
     )
 
-    row_height = 35
-    header_height = 38
-    computed_height = min(header_height + len(rows) * row_height + 4, 500)
-    st.dataframe(styled, use_container_width=True, height=computed_height, hide_index=True)
+    rows_html = ""
+    for i, trade in enumerate(trades):
+        pnl    = trade.get("result_24h")
+        action = trade.get("action", "")
+        bg     = row_alt if i % 2 == 1 else tbl_bg
+
+        action_color = "#2ecc71" if action == "BUY" else ("#e74c3c" if action == "SELL" else tbl_fg)
+        if pnl is None:
+            pnl_str   = f'<span style="opacity:.45;">{t("pending")}</span>'
+        elif pnl >= 0:
+            pnl_str   = f'<span style="color:#2ecc71;font-weight:600;">${pnl:+,.2f}</span>'
+        else:
+            pnl_str   = f'<span style="color:#e74c3c;font-weight:600;">${pnl:+,.2f}</span>'
+
+        cells = [
+            trade.get("timestamp", "")[:16].replace("T", " "),
+            f'<span style="color:{action_color};font-weight:600;">{action}</span>',
+            f'${trade.get("entry_price", 0):,.2f}' if trade.get("entry_price") else "—",
+            f'${trade.get("position_size", 0):,.0f}' if trade.get("position_size") else "—",
+            f'${trade.get("sl_price", 0):,.2f}'    if trade.get("sl_price")    else "—",
+            f'${trade.get("tp_price", 0):,.2f}'    if trade.get("tp_price")    else "—",
+            pnl_str,
+            f'{trade.get("score", 0):.0f}/100',
+        ]
+        td_style = (f'padding:8px 12px;font-size:13px;color:{tbl_fg};'
+                    f'white-space:nowrap;border-bottom:1px solid {sep};')
+        tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
+        rows_html += f'<tr style="background:{bg};">{tds}</tr>'
+
+    html = f"""
+<div style="overflow-y:auto;max-height:520px;border:1px solid {border};
+            border-radius:10px;background:{tbl_bg};">
+  <table style="border-collapse:collapse;width:100%;min-width:700px;">
+    <thead><tr>{header_cells}</tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+</div>"""
+    st.markdown(html, unsafe_allow_html=True)
 
 
 
@@ -1031,7 +1174,7 @@ def render_admin_panel():
     settings = _get_settings()
     if not settings:
         err = st.session_state.get("_settings_error", "fichier introuvable ou YAML invalide")
-        st.error(f"Impossible de charger settings.yaml — {err}")
+        st.error(f"{t('cfg_load_error')} — {err}")
         return
 
     sub_tabs = st.tabs([
@@ -1044,11 +1187,11 @@ def render_admin_panel():
         f"⬡ {t('tab_agents')}",
         f"≡ {t('tab_logging')}",
         f"⇄ {t('tab_flux')}",
-        f"👤 Utilisateurs",
+        f"👤 {t('tab_users')}",
     ])
 
     with sub_tabs[0]:  # LLM
-        st.markdown('<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>Configuration LLM</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_llm_title")}</h4>', unsafe_allow_html=True)
         llm = settings.get("llm", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -1056,26 +1199,26 @@ def render_admin_panel():
             _llm_default = llm.get("provider", "anthropic")
             if _llm_default not in _llm_providers:
                 _llm_providers.append(_llm_default)
-            llm["provider"] = st.selectbox("Provider", _llm_providers,
+            llm["provider"] = st.selectbox(t("cfg_provider"), _llm_providers,
                 index=_llm_providers.index(_llm_default))
-            llm["model"] = st.text_input("Modèle", value=llm.get("model", "claude-3-5-sonnet-20241022"))
+            llm["model"] = st.text_input(t("cfg_model"), value=llm.get("model", "claude-3-5-sonnet-20241022"))
         with col2:
-            llm["temperature"] = st.slider("Température", 0.0, 1.0,
+            llm["temperature"] = st.slider(t("cfg_temperature"), 0.0, 1.0,
                 float(llm.get("temperature", 0.3)), 0.05)
-            llm["max_tokens"] = st.number_input("Max tokens", 512, 8192,
+            llm["max_tokens"] = st.number_input(t("cfg_max_tokens"), 512, 8192,
                 int(llm.get("max_tokens", 4096)), step=512)
             llm["request_timeout_seconds"] = st.number_input(
-                "Timeout LLM (s)",
+                t("cfg_timeout_llm"),
                 min_value=10, max_value=300,
                 value=int(llm.get("request_timeout_seconds", 60)),
                 step=10,
-                help="Délai max avant abandon d'un appel LLM. Si dépassé, le cycle continue avec la synthèse de secours."
+                help=t("cfg_timeout_help")
             )
-        llm["cache_responses"] = st.toggle("Cache réponses", llm.get("cache_responses", True))
+        llm["cache_responses"] = st.toggle(t("cfg_cache_responses"), llm.get("cache_responses", True))
         settings["llm"] = llm
 
     with sub_tabs[1]:  # Crawler
-        st.markdown('<h4><i class="fas fa-spider" style="margin-right:7px;color:#7986cb;"></i>Configuration Crawler</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-spider" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_crawler_title")}</h4>', unsafe_allow_html=True)
         crawler = settings.get("crawler", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -1083,41 +1226,41 @@ def render_admin_panel():
             _crawler_default = crawler.get("provider", "tavily")
             if _crawler_default not in _crawler_providers:
                 _crawler_providers.append(_crawler_default)
-            crawler["provider"] = st.selectbox("Provider", _crawler_providers,
-                index=_crawler_providers.index(_crawler_default))
-            crawler["n_themes"] = st.slider("Nb thèmes", 5, 15, int(crawler.get("n_themes", 10)))
+            crawler["provider"] = st.selectbox(t("cfg_provider"), _crawler_providers,
+                index=_crawler_providers.index(_crawler_default), key="crawler_provider")
+            crawler["n_themes"] = st.slider(t("cfg_n_themes"), 5, 15, int(crawler.get("n_themes", 10)))
         with col2:
-            crawler["max_pages_per_theme"] = st.slider("Pages/thème", 3, 20,
+            crawler["max_pages_per_theme"] = st.slider(t("cfg_pages_theme"), 3, 20,
                 int(crawler.get("max_pages_per_theme", 10)))
             _freq_opts = ["daily", "per_cycle", "trigger"]
             _freq_default = crawler.get("frequency", "daily")
             if _freq_default not in _freq_opts:
                 _freq_opts.append(_freq_default)
-            crawler["frequency"] = st.selectbox("Fréquence", _freq_opts,
+            crawler["frequency"] = st.selectbox(t("cfg_frequency"), _freq_opts,
                 index=_freq_opts.index(_freq_default))
-        st.text_area("Templates (un par ligne)",
+        st.text_area(t("cfg_templates"),
             value="\n".join(crawler.get("templates", [])),
             key="crawler_templates", height=200)
         settings["crawler"] = crawler
 
     with sub_tabs[2]:  # News
-        st.markdown('<h4><i class="fas fa-newspaper" style="margin-right:7px;color:#7986cb;"></i>Configuration News</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-newspaper" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_news_title")}</h4>', unsafe_allow_html=True)
         news = settings.get("news", {})
         col1, col2 = st.columns(2)
         with col1:
             news["polling_interval_seconds"] = st.slider(
-                "Intervalle polling (s)", 60, 3600,
+                t("cfg_polling_interval"), 60, 3600,
                 int(news.get("polling_interval_seconds", 900)), step=60
             )
         with col2:
             news["max_items_per_cycle"] = st.number_input(
-                "Items max/cycle", 10, 200, int(news.get("max_items_per_cycle", 30))
+                t("cfg_items_max_cycle"), 10, 200, int(news.get("max_items_per_cycle", 30))
             )
         # Mots-clés BTC
         kw = news.get("keywords_per_asset", {})
         btc_kw = kw.get("BTC/USDT", ["bitcoin", "BTC", "crypto"])
         new_kw = st.text_input(
-            "Mots-clés BTC/USDT (séparés par virgules)",
+            t("cfg_keywords_btc"),
             value=", ".join(btc_kw)
         )
         kw["BTC/USDT"] = [k.strip() for k in new_kw.split(",") if k.strip()]
@@ -1125,14 +1268,14 @@ def render_admin_panel():
         settings["news"] = news
 
     with sub_tabs[3]:  # Sources
-        st.markdown('<h4><i class="fas fa-satellite-dish" style="margin-right:7px;color:#7986cb;"></i>Sources de collecte d\'informations</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-satellite-dish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_sources_title")}</h4>', unsafe_allow_html=True)
         news = settings.get("news", {})
 
         # --- RSS ---
-        st.markdown("#### 📰 Flux RSS")
+        st.markdown(f"#### 📰 {t('cfg_rss_title')}")
         rss_raw = "\n".join(news.get("sources_rss", []))
         rss_edited = st.text_area(
-            "Un flux RSS par ligne (URL complète)",
+            t("cfg_rss_area"),
             value=rss_raw, height=300, key="rss_sources",
             help="Exemples : https://cointelegraph.com/rss"
         )
@@ -1141,15 +1284,15 @@ def render_admin_panel():
             for u in rss_edited.splitlines()
             if u.strip() and not u.strip().startswith("#")
         ]
-        st.caption(f"{len(news['sources_rss'])} flux RSS configurés")
+        st.caption(t("cfg_rss_count").format(n=len(news['sources_rss'])))
 
         st.markdown("---")
 
         # --- Nitter ---
-        st.markdown("#### 🐦 Comptes Twitter/X via Nitter")
+        st.markdown(f"#### 🐦 {t('cfg_nitter_title')}")
         nitter_raw = "\n".join(news.get("sources_nitter", []))
         nitter_edited = st.text_area(
-            "Un compte par ligne (sans @)",
+            t("cfg_nitter_area"),
             value=nitter_raw, height=200, key="nitter_sources",
             help="Ex: saylor\nBitcoinMagazine\nwhale_alert"
         )
@@ -1158,15 +1301,15 @@ def render_admin_panel():
             for u in nitter_edited.splitlines()
             if u.strip()
         ]
-        st.caption(f"{len(news['sources_nitter'])} comptes Nitter configurés")
+        st.caption(t("cfg_nitter_count").format(n=len(news['sources_nitter'])))
 
         st.markdown("---")
 
         # --- Reddit ---
-        st.markdown("#### 🤖 Subreddits Reddit (RSS)")
+        st.markdown(f"#### 🤖 {t('cfg_reddit_title')}")
         reddit_raw = "\n".join(news.get("sources_reddit", []))
         reddit_edited = st.text_area(
-            "Un subreddit par ligne (sans r/)",
+            t("cfg_reddit_area"),
             value=reddit_raw, height=100, key="reddit_sources",
             help="Ex: Bitcoin\nCryptoCurrency\nbtc"
         )
@@ -1175,7 +1318,7 @@ def render_admin_panel():
             for u in reddit_edited.splitlines()
             if u.strip()
         ]
-        st.caption(f"{len(news['sources_reddit'])} subreddits configurés")
+        st.caption(t("cfg_reddit_count").format(n=len(news['sources_reddit'])))
 
         st.markdown("---")
 
@@ -1184,33 +1327,33 @@ def render_admin_panel():
         cp = news.get("cryptopanic", {})
         col1, col2 = st.columns(2)
         with col1:
-            cp["enabled"] = st.toggle("Activer CryptoPanic", cp.get("enabled", True))
+            cp["enabled"] = st.toggle(t("cfg_cp_enable"), cp.get("enabled", True))
         with col2:
             cp["max_items"] = st.number_input(
-                "Items max", 5, 50, int(cp.get("max_items", 15))
+                t("cfg_cp_max"), 5, 50, int(cp.get("max_items", 15))
             )
         news["cryptopanic"] = cp
 
         settings["news"] = news
 
     with sub_tabs[4]:  # MiroFish
-        st.markdown('<h4><i class="fas fa-fish" style="margin-right:7px;color:#7986cb;"></i>Configuration MiroFish</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-fish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_mirofish_title")}</h4>', unsafe_allow_html=True)
         mf = settings.get("mirofish", {})
         col1, col2 = st.columns(2)
         with col1:
-            mf["n_agents"] = st.number_input("Nb agents", 1000, 50000,
+            mf["n_agents"] = st.number_input(t("cfg_mf_agents"), 1000, 50000,
                 int(mf.get("n_agents", 5000)), step=1000)
-            mf["n_steps"] = st.number_input("Nb steps", 10, 500,
+            mf["n_steps"] = st.number_input(t("cfg_mf_steps"), 10, 500,
                 int(mf.get("n_steps", 100)), step=10)
         with col2:
-            mf["seed_news_weight"] = st.slider("Poids news dans seed", 0.0, 1.0,
+            mf["seed_news_weight"] = st.slider(t("cfg_mf_news_weight"), 0.0, 1.0,
                 float(mf.get("seed_news_weight", 0.6)), 0.05)
             mf["air_du_temps_weight"] = 1 - mf["seed_news_weight"]
-            st.metric("Poids Air du Temps", f"{mf['air_du_temps_weight']:.0%}")
+            st.metric(t("cfg_mf_adt_weight"), f"{mf['air_du_temps_weight']:.0%}")
         settings["mirofish"] = mf
 
     with sub_tabs[5]:  # Risk
-        st.markdown('<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>Configuration Risk Engine</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_risk_title")}</h4>', unsafe_allow_html=True)
         risk = settings.get("risk", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -1220,30 +1363,30 @@ def render_admin_panel():
                 _risk_modes.append(_risk_default)
             risk["mode"] = st.selectbox("Mode", _risk_modes,
                 index=_risk_modes.index(_risk_default))
-            risk["kelly_max_fraction"] = st.slider("Kelly max", 0.05, 0.50,
+            risk["kelly_max_fraction"] = st.slider(t("cfg_kelly_max"), 0.05, 0.50,
                 float(risk.get("kelly_max_fraction", 0.25)), 0.05)
-            risk["position_size_pct"] = st.slider("Position size (%)", 1.0, 20.0,
+            risk["position_size_pct"] = st.slider(t("cfg_pos_size"), 1.0, 20.0,
                 float(risk.get("position_size_pct", 5.0)), 0.5)
         with col2:
-            risk["max_drawdown_pct"] = st.slider("Max drawdown (%)", 5.0, 50.0,
+            risk["max_drawdown_pct"] = st.slider(t("cfg_max_dd"), 5.0, 50.0,
                 float(risk.get("max_drawdown_pct", 15.0)), 1.0)
-            risk["buy_threshold"] = st.slider("Seuil BUY", 50, 95,
+            risk["buy_threshold"] = st.slider(t("cfg_buy_threshold"), 50, 95,
                 int(risk.get("buy_threshold", 70)))
-            risk["sell_threshold"] = st.slider("Seuil SELL", 5, 50,
+            risk["sell_threshold"] = st.slider(t("cfg_exit_threshold"), 5, 50,
                 int(risk.get("sell_threshold", 30)))
-        risk["human_in_the_loop"] = st.toggle("Human-in-the-loop",
+        risk["human_in_the_loop"] = st.toggle(t("cfg_hitl"),
             risk.get("human_in_the_loop", False))
         risk["max_open_positions"] = st.number_input(
-            "Max positions ouvertes simultanément (0 = illimité)",
+            t("cfg_max_open_pos"),
             min_value=0, max_value=20,
             value=int(risk.get("max_open_positions", 3)),
-            help="Si ce nombre est atteint, les nouveaux BUY sont bloqués jusqu'à clôture d'une position"
+            help=t("cfg_max_open_help")
         )
 
         st.markdown("---")
-        st.markdown("**📊 Filtre tendance MA50 journalière**")
+        st.markdown(f"**📊 {t('cfg_ma50_title')}**")
         ma50_mode = st.radio(
-            "Mode filtre MA50",
+            t("cfg_ma50_mode"),
             options=["off", "gradual", "block"],
             index=["off", "gradual", "block"].index(risk.get("ma50_filter_mode", "gradual")),
             horizontal=True,
@@ -1257,29 +1400,29 @@ def render_admin_panel():
         if ma50_mode in ("gradual",):
             col_a, col_b = st.columns(2)
             risk["ma50_strong_signal_threshold"] = col_a.slider(
-                "Score min BUY sous MA50", 70, 95,
+                t("cfg_ma50_score_min"), 70, 95,
                 int(risk.get("ma50_strong_signal_threshold", 80)),
-                help="Score minimum requis pour BUY quand prix < MA50 (mode gradual)"
+                help=t("cfg_ma50_score_help")
             )
             risk["ma50_gradual_size_factor"] = col_b.slider(
-                "Facteur taille sous MA50", 0.1, 1.0,
+                t("cfg_ma50_size_factor"), 0.1, 1.0,
                 float(risk.get("ma50_gradual_size_factor", 0.5)), 0.05,
-                help="Multiplicateur appliqué à la taille de position quand prix < MA50"
+                help=t("cfg_ma50_size_help")
             )
 
         settings["risk"] = risk
 
     with sub_tabs[6]:  # Agents
-        st.markdown('<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>Activation des agents</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
         agents = settings.get("agents", {})
         for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket"]:
             cfg = agents.get(agent_name, {})
             col1, col2 = st.columns([2, 1])
             with col1:
-                cfg["enabled"] = st.toggle(f"Agent {agent_name}", cfg.get("enabled", True))
+                cfg["enabled"] = st.toggle(t("cfg_agent_toggle").format(name=agent_name), cfg.get("enabled", True))
             with col2:
                 cfg["weight_in_scoring"] = st.number_input(
-                    f"Poids {agent_name}", 0.0, 2.0,
+                    t("cfg_agent_weight").format(name=agent_name), 0.0, 2.0,
                     float(cfg.get("weight_in_scoring", 1.0)), 0.1,
                     key=f"weight_{agent_name}"
                 )
@@ -1287,15 +1430,15 @@ def render_admin_panel():
         settings["agents"] = agents
 
     with sub_tabs[7]:  # Logging
-        st.markdown('<h4><i class="fas fa-list-check" style="margin-right:7px;color:#7986cb;"></i>Configuration Logging</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-list-check" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_logging_title")}</h4>', unsafe_allow_html=True)
         log_cfg = settings.get("logging", {})
         _log_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         _log_default = log_cfg.get("level", "INFO")
         if _log_default not in _log_levels:
             _log_levels.append(_log_default)
-        log_cfg["level"] = st.selectbox("Niveau log", _log_levels,
+        log_cfg["level"] = st.selectbox(t("cfg_log_level"), _log_levels,
             index=_log_levels.index(_log_default))
-        log_cfg["alert_score_threshold"] = st.slider("Seuil alerte Telegram/Discord",
+        log_cfg["alert_score_threshold"] = st.slider(t("cfg_alert_threshold"),
             50, 100, int(log_cfg.get("alert_score_threshold", 85)))
         log_cfg["telegram_enabled"] = st.toggle("Telegram", log_cfg.get("telegram_enabled", False))
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
@@ -1337,6 +1480,7 @@ def main():
     from dashboard.auth import get_session, has_role, render_auth, logout, load_users_config
     session = get_session(cm)
     st.session_state["admin_authenticated"] = has_role(session, "back")
+    st.session_state["username"] = session.get("username", "") if session else ""
 
     users_cfg = load_users_config()
     guest_mode = users_cfg.get("settings", {}).get("guest_mode", True)
@@ -1357,13 +1501,6 @@ def main():
             st.info(t("admin_auth_required"))
             render_auth(cm)
         else:
-            col1, col2 = st.columns([5, 1])
-            with col2:
-                username = session.get("username", "")
-                if st.button(f"↩ {username}", help=t('logout_btn')):
-                    logout(cm)
-                    st.query_params.clear()
-                    st.rerun()
             render_admin_panel()
     else:
         # ── VUE DASHBOARD ──

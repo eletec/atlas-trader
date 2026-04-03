@@ -1,6 +1,40 @@
 """
 graph/workflow.py — Orchestration LangGraph complète
 Pipeline : Intelligence → Simulation → Analyse → Décision → Exécution
+
+CA3 — NOTE ScheduleCronTool (Claude Agentique)
+----------------------------------------------
+Pour planifier des analyses ponctuelles ou declencher des re-parametrages
+via Claude CLI, le pattern ScheduleCronTool peut etre utilise comme suit :
+
+    from anthropic import Anthropic
+    client = Anthropic()
+    # Un agent Claude peut emettre un appel "schedule_next_analysis" via tool_use
+    # pour demander au superviseur (APScheduler / cron / supervisord) de lancer
+    # un cycle supplementaire a un moment specifique.
+    #
+    # Exemple de tool definition a injecter dans un agent:
+    # {
+    #   "name": "schedule_next_analysis",
+    #   "description": "Planifie un cycle d'analyse supplementaire dans N minutes",
+    #   "input_schema": {
+    #     "type": "object",
+    #     "properties": {
+    #       "delay_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
+    #       "reason": {"type": "string"}
+    #     },
+    #     "required": ["delay_minutes", "reason"]
+    #   }
+    # }
+    #
+    # Le handler cote Python appelle alors APScheduler :
+    #   from apscheduler.schedulers.background import BackgroundScheduler
+    #   scheduler.add_job(run_full_cycle, 'date',
+    #                     run_date=datetime.now() + timedelta(minutes=delay_minutes),
+    #                     id=f"emergeny_{cycle_id}")
+    #
+    # Cette approche permet a Claude de reagir a un evenement de marche critique
+    # (ex : crash soudain) et de forcer un re-scan sans attendre le prochain cron.
 """
 from __future__ import annotations
 
@@ -266,7 +300,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         "contrarian":  (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
         "fear_greed":  (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
         "polymarket":  (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
-        "timesfm":     (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", False)),
+        "timesfm":     (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", True)),  # P7: aligned with settings.yaml default
     }
 
     enabled_agents = {
@@ -347,6 +381,19 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         except Exception as exc:
             logger.warning(f"Cannot log TimesFM forecast: {exc}")
 
+    # CA6: CoordinatorAgent — pondération dynamique LLM après collecte des analyses
+    try:
+        from graph.coordinator import CoordinatorAgent
+        coord_meta = CoordinatorAgent().coordinate(analyses)
+        if coord_meta:
+            analyses["coordinator_meta"] = coord_meta
+            logger.info(
+                f"[{state['cycle_id']}] Coordinator consensus={coord_meta.get('consensus_signal')} "
+                f"outliers={coord_meta.get('outliers', [])}"
+            )
+    except Exception as _coord_exc:
+        logger.debug("Coordinator ignoré : %s", _coord_exc)
+
     return {
         "agent_analyses": analyses,
         "llm_tokens_used": state.get("llm_tokens_used", 0) + tokens_used
@@ -354,20 +401,31 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
 
 
 def node_synthesize(state: ZeitgeistState) -> dict:
-    """Nœud 6 : Synthèse finale par SynthesisAgent (LLM)."""
-    import importlib
-    import sys
-    import agents.synthesis_agent as _sa_mod
-    importlib.reload(_sa_mod)  # recharge le module à chaque cycle → pickup des changements sans restart
-    SynthesisAgent = _sa_mod.SynthesisAgent
+    """Nœud 6 : Synthèse finale par SynthesisAgent (LLM).
+    Utilise SynthesisAgentAgentic (CA4) si llm.agentic_synthesis=true.
+    """
+    # P4: importlib.reload supprimé — inutile en prod, +50ms/cycle + risque de leaks LangChain
+    from agents.synthesis_agent import SynthesisAgent, SynthesisAgentAgentic
+    from utils.config import load_settings
     from utils.logger import log_flux_metric
     import time
 
     t0 = time.time()
     logger.info(f"[{state['cycle_id']}] Synthèse LLM")
 
+    cfg = load_settings()
+    llm_cfg = cfg.get("llm", {})
+    use_agentic = (
+        llm_cfg.get("provider", "anthropic") == "anthropic"
+        and llm_cfg.get("agentic_synthesis", False)
+    )
+
     try:
-        agent = SynthesisAgent()
+        if use_agentic:
+            logger.info(f"[{state['cycle_id']}] Mode agentique CA4 (WebSearch activé)")
+            agent = SynthesisAgentAgentic()
+        else:
+            agent = SynthesisAgent()
         synthesis = agent.synthesize(state)
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("synthesis", "ok", latency_ms, 1)

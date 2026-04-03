@@ -185,12 +185,20 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
             ]
             if breaking:
                 titles = [n["title"][:80] for n in breaking[:3]]
-                logger.warning(
-                    f"[MONITOR] {len(breaking)} breaking news détectée(s) — cycle forcé\n"
-                    + "\n".join(f"  · {t}" for t in titles)
-                )
                 last_news_titles.update(n["title"] for n in breaking)
-                _force_cycle_event.set()
+                # Ne forcer un cycle que si aucun cycle n'est déjà en cours
+                from utils.cycle_lock import is_locked as _cycle_locked
+                if not _cycle_locked():
+                    logger.warning(
+                        f"[MONITOR] {len(breaking)} breaking news détectée(s) — cycle forcé\n"
+                        + "\n".join(f"  · {t}" for t in titles)
+                    )
+                    _force_cycle_event.set()
+                else:
+                    logger.info(
+                        f"[MONITOR] {len(breaking)} breaking news — cycle déjà actif, ignoré\n"
+                        + "\n".join(f"  · {t}" for t in titles)
+                    )
 
             # --- 2. Surveillance SL/TP — prix WebSocket (ou fallback polling) ---
             try:
@@ -259,12 +267,16 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
                 # Seuils extrêmes : score ≥ 85 (très bullish) ou ≤ 15 (très bearish)
                 now = time.time()
                 if (mkt_score >= 85 or mkt_score <= 15) and (now - _last_market_score_trigger > 1800):
-                    logger.warning(
-                        f"[MONITOR] Signal marché extrême — score={mkt_score:.0f} "
-                        f"(RSI={mkt.get('rsi_14', 0):.0f}) → cycle forcé"
-                    )
-                    _last_market_score_trigger = now
-                    _force_cycle_event.set()
+                    from utils.cycle_lock import is_locked as _cycle_locked_mkt
+                    if not _cycle_locked_mkt():
+                        logger.warning(
+                            f"[MONITOR] Signal marché extrême — score={mkt_score:.0f} "
+                            f"(RSI={mkt.get('rsi_14', 0):.0f}) → cycle forcé"
+                        )
+                        _last_market_score_trigger = now
+                        _force_cycle_event.set()
+                    else:
+                        logger.debug(f"[MONITOR] Signal extrême score={mkt_score:.0f} — cycle actif, ignoré")
                 else:
                     logger.debug(f"[MONITOR] Market score={mkt_score:.0f} (RSI={mkt.get('rsi_14', 0):.0f})")
             except Exception as exc:
@@ -274,7 +286,10 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
             logger.warning(f"[MONITOR] Erreur non bloquante : {exc}")
 
         elapsed = time.time() - t0
-        _shutdown_event.wait(max(0, monitor_interval - elapsed))
+        # Garantir un délai minimum de 30s entre les itérations même si fetch_all()
+        # a débordé sur l'intervalle cible — évite la boucle serrée sur fetches lents
+        sleep_time = max(30, monitor_interval - elapsed)
+        _shutdown_event.wait(sleep_time)
 
     logger.info("Monitor rapide arrêté.")
 

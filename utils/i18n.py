@@ -1232,7 +1232,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     },
 }
 
-_current_lang: str = "fr"
+_current_lang: str = "en"
 
 SUPPORTED_LANGS = {
     "fr": "Français",
@@ -1248,7 +1248,7 @@ SUPPORTED_LANGS = {
 
 def set_lang(lang: str) -> None:
     global _current_lang
-    _current_lang = lang if lang in SUPPORTED_LANGS else "fr"
+    _current_lang = lang if lang in SUPPORTED_LANGS else "en"
 
 
 def get_lang() -> str:

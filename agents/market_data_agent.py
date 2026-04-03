@@ -71,10 +71,30 @@ class MarketDataAgent:
             if rsi_raw < 10 or rsi_raw > 95:
                 logger.warning(f"RSI testnet aberrant ({rsi_raw}) — fallback mock")
                 return self._generate_mock(symbol)
+
+            # --- Multi-timeframe : 1h et 4h ---
+            rsi_1h, rsi_4h, trend_4h = None, None, None
+            try:
+                ohlcv_1h = self._exchange.fetch_ohlcv(symbol, "1h", limit=50)
+                closes_1h = np.array([c[4] for c in ohlcv_1h])
+                rsi_1h = round(float(self._rsi(closes_1h, 14)), 1)
+            except Exception:
+                pass
+            try:
+                ohlcv_4h = self._exchange.fetch_ohlcv(symbol, "4h", limit=30)
+                closes_4h = np.array([c[4] for c in ohlcv_4h])
+                rsi_4h = round(float(self._rsi(closes_4h, 14)), 1)
+                trend_4h = "UP" if closes_4h[-1] > closes_4h[-20] else "DOWN"
+            except Exception:
+                pass
+
             return {
                 "symbol": symbol,
                 "price": price,
                 "rsi_14": rsi_raw,
+                "rsi_1h": rsi_1h,
+                "rsi_4h": rsi_4h,
+                "trend_4h": trend_4h,
                 "macd": round(float(self._macd(closes)[0]), 4),
                 "macd_signal": round(float(self._macd(closes)[1]), 4),
                 "bb_upper": round(float(self._bb(closes)[0]), 2),
@@ -146,6 +166,9 @@ class MarketDataAgent:
             "symbol": symbol,
             "price": round(price, 2),
             "rsi_14": round(random.uniform(30, 70), 2),
+            "rsi_1h": round(random.uniform(30, 70), 1),
+            "rsi_4h": round(random.uniform(30, 70), 1),
+            "trend_4h": random.choice(["UP", "DOWN"]),
             "macd": round(random.uniform(-100, 100), 4),
             "macd_signal": round(random.uniform(-100, 100), 4),
             "bb_upper": round(price * 1.02, 2),

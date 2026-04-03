@@ -20,51 +20,66 @@ _MODEL = None
 
 
 def _get_model(backend: str = "cpu", horizon: int = 128):
-    """Load TimesFM model once (lazy singleton)."""
+    """Load TimesFM model once (lazy singleton). Hard timeout 180s."""
     global _MODEL
     if _MODEL is not None:
         logger.debug("TimesFM model already loaded (singleton)")
         return _MODEL
 
-    import timesfm
+    import concurrent.futures as _cf
 
-    logger.info("="*60)
-    logger.info("TimesFM: PREMIER CHARGEMENT — téléchargement du modèle 500M...")
-    logger.info("  Repo: google/timesfm-2.0-500m-pytorch")
-    logger.info(f"  Backend: {backend} | Horizon: {horizon}")
-    logger.info("  Ceci peut prendre 2-5 min au premier lancement.")
-    logger.info("="*60)
+    def _load():
+        import timesfm
 
-    t0 = time.time()
+        logger.info("="*60)
+        logger.info("TimesFM: PREMIER CHARGEMENT — téléchargement du modèle 500M...")
+        logger.info("  Repo: google/timesfm-2.0-500m-pytorch")
+        logger.info(f"  Backend: {backend} | Horizon: {horizon}")
+        logger.info("  Ceci peut prendre 2-5 min au premier lancement.")
+        logger.info("="*60)
 
-    logger.info("TimesFM: Initialisation TimesFmHparams...")
-    hparams = timesfm.TimesFmHparams(
-        backend=backend,
-        per_core_batch_size=32,
-        horizon_len=horizon,
-        num_layers=50,
-        use_positional_embedding=False,
-        context_len=2048,
-    )
-    logger.info(f"TimesFM: Hparams OK ({time.time()-t0:.1f}s)")
+        t0 = time.time()
 
-    logger.info("TimesFM: Téléchargement/chargement checkpoint HuggingFace...")
-    t_dl = time.time()
-    checkpoint = timesfm.TimesFmCheckpoint(
-        huggingface_repo_id="google/timesfm-2.0-500m-pytorch",
-    )
-    logger.info(f"TimesFM: Checkpoint référencé ({time.time()-t_dl:.1f}s)")
+        logger.info("TimesFM: Initialisation TimesFmHparams...")
+        hparams = timesfm.TimesFmHparams(
+            backend=backend,
+            per_core_batch_size=32,
+            horizon_len=horizon,
+            num_layers=50,
+            use_positional_embedding=False,
+            context_len=2048,
+        )
+        logger.info(f"TimesFM: Hparams OK ({time.time()-t0:.1f}s)")
 
-    logger.info("TimesFM: Construction du modèle (TimesFm)...")
-    t_build = time.time()
-    model = timesfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
-    logger.info(f"TimesFM: Modèle construit et prêt ({time.time()-t_build:.1f}s)")
+        logger.info("TimesFM: Téléchargement/chargement checkpoint HuggingFace...")
+        t_dl = time.time()
+        checkpoint = timesfm.TimesFmCheckpoint(
+            huggingface_repo_id="google/timesfm-2.0-500m-pytorch",
+        )
+        logger.info(f"TimesFM: Checkpoint référencé ({time.time()-t_dl:.1f}s)")
 
-    elapsed = time.time() - t0
-    logger.info(f"TimesFM: CHARGEMENT TERMINÉ en {elapsed:.1f}s")
+        logger.info("TimesFM: Construction du modèle (TimesFm)...")
+        t_build = time.time()
+        model = timesfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
+        logger.info(f"TimesFM: Modèle construit et prêt ({time.time()-t_build:.1f}s)")
 
-    _MODEL = model
-    return model
+        elapsed = time.time() - t0
+        logger.info(f"TimesFM: CHARGEMENT TERMINÉ en {elapsed:.1f}s")
+        return model
+
+    # Timeout 180s sur le chargement complet (download HuggingFace inclus)
+    _pool = _cf.ThreadPoolExecutor(max_workers=1)
+    _fut = _pool.submit(_load)
+    try:
+        _MODEL = _fut.result(timeout=180)
+    except _cf.TimeoutError:
+        _pool.shutdown(wait=False)
+        raise RuntimeError("TimesFM model load timeout (180s) — HuggingFace download trop lent ou inaccessible")
+    except Exception:
+        _pool.shutdown(wait=False)
+        raise
+    _pool.shutdown(wait=False)
+    return _MODEL
 
 
 class TimesFMAgent:
@@ -141,8 +156,10 @@ class TimesFMAgent:
                 },
             }
 
-        except Exception as exc:
-            logger.error(f"TimesFM error: {exc}")
+        except BaseException as exc:
+            # BaseException (pas Exception) pour attraper SystemExit, KeyboardInterrupt,
+            # et les crashes PyTorch/C qui bypassent except Exception.
+            logger.error(f"TimesFM error ({type(exc).__name__}): {exc}")
             return self._fallback(str(exc))
 
     def _get_close_prices(self, state: dict) -> np.ndarray | None:

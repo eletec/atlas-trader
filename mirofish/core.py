@@ -116,19 +116,19 @@ def _compute_result(opinions: list[float], n_agents: int) -> dict[str, Any]:
 
     # Cluster dominant
     if bull > 0.55:
-        dominant = "haussier"
+        dominant = "bullish"
         signal = "BUY"
     elif bear > 0.55:
-        dominant = "baissier"
+        dominant = "bearish"
         signal = "SELL"
     elif bull > bear + 0.15:
-        dominant = "légèrement haussier"
+        dominant = "slightly bullish"
         signal = "WATCH_BUY"
     elif bear > bull + 0.15:
-        dominant = "légèrement baissier"
+        dominant = "slightly bearish"
         signal = "WATCH_SELL"
     else:
-        dominant = "indécis"
+        dominant = "undecided"
         signal = "HOLD"
 
     # Polarisation : variance des opinions
@@ -136,10 +136,10 @@ def _compute_result(opinions: list[float], n_agents: int) -> dict[str, Any]:
     polarization = math.sqrt(var)  # 0 = consensus, ~1 = très polarisé
 
     narratives = [
-        f"Consensus {dominant} — {bull:.0%} haussiers / {bear:.0%} baissiers / {neutral:.0%} neutres",
-        f"Opinion moyenne : {mean_opinion:+.3f} → score={score:.1f}/100 (signal={signal})",
-        f"Polarisation du marché : {polarization:.3f} {'(fort désaccord)' if polarization > 0.5 else '(consensus naissant)'}",
-        f"Simulation : {n_agents} agents, convergence Deffuant",
+        f"Consensus {dominant} — {bull:.0%} bullish / {bear:.0%} bearish / {neutral:.0%} neutral",
+        f"Mean opinion: {mean_opinion:+.3f} → score={score:.1f}/100 (signal={signal})",
+        f"Market polarization: {polarization:.3f} {'(strong disagreement)' if polarization > 0.5 else '(emerging consensus)'}",
+        f"Simulation: {n_agents} agents, Deffuant convergence",
     ]
 
     return {

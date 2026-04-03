@@ -5,12 +5,24 @@ Interface User (lecture seule) + Interface Admin (protégée par mot de passe).
 from __future__ import annotations
 
 import hashlib
+import html
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from queue import Queue, Empty
+
+
+def _fmt_utc_local(dt_utc: datetime) -> str:
+    """Format 'DD/MM/YYYY HH:MM UTC (HH:MM local)' where local = Europe/Paris."""
+    try:
+        from zoneinfo import ZoneInfo
+        local_tz = ZoneInfo("Europe/Paris")
+    except Exception:
+        local_tz = timezone(timedelta(hours=1))  # fallback UTC+1
+    local_dt = dt_utc.replace(tzinfo=timezone.utc).astimezone(local_tz)
+    return f"{dt_utc.strftime('%d/%m/%Y %H:%M')} UTC ({local_dt.strftime('%H:%M')} local)"
 
 # Garantir que /app (ou le parent du dossier courant) est en tête du sys.path
 # pour éviter les conflits avec des packages "utils" de dépendances tierces
@@ -102,7 +114,9 @@ def _inject_theme_css():
     st.markdown(
         '<link rel="stylesheet" '
         'href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" '
+        'integrity="sha512-Avb2QiuDEEvB4bZJYdft2mNjVShBftLdPG8FJ0V7irTLQ8Uo0qcPxh4Plq7G5tGm0rU+1SPhVotteLpBERwTkw==" '
         'crossorigin="anonymous">',
+        # S6: SRI hash protège contre le remplacement de la CDN
         unsafe_allow_html=True,
     )
 
@@ -339,11 +353,10 @@ def _get_recent_decisions(n: int = 50) -> list[dict]:
 
 @st.cache_data(ttl=30)
 def _get_recent_trades(n: int = 200) -> list[dict]:
-    """Retourne uniquement les trades BUY/SELL (pas les HOLD)."""
+    """P3: utilise get_recent_trades (filtre SQL) au lieu de charger 2000 lignes."""
     try:
-        from storage.database import get_recent_decisions
-        decisions = get_recent_decisions(2000)
-        return [d for d in decisions if d.get("action") in ("BUY", "SELL")][:n]
+        from storage.database import get_recent_trades
+        return get_recent_trades(n)
     except Exception:
         return []
 
@@ -464,22 +477,25 @@ def _force_run_dialog_inner(asset, _time, _logger,
 
     state = create_initial_state(asset)
     # Injection CSS pour réduire les marges entre les éléments markdown du dialog
-    st.markdown("""<style>
-    [data-testid="stDialog"] [data-testid="stMarkdown"] p {
+    theme = _get_theme()
+    _txt_color = "#f0f0f0" if theme != "light" else "#212529"
+    _sub_color = "#adb5bd" if theme != "light" else "#6c757d"
+    st.markdown(f"""<style>
+    [data-testid="stDialog"] [data-testid="stMarkdown"] p {{
         font-size: 13px; line-height: 1.3; font-family: 'SFMono-Regular',Consolas,monospace;
-        margin: 0; padding: 0;
-    }
-    [data-testid="stDialog"] [data-testid="stMarkdown"] {
+        margin: 0; padding: 0; color: {_txt_color};
+    }}
+    [data-testid="stDialog"] [data-testid="stMarkdown"] {{
         margin-bottom: -12px;
-    }
+    }}
     </style>""", unsafe_allow_html=True)
     log_container = st.container()
     t_total = _time.time()
 
     def _log(txt):
-        log_container.markdown(txt, unsafe_allow_html=True)
+        log_container.markdown(f"<span style='color:{_txt_color}'>{txt}</span>", unsafe_allow_html=True)
     def _log_sub(txt):
-        log_container.markdown(f"<span style='font-size:12px;color:#888;padding-left:12px'>{txt}</span>", unsafe_allow_html=True)
+        log_container.markdown(f"<span style='font-size:12px;color:{_sub_color};padding-left:12px'>{txt}</span>", unsafe_allow_html=True)
 
     for key, label, fn in STEPS:
         _log(f"⏳ <b>{label}</b>")
@@ -596,9 +612,7 @@ def render_header():
         st.query_params.pop("_action", None)
         try:
             from dashboard.auth import logout as _logout
-            import extra_streamlit_components as _stx
-            _cm = _stx.CookieManager(key="atlas_cm")
-            _logout(_cm)
+            _logout()
         except Exception:
             pass
         st.query_params.clear()
@@ -619,29 +633,29 @@ def render_header():
 
     # ─ URLs ─────────────────────────────────────────────────────────────────
     adm   = "1" if show_admin else "0"
-    # _sid propagé dans toutes les URLs pour que la session survive aux rechargements
-    _sid  = st.session_state.get("_session_id", "")
-    _sid_param = f"&_sid={_sid}" if _sid else ""
-    m_open  = f"lang={lang_param}&theme={theme}&admin={adm}&menu=1{_sid_param}"
-    m_close = f"lang={lang_param}&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    base    = f"lang={lang_param}&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    _sid = st.query_params.get("_sid", "") or st.session_state.get("_session_id", "")
+    sid_q = f"&_sid={_sid}" if _sid else ""
+    # Garder _sid dans les URLs pour conserver la session après refresh/navigation
+    m_open  = f"lang={lang_param}&theme={theme}&admin={adm}&menu=1{sid_q}"
+    m_close = f"lang={lang_param}&theme={theme}&admin={adm}&menu=0{sid_q}"
+    base    = f"lang={lang_param}&theme={theme}&admin={adm}&menu=0{sid_q}"
     u_refresh  = f"?_action=refresh&{base}"
     u_force    = f"?_action=force_run&{base}"
     u_hamburger = f"?{m_close if menu_open else m_open}"
     # menu items (chaque clic ferme le menu)
-    u_admin    = f"?lang={lang_param}&theme={theme}&admin=1&menu=0{_sid_param}"
+    u_admin    = f"?lang={lang_param}&theme={theme}&admin=1&menu=0{sid_q}"
     u_logout   = f"?_action=logout&{base}"
-    u_t_light  = f"?lang={lang_param}&theme=light&admin={adm}&menu=0{_sid_param}"
-    u_t_dark   = f"?lang={lang_param}&theme=dark&admin={adm}&menu=0{_sid_param}"
-    u_t_system = f"?lang={lang_param}&theme=system&admin={adm}&menu=0{_sid_param}"
-    u_l_fr     = f"?lang=fr&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_en     = f"?lang=en&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_de     = f"?lang=de&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_es     = f"?lang=es&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_it     = f"?lang=it&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_pt     = f"?lang=pt&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_nl     = f"?lang=nl&theme={theme}&admin={adm}&menu=0{_sid_param}"
-    u_l_zh     = f"?lang=zh&theme={theme}&admin={adm}&menu=0{_sid_param}"
+    u_t_light  = f"?lang={lang_param}&theme=light&admin={adm}&menu=0{sid_q}"
+    u_t_dark   = f"?lang={lang_param}&theme=dark&admin={adm}&menu=0{sid_q}"
+    u_t_system = f"?lang={lang_param}&theme=system&admin={adm}&menu=0{sid_q}"
+    u_l_fr     = f"?lang=fr&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_en     = f"?lang=en&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_de     = f"?lang=de&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_es     = f"?lang=es&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_it     = f"?lang=it&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_pt     = f"?lang=pt&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_nl     = f"?lang=nl&theme={theme}&admin={adm}&menu=0{sid_q}"
+    u_l_zh     = f"?lang=zh&theme={theme}&admin={adm}&menu=0{sid_q}"
 
     # ─ CSS variables ────────────────────────────────────────────────────────
     if theme == "light":
@@ -747,7 +761,7 @@ header[data-testid="stHeader"]{{display:none!important;}}
             box-shadow:0 2px 10px rgba(0,0,0,0.24);
             display:flex;align-items:center;
             padding:0 1rem;gap:10px;box-sizing:border-box;">
-  <a href="?lang={lang_param}&theme={theme}&admin=0&menu=0{_sid_param}" target="_self"
+  <a href="?lang={lang_param}&theme={theme}&admin=0&menu=0{sid_q}" target="_self"
      style="display:flex;align-items:center;flex-shrink:0;text-decoration:none;">
     <img src="data:image/png;base64,{_LOGO_B64}"
          style="height:32px;width:32px;border-radius:7px;object-fit:cover;"
@@ -758,7 +772,7 @@ header[data-testid="stHeader"]{{display:none!important;}}
     Atlas Trader
     <span style="font-weight:400;font-size:12px;opacity:0.5;"> &middot; Paper Trading BTC/USDT</span>
   </span>
-  <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{datetime.now().strftime('%d/%m/%Y %H:%M')}</span>
+  <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{_fmt_utc_local(datetime.utcnow())}</span>
   <a href="{u_refresh}" style="{S_BTN}" title="Rafra\u00eechir" target="_self"><i class="fas fa-rotate-right"></i></a>
   <a href="{u_force}" style="{S_BTN}" title="Force Run" target="_self"
      class="{'atlas-bolt-active' if _cycle_running else ''}"><i class="fas fa-bolt"></i></a>
@@ -1170,7 +1184,8 @@ def render_trades_list(trades: list[dict]):
 
 
 def render_last_decision(last_cycle: dict | None):
-    """Affiche la dernière décision avec explication IA."""
+    """Affiche la dernière décision avec explication IA et breakdown des scores."""
+    st.markdown('<div style="margin-top:24px;"></div>', unsafe_allow_html=True)
     st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-robot" style="margin-right:8px;color:#7986cb;"></i>{t("last_decision_title")}</h3>', unsafe_allow_html=True)
 
     if not last_cycle:
@@ -1187,7 +1202,7 @@ def render_last_decision(last_cycle: dict | None):
     if ts:
         try:
             dt = datetime.fromisoformat(ts)
-            ts_label = dt.strftime("%d/%m/%Y à %H:%M")
+            ts_label = _fmt_utc_local(dt)
         except Exception:
             ts_label = ts[:16]
 
@@ -1195,11 +1210,42 @@ def render_last_decision(last_cycle: dict | None):
         f"<div style='border-left:4px solid {action_color}; padding:12px; "
         f"border-radius:4px;'>"
         f"<strong style='color:{action_color}'>{action}</strong> — "
-        f"Score : {last_cycle.get('score', 0):.0f}/100"
+        f"Score: {last_cycle.get('score', 0):.0f}/100"
         + (f" &nbsp;<span style='font-size:11px;opacity:0.55;'>🕐 {ts_label}</span>" if ts_label else "")
         + f"<br><br>{explanation}</div>",
         unsafe_allow_html=True
     )
+
+    # F11 — Score breakdown : contribution de chaque composant
+    breakdown = last_cycle.get("breakdown") or last_cycle.get("score_breakdown") or {}
+    if isinstance(breakdown, str):
+        try:
+            import json as _json
+            breakdown = _json.loads(breakdown)
+        except Exception:
+            breakdown = {}
+    if breakdown:
+        parts = []
+        for name, data in breakdown.items():
+            if name == "final_score":
+                continue
+            if not isinstance(data, dict):
+                continue
+            component_score = data.get("score", 0)
+            weight = data.get("weight", 0)
+            contribution = data.get("contribution", component_score * weight)
+            parts.append(
+                f'<span style="margin-right:10px;white-space:nowrap;">'
+                f'<strong>{name}</strong>: {component_score:.0f} '
+                f'<span style="opacity:0.55;">×{weight:.0%}</span> '
+                f'= <strong>{contribution:.1f}</strong></span>'
+            )
+        if parts:
+            st.markdown(
+                f'<div style="font-size:12px;margin-top:8px;opacity:0.75;">'
+                f'{"".join(parts)}</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_live_logs():
@@ -1219,10 +1265,16 @@ def render_live_logs():
                     "DEBUG": "#6c757d", "INFO": "#0dcaf0",
                     "WARNING": "#ffc107", "ERROR": "#dc3545"
                 }.get(row[1], "#fff")
+                try:
+                    _ts = _fmt_utc_local(datetime.fromisoformat(str(row[0])))
+                except Exception:
+                    _ts = html.escape(str(row[0]))
+                _mod = html.escape(str(row[2]))
+                _msg = html.escape(str(row[3]))
                 log_lines.append(
-                    f'<span style="color:#6c757d">{row[0]}</span> '
+                    f'<span style="color:#6c757d">{_ts}</span> '
                     f'<span style="color:{level_color}">[{row[1]}]</span> '
-                    f'<span style="color:#adb5bd">[{row[2]}]</span> {row[3]}'
+                    f'<span style="color:#adb5bd">[{_mod}]</span> {_msg}'
                 )
             st.markdown(
                 f'<div style="border:1px solid rgba(128,128,128,0.2);padding:12px;border-radius:8px;'
@@ -1388,6 +1440,11 @@ def render_profile_comparison():
 
 def render_admin_panel():
     """Panneau admin complet — configuration de tous les modules."""
+    # Verrou: aucune UI d'auth ne doit se rendre pendant l'affichage admin.
+    st.session_state["_suppress_auth_ui"] = True
+    st.session_state.pop("_auth_step", None)
+    st.session_state.pop("_auth_pending_user", None)
+    st.session_state.pop("_auth_totp_new_secret", None)
     settings = _get_settings()
     if not settings:
         err = st.session_state.get("_settings_error", "fichier introuvable ou YAML invalide")
@@ -1433,7 +1490,121 @@ def render_admin_panel():
                 help=t("cfg_timeout_help")
             )
         llm["cache_responses"] = st.toggle(t("cfg_cache_responses"), llm.get("cache_responses", True))
+
+        # Clés API par provider
+        st.markdown("**Clés API**")
+        _provider_now = llm.get("provider", "anthropic")
+        import os as _os
+        _key_labels = {
+            "anthropic": ("Anthropic API Key", "ANTHROPIC_API_KEY", "anthropic_api_key"),
+            "deepseek":  ("DeepSeek API Key",  "DEEPSEEK_API_KEY",  "deepseek_api_key"),
+            "openai":    ("OpenAI API Key",    "OPENAI_API_KEY",    "openai_api_key"),
+            "xai":       ("xAI API Key",       "XAI_API_KEY",       "xai_api_key"),
+            "ollama":    ("Ollama Base URL",   "OLLAMA_BASE_URL",   "ollama_base_url"),
+        }
+        _lbl, _env_var, _cfg_key = _key_labels.get(_provider_now, (f"{_provider_now} API Key", "", f"{_provider_now}_api_key"))
+        _current_val = llm.get(_cfg_key) or _os.environ.get(_env_var, "")
+        _new_val = st.text_input(
+            _lbl,
+            value=_current_val,
+            type="password",
+            help=f"Sauvegardé dans settings.yaml. Précédence sur la variable d'env {_env_var}.",
+            key=f"llm_api_key_{_provider_now}",
+        )
+        if _new_val:
+            llm[_cfg_key] = _new_val
         settings["llm"] = llm
+
+        # CA7 — Section "Analyser avec le LLM" (utilise le provider configuré)
+        st.divider()
+        _provider_label = llm.get("provider", "LLM").capitalize()
+        st.markdown(
+            f'<h4><i class="fas fa-terminal" style="margin-right:7px;color:#7986cb;"></i>'
+            f"Analyser avec {_provider_label}</h4>",
+            unsafe_allow_html=True,
+        )
+        # Clé API du provider actif (lecture seule pour info ; éditable via champ dédié ci-dessus)
+        import os as _os
+        _prov = llm.get("provider", "anthropic")
+        _key_map = {
+            "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+            "deepseek":  ("deepseek_api_key",  "DEEPSEEK_API_KEY"),
+            "openai":    ("openai_api_key",     "OPENAI_API_KEY"),
+            "xai":       ("xai_api_key",        "XAI_API_KEY"),
+            "github":    ("github_api_key",     "GITHUB_TOKEN"),
+            "ollama":    ("ollama_base_url",     "OLLAMA_BASE_URL"),
+        }
+        _cfg_k, _env_k = _key_map.get(_prov, (f"{_prov}_api_key", ""))
+        _cur_key = llm.get(_cfg_k) or _os.environ.get(_env_k, "")
+        _placeholder = _cur_key if (_cur_key and not _cur_key.endswith("...")) else ""
+        _new_key = st.text_input(
+            f"Clé API {_provider_label}",
+            value=_placeholder,
+            type="password",
+            help=f"Sauvegardée dans settings.yaml. Prioritaire sur la variable d'env {_env_k}.",
+            key=f"ca7_key_{_prov}",
+        )
+        if _new_key:
+            llm[_cfg_k] = _new_key
+            settings["llm"] = llm
+        claude_prompt = st.text_area(
+            "Prompt",
+            value="Résume les derniers signaux de marché et propose une action.",
+            height=100,
+            key="ca7_claude_prompt",
+        )
+        ca7_col1, ca7_col2 = st.columns([1, 3])
+        with ca7_col1:
+            ca7_timeout = st.number_input("Timeout (s)", min_value=10, max_value=300,
+                                          value=60, step=10, key="ca7_timeout")
+        with ca7_col2:
+            ca7_inject = st.toggle("Injecter les données réelles (décisions, trades)", value=True, key="ca7_inject")
+        if st.button(f"▶ Lancer l'analyse {_provider_label}", key="ca7_run_btn"):
+            with st.spinner("Analyse en cours…"):
+                try:
+                    from utils.claude_cli import run_claude_analysis
+                    _full_prompt = claude_prompt
+                    if ca7_inject:
+                        import json as _json
+                        _ctx_parts = []
+                        try:
+                            from storage.database import get_recent_decisions, get_recent_trades
+                            _decisions = get_recent_decisions(10)
+                            if _decisions:
+                                _ctx_parts.append("## Dernières décisions du système (JSON)\n```json\n"
+                                    + _json.dumps(_decisions, ensure_ascii=False, indent=2, default=str)
+                                    + "\n```")
+                            _trades = get_recent_trades(5)
+                            if _trades:
+                                _ctx_parts.append("## Derniers trades BUY/SELL\n```json\n"
+                                    + _json.dumps(_trades, ensure_ascii=False, indent=2, default=str)
+                                    + "\n```")
+                        except Exception as _db_exc:
+                            _ctx_parts.append(f"*(données DB indisponibles : {_db_exc})*")
+                        try:
+                            _port = _get_portfolio()
+                            _ctx_parts.append(
+                                f"## Portfolio actuel\n"
+                                f"- Capital : {_port.get('capital', '?')} USDT\n"
+                                f"- Valeur : {_port.get('current_value', '?')} USDT\n"
+                                f"- PnL total : {_port.get('total_pnl', '?')} USDT "
+                                f"({_port.get('total_pnl_pct', '?')}%)\n"
+                                f"- Nb trades : {_port.get('n_trades', '?')}"
+                            )
+                        except Exception:
+                            pass
+                        if _ctx_parts:
+                            _full_prompt = (
+                                "Tu es un assistant de trading algorithmique. "
+                                "Voici les données réelles du système Atlas Trader :\n\n"
+                                + "\n\n".join(_ctx_parts)
+                                + "\n\n---\n\n"
+                                + claude_prompt
+                            )
+                    ca7_result = run_claude_analysis(_full_prompt, timeout=int(ca7_timeout))
+                    st.text_area("Résultat", value=ca7_result, height=300, key="ca7_result")
+                except Exception as _ca7_exc:
+                    st.error(f"Erreur : {_ca7_exc}")
 
     with sub_tabs[1]:  # Crawler
         st.markdown(f'<h4><i class="fas fa-spider" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_crawler_title")}</h4>', unsafe_allow_html=True)
@@ -1755,27 +1926,76 @@ def render_admin_panel():
 
 
 # ===========================================================
+# SESSION PERSISTENCE (localStorage)
+# ===========================================================
+
+def _inject_session_persistence_js(has_valid_session: bool) -> None:
+    """
+    Persiste _sid dans localStorage pour survivre aux rechargements sans cookie.
+    - _sid présent + session valide  → sauvegarde localStorage
+    - _sid présent + session invalide → efface localStorage (logout / expiration)
+    - _sid absent + localStorage contient un sid → redirige avec _sid dans l'URL
+    """
+    import streamlit.components.v1 as _cv1
+    valid_js = "true" if has_valid_session else "false"
+    _cv1.html(
+        f"""<script>
+(function(){{
+  try {{
+    var p   = window.parent || window;
+    var url = new URL(p.location.href);
+    var sid = url.searchParams.get('_sid');
+    var ok  = {valid_js};
+    if (sid) {{
+      if (ok) {{ localStorage.setItem('atlas_sid', sid); }}
+      else    {{ localStorage.removeItem('atlas_sid'); }}
+    }} else {{
+      var s = localStorage.getItem('atlas_sid');
+      if (s && s.length > 30) {{
+        url.searchParams.set('_sid', s);
+        p.location.replace(url.toString());
+      }}
+    }}
+  }} catch(e) {{}}
+}})();
+</script>""",
+        height=0,
+        scrolling=False,
+    )
+
+
+# ===========================================================
 # PAGE PRINCIPALE
 # ===========================================================
 
 def main():
-    # ── Cookie manager (init AVANT tout rendu Streamlit) ──────────────────────
-    import extra_streamlit_components as stx
-    cm = stx.CookieManager(key="atlas_cm")
-
     _init_session()
 
     # ── Authentification ──────────────────────────────────────────────────────
-    # Stratégie : session serveur (dict Python) via ?_sid= dans l'URL.
-    # Aucune dépendance au timing du composant CookieManager React.
+    # Stratégie : session_state + _sid URL param (SQLite store).
     # La session est créée dans _finalize_login() et éteinte via logout().
     from dashboard.auth import get_session, has_role, render_auth, logout, load_users_config
-    session = get_session(cm)
+    session = get_session()
+    # Robustesse F5 : si session valide mais _sid absent de l'URL (ex: navigation sans _sid),
+    # le remettre immédiatement pour que le prochain F5 fonctionne aussi.
+    if session:
+        _sid_in_state = st.session_state.get("_session_id", "")
+        if _sid_in_state and not st.query_params.get("_sid"):
+            st.query_params["_sid"] = _sid_in_state
     st.session_state["admin_authenticated"] = has_role(session, "back")
     st.session_state["username"] = session.get("username", "") if session else ""
+    st.session_state["_suppress_auth_ui"] = bool(session)
+    if has_role(session, "back"):
+        # Empêche l'affichage résiduel des écrans TOTP après authentification réussie.
+        st.session_state.pop("_auth_step", None)
+        st.session_state.pop("_auth_pending_user", None)
+        st.session_state.pop("_auth_totp_new_secret", None)
 
     users_cfg = load_users_config()
     guest_mode = users_cfg.get("settings", {}).get("guest_mode", True)
+
+    # localStorage JS — permet de retrouver la session même si _sid disparaît de l'URL.
+    _inject_session_persistence_js(bool(session))
 
     _inject_theme_css()
     render_header()
@@ -1785,21 +2005,40 @@ def main():
     if show_admin:
         # ── VUE ADMINISTRATION ──
         if not has_role(session, "back"):
-            st.markdown(
-                f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-lock" '
-                f'style="margin-right:8px;color:#e74c3c;"></i>{t("admin_title")}</h3>',
-                unsafe_allow_html=True,
-            )
-            st.info(t("admin_auth_required"))
-            render_auth(cm)
+            # Tout le contenu d'auth est dans UN seul slot effaçable.
+            # _render_totp_verify / _render_totp_setup appellent
+            # st.session_state["_auth_slot"].empty() avant st.rerun()
+            # pour vider atomiquement titre + info + formulaire → zéro artefact.
+            _auth_slot = st.empty()
+            st.session_state["_auth_slot"] = _auth_slot
+            with _auth_slot.container():
+                st.markdown(
+                    f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-lock" '
+                    f'style="margin-right:8px;color:#e74c3c;"></i>{t("admin_title")}</h3>',
+                    unsafe_allow_html=True,
+                )
+                st.info(t("admin_auth_required"))
+                render_auth()
+            return
         else:
             render_admin_panel()
+            return
     else:
         # ── VUE DASHBOARD ──
         if not guest_mode and not has_role(session, "front"):
             # Front protégé
-            render_auth(cm)
+            render_auth()
         else:
+            # F12 — Auto-refresh toutes les 30s (streamlit-autorefresh)
+            _autorefresh_active = False
+            try:
+                from streamlit_autorefresh import st_autorefresh
+                st_autorefresh(interval=30_000, limit=None, key="atlas_autorefresh")
+                _autorefresh_active = True
+            except ImportError:
+                pass  # Dégradé gracieusement si le paquet n'est pas installé
+            st.session_state["_autorefresh_active"] = _autorefresh_active
+
             last_cycle = _get_last_cycle()
             portfolio  = _get_portfolio()
             _get_pnl_history()
@@ -1814,26 +2053,32 @@ def main():
             render_btc_live_chart()
             render_trades_list(recent_trades)
             render_live_logs()
+            st.markdown(
+                '<div style="text-align:center;padding:24px 0 8px;'
+                'font-size:11px;opacity:0.35;">Atlas Trader &mdash; by Jako 2026</div>',
+                unsafe_allow_html=True,
+            )
 
-    # Refresh événementiel : surveille le dernier timestamp en DB
-    # Rerun uniquement quand un nouveau cycle est terminé (pas de rechargement HTTP)
-    import time as _time
-    try:
-        from storage.database import get_connection as _get_conn
-        with _get_conn() as _conn:
-            _latest = _conn.execute(
-                "SELECT MAX(timestamp) FROM decisions"
-            ).fetchone()[0] or ""
-    except Exception:
-        _latest = ""
-    _last_seen = st.session_state.get("_last_cycle_ts", None)
-    if _last_seen is None:
-        st.session_state["_last_cycle_ts"] = _latest
-    elif _latest != _last_seen:
-        st.session_state["_last_cycle_ts"] = _latest
+    # Refresh événementiel : uniquement si st_autorefresh n'est PAS actif
+    # (évite le double-refresh qui bloque le thread pendant 10s inutilement).
+    if not show_admin and not st.session_state.get("_autorefresh_active", False):
+        import time as _time
+        try:
+            from storage.database import get_connection as _get_conn
+            with _get_conn() as _conn:
+                _latest = _conn.execute(
+                    "SELECT MAX(timestamp) FROM decisions"
+                ).fetchone()[0] or ""
+        except Exception:
+            _latest = ""
+        _last_seen = st.session_state.get("_last_cycle_ts", None)
+        if _last_seen is None:
+            st.session_state["_last_cycle_ts"] = _latest
+        elif _latest != _last_seen:
+            st.session_state["_last_cycle_ts"] = _latest
+            st.rerun()
+        _time.sleep(10)
         st.rerun()
-    _time.sleep(10)
-    st.rerun()
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ class SynthesisAgent:
 
             with open("config/prompts.yaml", "r", encoding="utf-8") as f:
                 prompts = yaml.safe_load(f)
-            system_prompt = prompts.get("synthesis_agent", "Tu es un analyste financier expert.")
+            system_prompt = prompts.get("synthesis_agent", "You are an expert financial analyst.")
 
             messages = [
                 SystemMessage(content=system_prompt),
@@ -185,7 +185,7 @@ class SynthesisAgent:
         if adt:
             parts.append(f"**Air du Temps** : {adt.get('full_text', '')[:500]}")
 
-        return "\n".join(parts) + "\n\nGénère la synthèse au format JSON demandé."
+        return "\n".join(parts) + "\n\nGenerate the synthesis in the requested JSON format."
 
     def _fallback_synthesis(self, state: dict) -> dict:
         """Synthèse déterministe sans LLM."""
@@ -198,9 +198,175 @@ class SynthesisAgent:
             "agent_name": "synthesis",
             "score": round(mean_score, 1),
             "signal": signal,
-            "summary": f"Synthèse automatique (sans LLM) — {len(scores)} agents analysés",
+            "summary": f"Automatic synthesis (no LLM) — {len(scores)} agents analyzed",
             "risks": [],
             "catalysts": [],
             "confidence": 0.3,
             "tokens_used": 0,
         }
+
+
+# ---------------------------------------------------------------------------
+# CA4 — SynthesisAgentAgentic : synthèse avec WebSearch en temps réel
+# ---------------------------------------------------------------------------
+
+class SynthesisAgentAgentic:
+    """
+    Variante agentique de SynthesisAgent utilisant Claude + web_search_20250305.
+    Activé via settings.yaml : llm.agentic_synthesis: true (et provider: anthropic).
+
+    Permet à Claude de lancer 1-2 recherches web autonomes avant de rendre
+    son verdict final, garantissant une synthèse ancrée dans l'actualité immédiate.
+    """
+
+    _SYSTEM_PROMPT = (
+        "You are Atlas Trader, an expert crypto algorithmic trading system. "
+        "You have access to a web search tool to verify recent news "
+        "before rendering your final decision. "
+        "Use web_search only to confirm or refute a critical signal "
+        "(max 2 searches). "
+        "Respond ONLY with a valid JSON object (no markdown) containing: "
+        "score_global (int 0-100), signal (BULLISH/BEARISH/NEUTRAL), "
+        "resume_court (str ≤ 120 chars), explication_complete (str), "
+        "risques_identifies (list[str]), catalyseurs_potentiels (list[str]), "
+        "web_search_used (bool)."
+    )
+
+    def __init__(self):
+        from utils.config import load_settings
+        cfg = load_settings()
+        llm_cfg = cfg.get("llm", {})
+        self.model: str = llm_cfg.get("model", "claude-3-5-sonnet-20241022")
+        self.max_tokens: int = min(llm_cfg.get("max_tokens", 4096), 4096)
+
+    def synthesize(self, state: dict) -> dict:
+        """
+        Synthèse agentique avec recherche web autonome.
+        Retourne un dict compatible avec celui de SynthesisAgent.synthesize().
+        """
+        try:
+            import anthropic
+        except ImportError:
+            logger.warning("CA4: anthropic non disponible — fallback synthesis")
+            return SynthesisAgent()._fallback_synthesis(state)
+
+        context = self._build_context_summary(state)
+        client = anthropic.Anthropic()
+
+        messages = [{"role": "user", "content": f"Synthesize and decide:\n{context}"}]
+
+        try:
+            response = client.beta.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+                system=self._SYSTEM_PROMPT,
+                messages=messages,
+                betas=["web-search-2025-03-05"],
+            )
+        except Exception as exc:
+            logger.warning("CA4: beta.messages.create échoué (%s) — fallback LLM standard", exc)
+            return SynthesisAgent().synthesize(state)
+
+        # Boucle agentique : on renvoie les résultats d'outils jusqu'à stop_reason == "end_turn"
+        while response.stop_reason == "tool_use":
+            tool_uses = [b for b in response.content if b.type == "tool_use"]
+            tool_results = []
+            for tu in tool_uses:
+                # web_search résultats sont déjà intégrés dans le contenu par l'API beta
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu.id,
+                    "content": getattr(tu, "result", "") or "",
+                })
+            messages = messages + [
+                {"role": "assistant", "content": response.content},
+                {"role": "user", "content": tool_results},
+            ]
+            try:
+                response = client.beta.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}],
+                    system=self._SYSTEM_PROMPT,
+                    messages=messages,
+                    betas=["web-search-2025-03-05"],
+                )
+            except Exception as exc:
+                logger.warning("CA4: tool loop échouée (%s)", exc)
+                break
+
+        # Extraire le texte final (ignorer les blocs tool_use/tool_result)
+        raw_text = ""
+        for block in response.content:
+            if getattr(block, "type", "") == "text":
+                raw_text += block.text
+
+        result = self._parse_json(raw_text)
+        web_used = any(getattr(b, "type", "") == "tool_use" for b in response.content)
+
+        tokens_used = 0
+        if hasattr(response, "usage"):
+            tokens_used = (getattr(response.usage, "input_tokens", 0)
+                           + getattr(response.usage, "output_tokens", 0))
+
+        return {
+            "agent_name": "synthesis_agentic",
+            "score": float(result.get("score_global", 50)),
+            "signal": result.get("signal", "NEUTRAL"),
+            "summary": result.get("resume_court", ""),
+            "explanation_complete": result.get("explication_complete", ""),
+            "risks": result.get("risques_identifies", []),
+            "catalysts": result.get("catalyseurs_potentiels", []),
+            "confidence": min(1.0, float(result.get("confidence", 0.7))),
+            "tokens_used": tokens_used,
+            "web_search_used": web_used,
+        }
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _build_context_summary(self, state: dict) -> str:
+        market = state.get("market_data", {})
+        mirofish = state.get("mirofish_analysis", {})
+        analyses = state.get("agent_analyses", {})
+        news_count = len(state.get("news_items", []))
+
+        parts = [
+            f"Asset : {state.get('asset', 'BTC/USDT')}",
+            f"Prix : {market.get('price', 0):.2f}  RSI : {market.get('rsi_14', 50):.1f}",
+            f"Funding : {market.get('funding_rate', 0):.4f}",
+            f"Score MiroFish : {mirofish.get('score', 50):.1f}/100",
+            f"Narrative : {mirofish.get('dominant_narrative', 'N/A')}",
+            f"News collectées : {news_count}",
+        ]
+        for name, analysis in analyses.items():
+            if isinstance(analysis, dict):
+                parts.append(
+                    f"Agent {name} : score={analysis.get('score', 50):.0f} "
+                    f"signal={analysis.get('signal', 'N/A')} — {analysis.get('summary', '')}"
+                )
+        adt = state.get("air_du_temps", {})
+        if adt:
+            parts.append(f"Air du Temps : {adt.get('full_text', '')[:500]}")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _parse_json(raw: str) -> dict:
+        raw = raw.strip()
+        # Strip ```json … ``` wrapper if present
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.rstrip("`").strip()
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start != -1 and end > start:
+            try:
+                return json.loads(raw[start:end])
+            except json.JSONDecodeError:
+                pass
+        logger.warning("CA4: impossible de parser le JSON de synthèse")
+        return {}

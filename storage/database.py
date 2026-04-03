@@ -133,10 +133,18 @@ def init_db(db_path: str | Path | None = None) -> None:
     """Crée la DB et les tables si elles n'existent pas."""
     global _DB_PATH
     if db_path:
-        _DB_PATH = Path(db_path)
+        # S8: empêche la traversée de répertoire
+        _allowed_root = Path(__file__).resolve().parent
+        resolved = Path(db_path).resolve()
+        if not str(resolved).startswith(str(_allowed_root)):
+            raise ValueError(f"Chemin de DB non autorisé: {db_path!r}")
+        _DB_PATH = resolved
 
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(_DB_PATH) as conn:
+        # P2: WAL mode — lectures concurrentes pendant une écriture
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         for stmt in DDL_STATEMENTS:
             conn.execute(stmt)
         conn.commit()
@@ -283,6 +291,16 @@ def get_recent_decisions(n: int = 50) -> list[dict]:
             "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?", (n,)
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_recent_trades(n: int = 200) -> list[dict]:
+    """P3: retourne les n derniers BUY/SELL (sans HOLD) — filtre SQL, pas Python."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM decisions WHERE action IN ('BUY', 'SELL') "
+            "ORDER BY timestamp DESC LIMIT ?", (n,)
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def get_pending_postmortems(delay_hours: int = 24) -> list[dict]:

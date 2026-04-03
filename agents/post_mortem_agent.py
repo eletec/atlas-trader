@@ -1,13 +1,365 @@
 """
-agents/post_mortem_agent.py — Analyse rétrospective et ajustement des poids.
+agents/post_mortem_agent.py — Analyse retrospective et ajustement des poids.
+
+Ameliorations integrees :
+  F6  — Calibration isotonique des scores (IsotonicRegression)
+  F7  — Champion-Challenger : notification si un profil shadow surperforme
+  F13 — Regression logistique sur fenetre glissante pour les poids optimaux
 """
 from __future__ import annotations
 
 import json
 import logging
 import time
+from pathlib import Path
 
 logger = logging.getLogger("zeitgeist.post_mortem")
+
+_CALIBRATION_PATH = Path(__file__).resolve().parent.parent / "storage" / "calibration.json"
+
+
+class PostMortemAgent:
+    """
+    Analyse les decisions passees, compare prediction vs resultat,
+    et propose des ajustements de poids pour les prochains cycles.
+    """
+
+    def __init__(self):
+        from utils.config import load_settings
+        cfg = load_settings()
+        pm = cfg.get("post_mortem", {})
+        self.learning_rate: float = pm.get("learning_rate", 0.05)
+        self.min_history: int = pm.get("min_history_for_adjustment", 10)
+        self.weight_min: float = cfg.get("scoring", {}).get("min_weight", 0.05)
+        self.weight_max: float = cfg.get("scoring", {}).get("max_weight", 0.60)
+
+    def run(self, pending_decisions: list[dict]) -> None:
+        """
+        Pour chaque decision en attente :
+        1. Recupere le prix 24h plus tard
+        2. Calcule le resultat reel
+        3. Met a jour la DB
+        4. Si assez d'historique, ajuste les poids + calibration + champion-challenger
+        """
+        from utils.logger import log_flux_metric
+
+        logger.info(f"Post-mortem : analyse de {len(pending_decisions)} decisions")
+        t0 = time.time()
+        try:
+            for decision in pending_decisions:
+                self._process_single(decision)
+
+            n_evaluated = len(pending_decisions)
+            self._maybe_adjust_weights()
+            self._maybe_calibrate_scores()
+            self._maybe_promote_champion()
+
+            # CA5: AtlasDream — consolidation mémorielle tous les N cycles évalués
+            try:
+                from storage.database import get_recent_decisions
+                total_evaluated = len([
+                    d for d in get_recent_decisions(1000)
+                    if d.get("result_24h") is not None
+                ])
+                from agents.atlas_dream import AtlasDreamService
+                AtlasDreamService().maybe_consolidate(total_evaluated)
+            except Exception as dream_exc:
+                logger.debug("[AtlasDream] Consolidation ignorée : %s", dream_exc)
+
+            latency_ms = int((time.time() - t0) * 1000)
+            log_flux_metric("post_mortem", "ok", latency_ms, len(pending_decisions))
+        except Exception as exc:
+            latency_ms = int((time.time() - t0) * 1000)
+            log_flux_metric("post_mortem", "error", latency_ms, 0, str(exc))
+            raise
+
+    def _process_single(self, decision: dict) -> None:
+        """Calcule le resultat reel d'une decision et l'enregistre."""
+        from storage.database import update_decision_result
+        try:
+            cycle_id = decision["cycle_id"]
+            action = decision.get("action", "HOLD")
+            entry_price = decision.get("entry_price", 0) or 0
+
+            if action == "HOLD" or entry_price == 0:
+                update_decision_result(cycle_id, 0.0)
+                return
+
+            current_price = self._get_current_price(decision.get("asset", "BTC/USDT"))
+            position_size = decision.get("position_size", 0) or 0
+
+            if current_price and entry_price:
+                price_change_pct = (current_price - entry_price) / entry_price
+                direction = 1 if action == "BUY" else -1
+                pnl = position_size * price_change_pct * direction
+            else:
+                pnl = 0.0
+
+            update_decision_result(cycle_id, round(pnl, 2))
+            logger.info(
+                f"Post-mortem {cycle_id}: {action} entry={entry_price:.2f} "
+                f"current={current_price:.2f} P&L={pnl:.2f}$"
+            )
+        except Exception as exc:
+            logger.error(f"Erreur post-mortem decision {decision.get('cycle_id')}: {exc}")
+
+    def _get_current_price(self, asset: str) -> float:
+        """Recupere le prix actuel via CCXT."""
+        try:
+            from agents.market_data_agent import MarketDataAgent
+            agent = MarketDataAgent()
+            indicators = agent.get_indicators(asset)
+            return indicators.get("price", 0)
+        except Exception:
+            return 0.0
+
+    # ------------------------------------------------------------------
+    # F13 — Regression logistique sur fenetre glissante
+    # ------------------------------------------------------------------
+    def _maybe_adjust_weights(self) -> None:
+        """
+        Ajuste les poids par regression logistique sur les N derniers cycles (F13).
+        Fallback sur ajustement win_rate lineaire si sklearn indisponible.
+        """
+        from storage.database import get_pnl_history
+        from utils.config import load_settings, save_settings
+
+        history = [h for h in get_pnl_history() if h.get("result_24h") is not None]
+        if len(history) < self.min_history:
+            logger.info(
+                f"Post-mortem : {len(history)}/{self.min_history} decisions — "
+                f"ajustement des poids reporte"
+            )
+            return
+
+        recent = history[-max(self.min_history, 50):]
+        wins = [h for h in recent if (h.get("result_24h") or 0) > 0]
+        win_rate = len(wins) / len(recent)
+        logger.info(f"Post-mortem : win_rate={win_rate:.0%} sur {len(recent)} decisions")
+
+        # Tentative de regression logistique si sklearn disponible (F13)
+        new_weights = self._compute_logistic_weights(recent)
+        cfg = load_settings()
+        weights = cfg.get("scoring", {}).get("weights", {})
+
+        if new_weights:
+            mf_new = new_weights.get("mirofish", weights.get("mirofish", 0.40))
+            market_new = new_weights.get("market", weights.get("market", 0.30))
+            agents_new = new_weights.get("agents", weights.get("agents", 0.20))
+            contrarian_new = new_weights.get("contrarian", weights.get("contrarian", 0.10))
+        else:
+            # Fallback : ajustement win_rate lineaire (original)
+            delta = (win_rate - 0.50) * self.learning_rate
+            mf_new = weights.get("mirofish", 0.40) + delta
+            market_new = weights.get("market", 0.30) - delta / 2
+            agents_new = weights.get("agents", 0.20) - delta / 2
+            contrarian_new = weights.get("contrarian", 0.10)
+
+        # Borner les poids
+        def clamp(v: float) -> float:
+            return max(self.weight_min, min(self.weight_max, v))
+
+        mf_new = clamp(mf_new)
+        market_new = clamp(market_new)
+        agents_new = clamp(agents_new)
+        contrarian_new = clamp(contrarian_new)
+
+        # Normaliser
+        total = mf_new + market_new + agents_new + contrarian_new
+        cfg["scoring"]["weights"] = {
+            "mirofish": round(mf_new / total, 4),
+            "market": round(market_new / total, 4),
+            "agents": round(agents_new / total, 4),
+            "contrarian": round(contrarian_new / total, 4),
+        }
+        save_settings(cfg)
+        logger.info(
+            f"Post-mortem : poids mis a jour -> "
+            f"mirofish={mf_new/total:.3f} market={market_new/total:.3f} "
+            f"agents={agents_new/total:.3f} contrarian={contrarian_new/total:.3f}"
+        )
+
+    def _compute_logistic_weights(self, history: list[dict]) -> dict | None:
+        """
+        F13 — Regression logistique : quel facteur predit le mieux la direction reelle ?
+        Retourne des poids normalises ou None si sklearn est indisponible.
+        """
+        try:
+            import numpy as np
+            from sklearn.linear_model import LogisticRegression
+
+            rows = [
+                h for h in history
+                if (
+                    h.get("mirofish_score") is not None
+                    and h.get("market_score") is not None
+                    and h.get("agents_mean") is not None
+                    and h.get("contrarian_score") is not None
+                    and h.get("result_24h") is not None
+                )
+            ]
+            if len(rows) < 30:
+                return None
+
+            X = np.array([
+                [
+                    h["mirofish_score"],
+                    h["market_score"],
+                    h.get("agents_mean", 50),
+                    h["contrarian_score"],
+                ]
+                for h in rows
+            ])
+            y = np.array([1 if h["result_24h"] > 0 else 0 for h in rows])
+
+            # Regression logistique avec regularisation
+            lr = LogisticRegression(C=1.0, max_iter=300, random_state=42)
+            lr.fit(X, y)
+
+            raw = dict(zip(
+                ["mirofish", "market", "agents", "contrarian"],
+                np.abs(lr.coef_[0]),
+            ))
+            total = sum(raw.values()) or 1.0
+            normalized = {k: float(v / total) for k, v in raw.items()}
+            logger.info(f"Post-mortem LogReg poids : {normalized}")
+            return normalized
+        except ImportError:
+            logger.debug("sklearn non disponible — fallback win_rate lineaire")
+            return None
+        except Exception as exc:
+            logger.warning(f"Regression logistique echouee: {exc}")
+            return None
+
+    # ------------------------------------------------------------------
+    # F6 — Calibration isotonique des scores
+    # ------------------------------------------------------------------
+    def _maybe_calibrate_scores(self) -> None:
+        """
+        F6 — Applique une regression isotonique sur les scores historiques
+        pour produire un mapping score -> probabilite calibree.
+        Stocke le mapping dans storage/calibration.json.
+        """
+        try:
+            import numpy as np
+            from sklearn.isotonic import IsotonicRegression
+            from storage.database import get_pnl_history
+
+            history = [
+                h for h in get_pnl_history()
+                if h.get("result_24h") is not None and h.get("score") is not None
+            ]
+            if len(history) < 30:
+                return
+
+            scores = np.array([float(h["score"]) for h in history])
+            outcomes = np.array([1 if h["result_24h"] > 0 else 0 for h in history])
+
+            ir = IsotonicRegression(out_of_bounds="clip")
+            ir.fit(scores, outcomes)
+
+            # Discretiser en 101 points [0..100]
+            x_grid = np.arange(0, 101, 1, dtype=float)
+            y_grid = ir.predict(x_grid)
+            calibration_map = {int(x): round(float(y), 4) for x, y in zip(x_grid, y_grid)}
+
+            _CALIBRATION_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(_CALIBRATION_PATH, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"version": 1, "n_samples": len(history), "map": calibration_map},
+                    f, indent=2
+                )
+            logger.info(
+                f"Post-mortem : calibration isotonique mise a jour "
+                f"({len(history)} echantillons)"
+            )
+        except ImportError:
+            logger.debug("sklearn non disponible — calibration ignoree")
+        except Exception as exc:
+            logger.warning(f"Calibration isotonique echouee: {exc}")
+
+    # ------------------------------------------------------------------
+    # F7 — Champion-Challenger
+    # ------------------------------------------------------------------
+    def _maybe_promote_champion(self) -> None:
+        """
+        F7 — Si un profil shadow surperforme le baseline sur >=20 cycles
+        (+15% win rate ET +20% P&L), envoie une notification.
+        """
+        try:
+            from storage.database import get_shadow_comparison_stats, get_pnl_history
+
+            stats = get_shadow_comparison_stats()
+            if not stats:
+                return
+
+            # Baseline : win_rate et P&L du profil live
+            live_history = [
+                h for h in get_pnl_history() if h.get("result_24h") is not None
+            ][-50:]
+            if not live_history:
+                return
+
+            live_wins = sum(1 for h in live_history if (h.get("result_24h") or 0) > 0)
+            baseline_win_rate = live_wins / max(len(live_history), 1)
+            baseline_pnl = sum(h.get("result_24h", 0) or 0 for h in live_history)
+
+            for s in stats:
+                total = s.get("total_trades", 0)
+                if total < 20:
+                    continue
+                shadow_wr = s.get("win_rate", 0)
+                shadow_pnl = s.get("total_pnl", 0)
+
+                wr_threshold = baseline_win_rate * 1.15  # +15%
+                pnl_threshold = baseline_pnl * 1.20 if baseline_pnl > 0 else 1.0
+
+                if shadow_wr > wr_threshold and shadow_pnl > pnl_threshold:
+                    logger.warning(
+                        f"CHAMPION detecte : profil '{s['profile']}' — "
+                        f"win_rate={shadow_wr:.0%} (base={baseline_win_rate:.0%}) "
+                        f"pnl={shadow_pnl:.2f}$ (base={baseline_pnl:.2f}$)"
+                    )
+                    self._notify_champion(s)
+        except Exception as exc:
+            logger.debug(f"Champion-challenger check echoue: {exc}")
+
+    @staticmethod
+    def _notify_champion(shadow_stats: dict) -> None:
+        """Envoie une notification champion via le systeme d'alertes."""
+        try:
+            from utils.notifier import get_notifier
+            notifier = get_notifier()
+            if notifier:
+                profile = shadow_stats.get("profile", "?")
+                wr = shadow_stats.get("win_rate", 0)
+                pnl = shadow_stats.get("total_pnl", 0)
+                notifier.notify(
+                    f"Champion detecte : profil '{profile}' surperforme le baseline\n"
+                    f"Win rate: {wr:.0%} | P&L: ${pnl:.2f}"
+                )
+        except Exception:
+            pass
+
+
+def get_calibrated_probability(score: float) -> float | None:
+    """
+    Retourne la probabilite calibree (isotonique) associee a un score [0-100].
+    Retourne None si la calibration n'est pas encore disponible.
+    """
+    try:
+        if not _CALIBRATION_PATH.exists():
+            return None
+        with open(_CALIBRATION_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        mapping = data.get("map", {})
+        key = str(int(round(score)))
+        if key in mapping:
+            return float(mapping[key])
+    except Exception:
+        pass
+    return None
+
 
 
 class PostMortemAgent:

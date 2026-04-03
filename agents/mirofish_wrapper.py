@@ -73,7 +73,7 @@ class MiroFishWrapper:
                 f"Thèmes : {themes}\n{adt_text}"
             )
 
-        seed = "\n\n".join(parts) if parts else "Contexte neutre — données insuffisantes"
+        seed = "\n\n".join(parts) if parts else "Neutral context — insufficient data"
         logger.debug(f"Seed préparé ({len(seed)} chars)")
         return seed
 
@@ -163,9 +163,9 @@ class MiroFishWrapper:
         neutral_proba = max(0, 1 - bull_proba - bear_proba)
 
         narratives = [
-            f"Signal {'haussier' if score > 55 else 'baissier' if score < 45 else 'neutre'} "
-            f"détecté dans le contexte (mode dégradé — MiroFish non installé)",
-            f"{bull_count} signaux positifs vs {bear_count} signaux négatifs identifiés",
+            f"Signal {'bullish' if score > 55 else 'bearish' if score < 45 else 'neutral'} "
+            f"detected in context (degraded mode — MiroFish not installed)",
+            f"{bull_count} positive signals vs {bear_count} negative signals identified",
         ]
 
         logger.debug(f"Fallback MiroFish: score={score:.1f} bull={bull_proba:.0%}")

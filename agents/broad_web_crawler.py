@@ -31,6 +31,11 @@ class BroadWebCrawler:
         docs = []
 
         for template in self.templates[:self.n_themes]:
+            # S7: rejette les templates contenant des patterns d'IP privée (SSRF)
+            _t_lower = template.lower()
+            if any(p in _t_lower for p in ("localhost", "127.0.", "192.168.", "10.", "172.16.", "file://", "gopher://")):
+                logger.warning(f"Template rejeté (SSRF potentiel): {template[:80]}")
+                continue
             query = template.replace("{asset}", asset.split("/")[0]).replace("{year}", str(year))
             try:
                 results = self._search(query)
@@ -44,13 +49,54 @@ class BroadWebCrawler:
 
     def _search(self, query: str) -> list[dict]:
         """Recherche via le provider configuré."""
-        if self.provider == "tavily":
+        if self.provider == "claude_web_search":
+            return self._search_claude_web(query)
+        elif self.provider == "tavily":
             return self._search_tavily(query)
         elif self.provider == "firecrawl":
             return self._search_firecrawl(query)
         elif self.provider == "duckduckgo":
             return self._search_duckduckgo(query)
         return self._search_fallback(query)
+
+    def _search_claude_web(self, query: str) -> list[dict]:
+        """
+        CA1 — Recherche via Claude WebSearchTool (BetaWebSearchTool20250305).
+        Claude effectue lui-meme la recherche et synthetise les resultats.
+        Necessite anthropic>=0.40 et acces au beta 'web-search-2025-03-05'.
+        Cout : ~$0.01-0.03 par requete.
+        Provider : 'claude_web_search' dans settings.yaml crawler.provider
+        """
+        try:
+            import anthropic
+            client = anthropic.Anthropic()
+            response = client.beta.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=2048,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Recherche et synthetise les informations les plus importantes "
+                        f"sur ce sujet pour un trader BTC/USDT : '{query}'. "
+                        "Reponds avec un resume factuel de 2-3 paragraphes des sources les plus recentes."
+                    ),
+                }],
+                betas=["web-search-2025-03-05"],
+            )
+            # Extraire le texte de la reponse finale (pas les tool_use blocks)
+            text_parts = [
+                block.text for block in response.content
+                if hasattr(block, "text") and block.text
+            ]
+            summary = " ".join(text_parts).strip()
+            if summary:
+                return [{"title": query, "content": summary[:2000], "url": "", "score": 0.9}]
+        except Exception as exc:
+            logger.warning(f"Claude WebSearch echoue sur '{query}': {exc}")
+            # Fallback DuckDuckGo
+            return self._search_duckduckgo(query)
+        return []
 
     def _search_duckduckgo(self, query: str) -> list[dict]:
         """Recherche DuckDuckGo — gratuit, sans clé API."""

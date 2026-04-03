@@ -16,11 +16,10 @@ class FearGreedAgent:
 
     def analyze(self, state: dict) -> dict:
         try:
-            import requests
-            resp = requests.get(
+            from utils.http_session import get_http_session
+            resp = get_http_session().get(
                 "https://api.alternative.me/fng/?limit=3&format=json",
                 timeout=8,
-                headers={"User-Agent": "AtlasTrader/1.0"}
             )
             resp.raise_for_status()
             data = resp.json().get("data", [])

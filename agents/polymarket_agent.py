@@ -25,6 +25,17 @@ import logging
 import re
 import shutil
 import subprocess
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
+def _find_polyterm_bin() -> str:
+    """P1: cache le chemin du binaire polyterm — ne change pas en cours d'exécution."""
+    return (
+        shutil.which("polyterm")
+        or shutil.which("polyterm", path="/app/.local/bin:/usr/local/bin:/usr/bin")
+        or "/app/.local/bin/polyterm"
+    )
 
 logger = logging.getLogger("zeitgeist.polymarket")
 
@@ -53,12 +64,11 @@ class PolymarketAgent:
 
     def analyze(self, state: dict) -> dict:
         try:
-            import requests
+            from utils.http_session import get_http_session
 
-            resp = requests.get(
+            resp = get_http_session().get(
                 self._API_URL,
                 timeout=10,
-                headers={"User-Agent": "AtlasTrader/1.0"},
             )
             resp.raise_for_status()
             markets = resp.json()
@@ -217,12 +227,7 @@ class PolymarketAgent:
         NE PAS utiliser `with ThreadPoolExecutor` ici — voir synthesis_agent.py.
         """
         try:
-            # polyterm peut être hors PATH (ex: /app/.local/bin) — chercher explicitement
-            _polyterm_bin = (
-                shutil.which("polyterm")
-                or shutil.which("polyterm", path="/app/.local/bin:/usr/local/bin:/usr/bin")
-                or "/app/.local/bin/polyterm"
-            )
+            _polyterm_bin = _find_polyterm_bin()
             result = subprocess.run(
                 [_polyterm_bin, "predict", "--format", "json", "--limit", "30"],
                 capture_output=True,

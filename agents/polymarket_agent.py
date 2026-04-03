@@ -23,6 +23,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
+import subprocess
 
 logger = logging.getLogger("zeitgeist.polymarket")
 
@@ -148,6 +150,10 @@ class PolymarketAgent:
                 longshot_penalty = min(10.0, math.log10(longshot_volume / _LONGSHOT_VOLUME_MIN) * 4)
                 trader_score -= longshot_penalty
 
+            # Enrichissement polyterm : signal whale / smart-money (max ±15 pts)
+            whale_adjustment, whale_summary = self._get_polyterm_signal()
+            trader_score += whale_adjustment
+
             # Borner le score
             trader_score = max(10.0, min(90.0, trader_score))
 
@@ -173,10 +179,13 @@ class PolymarketAgent:
                     f" ⚠️ Signal contrarien : ${longshot_volume:,.0f} de volume "
                     f"sur paris longshots (−{longshot_penalty:.1f} pts)."
                 )
+            if whale_summary:
+                summary += f" {whale_summary}"
 
             logger.info(
                 f"Polymarket: avg_bullish={avg_bullish*100:.1f}% "
                 f"n={n} longshot_vol={longshot_volume:.0f} "
+                f"whale_adj={whale_adjustment:+.1f} "
                 f"→ score={trader_score:.1f} [{signal}]"
             )
 
@@ -194,6 +203,92 @@ class PolymarketAgent:
         except Exception as exc:
             logger.warning(f"PolymarketAgent erreur: {exc}")
             return self._fallback(str(exc))
+
+    @staticmethod
+    def _get_polyterm_signal() -> tuple[float, str]:
+        """
+        Appelle `polyterm predict --format json --limit 30` en subprocess pour enrichir
+        le signal avec les prédictions multi-facteurs de polyterm (momentum, volume,
+        whale activity, smart money quand disponible).
+
+        Retourne (adjustment: float [-15, +15], summary: str).
+        Retourne (0.0, "") si polyterm est indisponible ou renvoie des données inutilisables.
+
+        NE PAS utiliser `with ThreadPoolExecutor` ici — voir synthesis_agent.py.
+        """
+        try:
+            # polyterm peut être hors PATH (ex: /app/.local/bin) — chercher explicitement
+            _polyterm_bin = (
+                shutil.which("polyterm")
+                or shutil.which("polyterm", path="/app/.local/bin:/usr/local/bin:/usr/bin")
+                or "/app/.local/bin/polyterm"
+            )
+            result = subprocess.run(
+                [_polyterm_bin, "predict", "--format", "json", "--limit", "30"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return 0.0, ""
+
+            data = json.loads(result.stdout)
+            if data.get("success") is False:
+                return 0.0, ""
+
+            predictions = data.get("predictions", [])
+            if not predictions:
+                return 0.0, ""
+
+            # Agréger direction pondérée par confidence — toutes les prédictions
+            # (les marchés BTC ne sont pas toujours dans le top par volume ;
+            #  le sentiment global Polymarket reste un proxy risque valide)
+            # Seuil de confiance minimal pour éviter le bruit des prédictions incertaines
+            _MIN_CONF = 0.5
+            bullish_w = 0.0
+            bearish_w = 0.0
+            for p in predictions:
+                conf = float(p.get("confidence", 0.0))
+                if conf < _MIN_CONF:
+                    continue  # ignorer les prédictions peu confiantes
+                direction = str(p.get("direction", "neutral")).lower()
+                if direction == "bullish":
+                    bullish_w += conf
+                elif direction == "bearish":
+                    bearish_w += conf
+
+            total_w = bullish_w + bearish_w
+            if total_w == 0:
+                return 0.0, ""
+
+            # Ratio haussier [0..1] → ajustement plafonné à ±8 pts
+            # (signal indirect — marchés non-BTC → poids modéré)
+            bullish_ratio = bullish_w / total_w
+            adjustment = (bullish_ratio - 0.5) * 16.0  # max ±8 pts
+
+            n = len(predictions)
+            n_active = int(bullish_w + bearish_w > 0 and sum(
+                1 for p in predictions if float(p.get("confidence", 0)) >= _MIN_CONF
+                and str(p.get("direction", "neutral")).lower() in ("bullish", "bearish")
+            ))
+            bull_pct = bullish_ratio * 100
+            avg_conf = total_w / max(1, n_active)
+            summary = (
+                f"Polyterm sentiment global ({n_active} marchés conf≥50%, conf. moy. {avg_conf:.0%}) : "
+                f"{bull_pct:.0f}% haussier → {adjustment:+.1f} pts."
+            )
+            logger.info(
+                f"Polyterm signal: n_total={n} n_active={n_active} bull_ratio={bullish_ratio:.2f} "
+                f"adj={adjustment:+.1f} avg_conf={avg_conf:.2f}"
+            )
+            return adjustment, summary
+
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            # polyterm absent ou trop lent — silencieux, pas une erreur critique
+            return 0.0, ""
+        except Exception as exc:
+            logger.debug(f"Polyterm signal ignoré: {exc}")
+            return 0.0, ""
 
     @staticmethod
     def _fallback(reason: str) -> dict:

@@ -27,6 +27,7 @@ qrcode[pil]>=7.4.0       # génération du QR code TOTP
 # ---- Market Data ----
 ccxt>=4.3.0
 websocket-client>=1.8.0  # WebSocket prix temps réel (SL/TP tick-by-tick)
+polyterm>=0.6.2           # Polymarket whale tracking + smart money signals
 
 # ---- TimesFM Price Forecasting (requires ~2GB disk + Python <3.12) ----
 timesfm[torch]>=1.3.0

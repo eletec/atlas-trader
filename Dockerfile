@@ -83,6 +83,7 @@ WORKDIR /app
 
 # Copier le code source
 COPY --chown=atlas:atlas agents/           ./agents/
+COPY --chown=atlas:atlas comparison/       ./comparison/
 COPY --chown=atlas:atlas config/           ./config/
 COPY --chown=atlas:atlas dashboard/        ./dashboard/
 COPY --chown=atlas:atlas execution/        ./execution/

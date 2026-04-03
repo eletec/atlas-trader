@@ -326,7 +326,27 @@ def run_daemon(asset: str, interval: int) -> None:
             logger.info(f"Cycle #{cycle_count} démarré (planifié)")
 
         try:
-            state = run_single_cycle(asset, trigger=_trigger)
+            # Timeout global sur un cycle complet — 300s max (news+crawl+agents+LLM)
+            import concurrent.futures as _cf
+            _cycle_pool = _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="cycle")
+            _cycle_fut = _cycle_pool.submit(run_single_cycle, asset, _trigger)
+            try:
+                state = _cycle_fut.result(timeout=300)
+            except (_cf.TimeoutError, TimeoutError):
+                logger.error(f"Cycle #{cycle_count} TIMEOUT (300s) — abandon")
+                _cycle_pool.shutdown(wait=False)
+                # Libérer le lock que run_cycle() ne pourra pas relâcher
+                from utils.cycle_lock import release as _force_release
+                _force_release()
+                consecutive_errors += 1
+                if consecutive_errors >= 5:
+                    logger.critical("5 cycles consécutifs en erreur — arrêt d'urgence")
+                    _shutdown_event.set()
+                    break
+                continue
+            finally:
+                _cycle_pool.shutdown(wait=False)
+
             consecutive_errors = 0
             duration = time.time() - t0
             decision = (state.get("decision") or {}).get("action", "N/A")
@@ -347,7 +367,9 @@ def run_daemon(asset: str, interval: int) -> None:
                 break
 
         # Lancer le post-mortem de façon asynchrone si nécessaire
+        logger.debug("Post-mortem check starting...")
         _run_post_mortem_if_needed()
+        logger.debug("Post-mortem check done.")
 
         # Attendre jusqu'au prochain cycle (ou interruption par le monitor)
         elapsed = time.time() - t0
@@ -361,12 +383,14 @@ def run_daemon(asset: str, interval: int) -> None:
 
 
 def _run_post_mortem_if_needed() -> None:
-    """Lance le post-mortem si des décisions en attente existent."""
-    try:
+    """Lance le post-mortem si des décisions en attente existent.
+    Exécuté avec un timeout global de 120s pour ne jamais bloquer le daemon."""
+    import concurrent.futures
+
+    def _post_mortem_work():
         from storage.database import get_pending_postmortems
         from utils.config import load_settings
         from utils.logger import log_flux_metric
-        import time
         cfg = load_settings()
         pm_cfg = cfg.get("post_mortem", {})
         if not pm_cfg.get("enabled", True):
@@ -379,7 +403,6 @@ def _run_post_mortem_if_needed() -> None:
             agent = PostMortemAgent()
             agent.run(pending)
         else:
-            # Rien à traiter ce cycle — on log quand même pour la visibilité
             log_flux_metric("post_mortem", "ok", 0, 0)
 
         # Évaluer les prédictions TimesFM arrivées à échéance
@@ -389,8 +412,25 @@ def _run_post_mortem_if_needed() -> None:
         except Exception as exc:
             logger.debug(f"TimesFM eval skipped: {exc}")
 
+        # Évaluer les shadow positions arrivées à échéance
+        try:
+            from comparison.shadow_runner import evaluate_shadow_postmortems
+            evaluate_shadow_postmortems()
+        except Exception as exc:
+            logger.debug(f"Shadow post-mortem skipped: {exc}")
+
+    # IMPORTANT: ne PAS utiliser "with ThreadPoolExecutor" — son __exit__ appelle
+    # shutdown(wait=True) même après un TimeoutError, ce qui bloque indéfiniment.
+    _pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    _fut = _pool.submit(_post_mortem_work)
+    try:
+        _fut.result(timeout=120)
+    except concurrent.futures.TimeoutError:
+        logger.warning("Post-mortem timeout (120s) — skipped, daemon continues")
     except Exception as exc:
         logger.warning(f"Post-mortem ignoré : {exc}")
+    finally:
+        _pool.shutdown(wait=False)  # abandon le thread, ne jamais bloquer
 
 
 def launch_dashboard() -> None:

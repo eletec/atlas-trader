@@ -21,26 +21,91 @@ class FundamentalAgent:
     """Analyse les fondamentaux on-chain et macro-économiques."""
 
     def analyze(self, state: dict) -> dict:
-        """Retourne une analyse fondamentale."""
+        """Retourne une analyse fondamentale basée sur les indicateurs disponibles."""
         indicators = state.get("market_indicators", {}) or {}
-        funding = indicators.get("funding_rate", 0)
-        volume = indicators.get("volume_24h", 0)
-
         score = 50.0
         signals = []
 
-        # Funding rate signal
+        # --- 1. Funding rate (coût des longs/shorts) ---
+        funding = indicators.get("funding_rate", 0)
         if funding < -0.005:
-            score += 20
-            signals.append(f"Funding négatif ({funding:.4f}) — pression short élevée")
+            score += 15
+            signals.append(f"Funding négatif ({funding:.4f}) — shorts surexposés")
+        elif funding < 0:
+            score += 5
+            signals.append(f"Funding légèrement négatif ({funding:.4f})")
         elif funding > 0.02:
             score -= 15
             signals.append(f"Funding élevé ({funding:.4f}) — longs surexposés")
+        elif funding > 0.005:
+            score -= 5
+            signals.append(f"Funding modéré ({funding:.4f})")
 
-        # Volume signal
-        if volume > 2e9:
-            score += 10
-            signals.append(f"Volume élevé ({volume/1e9:.1f}B$)")
+        # --- 2. RSI (momentum) ---
+        rsi = indicators.get("rsi_14", 50)
+        if rsi <= 30:
+            score += 15
+            signals.append(f"RSI survente ({rsi:.0f})")
+        elif rsi <= 40:
+            score += 8
+            signals.append(f"RSI bas ({rsi:.0f})")
+        elif rsi >= 70:
+            score -= 15
+            signals.append(f"RSI surachat ({rsi:.0f})")
+        elif rsi >= 60:
+            score -= 5
+            signals.append(f"RSI élevé ({rsi:.0f})")
+
+        # --- 3. MACD momentum ---
+        macd = indicators.get("macd", 0)
+        macd_signal = indicators.get("macd_signal", 0)
+        if macd and macd_signal:
+            macd_diff = macd - macd_signal
+            if macd_diff > 0 and macd > 0:
+                score += 8
+                signals.append(f"MACD haussier ({macd:.2f}>{macd_signal:.2f})")
+            elif macd_diff < 0 and macd < 0:
+                score -= 8
+                signals.append(f"MACD baissier ({macd:.2f}<{macd_signal:.2f})")
+
+        # --- 4. Position par rapport à MA50 ---
+        price = indicators.get("price", 0)
+        ma_50 = indicators.get("ma_50", 0)
+        if price and ma_50:
+            pct_from_ma50 = (price - ma_50) / ma_50 * 100
+            if pct_from_ma50 > 5:
+                score -= 5
+                signals.append(f"Prix +{pct_from_ma50:.1f}% au-dessus MA50")
+            elif pct_from_ma50 > 0:
+                score += 5
+                signals.append(f"Prix au-dessus MA50 (+{pct_from_ma50:.1f}%)")
+            elif pct_from_ma50 > -5:
+                score -= 5
+                signals.append(f"Prix sous MA50 ({pct_from_ma50:.1f}%)")
+            else:
+                score -= 10
+                signals.append(f"Prix {pct_from_ma50:.1f}% sous MA50")
+
+        # --- 5. Bollinger Bands (volatilité + position) ---
+        bb_upper = indicators.get("bb_upper", 0)
+        bb_lower = indicators.get("bb_lower", 0)
+        if price and bb_upper and bb_lower and bb_upper > bb_lower:
+            bb_pos = (price - bb_lower) / (bb_upper - bb_lower)
+            if bb_pos < 0.15:
+                score += 8
+                signals.append(f"Prix proche bande basse BB ({bb_pos:.0%})")
+            elif bb_pos > 0.85:
+                score -= 8
+                signals.append(f"Prix proche bande haute BB ({bb_pos:.0%})")
+
+        # --- 6. Volume 24h ---
+        volume = indicators.get("volume_24h", 0)
+        if volume > 3e9:
+            score += 5
+            signals.append(f"Volume très élevé ({volume/1e9:.1f}B$)")
+        elif volume > 1.5e9:
+            score += 3
+            signals.append(f"Volume solide ({volume/1e9:.1f}B$)")
 
         score = max(0, min(100, score))
         signal = "BULLISH" if score > 60 else ("BEARISH" if score < 40 else "NEUTRAL")
@@ -51,7 +116,7 @@ class FundamentalAgent:
             "score": round(score, 1),
             "signal": signal,
             "summary": " | ".join(signals) if signals else "Fondamentaux neutres",
-            "confidence": 0.6,
+            "confidence": 0.7,
         }
 
 

@@ -100,11 +100,32 @@ DDL_STATEMENTS = [
         latency_ms      INTEGER DEFAULT 0
     )
     """,
+    # ── Shadow Decisions (profils de comparaison) ──
+    """
+    CREATE TABLE IF NOT EXISTS shadow_decisions (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id        TEXT    NOT NULL,
+        profile_name    TEXT    NOT NULL,
+        timestamp       TEXT    NOT NULL,
+        asset           TEXT    NOT NULL,
+        action          TEXT    NOT NULL,
+        score           REAL    NOT NULL,
+        entry_price     REAL,
+        sl_price        REAL,
+        tp_price        REAL,
+        position_size   REAL,
+        result_24h      REAL,
+        config_snapshot TEXT,
+        UNIQUE(cycle_id, profile_name)
+    )
+    """,
     # Index pour les requêtes fréquentes
     "CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_flux_name_ts ON flux_metrics(flux_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_tfm_ts ON timesfm_forecasts(timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_shadow_profile ON shadow_decisions(profile_name, timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_shadow_cycle ON shadow_decisions(cycle_id)",
 ]
 
 
@@ -163,7 +184,7 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
                 decision.get("sl_price"),
                 decision.get("tp_price"),
                 decision.get("position_size_usd"),
-                json.dumps({}),  # poids actuels à injecter si dispo
+                json.dumps(state.get("score_breakdown") or {}),  # scores bruts pour replay
                 state.get("llm_tokens_used", 0),
                 state.get("cycle_duration_ms", 0),
                 json.dumps(state.get("errors", [])),
@@ -545,3 +566,309 @@ def get_timesfm_stats() -> dict:
     except Exception as exc:
         logger.warning(f"Cannot get TimesFM stats: {exc}")
         return {"total": 0, "evaluated": 0, "recent": [], "pending": []}
+
+
+# ===========================================================
+# SHADOW DECISIONS — Profils de comparaison
+# ===========================================================
+
+def log_shadow_decision(
+    cycle_id: str,
+    profile_name: str,
+    timestamp: str,
+    asset: str,
+    decision: dict,
+    config_snapshot: str = "{}",
+) -> None:
+    """Insère une décision shadow pour un profil donné."""
+    action = decision.get("action", "HOLD")
+    if action == "HOLD":
+        return  # pas de log pour les HOLD (économie d'espace)
+
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO shadow_decisions
+                (cycle_id, profile_name, timestamp, asset, action, score,
+                 entry_price, sl_price, tp_price, position_size, config_snapshot)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    cycle_id, profile_name, timestamp, asset, action,
+                    decision.get("score", 50),
+                    decision.get("entry_price"),
+                    decision.get("sl_price"),
+                    decision.get("tp_price"),
+                    decision.get("position_size_usd"),
+                    config_snapshot,
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"Shadow log [{profile_name}] erreur : {exc}")
+
+
+def get_shadow_open_positions_for_profile(profile_name: str) -> list[dict]:
+    """Retourne les positions shadow ouvertes pour un profil."""
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM shadow_decisions
+                WHERE profile_name = ?
+                  AND result_24h IS NULL
+                  AND action IN ('BUY', 'SELL')
+                ORDER BY timestamp ASC
+                """,
+                (profile_name,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def close_shadow_position(shadow_id: int, close_price: float) -> None:
+    """Clôture une position shadow en calculant le P&L."""
+    try:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT action, entry_price, position_size FROM shadow_decisions WHERE id = ?",
+                (shadow_id,),
+            ).fetchone()
+            if not row:
+                return
+            entry = float(row["entry_price"] or 0)
+            size = float(row["position_size"] or 0)
+            if entry <= 0 or size <= 0:
+                return
+            qty = size / entry
+            if row["action"] == "BUY":
+                pnl = (close_price - entry) * qty
+            else:
+                pnl = (entry - close_price) * qty
+            conn.execute(
+                "UPDATE shadow_decisions SET result_24h = ? WHERE id = ?",
+                (round(pnl, 4), shadow_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"Shadow close position erreur : {exc}")
+
+
+def get_shadow_pending_postmortems(delay_hours: int = 24) -> list[dict]:
+    """Retourne les shadow decisions ouvertes depuis > delay_hours."""
+    cutoff = datetime.utcnow().replace(microsecond=0).isoformat()
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM shadow_decisions
+                WHERE result_24h IS NULL
+                  AND action IN ('BUY', 'SELL')
+                  AND datetime(timestamp, '+' || ? || ' hours') < datetime(?)
+                """,
+                (delay_hours, cutoff),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def update_shadow_result(shadow_id: int, result_24h: float) -> None:
+    """Met à jour le P&L 24h d'une shadow decision."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE shadow_decisions SET result_24h = ? WHERE id = ?",
+                (result_24h, shadow_id),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"Shadow update result erreur : {exc}")
+
+
+def get_shadow_comparison_stats() -> list[dict]:
+    """
+    Retourne les statistiques agrégées par profil shadow.
+    Inclut aussi le profil 'baseline' reconstitué depuis la table decisions.
+    """
+    stats = []
+    try:
+        with get_connection() as conn:
+            # ── Stats des profils shadow ──
+            rows = conn.execute(
+                """
+                SELECT
+                    profile_name,
+                    COUNT(*) as total_trades,
+                    SUM(CASE WHEN action = 'BUY' THEN 1 ELSE 0 END) as buys,
+                    SUM(CASE WHEN action = 'SELL' THEN 1 ELSE 0 END) as sells,
+                    SUM(CASE WHEN result_24h IS NOT NULL THEN 1 ELSE 0 END) as evaluated,
+                    SUM(CASE WHEN result_24h > 0 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN result_24h < 0 THEN 1 ELSE 0 END) as losses,
+                    COALESCE(SUM(result_24h), 0) as total_pnl,
+                    COALESCE(AVG(CASE WHEN result_24h IS NOT NULL THEN result_24h END), 0) as avg_pnl,
+                    COALESCE(MAX(result_24h), 0) as best_trade,
+                    COALESCE(MIN(result_24h), 0) as worst_trade,
+                    MIN(timestamp) as first_trade,
+                    MAX(timestamp) as last_trade
+                FROM shadow_decisions
+                GROUP BY profile_name
+                ORDER BY total_pnl DESC
+                """
+            ).fetchall()
+
+            for row in rows:
+                evaluated = row["evaluated"] or 0
+                wins = row["wins"] or 0
+                stats.append({
+                    "profile": row["profile_name"],
+                    "total_trades": row["total_trades"],
+                    "buys": row["buys"],
+                    "sells": row["sells"],
+                    "evaluated": evaluated,
+                    "wins": wins,
+                    "losses": row["losses"] or 0,
+                    "win_rate": round(wins / evaluated * 100, 1) if evaluated > 0 else 0,
+                    "total_pnl": round(row["total_pnl"], 2),
+                    "avg_pnl": round(row["avg_pnl"], 2),
+                    "best_trade": round(row["best_trade"], 2),
+                    "worst_trade": round(row["worst_trade"], 2),
+                    "first_trade": row["first_trade"],
+                    "last_trade": row["last_trade"],
+                })
+
+            # ── Stats du profil baseline (depuis decisions) ──
+            baseline_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) as total_trades,
+                    SUM(CASE WHEN action = 'BUY' THEN 1 ELSE 0 END) as buys,
+                    SUM(CASE WHEN action = 'SELL' THEN 1 ELSE 0 END) as sells,
+                    SUM(CASE WHEN result_24h IS NOT NULL THEN 1 ELSE 0 END) as evaluated,
+                    SUM(CASE WHEN result_24h > 0 THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN result_24h < 0 THEN 1 ELSE 0 END) as losses,
+                    COALESCE(SUM(result_24h), 0) as total_pnl,
+                    COALESCE(AVG(CASE WHEN result_24h IS NOT NULL THEN result_24h END), 0) as avg_pnl,
+                    COALESCE(MAX(result_24h), 0) as best_trade,
+                    COALESCE(MIN(result_24h), 0) as worst_trade,
+                    MIN(timestamp) as first_trade,
+                    MAX(timestamp) as last_trade
+                FROM decisions
+                WHERE action != 'HOLD'
+                """
+            ).fetchone()
+            if baseline_row and baseline_row["total_trades"]:
+                evaluated = baseline_row["evaluated"] or 0
+                wins = baseline_row["wins"] or 0
+                stats.insert(0, {
+                    "profile": "baseline",
+                    "total_trades": baseline_row["total_trades"],
+                    "buys": baseline_row["buys"],
+                    "sells": baseline_row["sells"],
+                    "evaluated": evaluated,
+                    "wins": wins,
+                    "losses": baseline_row["losses"] or 0,
+                    "win_rate": round(wins / evaluated * 100, 1) if evaluated > 0 else 0,
+                    "total_pnl": round(baseline_row["total_pnl"], 2),
+                    "avg_pnl": round(baseline_row["avg_pnl"], 2),
+                    "best_trade": round(baseline_row["best_trade"], 2),
+                    "worst_trade": round(baseline_row["worst_trade"], 2),
+                    "first_trade": baseline_row["first_trade"],
+                    "last_trade": baseline_row["last_trade"],
+                })
+
+    except Exception as exc:
+        logger.warning(f"Shadow stats erreur : {exc}")
+
+    # Ajouter les profils sans trades pour qu'ils apparaissent dans le tableau
+    try:
+        from comparison.shadow_runner import load_profiles
+        all_profiles = load_profiles()
+        existing = {s["profile"] for s in stats}
+        for name, cfg in all_profiles.items():
+            if cfg.get("active", False):
+                continue  # baseline déjà inclus
+            if name not in existing:
+                stats.append({
+                    "profile": name,
+                    "total_trades": 0, "buys": 0, "sells": 0,
+                    "evaluated": 0, "wins": 0, "losses": 0,
+                    "win_rate": 0, "total_pnl": 0, "avg_pnl": 0,
+                    "best_trade": 0, "worst_trade": 0,
+                    "first_trade": None, "last_trade": None,
+                })
+    except Exception:
+        pass
+
+    return stats
+
+
+def get_shadow_recent_decisions(n: int = 20) -> list[dict]:
+    """Retourne les N dernières décisions shadow, tous profils confondus."""
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM shadow_decisions
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (n,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def get_shadow_pnl_series() -> dict[str, list[dict]]:
+    """
+    Retourne les courbes de P&L cumulé par profil shadow.
+    Returns: {profile_name: [{timestamp, pnl, cumulative_pnl}, ...]}
+    """
+    series: dict[str, list[dict]] = {}
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT profile_name, timestamp, result_24h
+                FROM shadow_decisions
+                WHERE result_24h IS NOT NULL
+                ORDER BY timestamp ASC
+                """
+            ).fetchall()
+
+            for row in rows:
+                name = row["profile_name"]
+                if name not in series:
+                    series[name] = []
+                prev_cum = series[name][-1]["cumulative_pnl"] if series[name] else 0
+                series[name].append({
+                    "timestamp": row["timestamp"],
+                    "pnl": row["result_24h"],
+                    "cumulative_pnl": round(prev_cum + row["result_24h"], 2),
+                })
+
+            # Ajouter baseline depuis decisions
+            baseline_rows = conn.execute(
+                """
+                SELECT timestamp, result_24h
+                FROM decisions
+                WHERE result_24h IS NOT NULL AND action != 'HOLD'
+                ORDER BY timestamp ASC
+                """
+            ).fetchall()
+            if baseline_rows:
+                series["baseline"] = []
+                for row in baseline_rows:
+                    prev_cum = series["baseline"][-1]["cumulative_pnl"] if series["baseline"] else 0
+                    series["baseline"].append({
+                        "timestamp": row["timestamp"],
+                        "pnl": row["result_24h"],
+                        "cumulative_pnl": round(prev_cum + row["result_24h"], 2),
+                    })
+    except Exception as exc:
+        logger.warning(f"Shadow PnL series erreur : {exc}")
+
+    return series

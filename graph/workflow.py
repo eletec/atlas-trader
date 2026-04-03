@@ -106,6 +106,9 @@ class ZeitgeistState(TypedDict):
     trade_executed: bool
     trade_result: dict | None
 
+    # Score breakdown (pour shadow profiles)
+    score_breakdown: dict | None
+
     # Métadonnées
     errors: list[str]
     llm_tokens_used: int
@@ -405,7 +408,17 @@ def node_calculate_score(state: ZeitgeistState) -> dict:
         f"Agents={sum(agents_scores.values())/max(len(agents_scores),1):.1f} "
         f"Contrarian={contrarian_score:.1f}"
     )
-    return {"global_score": global_score}
+
+    # Conserver les scores bruts pour les shadow profiles
+    score_breakdown = {
+        "mirofish_score": mirofish_score,
+        "market_score": market_score,
+        "agent_scores": agents_scores,
+        "contrarian_score": contrarian_score,
+        "breakdown": breakdown,
+    }
+
+    return {"global_score": global_score, "score_breakdown": score_breakdown}
 
 
 def node_decide(state: ZeitgeistState) -> dict:
@@ -560,6 +573,7 @@ def create_initial_state(asset: str) -> ZeitgeistState:
         decision=None,
         trade_executed=False,
         trade_result=None,
+        score_breakdown=None,
         errors=[],
         llm_tokens_used=0,
         cycle_duration_ms=0,
@@ -594,6 +608,13 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
             f"tokens={final_state.get('llm_tokens_used', 0)} | "
             f"erreurs={len(final_state.get('errors', []))} ==="
         )
+
+        # Évaluer les shadow profiles (ne bloque pas le cycle)
+        try:
+            _run_shadow_profiles(final_state)
+        except Exception as exc:
+            logger.warning(f"Shadow profiles ignorés : {exc}")
+
         return final_state
     finally:
         release()
@@ -635,3 +656,34 @@ def _derive_market_score(indicators: MarketIndicators | None) -> float:
         score -= 10   # funding très élevé → longs surpayés → baissier
 
     return max(0.0, min(100.0, score))
+
+
+# ===========================================================
+# SHADOW PROFILES — évaluation en fin de cycle
+# ===========================================================
+
+def _run_shadow_profiles(state: ZeitgeistState) -> None:
+    """Évalue les profils shadow avec les mêmes scores bruts."""
+    breakdown = state.get("score_breakdown")
+    if not breakdown:
+        logger.debug("Pas de score_breakdown — shadow profiles ignorés")
+        return
+
+    from comparison.shadow_runner import evaluate_shadow_profiles
+
+    results = evaluate_shadow_profiles(
+        cycle_id=state["cycle_id"],
+        asset=state.get("asset", "BTC/USDT"),
+        timestamp=state.get("timestamp", ""),
+        mirofish_score=breakdown["mirofish_score"],
+        market_score=breakdown["market_score"],
+        agent_scores=breakdown["agent_scores"],
+        contrarian_score=breakdown["contrarian_score"],
+        market_indicators=state.get("market_indicators"),
+    )
+
+    if results:
+        actions_summary = " | ".join(
+            f"{r['profile']}={r['action']}({r['score']:.0f})" for r in results
+        )
+        logger.info(f"Shadow profiles: {actions_summary}")

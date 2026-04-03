@@ -1,0 +1,128 @@
+# ============================================================
+# Atlas Trader — Profils de comparaison (Shadow Profiles)
+# ============================================================
+#
+# Un seul profil est "active: true" — c'est celui qui exécute réellement.
+# Les autres sont des profils "shadow" qui évaluent ce qu'ils auraient
+# fait avec les mêmes données de marché, sans exécuter de trades réels.
+#
+# À chaque cycle, le système :
+#   1. Collecte les données (news, crawler, mirofish, agents, market)
+#   2. Exécute le profil actif normalement
+#   3. Évalue chaque profil shadow → log dans shadow_decisions
+#   4. Compare les résultats dans le dashboard
+#
+# Les poids scoring doivent sommer à 1.0.
+# ============================================================
+
+profiles:
+
+  # ── Profil actif (référence) ─────────────────────────────
+  baseline:
+    label: "Baseline (actuel)"
+    active: true
+    color: "#2196F3"
+    scoring:
+      mirofish: 0.15
+      market: 0.45
+      agents: 0.25
+      contrarian: 0.15
+    risk:
+      buy_threshold: 68
+      exit_threshold: 52
+      mode: balanced
+      position_size_pct: 5.0
+      atr_multiplier_sl: 2.0
+      atr_multiplier_tp: 3.0
+      ma50_filter_mode: gradual
+      ma50_strong_signal_threshold: 72
+      ma50_gradual_size_factor: 0.5
+      max_open_positions: 3
+
+  # ── Shadow : seuils abaissés, positions plus grosses ─────
+  aggressive:
+    label: "Agressif"
+    active: false
+    color: "#F44336"
+    scoring:
+      mirofish: 0.10
+      market: 0.50
+      agents: 0.25
+      contrarian: 0.15
+    risk:
+      buy_threshold: 60
+      exit_threshold: 48
+      mode: aggressive
+      position_size_pct: 7.5
+      atr_multiplier_sl: 1.5
+      atr_multiplier_tp: 4.0
+      ma50_filter_mode: "off"
+      ma50_strong_signal_threshold: 72
+      ma50_gradual_size_factor: 0.5
+      max_open_positions: 5
+
+  # ── Shadow : seuils élevés, petites positions ────────────
+  conservative:
+    label: "Conservateur"
+    active: false
+    color: "#4CAF50"
+    scoring:
+      mirofish: 0.20
+      market: 0.40
+      agents: 0.25
+      contrarian: 0.15
+    risk:
+      buy_threshold: 75
+      exit_threshold: 55
+      mode: conservative
+      position_size_pct: 3.0
+      atr_multiplier_sl: 2.5
+      atr_multiplier_tp: 2.5
+      ma50_filter_mode: block
+      ma50_strong_signal_threshold: 75
+      ma50_gradual_size_factor: 0.5
+      max_open_positions: 2
+
+  # ── Shadow : tout sur le market data, mirofish minimal ───
+  market_heavy:
+    label: "Market-Focused"
+    active: false
+    color: "#FF9800"
+    scoring:
+      mirofish: 0.05
+      market: 0.55
+      agents: 0.25
+      contrarian: 0.15
+    risk:
+      buy_threshold: 65
+      exit_threshold: 50
+      mode: balanced
+      position_size_pct: 5.0
+      atr_multiplier_sl: 2.0
+      atr_multiplier_tp: 3.5
+      ma50_filter_mode: gradual
+      ma50_strong_signal_threshold: 70
+      ma50_gradual_size_factor: 0.5
+      max_open_positions: 3
+
+  # ── Shadow : mêmes poids, stops plus serrés ─────────────
+  tight_stops:
+    label: "Stops Serrés"
+    active: false
+    color: "#9C27B0"
+    scoring:
+      mirofish: 0.15
+      market: 0.45
+      agents: 0.25
+      contrarian: 0.15
+    risk:
+      buy_threshold: 68
+      exit_threshold: 52
+      mode: balanced
+      position_size_pct: 5.0
+      atr_multiplier_sl: 1.2
+      atr_multiplier_tp: 2.0
+      ma50_filter_mode: gradual
+      ma50_strong_signal_threshold: 72
+      ma50_gradual_size_factor: 0.5
+      max_open_positions: 3

@@ -1245,6 +1245,141 @@ def render_force_run_button():
 
 
 # ===========================================================
+# COMPARAISON DES PROFILS SHADOW
+# ===========================================================
+
+def render_profile_comparison():
+    """Section de comparaison des profils shadow vs baseline."""
+    from comparison.shadow_runner import load_profiles
+
+    profiles_cfg = load_profiles()
+    if not profiles_cfg:
+        return
+
+    st.markdown(
+        f'<h3 style="margin:0 0 12px;font-size:18px;">'
+        f'<i class="fas fa-scale-balanced" style="margin-right:8px;color:#ff9800;"></i>'
+        f'{t("profiles_title")}</h3>',
+        unsafe_allow_html=True,
+    )
+
+    try:
+        from storage.database import get_shadow_comparison_stats, get_shadow_pnl_series
+
+        stats = get_shadow_comparison_stats()
+        if not stats:
+            st.info(t("profiles_no_data"))
+            return
+
+        # ── Tableau comparatif ──
+        theme = _get_theme()
+        if theme == "light":
+            tbl_bg = "#ffffff"; tbl_fg = "#212529"
+            head_bg = "#f1f3f5"; row_alt = "#f8f9fa"
+            border = "#dee2e6"
+        else:
+            tbl_bg = "#161b22"; tbl_fg = "#e6edf3"
+            head_bg = "#0d1117"; row_alt = "#1b2129"
+            border = "rgba(255,255,255,0.08)"
+
+        # Récupérer les couleurs des profils
+        profile_colors = {}
+        for name, cfg in profiles_cfg.items():
+            profile_colors[name] = cfg.get("color", "#888")
+
+        cols = ["Profil", t("profiles_trades"), t("profiles_winrate"),
+                t("profiles_total_pnl"), t("profiles_avg_pnl"), "Best", "Worst"]
+        header = "".join(
+            f'<th style="padding:8px 12px;text-align:{"left" if i == 0 else "right"};'
+            f'background:{head_bg};font-weight:600;font-size:12px;'
+            f'border-bottom:2px solid {border};">{c}</th>'
+            for i, c in enumerate(cols)
+        )
+
+        rows_html = ""
+        for idx, s in enumerate(stats):
+            bg = row_alt if idx % 2 else tbl_bg
+            color = profile_colors.get(s["profile"], "#888")
+            label = s["profile"]
+            for name, cfg in profiles_cfg.items():
+                if name == s["profile"]:
+                    label = cfg.get("label", name)
+                    break
+
+            pnl_color = "#00c853" if s["total_pnl"] >= 0 else "#ff1744"
+            avg_color = "#00c853" if s["avg_pnl"] >= 0 else "#ff1744"
+            wr_color = "#00c853" if s["win_rate"] >= 50 else ("#ff9800" if s["win_rate"] >= 40 else "#ff1744")
+
+            rows_html += (
+                f'<tr style="background:{bg};">'
+                f'<td style="padding:6px 12px;font-weight:600;">'
+                f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+                f'background:{color};margin-right:6px;"></span>{label}</td>'
+                f'<td style="padding:6px 12px;text-align:right;">{s["total_trades"]}'
+                f' <span style="color:#888;font-size:11px;">({s["evaluated"]} éval.)</span></td>'
+                f'<td style="padding:6px 12px;text-align:right;color:{wr_color};font-weight:600;">'
+                f'{s["win_rate"]:.0f}%</td>'
+                f'<td style="padding:6px 12px;text-align:right;color:{pnl_color};font-weight:700;">'
+                f'${s["total_pnl"]:+.2f}</td>'
+                f'<td style="padding:6px 12px;text-align:right;color:{avg_color};">'
+                f'${s["avg_pnl"]:+.2f}</td>'
+                f'<td style="padding:6px 12px;text-align:right;color:#00c853;">'
+                f'${s["best_trade"]:+.2f}</td>'
+                f'<td style="padding:6px 12px;text-align:right;color:#ff1744;">'
+                f'${s["worst_trade"]:+.2f}</td>'
+                f'</tr>'
+            )
+
+        st.markdown(
+            f'<div style="border:1px solid {border};border-radius:8px;overflow:hidden;">'
+            f'<table style="width:100%;border-collapse:collapse;color:{tbl_fg};font-size:13px;">'
+            f'<thead><tr>{header}</tr></thead>'
+            f'<tbody>{rows_html}</tbody></table></div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Courbe P&L cumulé ──
+        pnl_series = get_shadow_pnl_series()
+        if pnl_series:
+            st.markdown(
+                f'<p style="margin:16px 0 8px;font-size:14px;font-weight:600;">'
+                f'{t("profiles_cumulative")}</p>',
+                unsafe_allow_html=True,
+            )
+            fig = go.Figure()
+            for name, points in pnl_series.items():
+                color = profile_colors.get(name, "#888")
+                label = name
+                for pname, cfg in profiles_cfg.items():
+                    if pname == name:
+                        label = cfg.get("label", name)
+                        break
+                fig.add_trace(go.Scatter(
+                    x=[p["timestamp"] for p in points],
+                    y=[p["cumulative_pnl"] for p in points],
+                    mode="lines+markers",
+                    name=label,
+                    line=dict(color=color, width=2),
+                    marker=dict(size=4),
+                ))
+            fig.update_layout(
+                height=300,
+                margin=dict(l=0, r=0, t=20, b=0),
+                legend=dict(orientation="h", y=-0.15),
+                yaxis_title="P&L ($)",
+                xaxis_title="",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=tbl_fg, size=11),
+            )
+            fig.add_hline(y=0, line_dash="dash", line_color="#888", line_width=1)
+            st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as exc:
+        st.caption(f"⚠️ Profils : {exc}")
+
+
+# ===========================================================
 # INTERFACE ADMIN
 # ===========================================================
 
@@ -1675,17 +1810,30 @@ def main():
             recent_trades = _get_recent_trades()
             render_last_decision(last_cycle)
             render_pnl_chart(recent_trades)
+            render_profile_comparison()
             render_btc_live_chart()
             render_trades_list(recent_trades)
             render_live_logs()
 
-    # Auto-refresh toutes les 30s — préserve les query params dont _sid
-    time.sleep(0.1)
-    _sid_js = st.session_state.get("_session_id", "")
-    st.markdown(
-        f"<script>setTimeout(function(){{window.location.href=window.location.href;}}, 30000);</script>",
-        unsafe_allow_html=True
-    )
+    # Refresh événementiel : surveille le dernier timestamp en DB
+    # Rerun uniquement quand un nouveau cycle est terminé (pas de rechargement HTTP)
+    import time as _time
+    try:
+        from storage.database import get_connection as _get_conn
+        with _get_conn() as _conn:
+            _latest = _conn.execute(
+                "SELECT MAX(timestamp) FROM decisions"
+            ).fetchone()[0] or ""
+    except Exception:
+        _latest = ""
+    _last_seen = st.session_state.get("_last_cycle_ts", None)
+    if _last_seen is None:
+        st.session_state["_last_cycle_ts"] = _latest
+    elif _latest != _last_seen:
+        st.session_state["_last_cycle_ts"] = _latest
+        st.rerun()
+    _time.sleep(10)
+    st.rerun()
 
 
 if __name__ == "__main__":

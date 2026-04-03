@@ -1182,6 +1182,54 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "Signalen duiden op bearish druk. Overtuigingsscore ({score}/100) onder uitstapdrempel ({threshold}) — longpositie gesloten.",
         "zh": "信号显示看跌压力。信念评分 ({score}/100) 低于退出阈值 ({threshold})——多头仓位已平仓。",
     },
+
+    # Shadow Profiles / Comparison
+    "profiles_title": {
+        "fr": "Comparaison des profils", "en": "Profile Comparison",
+        "de": "Profilvergleich", "es": "Comparación de perfiles",
+        "it": "Confronto dei profili", "pt": "Comparação de perfis",
+        "nl": "Profielvergelijking", "zh": "配置对比",
+    },
+    "profiles_no_data": {
+        "fr": "Pas encore de données de comparaison. Les profils shadow seront évalués au prochain cycle.",
+        "en": "No comparison data yet. Shadow profiles will be evaluated next cycle.",
+        "de": "Noch keine Vergleichsdaten. Shadow-Profile werden im nächsten Zyklus ausgewertet.",
+        "es": "Aún no hay datos de comparación. Los perfiles shadow se evaluarán en el próximo ciclo.",
+        "it": "Nessun dato di confronto. I profili shadow verranno valutati al prossimo ciclo.",
+        "pt": "Ainda sem dados de comparação. Os perfis shadow serão avaliados no próximo ciclo.",
+        "nl": "Nog geen vergelijkingsdata. Shadow-profielen worden volgend cyclus geëvalueerd.",
+        "zh": "暂无对比数据。影子配置将在下一个周期中评估。",
+    },
+    "profiles_trades": {
+        "fr": "Trades", "en": "Trades",
+        "de": "Trades", "es": "Operaciones",
+        "it": "Operazioni", "pt": "Operações",
+        "nl": "Transacties", "zh": "交易",
+    },
+    "profiles_winrate": {
+        "fr": "Win Rate", "en": "Win Rate",
+        "de": "Gewinnrate", "es": "Tasa de acierto",
+        "it": "Win Rate", "pt": "Taxa de acerto",
+        "nl": "Winstpercentage", "zh": "胜率",
+    },
+    "profiles_total_pnl": {
+        "fr": "P&L Total", "en": "Total P&L",
+        "de": "Gesamt-P&L", "es": "P&L Total",
+        "it": "P&L Totale", "pt": "P&L Total",
+        "nl": "Totale P&L", "zh": "总盈亏",
+    },
+    "profiles_avg_pnl": {
+        "fr": "P&L Moyen", "en": "Avg P&L",
+        "de": "Ø P&L", "es": "P&L Promedio",
+        "it": "P&L Medio", "pt": "P&L Médio",
+        "nl": "Gem. P&L", "zh": "平均盈亏",
+    },
+    "profiles_cumulative": {
+        "fr": "P&L cumulé par profil", "en": "Cumulative P&L by Profile",
+        "de": "Kumuliertes P&L pro Profil", "es": "P&L acumulado por perfil",
+        "it": "P&L cumulato per profilo", "pt": "P&L acumulado por perfil",
+        "nl": "Cumulatief P&L per profiel", "zh": "各配置累计盈亏",
+    },
 }
 
 _current_lang: str = "fr"

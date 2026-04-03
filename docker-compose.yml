@@ -66,11 +66,13 @@ services:
       # Montage optionnel des fichiers de config locaux (override)
       - ./config/settings.yaml:/app/config/settings.yaml:rw
       - ./config/prompts.yaml:/app/config/prompts.yaml:ro
+      - ./config/profiles.yaml:/app/config/profiles.yaml:ro
       # Config Streamlit (thème, toolbar…)
       - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
       # Montage du code source — permet les mises a jour sans rebuild
       - ./dashboard:/app/dashboard:ro
       - ./agents:/app/agents:ro
+      - ./comparison:/app/comparison:ro
       - ./graph:/app/graph:ro
       - ./execution:/app/execution:ro
       - ./utils:/app/utils:ro

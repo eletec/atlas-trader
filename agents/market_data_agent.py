@@ -24,7 +24,10 @@ class MarketDataAgent:
         try:
             import ccxt
             exchange_class = getattr(ccxt, cfg.get("name", "binance"))
-            exchange = exchange_class({"enableRateLimit": True})
+            exchange = exchange_class({
+                "enableRateLimit": True,
+                "timeout": 30000,  # 30s hard timeout on all API calls
+            })
             if cfg.get("testnet", True):
                 exchange.set_sandbox_mode(True)
             return exchange

@@ -80,6 +80,22 @@ class FundamentalAgent:
 
         air_summary = air.get("summary", "Non disponible")[:300] if air else "Non disponible"
 
+        # On-chain metrics (best-effort, graceful fallback)
+        onchain = self._fetch_onchain_metrics()
+        onchain_block = ""
+        if onchain:
+            parts = []
+            if "active_addresses" in onchain:
+                parts.append(f"- Active addresses (5d avg): {onchain['active_addresses']:,}")
+            if "hashrate_eh" in onchain:
+                parts.append(f"- Hashrate: {onchain['hashrate_eh']:.1f} EH/s")
+            if "btc_dominance" in onchain:
+                parts.append(f"- BTC dominance: {onchain['btc_dominance']:.1f}%")
+            if "total_market_cap_usd" in onchain:
+                parts.append(f"- Total crypto market cap: ${onchain['total_market_cap_usd']/1e12:.2f}T")
+            if parts:
+                onchain_block = "\nOn-chain metrics:\n" + "\n".join(parts)
+
         prompt = (
             "You are a senior crypto technical analyst. Analyze the indicators and give "
             "a conviction score [0-100].\n\n"
@@ -92,7 +108,8 @@ class FundamentalAgent:
             f"({'bullish' if macd > macd_signal else 'bearish'})\n"
             f"- Funding rate: {funding:.5f}\n"
             f"- 24h Volume: ${volume/1e9:.2f}B\n"
-            f"- Bollinger position: {bb_pct}\n\n"
+            f"- Bollinger position: {bb_pct}\n"
+            f"{onchain_block}\n"
             f"Macro context:\n{air_summary}\n\n"
             "Respond in strict JSON:\n"
             '{"score": <0-100>, "signal": "BULLISH"|"NEUTRAL"|"BEARISH", '
@@ -139,6 +156,62 @@ class FundamentalAgent:
             "summary": str(data.get("summary", "Analyse fondamentale LLM")),
             "confidence": float(data.get("confidence", 0.7)),
         }
+
+    @staticmethod
+    def _fetch_onchain_metrics() -> dict:
+        """
+        Collecte les m\u00e9triques on-chain depuis des APIs publiques gratuites.
+        Aucune cl\u00e9 API requise (sauf Dune si DUNE_API_KEY est pr\u00e9sent).
+        Timeout de 10s par requ\u00eate ; \u00e9checs ignor\u00e9s silencieusement.
+        """
+        import urllib.request
+        import json as _json
+
+        data: dict = {}
+        _TIMEOUT = 10
+
+        def _get(url: str) -> dict | None:
+            try:
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "zeitgeist-trader/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                    return _json.loads(resp.read().decode())
+            except Exception:
+                return None
+
+        # 1. Adresses actives Bitcoin \u2014 blockchain.info (public, sans cl\u00e9)
+        r = _get(
+            "https://api.blockchain.info/charts/n-unique-addresses"
+            "?timespan=5days&format=json"
+        )
+        if r and isinstance(r.get("values"), list) and r["values"]:
+            vals = [v.get("y", 0) for v in r["values"] if v.get("y")]
+            if vals:
+                data["active_addresses"] = int(sum(vals) / len(vals))
+
+        # 2. Hashrate Bitcoin \u2014 mempool.space (public, sans cl\u00e9)
+        r = _get("https://mempool.space/api/v1/mining/hashrate/3d")
+        if r:
+            # L'API retourne {"hashrates": [{..., "avgHashrate": ...}], "difficulty": [...]}
+            hrs = r.get("hashrates", [])
+            if hrs:
+                latest_hr = hrs[-1].get("avgHashrate", 0)
+                if latest_hr:
+                    data["hashrate_eh"] = float(latest_hr) / 1e18  # en EH/s
+
+        # 3. Dominance BTC + market cap global \u2014 CoinGecko (public, limit\u00e9 ~30 req/min)
+        r = _get("https://api.coingecko.com/api/v3/global")
+        if r and "data" in r:
+            d = r["data"]
+            dom = d.get("market_cap_percentage", {}).get("btc")
+            if dom is not None:
+                data["btc_dominance"] = float(dom)
+            total_mc = d.get("total_market_cap", {}).get("usd")
+            if total_mc is not None:
+                data["total_market_cap_usd"] = float(total_mc)
+
+        return data
 
     @staticmethod
     def _rule_based(indicators: dict) -> dict:

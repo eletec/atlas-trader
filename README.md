@@ -9,7 +9,7 @@
 
 **Atlas Trader** est un système de paper-trading entièrement autonome qui combine plusieurs couches d'intelligence artificielle pour générer des signaux de trading à haute conviction sur BTC/USDT (Binance testnet).
 
-Le système fonctionne en boucle de **15 minutes** :
+Le système fonctionne en boucle de **15 minutes** par défaut :
 1. Crawle le web pour capter l'*air du temps* (news, macro, social)
 2. Simule un **swarm de 5 000 agents** (MiroFish) pour quantifier le sentiment
 3. Lance un **pipeline LangGraph** d'agents LLM spécialisés (technique, fondamental, sentiment, contrarian)
@@ -49,11 +49,11 @@ Le système fonctionne en boucle de **15 minutes** :
                            │
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                  LANGGRAPH AGENT PIPELINE                       │
-│  ┌──────────────┐  ┌────────────────┐  ┌────────────────────┐  │
-│  │ MarketData   │  │  Fundamental   │  │  XSentiment        │  │
-│  │ OHLCV·RSI   │  │  on-chain·macro│  │  Twitter·Reddit    │  │
-│  └──────┬───────┘  └───────┬────────┘  └─────────┬──────────┘  │
-│         │                  │                      │             │
+│  ┌──────────────┐  ┌────────────────┐  ┌────────────────────┐   │
+│  │ MarketData   │  │  Fundamental   │  │  XSentiment        │   │
+│  │ OHLCV·RSI    │  │  on-chain·macro│  │  Twitter·Reddit    │   │
+│  └──────┬───────┘  └───────┬────────┘  └─────────┬──────────┘   │
+│         │                  │                     │              │
 │  ┌──────▼──────────────────▼──────────────────────▼──────────┐  │
 │  │  CoordinatorAgent (Claude Haiku, cache 30min)             │  │
 │  │  → injecte régime + DI± + multiplicateurs de poids        │  │
@@ -198,23 +198,39 @@ streamlit run dashboard/streamlit_app.py
 ### Variables d'environnement (`.env`)
 
 ```env
-# LLM
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...          # optionnel
+# Variables d'environnement — COPIER EN .env ET REMPLIR
+# NE JAMAIS COMMITTER LE FICHIER .env
 
-# Market data
-BINANCE_API_KEY=...
-BINANCE_SECRET=...
-BINANCE_TESTNET=true           # paper trading
+# ---- LLM Providers (renseigner AU MOINS UN) ----
+ANTHROPIC_API_KEY=sk-ant-...           # https://console.anthropic.com
+DEEPSEEK_API_KEY=sk-                   # https://platform.deepseek.com  ← recommandé
+GITHUB_TOKEN=ghp_...                   # https://github.com/settings/tokens
+OPENAI_API_KEY=sk-...                  # optionnel
+XAI_API_KEY=xai-...                    # optionnel Grok
+OLLAMA_BASE_URL=                       # Ollama 
 
-# News & Crawling (tous optionnels — DuckDuckGo gratuit par défaut)
-TAVILY_API_KEY=...
-NEWSAPI_KEY=...
-FIRECRAWL_API_KEY=...
+# ---- Web Crawling ----
+TAVILY_API_KEY=tvly-...
+FIRECRAWL_API_KEY=fc-...
+SERPAPI_API_KEY=...           # fallback
 
-# Dashboard
-ADMIN_PASSWORD=changeme        # protège l'onglet Admin
-```
+# ---- Exchange ----
+BINANCE_API_KEY=
+BINANCE_API_SECRET=
+BINANCE_TESTNET=true          # toujours true pour paper trading
+
+# ---- News ----
+NEWSAPI_KEY=
+
+# ---- Notifications (optionnel) ----
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+
+
+# ---- App ----
+LOG_LEVEL=INFO
+ENVIRONMENT=development       # development | production
 
 ---
 

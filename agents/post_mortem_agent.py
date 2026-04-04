@@ -16,6 +16,7 @@ from pathlib import Path
 logger = logging.getLogger("zeitgeist.post_mortem")
 
 _CALIBRATION_PATH = Path(__file__).resolve().parent.parent / "storage" / "calibration.json"
+_PM_STATE_PATH    = Path(__file__).resolve().parent.parent / "storage" / "pm_state.json"
 
 
 class PostMortemAgent:
@@ -32,6 +33,10 @@ class PostMortemAgent:
         self.min_history: int = pm.get("min_history_for_adjustment", 10)
         self.weight_min: float = cfg.get("scoring", {}).get("min_weight", 0.05)
         self.weight_max: float = cfg.get("scoring", {}).get("max_weight", 0.60)
+        self.walk_forward_days: int = int(pm.get("walk_forward_days", 7))
+        self.correlation_threshold: float = float(
+            pm.get("correlation_threshold", 0.75)
+        )
 
     def run(self, pending_decisions: list[dict]) -> None:
         """
@@ -119,10 +124,15 @@ class PostMortemAgent:
     def _maybe_adjust_weights(self) -> None:
         """
         Ajuste les poids par regression logistique sur les N derniers cycles (F13).
-        Fallback sur ajustement win_rate lineaire si sklearn indisponible.
+        Walk-forward : n'exécute qu'une fois tous les walk_forward_days jours.
+        Fallback sur ajustement win_rate linéaire si sklearn indisponible.
         """
         from storage.database import get_pnl_history
         from utils.config import load_settings, save_settings
+
+        # Walk-forward : vérifier la fenêtre depuis le dernier ajustement
+        if not self._walk_forward_due():
+            return
 
         history = [h for h in get_pnl_history() if h.get("result_24h") is not None]
         if len(history) < self.min_history:
@@ -136,6 +146,9 @@ class PostMortemAgent:
         wins = [h for h in recent if (h.get("result_24h") or 0) > 0]
         win_rate = len(wins) / len(recent)
         logger.info(f"Post-mortem : win_rate={win_rate:.0%} sur {len(recent)} decisions")
+
+        # Vérification de la corrélation inter-agents avant ajustement
+        self._agents_correlation_check(recent)
 
         # Tentative de regression logistique si sklearn disponible (F13)
         new_weights = self._compute_logistic_weights(recent)
@@ -178,6 +191,7 @@ class PostMortemAgent:
             f"mirofish={mf_new/total:.3f} market={market_new/total:.3f} "
             f"agents={agents_new/total:.3f} contrarian={contrarian_new/total:.3f}"
         )
+        self._persist_pm_state({"last_adjustment_at": time.time()})
 
     def _compute_logistic_weights(self, history: list[dict]) -> dict | None:
         """
@@ -230,6 +244,137 @@ class PostMortemAgent:
         except Exception as exc:
             logger.warning(f"Regression logistique echouee: {exc}")
             return None
+
+    # ------------------------------------------------------------------
+    # Walk-forward helpers
+    # ------------------------------------------------------------------
+
+    def _walk_forward_due(self) -> bool:
+        """Retourne True si walk_forward_days sont écoulés depuis le dernier ajustement."""
+        state = self._load_pm_state()
+        last = state.get("last_adjustment_at", 0.0)
+        elapsed_days = (time.time() - float(last)) / 86_400
+        due = elapsed_days >= self.walk_forward_days
+        if not due:
+            logger.info(
+                f"Post-mortem walk-forward : prochain ajustement dans "
+                f"{self.walk_forward_days - elapsed_days:.1f} jours"
+            )
+        return due
+
+    @staticmethod
+    def _load_pm_state() -> dict:
+        try:
+            if _PM_STATE_PATH.exists():
+                return json.loads(_PM_STATE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return {}
+
+    @staticmethod
+    def _persist_pm_state(updates: dict) -> None:
+        try:
+            state = PostMortemAgent._load_pm_state()
+            state.update(updates)
+            _PM_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _PM_STATE_PATH.write_text(
+                json.dumps(state, indent=2), encoding="utf-8"
+            )
+        except Exception as exc:
+            logger.debug(f"pm_state persist error: {exc}")
+
+    # ------------------------------------------------------------------
+    # Correlation check inter-agents
+    # ------------------------------------------------------------------
+
+    def _agents_correlation_check(self, recent: list[dict]) -> None:
+        """
+        Calcule la corrélation de Pearson entre les scores des agents
+        sur les 30 derniers cycles. Si corr(A, B) > correlation_threshold,
+        loggue un avertissement et réduit de 10% le poids de l'agent
+        le moins performant entre les deux.
+        """
+        try:
+            import numpy as np
+            from utils.config import load_settings, save_settings
+
+            # Colonnes disponibles dans l'historique
+            agent_cols = ["mirofish_score", "market_score", "agents_mean", "contrarian_score"]
+            col_map    = {
+                "mirofish_score": "mirofish",
+                "market_score":   "market",
+                "agents_mean":    "agents",
+                "contrarian_score": "contrarian",
+            }
+
+            window = recent[-30:]
+            data = {col: [] for col in agent_cols}
+            for row in window:
+                for col in agent_cols:
+                    v = row.get(col)
+                    if v is not None:
+                        data[col].append(float(v))
+
+            # Ne garder que les colonnes avec assez de données
+            valid = [c for c in agent_cols if len(data[c]) >= 20]
+            if len(valid) < 2:
+                return
+
+            # Perf de chaque agent (win_rate sur les cycles concernés)
+            def agent_win_rate(col: str) -> float:
+                pairs = [
+                    (row.get(col), row.get("result_24h"))
+                    for row in window
+                    if row.get(col) is not None and row.get("result_24h") is not None
+                ]
+                if not pairs:
+                    return 0.0
+                wins = sum(1 for s, r in pairs if (s > 50) == (r > 0))
+                return wins / len(pairs)
+
+            cfg = load_settings()
+            weights = cfg.get("scoring", {}).get("weights", {})
+            changed = False
+
+            for i, col_a in enumerate(valid):
+                for col_b in valid[i + 1:]:
+                    min_len = min(len(data[col_a]), len(data[col_b]))
+                    if min_len < 20:
+                        continue
+                    arr_a = np.array(data[col_a][-min_len:])
+                    arr_b = np.array(data[col_b][-min_len:])
+                    if np.std(arr_a) < 1e-9 or np.std(arr_b) < 1e-9:
+                        continue
+                    r = float(np.corrcoef(arr_a, arr_b)[0, 1])
+                    if r > self.correlation_threshold:
+                        wa_key = col_map[col_a]
+                        wb_key = col_map[col_b]
+                        wr_a = agent_win_rate(col_a)
+                        wr_b = agent_win_rate(col_b)
+                        weaker = wa_key if wr_a <= wr_b else wb_key
+                        logger.warning(
+                            f"Corrélation {wa_key}/{wb_key} = {r:.2f} > seuil "
+                            f"{self.correlation_threshold} — réduction poids '{weaker}' de 10%"
+                        )
+                        if weaker in weights:
+                            weights[weaker] = round(
+                                max(self.weight_min, weights[weaker] * 0.90), 4
+                            )
+                            changed = True
+
+            if changed:
+                # Re-normaliser
+                total = sum(weights.values()) or 1.0
+                cfg["scoring"]["weights"] = {
+                    k: round(v / total, 4) for k, v in weights.items()
+                }
+                save_settings(cfg)
+                logger.info(f"Post-mortem : poids corrigés après check corrélation")
+
+        except ImportError:
+            logger.debug("numpy non disponible — correlation check ignoré")
+        except Exception as exc:
+            logger.warning(f"Correlation check error: {exc}")
 
     # ------------------------------------------------------------------
     # F6 — Calibration isotonique des scores

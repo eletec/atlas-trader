@@ -6,6 +6,9 @@ Usage :
     python backtest.py --days 60 --tf 1h        # 60 jours, timeframe 1h
     python backtest.py --days 30 --no-ma50      # sans filtre MA50
     python backtest.py --days 30 --mode aggressive
+    python backtest.py --with-regime            # overlay régime de marché + métriques par régime
+    python backtest.py --with-regime --n-hmm-states 3   # test HMM 3 états
+    python backtest.py --compare-states         # compare HMM 2 vs 3 états côte à côte
 
 Données : téléchargées depuis Binance public (sans clé API, sans testnet).
 Indicateurs : RSI-14, MACD, ATR-14, MA50 journalière — mêmes algos que le live.
@@ -278,6 +281,7 @@ class Position:
     tp_price: float
     entry_ts: int        # candle timestamp ms
     qty: float = 0.0     # quantité en BTC
+    regime: str = "UNKNOWN"  # régime au moment de l'entrée
 
     def __post_init__(self):
         if self.entry_price > 0:
@@ -289,6 +293,32 @@ class BacktestResult:
     trades: list[dict] = field(default_factory=list)
     equity_curve: list[float] = field(default_factory=list)
     timestamps: list[int] = field(default_factory=list)
+    regimes: list[str] = field(default_factory=list)   # régime par bougie
+
+
+# ===========================================================
+# DÉTECTION DE RÉGIME (optionnelle — nécessite hmmlearn)
+# ===========================================================
+
+def compute_regime_for_window(
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    volumes: np.ndarray,
+    n_hmm_states: int = 2,
+) -> str:
+    """Classifie le régime courant via MarketRegimeAgent (déterministe sans HMM)."""
+    try:
+        from agents.market_regime_agent import MarketRegimeAgent
+        agent = MarketRegimeAgent.__new__(MarketRegimeAgent)
+        agent._n_hmm_states = n_hmm_states
+        agent._vol_window   = 30
+        agent._trend_window = 50
+        agent._adx_period   = 18
+        features = agent._compute_features(closes, highs, lows, volumes)
+        return agent._classify_regime(features)
+    except Exception:
+        return "UNKNOWN"
 
 
 def run_backtest(
@@ -297,6 +327,8 @@ def run_backtest(
     cfg: BacktestConfig,
     capital_start: float,
     daily_ts_from_full: list[int],
+    with_regime: bool = False,
+    n_hmm_states: int = 2,
 ) -> BacktestResult:
     """
     Boucle principale du backtest.
@@ -308,6 +340,10 @@ def run_backtest(
     result = BacktestResult()
     position: Optional[Position] = None
     warmup = 100  # bougies nécessaires pour les indicateurs
+    closes_arr  = np.array([c[4] for c in ohlcv])
+    highs_arr   = np.array([c[2] for c in ohlcv])
+    lows_arr    = np.array([c[3] for c in ohlcv])
+    volumes_arr = np.array([c[5] for c in ohlcv])
 
     for i in range(warmup, len(ohlcv)):
         candle = ohlcv[i]
@@ -350,10 +386,22 @@ def run_backtest(
                     "pnl": round(pnl, 2),
                     "reason": reason,
                     "capital_after": round(capital, 2),
+                    "_regime_at_entry": position.regime,
                 })
                 position = None
 
         # --- Calcul indicateurs + décision (seulement si pas de position ouverte) ---
+        # Régime courant (optionnel)
+        if with_regime and i >= warmup + 30:
+            regime = compute_regime_for_window(
+                closes_arr[:i+1], highs_arr[:i+1],
+                lows_arr[:i+1], volumes_arr[:i+1],
+                n_hmm_states=n_hmm_states,
+            )
+        else:
+            regime = "UNKNOWN"
+        result.regimes.append(regime)
+
         if position is None:
             window = ohlcv[i - warmup: i + 1]
 
@@ -388,7 +436,7 @@ def run_backtest(
                 position = Position(
                     action=action, entry_price=price,
                     size_usd=size_usd, sl_price=sl, tp_price=tp,
-                    entry_ts=ts_ms,
+                    entry_ts=ts_ms, regime=regime,
                 )
 
         result.equity_curve.append(round(capital, 2))
@@ -412,6 +460,7 @@ def run_backtest(
             "pnl": round(pnl, 2),
             "reason": "END",
             "capital_after": round(capital, 2),
+            "_regime_at_entry": position.regime,
         })
 
     return result
@@ -420,6 +469,26 @@ def run_backtest(
 # ===========================================================
 # MÉTRIQUES DE PERFORMANCE
 # ===========================================================
+
+def _regime_breakdown(trades: list[dict]) -> dict:
+    """Métriques par régime si les trades ont la clé '_regime_at_entry'."""
+    by_regime: dict[str, list[float]] = {}
+    for t in trades:
+        reg = t.get("_regime_at_entry", "UNKNOWN")
+        if reg == "UNKNOWN":
+            continue
+        by_regime.setdefault(reg, []).append(t["pnl"])
+    result = {}
+    for reg, pnls in sorted(by_regime.items()):
+        wins = sum(1 for p in pnls if p > 0)
+        result[reg] = {
+            "n": len(pnls),
+            "win_rate": round(wins / max(len(pnls), 1), 3),
+            "avg_pnl": round(float(np.mean(pnls)), 2),
+            "total_pnl": round(float(sum(pnls)), 2),
+        }
+    return result
+
 
 def compute_metrics(result: BacktestResult, capital_start: float, symbol: str,
                     start_dt: datetime, end_dt: datetime) -> dict:
@@ -485,6 +554,7 @@ def compute_metrics(result: BacktestResult, capital_start: float, symbol: str,
         "capital_end": round(final_capital, 2),
         "n_wins": len(winners),
         "n_losses": len(losers),
+        "by_regime": _regime_breakdown(trades),
     }
 
 
@@ -518,6 +588,19 @@ def print_report(metrics: dict, trades: list[dict]) -> None:
     print(f"  Capital initial : {metrics['capital_start']:>9.2f} USD")
     print(f"  Capital final   : {metrics['capital_end']:>9.2f} USD")
     print(sep)
+
+    # Métriques par régime
+    br = metrics.get("by_regime", {})
+    if br:
+        print(f"\n  Métriques par régime de marché :")
+        print(f"  {'Régime':<22} {'N':>5} {'Win%':>6} {'Avg P&L':>9} {'Total P&L':>11}")
+        print(f"  {'─'*22} {'─'*5} {'─'*6} {'─'*9} {'─'*11}")
+        for reg, m in sorted(br.items()):
+            print(
+                f"  {reg:<22} {m['n']:>5} {m['win_rate']:>6.1%} "
+                f"{m['avg_pnl']:>+9.2f} {m['total_pnl']:>+11.2f}"
+            )
+        print()
 
     # Detail des 10 derniers trades
     if trades:
@@ -554,6 +637,12 @@ def parse_args() -> argparse.Namespace:
                         help="Seuil BUY (override settings.yaml)")
     parser.add_argument("--sell-threshold", type=float, default=None,
                         help="Seuil SELL (override settings.yaml)")
+    parser.add_argument("--with-regime", action="store_true",
+                        help="Active la détection de régime (MarketRegimeAgent)")
+    parser.add_argument("--n-hmm-states", type=int, default=2, choices=[2, 3],
+                        help="Nombre d'états HMM (2=LOW/HIGH, 3=LOW/MED/HIGH)")
+    parser.add_argument("--compare-states", action="store_true",
+                        help="Compare HMM 2 vs 3 états (2 passes, avec --with-regime)")
     return parser.parse_args()
 
 
@@ -618,10 +707,24 @@ def main() -> None:
     daily_closes_full = np.array([c[4] for c in daily_ohlcv_full])
     daily_ts_from_full = [c[0] for c in daily_ohlcv_full]
 
-    print("  [3/3] Simulation en cours...")
-    result = run_backtest(ohlcv, daily_closes_full, cfg, args.capital, daily_ts_from_full)
-    metrics = compute_metrics(result, args.capital, args.symbol, start_dt, end_dt)
-    print_report(metrics, result.trades)
+    use_regime = args.with_regime or args.compare_states
+
+    if args.compare_states:
+        print("  [3/3] Comparaison HMM 2 vs 3 états...")
+        for n_states in (2, 3):
+            print(f"\n  --- HMM n_hmm_states={n_states} ---")
+            r = run_backtest(ohlcv, daily_closes_full, cfg, args.capital,
+                             daily_ts_from_full, with_regime=True, n_hmm_states=n_states)
+            m = compute_metrics(r, args.capital, args.symbol, start_dt, end_dt)
+            print_report(m, r.trades)
+    else:
+        print(f"  [3/3] Simulation en cours{' (avec régime)' if use_regime else ''}...")
+        result = run_backtest(
+            ohlcv, daily_closes_full, cfg, args.capital, daily_ts_from_full,
+            with_regime=use_regime, n_hmm_states=args.n_hmm_states,
+        )
+        metrics = compute_metrics(result, args.capital, args.symbol, start_dt, end_dt)
+        print_report(metrics, result.trades)
 
 
 if __name__ == "__main__":

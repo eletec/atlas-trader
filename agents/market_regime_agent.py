@@ -68,7 +68,7 @@ class MarketRegimeAgent:
 
             features = self._compute_features(closes, highs, lows, volumes)
             regime   = self._classify_regime(features)
-            hmm_res  = self._run_hmm(closes)
+            hmm_res  = self._run_hmm(closes, highs, lows)
 
             # Score 0-100 : BULLISH si UP, BEARISH si DOWN, ~50 sinon
             if regime == REGIME_TRENDING_UP:
@@ -345,12 +345,16 @@ class MarketRegimeAgent:
     # HMM
     # ------------------------------------------------------------------
 
-    def _run_hmm(self, closes: np.ndarray) -> dict:
+    def _run_hmm(
+        self,
+        closes: np.ndarray,
+        highs: "np.ndarray | None" = None,
+        lows:  "np.ndarray | None" = None,
+    ) -> dict:
         """
-        Gaussian HMM à 2 états (Low Vol / High Vol).
-        3 features : returns + volatilité rolling + ADX (plus expressif qu'returns seul).
+        Gaussian HMM à n_hmm_states états (Low/[Med/]High Volatility).
+        3 features : returns + volatilité rolling + ADX (vraie TR si highs/lows dispo).
         covariance_type="full" pour capturer les corrélations inter-features.
-        Retourne l'état courant, sa probabilité, et la proba de transition.
         """
         try:
             from hmmlearn.hmm import GaussianHMM
@@ -359,18 +363,20 @@ class MarketRegimeAgent:
             if len(returns) < self.MIN_CANDLES:
                 raise ValueError("not enough data")
 
-            # Feature 1 : rendements log
             r = returns
 
-            # Feature 2 : volatilité rolling (écart-type sur vol_window)
+            # Feature 2 : volatilité rolling
             vw = self._vol_window
             vol = np.array([
                 np.std(r[max(0, i - vw):i + 1])
                 for i in range(len(r))
             ])
 
-            # Feature 3 : ADX vectorisé (aligné sur closes[1:] = même longueur que returns)
-            adx_arr = self._compute_adx_array(closes[1:], closes[1:], closes[1:], self._adx_period)
+            # Feature 3 : ADX vectorisé — utilise vraies highs/lows si disponibles
+            # (passes closes[1:] as both when missing → TR=0; always provide highs/lows)
+            h = highs[1:] if highs is not None else closes[1:]
+            l = lows[1:]  if lows  is not None else closes[1:]
+            adx_arr = self._compute_adx_array(h, l, closes[1:], self._adx_period)
 
             X = np.column_stack((
                 r,
@@ -391,19 +397,23 @@ class MarketRegimeAgent:
             current_state = int(states[-1])
             state_prob    = float(posteriors[-1, current_state])
 
-            # Identifier "high vol" : état dont la variance du return (feature 0) est max
-            # covars_ shape = (n_components, n_features, n_features) avec "full"
-            vars_per_state = [float(model.covars_[s][0, 0]) for s in range(self._n_hmm_states)]
-            high_vol_state  = int(np.argmax(vars_per_state))
-            label = "HIGH_VOL" if current_state == high_vol_state else "LOW_VOL"
+            # Labels dynamiques : trier les états par variance du return (feature 0)
+            # ascending → rank 0 = Low-vol, rank 1 = [Med-vol,] rank n-1 = High-vol
+            n = self._n_hmm_states
+            vars_per_state = [float(model.covars_[s][0, 0]) for s in range(n)]
+            sorted_states  = sorted(range(n), key=lambda s: vars_per_state[s])
+            _vol_labels    = ["LOW_VOL", "MED_VOL", "HIGH_VOL"] if n == 3 else ["LOW_VOL", "HIGH_VOL"]
+            state_label_map = {s: _vol_labels[rank] for rank, s in enumerate(sorted_states)}
+            label = state_label_map[current_state]
 
-            # Probabilité de transition au prochain pas
-            transition_prob = float(model.transmat_[current_state, 1 - current_state]) \
-                if self._n_hmm_states == 2 else 0.0
+            # Probabilité de changer d'état
+            if n == 2:
+                transition_prob = float(model.transmat_[current_state, 1 - current_state])
+            else:
+                transition_prob = float(1.0 - model.transmat_[current_state, current_state])
 
-            # Vecteur complet des posteriors (pour affichage dashboard)
             all_posteriors = {f"state_{s}": round(float(posteriors[-1, s]), 3)
-                              for s in range(self._n_hmm_states)}
+                              for s in range(n)}
 
             return {
                 "state":           current_state,
@@ -411,14 +421,15 @@ class MarketRegimeAgent:
                 "state_prob":      state_prob,
                 "transition_prob": transition_prob,
                 "all_posteriors":  all_posteriors,
+                "state_labels":    state_label_map,
             }
 
         except ImportError:
             logger.debug("hmmlearn non disponible — HMM ignoré")
-            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2, "all_posteriors": {}}
+            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2, "all_posteriors": {}, "state_labels": {}}
         except Exception as exc:
             logger.debug(f"HMM échoué: {exc}")
-            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2, "all_posteriors": {}}
+            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2, "all_posteriors": {}, "state_labels": {}}
 
     # ------------------------------------------------------------------
     # Extraction OHLCV

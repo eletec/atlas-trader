@@ -433,6 +433,33 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     }
 
 
+def node_debate(state: ZeitgeistState) -> dict:
+    """Nœud 5b (optionnel) : Débat Bull vs Bear avant la synthèse.
+    Désactivé par défaut (agents.bull_bear_debate.enabled: false).
+    Le résultat est injecté dans agent_analyses["debate"] pour que
+    SynthesisAgent puisse l'inclure dans son raisonnement narratif.
+    """
+    from utils.config import load_settings
+    cfg = load_settings()
+    if not cfg.get("agents", {}).get("bull_bear_debate", {}).get("enabled", False):
+        return {}   # nœud transparent si désactivé
+
+    from agents.bull_bear_debate_agent import BullBearDebateAgent
+    import time
+
+    t0 = time.time()
+    logger.info(f"[{state['cycle_id']}] Débat Bull vs Bear")
+    agent  = BullBearDebateAgent()
+    result = agent.analyze(state)
+
+    analyses = dict(state.get("agent_analyses") or {})
+    analyses["debate"] = result
+
+    elapsed = time.time() - t0
+    logger.info(f"[{state['cycle_id']}] Débat terminé en {elapsed:.1f}s")
+    return {"agent_analyses": analyses}
+
+
 def node_synthesize(state: ZeitgeistState) -> dict:
     """Nœud 6 : Synthèse finale par SynthesisAgent (LLM).
     Utilise SynthesisAgentAgentic (CA4) si llm.agentic_synthesis=true.
@@ -626,6 +653,7 @@ def build_workflow() -> StateGraph:
     graph.add_node("run_mirofish", node_run_mirofish)
     graph.add_node("fetch_market_data", node_fetch_market_data)
     graph.add_node("analyze_agents", node_analyze_agents)
+    graph.add_node("debate", node_debate)
     graph.add_node("synthesize", node_synthesize)
     graph.add_node("calculate_score", node_calculate_score)
     graph.add_node("decide", node_decide)
@@ -643,7 +671,8 @@ def build_workflow() -> StateGraph:
     graph.add_edge("crawl_web", "run_mirofish")
     graph.add_edge("run_mirofish", "fetch_market_data")
     graph.add_edge("fetch_market_data", "analyze_agents")
-    graph.add_edge("analyze_agents", "synthesize")
+    graph.add_edge("analyze_agents", "debate")
+    graph.add_edge("debate", "synthesize")
     graph.add_edge("synthesize", "calculate_score")
     graph.add_edge("calculate_score", "decide")
     graph.add_conditional_edges(

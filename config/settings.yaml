@@ -124,6 +124,9 @@ agents:
   market_regime:
     enabled: true
     weight_in_scoring: 0.0   # Info-only — ajuste les autres agents, pas le score
+  bull_bear_debate:
+    enabled: false            # Désactivé par défaut (doubles l'appel LLM/cycle)
+    weight_in_scoring: 0.0   # Score neutre — apport narratif uniquement pour SynthesisAgent
 
 # ----------------------------------------------------------
 # TimesFM — Price Forecasting Foundation Model
@@ -138,6 +141,7 @@ timesfm:
 # ----------------------------------------------------------
 market_regime:
   n_hmm_states: 2            # états HMM : LOW_VOLATILITY / HIGH_VOLATILITY
+                              # 3 états : LOW / MED / HIGH — activer via --n-hmm-states 3 (backtest)
   vol_window: 30             # fenêtre pour volatilité relative (20-40 recommandé BTC 15min)
   trend_window: 50           # fenêtre SMA longue pour signal tendance (~12.5h en 15min)
   adx_period: 18             # période ADX — 18 recommandé crypto (moins sensible au bruit que 14)
@@ -148,10 +152,10 @@ market_regime:
 # ----------------------------------------------------------
 scoring:
   weights:
-    mirofish: 0.15    # réduit car simulateur dégradé
-    market: 0.45      # market data + RSI plus fiable
-    agents: 0.25
-    contrarian: 0.15
+    mirofish: 0.12    # réduit (P3 Grok) — simulateur dégradé
+    market: 0.40      # market data + RSI plus fiable
+    agents: 0.30      # augmenté (P3 Grok) — agents LLM plus informatifs
+    contrarian: 0.18  # augmenté (P3 Grok) — signal contrarien renforcé
   min_weight: 0.05
   max_weight: 0.60
   normalization_window: 30  # cycles pour z-score
@@ -254,6 +258,8 @@ post_mortem:
   delay_hours: 24             # analyse effectuée X heures après la décision
   min_history_for_adjustment: 10  # N décisions min avant ajustement des poids
   learning_rate: 0.05         # amplitude max d'ajustement par itération
+  walk_forward_days: 7        # intervalle minimum entre deux ajustements (walk-forward)
+  correlation_threshold: 0.75 # seuil Pearson r au-delà duquel deux agents sont considérés redondants
 
 # ----------------------------------------------------------
 # Monitor rapide (thread parallèle au daemon)

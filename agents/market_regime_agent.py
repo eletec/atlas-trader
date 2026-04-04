@@ -211,7 +211,7 @@ class MarketRegimeAgent:
             )
 
             def smooth(a, p):
-                r = [np.sum(a[:p])]
+                r = [np.mean(a[:p])]
                 for v in a[p:]:
                     r.append(r[-1] - r[-1] / p + v)
                 return np.array(r)
@@ -254,7 +254,7 @@ class MarketRegimeAgent:
             )
 
             def smooth(arr, p):
-                result = [np.sum(arr[:p])]
+                result = [np.mean(arr[:p])]
                 for v in arr[p:]:
                     result.append(result[-1] - result[-1] / p + v)
                 return np.array(result)
@@ -290,15 +290,18 @@ class MarketRegimeAgent:
           3. TRENDING si ADX > 18 + momentum cohérent
           4. SIDEWAYS sinon
         """
+        di_spread = f["di_plus"] - f["di_minus"]
         bull_signals = sum([
             f["momentum_20"] > 0.01,
             f["momentum_50"] > 0.02,
             f["sma_gap"]     > 0.005,
+            di_spread > 5,       # DI+ nettement au-dessus de DI-
         ])
         bear_signals = sum([
             f["momentum_20"] < -0.01,
             f["momentum_50"] < -0.02,
             f["sma_gap"]     < -0.005,
+            di_spread < -5,      # DI- nettement au-dessus de DI+
         ])
 
         # 1. ADX très élevé (>30) avec direction claire → TRENDING prime sur HIGH_VOL

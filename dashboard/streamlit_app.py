@@ -1975,7 +1975,9 @@ def render_admin_panel():
             _history_parts = []
             for d in last_decisions[1:6]:
                 _ws = _json.loads(d.get("weights_snapshot") or "{}")
-                _r  = _ws.get("regime", "?")
+                _r  = _ws.get("regime", "")
+                if not _r:
+                    continue  # entrée antérieure sans données régime
                 _p  = float(_ws.get("hmm_prob", 0.5))
                 _col = {"TRENDING_UP": "#43a047", "TRENDING_DOWN": "#e53935",
                         "SIDEWAYS": "#fb8c00", "HIGH_VOLATILITY": "#e65100"}.get(_r, "#757575")

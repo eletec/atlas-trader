@@ -979,7 +979,7 @@ def render_pnl_chart(history: list[dict]):
         fill="tozeroy",
         fillcolor=f"rgba({'0,200,100' if final_pnl >= 0 else '200,50,50'}, 0.15)",
         line=dict(color=color, width=2),
-        name="P&L cumulé ($)",
+        name=t("chart_pnl_name"),
         yaxis="y1"
     ))
     # Prix BTC en overlay si disponible
@@ -987,7 +987,7 @@ def render_pnl_chart(history: list[dict]):
         fig.add_trace(go.Scatter(
             x=df["timestamp"], y=df["entry_price"],
             line=dict(color="#f39c12", width=1, dash="dot"),
-            name="Prix BTC ($)",
+            name=t("chart_btc_price"),
             yaxis="y2", opacity=0.6
         ))
     # Marqueurs BUY/SELL
@@ -1327,7 +1327,7 @@ def render_live_logs():
 def render_force_run_button():
     """Bouton pour forcer un cycle immédiatement."""
     if st.button("Force Run", type="primary", use_container_width=True,
-                 help="Déclenche un cycle de trading immédiat"):
+                 help=t("force_run_help")):
         cfg = _get_settings()
         st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
 
@@ -1592,7 +1592,7 @@ def render_admin_panel():
             settings["llm"] = llm
         claude_prompt = st.text_area(
             t("cfg_ca7_prompt"),
-            value="Résume les derniers signaux de marché et propose une action.",
+            value=t("cfg_ca7_default_prompt"),
             height=100,
             key="ca7_claude_prompt",
         )

@@ -230,7 +230,7 @@ def render_auth(cm=None) -> None:
     if _now < _lockout_until:
         _remaining = int(_lockout_until - _now)
         _centered_open()
-        st.error(f"Trop de tentatives échouées. Réessayez dans {_remaining}s.")
+        st.error(t("login_locked").format(s=_remaining))
         _centered_close()
         return
 
@@ -239,9 +239,9 @@ def render_auth(cm=None) -> None:
     st.markdown("### 🔐 Atlas Trader")
 
     with st.form("atlas_login", clear_on_submit=False):
-        username = st.text_input("Identifiant")
-        password = st.text_input("Mot de passe", type="password")
-        submitted = st.form_submit_button("Connexion", use_container_width=True, type="primary")
+        username = st.text_input(t("login_username"))
+        password = st.text_input(t("login_password"), type="password")
+        submitted = st.form_submit_button(t("login_btn"), use_container_width=True, type="primary")
 
     if submitted:
         user = users.get(username)
@@ -251,7 +251,7 @@ def render_auth(cm=None) -> None:
             if _fails >= 5:
                 st.session_state["_login_lockout_until"] = time.time() + 300
                 st.session_state["_login_fails"] = 0
-            st.error("Identifiant ou mot de passe incorrect.")
+            st.error(t("login_wrong"))
             _centered_close()
             return
 
@@ -289,21 +289,18 @@ def _render_first_setup(cfg: dict) -> None:
     """Formulaire de création du compte admin lors du premier lancement."""
     _centered_open()
     st.markdown("### ⚙️ Configuration initiale — Atlas Trader")
-    st.info(
-        "Aucun utilisateur configuré. "
-        "Créez votre compte **administrateur** ci-dessous."
-    )
+    st.info(t("setup_info"))
     with st.form("first_setup"):
-        username = st.text_input("Identifiant admin", value="admin")
-        pwd1 = st.text_input("Mot de passe (min. 8 caractères)", type="password")
-        pwd2 = st.text_input("Confirmer le mot de passe", type="password")
-        submitted = st.form_submit_button("Créer le compte", type="primary", use_container_width=True)
+        username = st.text_input(t("setup_username"), value="admin")
+        pwd1 = st.text_input(t("setup_pwd_hint"), type="password")
+        pwd2 = st.text_input(t("setup_confirm_pwd"), type="password")
+        submitted = st.form_submit_button(t("setup_create_btn"), type="primary", use_container_width=True)
 
     if submitted:
         if len(pwd1) < 8:
-            st.error("Le mot de passe doit contenir au moins 8 caractères.")
+            st.error(t("setup_pwd_min_err"))
         elif pwd1 != pwd2:
-            st.error("Les mots de passe ne correspondent pas.")
+            st.error(t("usr_pwd_mismatch"))
         else:
             cfg.setdefault("users", {})[username] = {
                 "password_hash": hash_password(pwd1),
@@ -314,7 +311,7 @@ def _render_first_setup(cfg: dict) -> None:
             cfg.setdefault("settings", {}).setdefault("guest_mode", True)
             cfg["settings"].setdefault("cookie_expiry_days", 7)
             save_users_config(cfg)
-            st.success(f"✅ Compte '{username}' créé. La prochaine connexion configurera le 2FA.")
+            st.success(t("setup_success").format(uname=username))
             _outer = st.session_state.get("_auth_slot")
             if _outer is not None:
                 try:
@@ -361,22 +358,18 @@ def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
     _setup_slot = st.empty()
     with _setup_slot.container():
         st.markdown("### 📱 Configuration 2FA — Google Authenticator")
-        st.info(
-            "**Première connexion admin.** "
-            "Scannez ce QR code avec votre application d'authentification, "
-            "puis entrez le code à 6 chiffres pour confirmer."
-        )
+        st.info(t("totp_setup_info"))
         col_qr, col_info = st.columns([1, 1])
         with col_qr:
             st.image(buf, width=190)
         with col_info:
-            st.markdown("**Clé à saisir manuellement :**")
+            st.markdown(t("totp_manual_key"))
             st.code(secret, language=None)
-            st.caption("Compatible : Google Authenticator · Authy · Bitwarden · 1Password")
+            st.caption(t("totp_compat"))
 
         with st.form("totp_setup_form"):
-            code = st.text_input("Code à 6 chiffres", max_chars=6, placeholder="123456")
-            submitted = st.form_submit_button("Confirmer", type="primary", use_container_width=True)
+            code = st.text_input(t("totp_code_input"), max_chars=6, placeholder="123456")
+            submitted = st.form_submit_button(t("totp_confirm_btn"), type="primary", use_container_width=True)
 
     if submitted:
         if pyotp.TOTP(secret).verify(code, valid_window=1):
@@ -398,7 +391,7 @@ def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
             _finalize_login(username, roles, expiry_days)
             return
         else:
-            st.error("Code incorrect. Vérifiez que l'heure de votre téléphone est correcte.")
+            st.error(t("totp_wrong"))
 
 
 def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
@@ -425,21 +418,21 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
     # Le prochain run démarre avec un DOM vierge → zéro bloc fantôme.
     _totp_slot = st.empty()
     with _totp_slot.container():
-        st.markdown("### 🔐 Vérification 2FA")
-        st.caption(f"Compte : **{username}**")
+        st.markdown(f"### 🔐 {t('totp_verify_title')}")
+        st.caption(t("totp_account").format(username=username))
 
         with st.form("totp_verify_form"):
             code = st.text_input(
-                "Code à 6 chiffres",
+                t("totp_code_input"),
                 max_chars=6,
                 placeholder="123456",
                 autocomplete="one-time-code",
             )
             col_a, col_b = st.columns([3, 1])
             with col_a:
-                submitted = st.form_submit_button("Vérifier", type="primary", use_container_width=True)
+                submitted = st.form_submit_button(t("totp_verify_btn"), type="primary", use_container_width=True)
             with col_b:
-                back = st.form_submit_button("← Retour", use_container_width=True)
+                back = st.form_submit_button(t("totp_back_btn"), use_container_width=True)
 
     if back:
         _totp_slot.empty()
@@ -470,7 +463,7 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
             _finalize_login(username, roles, expiry_days)
             return
         else:
-            st.error("Code incorrect ou expiré. Réessayez.")
+            st.error(t("totp_verify_wrong"))
 
 
 def _finalize_login(username: str, roles: list[str], expiry_days: int = 7) -> None:

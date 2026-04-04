@@ -278,7 +278,7 @@ def render_pipeline_diagram(statuses: dict[str, dict]) -> None:
     """Affiche le diagramme du pipeline avec statuts colorés via Graphviz (natif Streamlit)."""
     def _color(flux_name: str) -> str:
         s = statuses.get(flux_name, {}).get("status", "unknown")
-        return {"ok": "#2ecc71", "error": "#e74c3c", "timeout": "#f3a10c",
+        return {"ok": "#2ecc71", "hold": "#2ecc71", "error": "#e74c3c", "timeout": "#f3a10c",
                 "disabled": "#5a6268", "unknown": "#495057"}.get(s, "#495057")
 
     def _lbl(flux_name: str, short: str) -> str:
@@ -434,14 +434,14 @@ def render_controls(settings: dict) -> dict | None:
             unsafe_allow_html=True
         )
 
-        hdr_name, hdr_desc, hdr_toggle, hdr_force = st.columns([3, 4, 1, 1])
+        hdr_name, hdr_desc, hdr_toggle, hdr_force = st.columns([3, 5, 1, 1])
         hdr_name.caption("**Flux**")
         hdr_desc.caption("**Description**")
         hdr_toggle.caption("**On**")
         hdr_force.caption("")
 
         for flux_name, flux_def in fluxes_in_cat:
-            col_name, col_desc, col_toggle, col_force = st.columns([3, 4, 1, 1])
+            col_name, col_desc, col_toggle, col_force = st.columns([3, 5, 1, 1])
             with col_name:
                 st.markdown(f"**{flux_def['label']}**")
             with col_desc:
@@ -462,7 +462,6 @@ def render_controls(settings: dict) -> dict | None:
                     "🔄",
                     key=f"force_{flux_name}",
                     help=t("flux_force_help").format(label=flux_def['label']),
-                    use_container_width=True,
                 ):
                     st.session_state[f"force_{flux_name}"] = True
                     st.toast(t("flux_force_toast").format(label=flux_def['label']), icon="🔄")

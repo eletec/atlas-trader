@@ -12,6 +12,11 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+try:
+    from utils.i18n import t
+except ImportError:
+    from i18n import t  # type: ignore
+
 # ===========================================================
 # CONFIGURATION DES FLUX
 # ===========================================================
@@ -110,11 +115,12 @@ CATEGORY_COLORS = {
     "execution": "#d62728",      # rouge
 }
 
-CATEGORY_LABELS = {
-    "intelligence": "🌐 Intelligence",
-    "simulation": "🌊 Simulation",
-    "analysis": "🤖 Analyse",
-    "execution": "⚡ Exécution",
+# CATEGORY_LABELS are resolved at render time via t() — see render_status_board()
+CATEGORY_LABEL_KEYS = {
+    "intelligence": "flux_cat_intelligence",
+    "simulation":   "flux_cat_simulation",
+    "analysis":     "flux_cat_analysis",
+    "execution":    "flux_cat_execution",
 }
 
 STATUS_ICONS = {
@@ -237,7 +243,7 @@ def _save_settings(settings: dict) -> bool:
         save_settings(settings)
         return True
     except ImportError:
-        st.warning("Mode démo — la sauvegarde n'est pas disponible")
+        st.warning(t("flux_demo_save"))
         return False
 
 
@@ -324,7 +330,7 @@ def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
 
         st.markdown(
             f"<h4 style='color:{CATEGORY_COLORS[cat]}'>"
-            f"{CATEGORY_LABELS[cat]}</h4>",
+            f"{t(CATEGORY_LABEL_KEYS[cat])}</h4>",
             unsafe_allow_html=True
         )
 
@@ -356,13 +362,13 @@ def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
 
                 with st.container(border=True):
                     st.markdown(f"**{icon} {flux_def['label']}**")
-                    st.caption(flux_def["description"])
-                    st.metric("Latence", f"{latency}ms", delta=None,
+                    st.caption(t(f"flux_desc_{flux_name}"))
+                    st.metric(t("flux_latency"), f"{latency}ms", delta=None,
                               delta_color=latency_color)
                     c1, c2 = st.columns(2)
-                    c1.metric("Erreurs", f"{err_rate}%")
+                    c1.metric(t("flux_errors"), f"{err_rate}%")
                     c2.metric("Items/h", f"{stat_info.get('total_items', 0)}")
-                    st.caption(f"Dernier appel : {last_ts}")
+                    st.caption(t("flux_last_call").format(ts=last_ts))
 
                     if status == "error" and status_info.get("error_message"):
                         st.error(f"⚠️ {status_info['error_message'][:80]}",
@@ -371,7 +377,7 @@ def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
 
 def render_controls(settings: dict) -> dict | None:
     """Panneau de contrôle — enable/disable + force refresh par flux."""
-    st.markdown('<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>Contrôles des flux</h4>', unsafe_allow_html=True)
+    st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
     updated_settings = dict(settings)
     changed = False
@@ -386,16 +392,16 @@ def render_controls(settings: dict) -> dict | None:
                     flux_def["label"],
                     value=enabled,
                     key=f"toggle_{flux_name}",
-                    help=flux_def["description"]
+                    help=t(f"flux_desc_{flux_name}")
                 )
                 if new_val != enabled:
                     updated_settings = toggle_flux(flux_name, new_val, updated_settings)
                     changed = True
 
-                if st.button("🔄 Force", key=f"force_{flux_name}",
-                             help=f"Relancer {flux_def['label']} immédiatement"):
+                if st.button(t("flux_force_btn"), key=f"force_{flux_name}",
+                             help=t("flux_force_help").format(label=flux_def['label'])):
                     st.session_state[f"force_{flux_name}"] = True
-                    st.toast(f"Relance {flux_def['label']} demandée", icon="🔄")
+                    st.toast(t("flux_force_toast").format(label=flux_def['label']), icon="🔄")
 
     if changed:
         return updated_settings
@@ -408,7 +414,7 @@ def render_latency_chart(flux_name: str, hours: int = 1) -> None:
 
     df = load_flux_metrics(flux_name=flux_name, hours=hours)
     if df.empty:
-        st.info("Aucune donnée disponible pour ce flux.")
+        st.info(t("flux_no_data"))
         return
 
     sla = FLUX_DEFINITIONS.get(flux_name, {}).get("sla_latency_ms", 10000)
@@ -419,13 +425,13 @@ def render_latency_chart(flux_name: str, hours: int = 1) -> None:
     if not df_ok.empty:
         fig.add_trace(go.Scatter(
             x=df_ok["timestamp"], y=df_ok["latency_ms"],
-            mode="lines+markers", name="Latence OK",
+            mode="lines+markers", name=t("flux_latency_ok"),
             line=dict(color="#2ecc71"), marker=dict(size=4)
         ))
     if not df_err.empty:
         fig.add_trace(go.Scatter(
             x=df_err["timestamp"], y=df_err["latency_ms"],
-            mode="markers", name="Erreurs",
+            mode="markers", name=t("flux_errors"),
             marker=dict(color="#e74c3c", size=8, symbol="x")
         ))
     fig.add_hline(
@@ -433,8 +439,8 @@ def render_latency_chart(flux_name: str, hours: int = 1) -> None:
         annotation_text=f"SLA {sla}ms"
     )
     fig.update_layout(
-        title=f"Latence — {FLUX_DEFINITIONS.get(flux_name, {}).get('label', flux_name)}",
-        xaxis_title="Heure", yaxis_title="Latence (ms)",
+        title=t("flux_latency_title").format(label=FLUX_DEFINITIONS.get(flux_name, {}).get('label', flux_name)),
+        xaxis_title=t("flux_x_axis"), yaxis_title=t("flux_y_axis"),
         height=300, margin=dict(l=0, r=0, t=40, b=0),
         plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
         font=dict(color="#ffffff")
@@ -446,7 +452,7 @@ def render_flux_logs(flux_name: str | None, limit: int = 50) -> None:
     """Logs filtrés par flux."""
     conn = _get_db()
     if conn is None:
-        st.info("Logs non disponibles (mode démo)")
+        st.info(t("flux_logs_unavailable"))
         return
 
     query = """
@@ -462,7 +468,7 @@ def render_flux_logs(flux_name: str | None, limit: int = 50) -> None:
     try:
         df = pd.read_sql_query(query, conn, params=params)
         if df.empty:
-            st.info("Aucun log disponible.")
+            st.info(t("flux_no_logs"))
             return
 
         level_colors = {
@@ -487,12 +493,12 @@ def render_flux_logs(flux_name: str | None, limit: int = 50) -> None:
             unsafe_allow_html=True
         )
     except Exception as exc:
-        st.error(f"Erreur chargement logs : {exc}")
+        st.error(t("flux_logs_error").format(exc=exc))
 
 
 def render_alerts_config(settings: dict) -> dict | None:
     """Configuration des seuils d'alerte par flux."""
-    st.markdown('<h4><i class="fas fa-bell" style="margin-right:7px;color:#7986cb;"></i>Configuration des alertes</h4>', unsafe_allow_html=True)
+    st.markdown(f'<h4><i class="fas fa-bell" style="margin-right:7px;color:#7986cb;"></i>{t("flux_alerts_title")}</h4>', unsafe_allow_html=True)
 
     updated = dict(settings)
     changed = False
@@ -500,11 +506,11 @@ def render_alerts_config(settings: dict) -> dict | None:
     col1, col2, col3 = st.columns(3)
     with col1:
         threshold = st.number_input(
-            "Seuil score → alerte",
+            t("flux_alert_threshold"),
             min_value=0, max_value=100,
             value=settings.get("logging", {}).get("alert_score_threshold", 85),
             step=5,
-            help="Score de conviction au-dessus duquel une alerte est envoyée"
+            help=t("flux_alert_threshold_help")
         )
         if threshold != settings.get("logging", {}).get("alert_score_threshold", 85):
             updated.setdefault("logging", {})["alert_score_threshold"] = threshold
@@ -512,7 +518,7 @@ def render_alerts_config(settings: dict) -> dict | None:
 
     with col2:
         tg_enabled = st.toggle(
-            "Telegram activé",
+            t("flux_telegram_enabled"),
             value=settings.get("logging", {}).get("telegram_enabled", False)
         )
         if tg_enabled != settings.get("logging", {}).get("telegram_enabled", False):
@@ -521,7 +527,7 @@ def render_alerts_config(settings: dict) -> dict | None:
 
     with col3:
         dc_enabled = st.toggle(
-            "Discord activé",
+            t("flux_discord_enabled"),
             value=settings.get("logging", {}).get("discord_enabled", False)
         )
         if dc_enabled != settings.get("logging", {}).get("discord_enabled", False):
@@ -541,12 +547,12 @@ def render_flux_manager_page() -> None:
     À appeler depuis streamlit_app.py dans un onglet Admin ou une page dédiée.
     """
     st.markdown(
-        '<h2 style="margin:0 0 4px;font-size:26px;font-weight:700;">'
-        '<i class="fas fa-shuffle" style="margin-right:12px;color:#7986cb;"></i>'
-        'Gestionnaire de Flux — Atlas Trader</h2>',
+        f'<h2 style="margin:0 0 4px;font-size:26px;font-weight:700;">'
+        f'<i class="fas fa-shuffle" style="margin-right:12px;color:#7986cb;"></i>'
+        f'{t("flux_title")}</h2>',
         unsafe_allow_html=True,
     )
-    st.caption("Monitoring et contrôle temps réel de chaque composant du pipeline")
+    st.caption(t("flux_subtitle"))
 
     # Chargement des données
     settings = _get_settings()
@@ -560,88 +566,88 @@ def render_flux_manager_page() -> None:
     warn_count = total - ok_count - err_count
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Flux total", total)
-    c2.metric("Opérationnels", ok_count)
-    c3.metric("En erreur", err_count,
+    c1.metric(t("flux_total"), total)
+    c2.metric(t("flux_operational"), ok_count)
+    c3.metric(t("flux_in_error"), err_count,
               delta=f"+{err_count}" if err_count > 0 else None,
               delta_color="inverse")
-    c4.metric("Non vus", warn_count)
+    c4.metric(t("flux_unseen"), warn_count)
 
     # ---- Onglets ----
     tab_status, tab_pipeline, tab_controls, tab_charts, tab_logs, tab_alerts = st.tabs([
         "⬡ Status Board",
         "⊞ Pipeline",
-        "⚙ Contrôles",
-        "≈ Métriques",
+        t("flux_tab_controls"),
+        t("flux_tab_metrics"),
         "≡ Logs",
-        "⚑ Alertes",
+        t("flux_tab_alerts"),
     ])
 
     with tab_status:
-        st.markdown('<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>Statut temps réel</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>{t("flux_status_realtime")}</h4>', unsafe_allow_html=True)
         col_l, col_r = st.columns([3, 1])
         with col_r:
-            hours = st.selectbox("Fenêtre stats", [1, 6, 24, 72],
+            hours = st.selectbox(t("flux_stats_window"), [1, 6, 24, 72],
                                  index=2, format_func=lambda h: f"{h}h")
-            if st.button("Rafraîchir", use_container_width=True):
+            if st.button(t("flux_refresh"), use_container_width=True):
                 st.rerun()
         render_status_board(statuses, stats, settings)
 
     with tab_pipeline:
-        st.markdown('<h4><i class="fas fa-sitemap" style="margin-right:7px;color:#7986cb;"></i>Diagramme du pipeline</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-sitemap" style="margin-right:7px;color:#7986cb;"></i>{t("flux_pipeline_diagram")}</h4>', unsafe_allow_html=True)
         render_pipeline_diagram(statuses)
-        st.caption(
-            "🟢 OK   🔴 Erreur   🟡 Timeout   ⚫ Désactivé   ⚪ Inconnu"
-        )
+        st.caption(t("flux_legend"))
 
     with tab_controls:
         new_settings = render_controls(settings)
         if new_settings is not None:
             if _save_settings(new_settings):
-                st.success("✅ Configuration sauvegardée dans settings.yaml")
+                st.success(t("flux_saved"))
                 time.sleep(0.5)
                 st.rerun()
 
     with tab_charts:
-        st.markdown('<h4><i class="fas fa-chart-bar" style="margin-right:7px;color:#7986cb;"></i>Métriques de performance par flux</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-chart-bar" style="margin-right:7px;color:#7986cb;"></i>{t("flux_perf_metrics")}</h4>', unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
             selected_flux = st.selectbox(
-                "Flux à analyser",
+                t("flux_to_analyze"),
                 list(FLUX_DEFINITIONS.keys()),
                 format_func=lambda k: FLUX_DEFINITIONS[k]["label"]
             )
         with col2:
-            hours_chart = st.selectbox("Période", [1, 6, 24], index=1,
+            hours_chart = st.selectbox(t("flux_period"), [1, 6, 24], index=1,
                                        format_func=lambda h: f"{h}h", key="chart_hours")
 
         render_latency_chart(selected_flux, hours=hours_chart)
 
-        # Tableau récapitulatif
-        st.markdown('<h4><i class="fas fa-table" style="margin-right:7px;color:#7986cb;"></i>Récapitulatif 24h</h4>', unsafe_allow_html=True)
+        # Summary table
+        st.markdown(f'<h4><i class="fas fa-table" style="margin-right:7px;color:#7986cb;"></i>{t("flux_summary_24h")}</h4>', unsafe_allow_html=True)
         if stats:
             df_stats = pd.DataFrame(stats).T.reset_index()
-            df_stats.columns = ["Flux", "Appels", "Taux erreur (%)",
-                                 "Latence moy (ms)", "Latence P95 (ms)", "Items totaux"]
-            df_stats["Flux"] = df_stats["Flux"].map(
+            df_stats.columns = [
+                t("flux_col_flux"), t("flux_col_calls"), t("flux_col_error_rate"),
+                t("flux_col_avg_lat"), t("flux_col_p95_lat"), t("flux_col_items")
+            ]
+            df_stats[t("flux_col_flux")] = df_stats[t("flux_col_flux")].map(
                 lambda k: FLUX_DEFINITIONS.get(k, {}).get("label", k)
             )
             st.dataframe(df_stats, use_container_width=True, hide_index=True)
         else:
-            st.info("Aucune statistique disponible.")
+            st.info(t("flux_no_stats"))
 
     with tab_logs:
-        st.markdown('<h4><i class="fas fa-file-lines" style="margin-right:7px;color:#7986cb;"></i>Logs par composant</h4>', unsafe_allow_html=True)
+        st.markdown(f'<h4><i class="fas fa-file-lines" style="margin-right:7px;color:#7986cb;"></i>{t("flux_logs_title")}</h4>', unsafe_allow_html=True)
         col1, col2 = st.columns([3, 1])
         with col1:
             log_flux = st.selectbox(
-                "Filtrer par flux",
+                t("flux_filter_by"),
                 ["Tous"] + list(FLUX_DEFINITIONS.keys()),
-                format_func=lambda k: "— Tous —" if k == "Tous"
+                format_func=lambda k: t("flux_all") if k == "Tous"
                 else FLUX_DEFINITIONS[k]["label"]
             )
         with col2:
-            n_logs = st.number_input("Nb lignes", 10, 500, 50, step=10)
+            n_logs = st.number_input(t("flux_nb_lines"), 10, 500, 50, step=10)
 
         render_flux_logs(
             flux_name=None if log_flux == "Tous" else log_flux,
@@ -652,7 +658,7 @@ def render_flux_manager_page() -> None:
         new_settings_alert = render_alerts_config(settings)
         if new_settings_alert is not None:
             if _save_settings(new_settings_alert):
-                st.success("✅ Configuration alertes sauvegardée")
+                st.success(t("flux_alerts_saved"))
                 st.rerun()
 
 

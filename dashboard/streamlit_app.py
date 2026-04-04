@@ -1468,6 +1468,7 @@ def render_admin_panel():
 
     with sub_tabs[0]:  # LLM
         st.markdown(f'<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_llm_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_llm_info"))
         llm = settings.get("llm", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -1476,13 +1477,17 @@ def render_admin_panel():
             if _llm_default not in _llm_providers:
                 _llm_providers.append(_llm_default)
             llm["provider"] = st.selectbox(t("cfg_provider"), _llm_providers,
-                index=_llm_providers.index(_llm_default))
-            llm["model"] = st.text_input(t("cfg_model"), value=llm.get("model", "claude-3-5-sonnet-20241022"))
+                index=_llm_providers.index(_llm_default),
+                help=t("cfg_provider_help"))
+            llm["model"] = st.text_input(t("cfg_model"), value=llm.get("model", "claude-3-5-sonnet-20241022"),
+                help=t("cfg_model_help"))
         with col2:
             llm["temperature"] = st.slider(t("cfg_temperature"), 0.0, 1.0,
-                float(llm.get("temperature", 0.3)), 0.05)
+                float(llm.get("temperature", 0.3)), 0.05,
+                help=t("cfg_temperature_help"))
             llm["max_tokens"] = st.number_input(t("cfg_max_tokens"), 512, 8192,
-                int(llm.get("max_tokens", 4096)), step=512)
+                int(llm.get("max_tokens", 4096)), step=512,
+                help=t("cfg_max_tokens_help"))
             llm["request_timeout_seconds"] = st.number_input(
                 t("cfg_timeout_llm"),
                 min_value=10, max_value=300,
@@ -1490,7 +1495,8 @@ def render_admin_panel():
                 step=10,
                 help=t("cfg_timeout_help")
             )
-        llm["cache_responses"] = st.toggle(t("cfg_cache_responses"), llm.get("cache_responses", True))
+        llm["cache_responses"] = st.toggle(t("cfg_cache_responses"), llm.get("cache_responses", True),
+            help=t("cfg_cache_help"))
 
         # Clés API par provider
         st.markdown("**Clés API**")
@@ -1609,6 +1615,7 @@ def render_admin_panel():
 
     with sub_tabs[1]:  # Crawler
         st.markdown(f'<h4><i class="fas fa-spider" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_crawler_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_crawler_info"))
         crawler = settings.get("crawler", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -1617,17 +1624,21 @@ def render_admin_panel():
             if _crawler_default not in _crawler_providers:
                 _crawler_providers.append(_crawler_default)
             crawler["provider"] = st.selectbox(t("cfg_provider"), _crawler_providers,
-                index=_crawler_providers.index(_crawler_default), key="crawler_provider")
-            crawler["n_themes"] = st.slider(t("cfg_n_themes"), 5, 15, int(crawler.get("n_themes", 10)))
+                index=_crawler_providers.index(_crawler_default), key="crawler_provider",
+                help=t("cfg_provider_help"))
+            crawler["n_themes"] = st.slider(t("cfg_n_themes"), 5, 15, int(crawler.get("n_themes", 10)),
+                help=t("cfg_n_themes_help"))
         with col2:
             crawler["max_pages_per_theme"] = st.slider(t("cfg_pages_theme"), 3, 20,
-                int(crawler.get("max_pages_per_theme", 10)))
+                int(crawler.get("max_pages_per_theme", 10)),
+                help=t("cfg_pages_theme_help"))
             _freq_opts = ["daily", "per_cycle", "trigger"]
             _freq_default = crawler.get("frequency", "daily")
             if _freq_default not in _freq_opts:
                 _freq_opts.append(_freq_default)
             crawler["frequency"] = st.selectbox(t("cfg_frequency"), _freq_opts,
-                index=_freq_opts.index(_freq_default))
+                index=_freq_opts.index(_freq_default),
+                help=t("cfg_frequency_help"))
         st.text_area(t("cfg_templates"),
             value="\n".join(crawler.get("templates", [])),
             key="crawler_templates", height=200)
@@ -1635,16 +1646,19 @@ def render_admin_panel():
 
     with sub_tabs[2]:  # News
         st.markdown(f'<h4><i class="fas fa-newspaper" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_news_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_news_info"))
         news = settings.get("news", {})
         col1, col2 = st.columns(2)
         with col1:
             news["polling_interval_seconds"] = st.slider(
                 t("cfg_polling_interval"), 60, 3600,
-                int(news.get("polling_interval_seconds", 900)), step=60
+                int(news.get("polling_interval_seconds", 900)), step=60,
+                help=t("cfg_polling_interval_help")
             )
         with col2:
             news["max_items_per_cycle"] = st.number_input(
-                t("cfg_items_max_cycle"), 10, 200, int(news.get("max_items_per_cycle", 30))
+                t("cfg_items_max_cycle"), 10, 200, int(news.get("max_items_per_cycle", 30)),
+                help=t("cfg_items_max_cycle_help")
             )
         # Mots-clés BTC
         kw = news.get("keywords_per_asset", {})
@@ -1659,6 +1673,7 @@ def render_admin_panel():
 
     with sub_tabs[3]:  # Sources
         st.markdown(f'<h4><i class="fas fa-satellite-dish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_sources_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_sources_info"))
         news = settings.get("news", {})
 
         # --- RSS ---
@@ -1728,22 +1743,27 @@ def render_admin_panel():
 
     with sub_tabs[4]:  # MiroFish
         st.markdown(f'<h4><i class="fas fa-fish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_mirofish_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_mirofish_info"))
         mf = settings.get("mirofish", {})
         col1, col2 = st.columns(2)
         with col1:
             mf["n_agents"] = st.number_input(t("cfg_mf_agents"), 1000, 50000,
-                int(mf.get("n_agents", 5000)), step=1000)
+                int(mf.get("n_agents", 5000)), step=1000,
+                help=t("cfg_mf_agents_help"))
             mf["n_steps"] = st.number_input(t("cfg_mf_steps"), 10, 500,
-                int(mf.get("n_steps", 100)), step=10)
+                int(mf.get("n_steps", 100)), step=10,
+                help=t("cfg_mf_steps_help"))
         with col2:
             mf["seed_news_weight"] = st.slider(t("cfg_mf_news_weight"), 0.0, 1.0,
-                float(mf.get("seed_news_weight", 0.6)), 0.05)
+                float(mf.get("seed_news_weight", 0.6)), 0.05,
+                help=t("cfg_mf_news_weight_help"))
             mf["air_du_temps_weight"] = 1 - mf["seed_news_weight"]
             st.metric(t("cfg_mf_adt_weight"), f"{mf['air_du_temps_weight']:.0%}")
         settings["mirofish"] = mf
 
     with sub_tabs[5]:  # Risk
         st.markdown(f'<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_risk_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_risk_info"))
         risk = settings.get("risk", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -1752,20 +1772,27 @@ def render_admin_panel():
             if _risk_default not in _risk_modes:
                 _risk_modes.append(_risk_default)
             risk["mode"] = st.selectbox("Mode", _risk_modes,
-                index=_risk_modes.index(_risk_default))
+                index=_risk_modes.index(_risk_default),
+                help=t("cfg_risk_mode_help"))
             risk["kelly_max_fraction"] = st.slider(t("cfg_kelly_max"), 0.05, 0.50,
-                float(risk.get("kelly_max_fraction", 0.25)), 0.05)
+                float(risk.get("kelly_max_fraction", 0.25)), 0.05,
+                help=t("cfg_kelly_max_help"))
             risk["position_size_pct"] = st.slider(t("cfg_pos_size"), 1.0, 20.0,
-                float(risk.get("position_size_pct", 5.0)), 0.5)
+                float(risk.get("position_size_pct", 5.0)), 0.5,
+                help=t("cfg_pos_size_help"))
         with col2:
             risk["max_drawdown_pct"] = st.slider(t("cfg_max_dd"), 5.0, 50.0,
-                float(risk.get("max_drawdown_pct", 15.0)), 1.0)
+                float(risk.get("max_drawdown_pct", 15.0)), 1.0,
+                help=t("cfg_max_dd_help"))
             risk["buy_threshold"] = st.slider(t("cfg_buy_threshold"), 50, 95,
-                int(risk.get("buy_threshold", 70)))
+                int(risk.get("buy_threshold", 70)),
+                help=t("cfg_buy_threshold_help"))
             risk["sell_threshold"] = st.slider(t("cfg_exit_threshold"), 5, 50,
-                int(risk.get("sell_threshold", 30)))
+                int(risk.get("sell_threshold", 30)),
+                help=t("cfg_exit_threshold_help"))
         risk["human_in_the_loop"] = st.toggle(t("cfg_hitl"),
-            risk.get("human_in_the_loop", False))
+            risk.get("human_in_the_loop", False),
+            help=t("cfg_hitl_help"))
         risk["max_open_positions"] = st.number_input(
             t("cfg_max_open_pos"),
             min_value=0, max_value=20,
@@ -1804,6 +1831,7 @@ def render_admin_panel():
 
         st.markdown("---")
         st.markdown(f'<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#ef9a9a;"></i>{t("cfg_exchange_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_exchange_info"))
         exch = settings.get("exchange", {})
         col_e1, col_e2 = st.columns(2)
         with col_e1:
@@ -1812,7 +1840,7 @@ def render_admin_panel():
                 min_value=1000, max_value=10_000_000,
                 value=int(exch.get("paper_capital_usd", 10000)),
                 step=500,
-                help="Modifié au prochain redémarrage du daemon trader"
+                help=t("cfg_paper_capital_help")
             )
         with col_e2:
             _testnet_current = exch.get("testnet", True)
@@ -1824,6 +1852,7 @@ def render_admin_panel():
 
     with sub_tabs[6]:  # Agents
         st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_agents_info"))
         agents = settings.get("agents", {})
         for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket", "timesfm"]:
             cfg = agents.get(agent_name, {})
@@ -1853,21 +1882,25 @@ def render_admin_panel():
 
     with sub_tabs[7]:  # Logging
         st.markdown(f'<h4><i class="fas fa-list-check" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_logging_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_logging_info"))
         log_cfg = settings.get("logging", {})
         _log_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
         _log_default = log_cfg.get("level", "INFO")
         if _log_default not in _log_levels:
             _log_levels.append(_log_default)
         log_cfg["level"] = st.selectbox(t("cfg_log_level"), _log_levels,
-            index=_log_levels.index(_log_default))
+            index=_log_levels.index(_log_default),
+            help=t("cfg_log_level_help"))
         log_cfg["alert_score_threshold"] = st.slider(t("cfg_alert_threshold"),
-            50, 100, int(log_cfg.get("alert_score_threshold", 85)))
+            50, 100, int(log_cfg.get("alert_score_threshold", 85)),
+            help=t("cfg_alert_threshold_help"))
         log_cfg["telegram_enabled"] = st.toggle("Telegram", log_cfg.get("telegram_enabled", False))
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
         settings["logging"] = log_cfg
 
     with sub_tabs[8]:  # TimesFM
         st.markdown(f'<h4><i class="fas fa-chart-line" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_timesfm_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_timesfm_info"))
         tfm = settings.get("timesfm", {})
         tfm["forecast_horizon"] = st.number_input(
             t("cfg_tfm_horizon"), 1, 96,
@@ -2057,10 +2090,12 @@ def render_admin_panel():
         settings["market_regime"] = mr
 
     with sub_tabs[10]:  # Flux Manager
+        st.info(t("cfg_flux_info"))
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
     with sub_tabs[11]:  # Utilisateurs
+        st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin

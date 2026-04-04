@@ -254,9 +254,17 @@ class MarketRegimeAgent:
             )
 
             def smooth(arr, p):
+                # Wilder's SMMA — used for +DM, −DM, TR (raw values; scale cancels in DI ratio)
                 result = [np.mean(arr[:p])]
                 for v in arr[p:]:
                     result.append(result[-1] - result[-1] / p + v)
+                return np.array(result)
+
+            def smooth_adx(arr, p):
+                # True EMA (alpha=1/p) — DX is in [0–100]; SMMA would diverge to p×DX
+                result = [np.mean(arr[:p])]
+                for v in arr[p:]:
+                    result.append(result[-1] * (p - 1) / p + v / p)
                 return np.array(result)
 
             atr_s   = smooth(tr, period)
@@ -267,7 +275,7 @@ class MarketRegimeAgent:
             di_minus = 100 * dmm_s / np.where(atr_s > 0, atr_s, 1e-9)
 
             dx = 100 * np.abs(di_plus - di_minus) / np.where((di_plus + di_minus) > 0, (di_plus + di_minus), 1e-9)
-            adx_vals = smooth(dx, period)
+            adx_vals = smooth_adx(dx, period)
 
             # Aligner sur closes : NaN pour les premières entrées non calculables
             result = np.full(len(closes), np.nan)

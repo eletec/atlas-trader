@@ -425,16 +425,24 @@ class DecisionEngine:
                 logger.info(f"Funding CB: taille BUY ×{funding_size_mult:.2f} — {funding_reason}")
 
         if action in ("BUY", "SELL"):
+            _regime = (agent_analyses or {}).get("market_regime", {}).get("regime", "")
+            # En HIGH_VOLATILITY : réduire la taille de 35% indépendamment du funding
+            high_vol_mult = 0.65 if _regime == "HIGH_VOLATILITY" else 1.0
+            if high_vol_mult < 1.0:
+                logger.info(f"HIGH_VOLATILITY regime — taille position ×{high_vol_mult} (prudence)")
+
             position_size = round(
                 self.risk_engine.calculate_position_size(price, score=score)
                 * ma50_size_penalty
-                * funding_size_mult,
+                * funding_size_mult
+                * high_vol_mult,
                 2,
             )
             sl, tp = self.risk_engine.calculate_sl_tp(price, action, atr)
         else:
             position_size = 0.0
             sl = tp = price
+            high_vol_mult = 1.0
 
         # Génération de l'explication
         explanation = self._build_explanation(
@@ -463,6 +471,7 @@ class DecisionEngine:
             "funding_blocked": funding_blocked,
             "funding_size_mult": funding_size_mult,
             "funding_reason": funding_reason,
+            "high_vol_size_mult": high_vol_mult,
         }
 
     def _build_explanation(

@@ -1927,38 +1927,80 @@ def render_admin_panel():
         # --- Régime Actuel (lecture DB) ---
         try:
             from storage.database import get_recent_decisions
-            last_decisions = get_recent_decisions(1)
             import json as _json
+            last_decisions = get_recent_decisions(6)   # 1 actuel + 5 historique
             last_ws = _json.loads(last_decisions[0].get("weights_snapshot") or "{}") if last_decisions else {}
-            _regime_now   = last_ws.get("regime", "UNKNOWN")
-            _hmm_prob_now = float(last_ws.get("hmm_prob", 0.5))
-            _feat_now     = last_ws.get("regime_features", {})
-            _ts_now       = last_decisions[0].get("timestamp", "?") if last_decisions else "?"
+            _regime_now        = last_ws.get("regime", "UNKNOWN")
+            _hmm_prob_now      = float(last_ws.get("hmm_prob", 0.5))
+            _feat_now          = last_ws.get("regime_features", {})
+            _direction_now     = last_ws.get("direction_pressure", "")
+            _hmm_posteriors    = last_ws.get("hmm_posteriors", {})
+            _ts_now            = last_decisions[0].get("timestamp", "?") if last_decisions else "?"
 
             _badge_color = {
-                "TRENDING_UP":   "#43a047",   # vert
-                "TRENDING_DOWN": "#e53935",   # rouge
-                "SIDEWAYS":      "#fb8c00",   # orange
-                "HIGH_VOLATILITY": "#e53935", # rouge
-            }.get(_regime_now, "#757575")     # gris = UNKNOWN
+                "TRENDING_UP":     "#43a047",
+                "TRENDING_DOWN":   "#e53935",
+                "SIDEWAYS":        "#fb8c00",
+                "HIGH_VOLATILITY": "#e65100",
+            }.get(_regime_now, "#757575")
 
             _regime_emoji = {
                 "TRENDING_UP": "▲", "TRENDING_DOWN": "▼",
                 "SIDEWAYS": "↔", "HIGH_VOLATILITY": "⚡",
             }.get(_regime_now, "?")
 
+            # Ligne ADX avec DI+ / DI-
+            _adx_str = (
+                f'ADX : {_feat_now.get("adx", 0):.1f}'
+                + (f' (DI+={_feat_now.get("di_plus", 0):.1f} / DI−={_feat_now.get("di_minus", 0):.1f})'
+                   if "di_plus" in _feat_now else "")
+            )
+            _vol_str = (
+                f'Vol. rel. : {_feat_now.get("rel_volatility", 0):.2f}×'
+                + (f' ({_feat_now.get("vol_abs_annualized", 0):.0f}% ann.)'
+                   if "vol_abs_annualized" in _feat_now else "")
+            )
+
+            # Posteriors HMM
+            _hmm_post_str = ""
+            if _hmm_posteriors:
+                parts = []
+                labels = {0: "Low-vol", 1: "High-vol"}
+                for k, v in sorted(_hmm_posteriors.items()):
+                    idx = int(k.split("_")[-1])
+                    parts.append(f'{labels.get(idx, k)}: {v:.0%}')
+                _hmm_post_str = f'<br><span style="color:#90a4ae;font-size:0.82rem">HMM états : {" &nbsp;|&nbsp; ".join(parts)}</span>'
+
+            # Historique des 5 derniers cycles
+            _history_parts = []
+            for d in last_decisions[1:6]:
+                _ws = _json.loads(d.get("weights_snapshot") or "{}")
+                _r  = _ws.get("regime", "?")
+                _p  = float(_ws.get("hmm_prob", 0.5))
+                _col = {"TRENDING_UP": "#43a047", "TRENDING_DOWN": "#e53935",
+                        "SIDEWAYS": "#fb8c00", "HIGH_VOLATILITY": "#e65100"}.get(_r, "#757575")
+                _em  = {"TRENDING_UP": "▲", "TRENDING_DOWN": "▼", "SIDEWAYS": "↔", "HIGH_VOLATILITY": "⚡"}.get(_r, "?")
+                _history_parts.append(f'<span style="color:{_col}">{_em} {_r} ({_p:.0%})</span>')
+            _history_str = ""
+            if _history_parts:
+                _history_str = (
+                    f'<br><span style="color:#78909c;font-size:0.80rem">'
+                    f'Historique : {" ← ".join(_history_parts)}</span>'
+                )
+
             st.markdown(
                 f'<div style="border:1px solid {_badge_color};border-radius:8px;padding:12px 18px;'
                 f'background:rgba(0,0,0,0.2);margin-bottom:12px">'
                 f'<span style="font-size:1.25rem;font-weight:700;color:{_badge_color}">'
                 f'  {_regime_emoji} {_regime_now}</span>'
-                f'  &nbsp;&nbsp;<span style="color:#aaa;font-size:0.9rem">'
-                f'HMM {_hmm_prob_now:.0%} confiance</span><br>'
-                f'<span style="color:#ccc;font-size:0.85rem">'
-                f'ADX : {_feat_now.get("adx", "—"):.1f} &nbsp;|&nbsp; '
-                f'Vol. rel. : {_feat_now.get("rel_volatility", 0):.2f}× &nbsp;|&nbsp; '
-                f'Dernier cycle : {_ts_now}</span>'
-                + (f'<br><span style="color:#ef9a9a;font-size:0.82rem">⚠ Circuit breaker funding actif dès 0.035&nbsp;% (seuil abaissé en HIGH_VOL)</span>'
+                f'  &nbsp;&nbsp;<span style="color:#aaa;font-size:0.9rem">HMM {_hmm_prob_now:.0%}</span>'
+                + (f'  &nbsp;&nbsp;<span style="color:#b0bec5;font-size:0.88rem">{_direction_now}</span>'
+                   if _direction_now else "")
+                + f'<br><span style="color:#ccc;font-size:0.85rem">'
+                f'{_adx_str} &nbsp;|&nbsp; {_vol_str} &nbsp;|&nbsp; Cycle : {_ts_now}</span>'
+                + _hmm_post_str
+                + _history_str
+                + (f'<br><span style="color:#ef9a9a;font-size:0.82rem">⚠ HIGH_VOL : taille position ×0.65 · seuil CB funding abaissé à 0.035&nbsp;%</span>'
                    if _regime_now == "HIGH_VOLATILITY" else "")
                 + '</div>',
                 unsafe_allow_html=True

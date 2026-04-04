@@ -107,13 +107,17 @@ class CoordinatorAgent:
             regime = regime_info.get("regime", "UNKNOWN")
             hmm_label = regime_info.get("hmm_state_label", "?")
             transition = regime_info.get("transition_prob", 0.0)
+            direction = regime_info.get("direction_pressure", "")
             lines += [
                 f"Régime de marché détecté : {regime} "
-                f"(HMM : {hmm_label}, prob_transition={transition:.0%})",
+                f"(HMM : {hmm_label}, prob_transition={transition:.0%})"
+                + (f" | {direction}" if direction else ""),
                 "Consignes d'ajustement des poids selon le régime :",
-                "  TRENDING_UP/DOWN → ↑timesfm ↑contrarian ↓fear_greed",
-                "  SIDEWAYS         → ↑fear_greed ↓timesfm ↓contrarian",
-                "  HIGH_VOLATILITY  → réduis tous les poids extremes, privilégie la prudence",
+                "  TRENDING_UP   → ↑timesfm (×1.3) ↑contrarian (×1.2) ↓fear_greed (×0.8)",
+                "  TRENDING_DOWN → ↑contrarian (×1.3) ↑fear_greed (×1.1) ↓timesfm (×0.7)",
+                "  SIDEWAYS      → ↑fear_greed (×1.3) ↑polymarket (×1.2) ↓timesfm (×0.6) ↓contrarian (×0.8)",
+                "  HIGH_VOLATILITY → ↑contrarian (×1.4) ↑fear_greed (×1.3) ↑polymarket (×1.2)",
+                "                    ↓timesfm (×0.4) ↓market_data (×0.7) — signaux techniques peu fiables",
                 "",
             ]
 

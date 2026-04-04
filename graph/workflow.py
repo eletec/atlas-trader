@@ -512,6 +512,8 @@ def node_calculate_score(state: ZeitgeistState) -> dict:
         # Régime courant — persisté en DB pour lecture par le dashboard
         "regime": state.get("agent_analyses", {}).get("market_regime", {}).get("regime", "UNKNOWN"),
         "hmm_prob": state.get("agent_analyses", {}).get("market_regime", {}).get("hmm_prob", 0.5),
+        "hmm_posteriors": state.get("agent_analyses", {}).get("market_regime", {}).get("hmm_posteriors", {}),
+        "direction_pressure": state.get("agent_analyses", {}).get("market_regime", {}).get("direction_pressure", ""),
         "regime_features": state.get("agent_analyses", {}).get("market_regime", {}).get("features", {}),
     }
 

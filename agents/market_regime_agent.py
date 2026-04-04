@@ -82,27 +82,45 @@ class MarketRegimeAgent:
 
             summary = (
                 f"Regime: {regime} | "
-                f"ADX={features['adx']:.1f} | "
-                f"Vol={features['rel_volatility']:.2%} | "
+                f"ADX={features['adx']:.1f} "
+                f"(DI+={features['di_plus']:.1f}/DI-={features['di_minus']:.1f}) | "
+                f"Vol={features['rel_volatility']:.2f}x ({features['vol_abs_annualized']:.0f}% ann.) | "
                 f"HMM state={hmm_res['state']} "
                 f"(p={hmm_res['state_prob']:.0%})"
             )
 
+            # Direction pressure : DI+ vs DI- pour l'UI
+            di_p = features["di_plus"]
+            di_m = features["di_minus"]
+            di_diff = di_p - di_m
+            if di_diff > 10:
+                direction_pressure = "Strong bullish pressure"
+            elif di_diff > 4:
+                direction_pressure = "Moderate bullish bias"
+            elif di_diff < -10:
+                direction_pressure = "Strong bearish pressure"
+            elif di_diff < -4:
+                direction_pressure = "Moderate bearish bias"
+            else:
+                direction_pressure = "No clear direction"
+
             logger.info(f"MarketRegime: {summary}")
 
             return {
-                "agent_name":      "market_regime",
-                "score":           score,
-                "signal":          signal,
-                "summary":         summary,
-                "confidence":      round(hmm_res["state_prob"], 2),
-                # Champs extra (utilisés par CoordinatorAgent)
-                "regime":          regime,
-                "hmm_state":       hmm_res["state"],
-                "hmm_state_label": hmm_res["label"],
-                "hmm_prob":        hmm_res["state_prob"],
-                "transition_prob": hmm_res["transition_prob"],
-                "features":        features,
+                "agent_name":        "market_regime",
+                "score":             score,
+                "signal":            signal,
+                "summary":           summary,
+                "confidence":        round(hmm_res["state_prob"], 2),
+                # Champs extra (utilisés par CoordinatorAgent + Dashboard)
+                "regime":            regime,
+                "hmm_state":         hmm_res["state"],
+                "hmm_state_label":   hmm_res["label"],
+                "hmm_prob":          hmm_res["state_prob"],
+                "hmm_posteriors":    hmm_res.get("all_posteriors", {}),
+                "transition_prob":   hmm_res["transition_prob"],
+                "direction_pressure": direction_pressure,
+                "features":          features,
             }
 
         except Exception as exc:
@@ -140,8 +158,8 @@ class MarketRegimeAgent:
         sma_slow = float(np.mean(closes[-tw:])) if len(closes) >= tw else sma_fast
         sma_gap  = (sma_fast - sma_slow) / sma_slow if sma_slow > 0 else 0.0
 
-        # --- ADX (Average Directional Index) — mesure la FORCE de tendance ---
-        adx = self._compute_adx(highs, lows, closes, self._adx_period)
+        # --- ADX (Average Directional Index) + DI+ / DI- ---
+        adx, di_plus_val, di_minus_val = self._compute_adx_with_di(highs, lows, closes, self._adx_period)
 
         # --- Volume momentum ---
         vol_mom = float(np.mean(volumes[-5:])) / float(np.mean(volumes[-20:])) if len(volumes) >= 20 and np.mean(volumes[-20:]) > 0 else 1.0
@@ -151,28 +169,64 @@ class MarketRegimeAgent:
         bb_mid  = float(np.mean(closes[-20:]))
         bb_width = (4 * bb_std / bb_mid) if bb_mid > 0 else 0.0  # (upper - lower) / mid
 
+        # --- Volatilité absolue annualisée (std returns × sqrt(35040) pour 15min) ---
+        vol_abs_annualized = float(np.std(returns[-vw:])) * (35040 ** 0.5)  # ~188 périodes/an
+
         return {
             "rel_volatility":  round(rel_vol, 4),
+            "vol_abs_annualized": round(vol_abs_annualized * 100, 1),  # en %
             "momentum_20":     round(momentum_20, 4),
             "momentum_50":     round(momentum_50, 4),
             "sma_gap":         round(sma_gap, 4),
             "adx":             round(adx, 2),
+            "di_plus":         round(di_plus_val, 2),
+            "di_minus":        round(di_minus_val, 2),
             "volume_momentum": round(vol_mom, 3),
             "bb_width":        round(bb_width, 4),
             "current_price":   round(float(closes[-1]), 2),
         }
 
     @staticmethod
-    def _compute_adx(
-        highs: np.ndarray,
-        lows: np.ndarray,
-        closes: np.ndarray,
-        period: int = 14,
-    ) -> float:
+    def _compute_adx(highs, lows, closes, period=14) -> float:
         """ADX classique — retourne le scalaire final."""
         arr = MarketRegimeAgent._compute_adx_array(highs, lows, closes, period)
         valid = arr[~np.isnan(arr)]
         return float(valid[-1]) if len(valid) > 0 else 0.0
+
+    @staticmethod
+    def _compute_adx_with_di(
+        highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14
+    ) -> tuple[float, float, float]:
+        """Retourne (adx, DI+, DI−) — scalaires pour le dernier point."""
+        if len(highs) < period + 2:
+            return 0.0, 0.0, 0.0
+        try:
+            up_moves   = np.diff(highs)
+            down_moves = -np.diff(lows)
+            dm_plus  = np.where((up_moves > down_moves) & (up_moves > 0), up_moves, 0.0)
+            dm_minus = np.where((down_moves > up_moves) & (down_moves > 0), down_moves, 0.0)
+            tr = np.maximum(
+                highs[1:] - lows[1:],
+                np.maximum(np.abs(highs[1:] - closes[:-1]), np.abs(lows[1:] - closes[:-1]))
+            )
+
+            def smooth(a, p):
+                r = [np.sum(a[:p])]
+                for v in a[p:]:
+                    r.append(r[-1] - r[-1] / p + v)
+                return np.array(r)
+
+            atr_s = smooth(tr, period)
+            dmp_s = smooth(dm_plus, period)
+            dmm_s = smooth(dm_minus, period)
+            safe  = np.where(atr_s > 0, atr_s, 1e-9)
+            di_p  = 100 * dmp_s / safe
+            di_m  = 100 * dmm_s / safe
+            dx    = 100 * np.abs(di_p - di_m) / np.where((di_p + di_m) > 0, (di_p + di_m), 1e-9)
+            adx_v = smooth(dx, period)
+            return float(adx_v[-1]), float(di_p[-1]), float(di_m[-1])
+        except Exception:
+            return 0.0, 0.0, 0.0
 
     @staticmethod
     def _compute_adx_array(
@@ -230,27 +284,43 @@ class MarketRegimeAgent:
     def _classify_regime(self, f: dict) -> str:
         """
         Règles de classification par priorité :
-          1. HIGH_VOLATILITY si vol relative > 2.0 (choc de marché)
-          2. TRENDING si ADX > 25 + momentum cohérent
-          3. SIDEWAYS sinon
+          1. TRENDING si ADX > 30 ET momentum directionnel clair (≥2 signaux)
+             → un ADX très élevé avec direction confirme un trend fort, pas juste de la volatilité
+          2. HIGH_VOLATILITY si vol relative > 2.0 OU bb_width > 0.08 (choc sans direction)
+          3. TRENDING si ADX > 18 + momentum cohérent
+          4. SIDEWAYS sinon
         """
-        # 1. Choc de volatilité
-        if f["rel_volatility"] > 2.0 or f["bb_width"] > 0.08:
+        bull_signals = sum([
+            f["momentum_20"] > 0.01,
+            f["momentum_50"] > 0.02,
+            f["sma_gap"]     > 0.005,
+        ])
+        bear_signals = sum([
+            f["momentum_20"] < -0.01,
+            f["momentum_50"] < -0.02,
+            f["sma_gap"]     < -0.005,
+        ])
+
+        # 1. ADX très élevé (>30) avec direction claire → TRENDING prime sur HIGH_VOL
+        if f["adx"] > 30:
+            if bull_signals >= 2:
+                return REGIME_TRENDING_UP
+            if bear_signals >= 2:
+                return REGIME_TRENDING_DOWN
+            # ADX > 30 sans direction nette = blow-off / choc violent
             return REGIME_HIGH_VOL
 
-        # 2. Tendance forte (ADX > 25)
-        if f["adx"] > 25:
-            # Direction via momentum + SMA gap
-            bull_signals = sum([
-                f["momentum_20"] > 0.01,
-                f["momentum_50"] > 0.02,
-                f["sma_gap"]     > 0.005,
-            ])
-            bear_signals = sum([
-                f["momentum_20"] < -0.01,
-                f["momentum_50"] < -0.02,
-                f["sma_gap"]     < -0.005,
-            ])
+        # 2. Choc de volatilité sans trend directionnel
+        if f["rel_volatility"] > 2.0 or f["bb_width"] > 0.08:
+            # Même en high vol, si momentum est clair on préfère classer en TRENDING
+            if bull_signals >= 2:
+                return REGIME_TRENDING_UP
+            if bear_signals >= 2:
+                return REGIME_TRENDING_DOWN
+            return REGIME_HIGH_VOL
+
+        # 3. Tendance forte (ADX 18-30)
+        if f["adx"] > 18:
             if bull_signals >= 2:
                 return REGIME_TRENDING_UP
             if bear_signals >= 2:
@@ -258,14 +328,14 @@ class MarketRegimeAgent:
             # ADX élevé mais direction mixte → high vol
             return REGIME_HIGH_VOL
 
-        # 3. Tendance modérée (ADX 15-25)
-        if f["adx"] > 15:
+        # 4. Tendance modérée (ADX 12-18)
+        if f["adx"] > 12:
             if f["momentum_20"] > 0.005 and f["sma_gap"] > 0:
                 return REGIME_TRENDING_UP
             if f["momentum_20"] < -0.005 and f["sma_gap"] < 0:
                 return REGIME_TRENDING_DOWN
 
-        # 4. Sideways par défaut
+        # 5. Sideways par défaut
         return REGIME_SIDEWAYS
 
     # ------------------------------------------------------------------
@@ -328,19 +398,24 @@ class MarketRegimeAgent:
             transition_prob = float(model.transmat_[current_state, 1 - current_state]) \
                 if self._n_hmm_states == 2 else 0.0
 
+            # Vecteur complet des posteriors (pour affichage dashboard)
+            all_posteriors = {f"state_{s}": round(float(posteriors[-1, s]), 3)
+                              for s in range(self._n_hmm_states)}
+
             return {
                 "state":           current_state,
                 "label":           label,
                 "state_prob":      state_prob,
                 "transition_prob": transition_prob,
+                "all_posteriors":  all_posteriors,
             }
 
         except ImportError:
             logger.debug("hmmlearn non disponible — HMM ignoré")
-            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2}
+            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2, "all_posteriors": {}}
         except Exception as exc:
             logger.debug(f"HMM échoué: {exc}")
-            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2}
+            return {"state": 0, "label": "LOW_VOL", "state_prob": 0.5, "transition_prob": 0.2, "all_posteriors": {}}
 
     # ------------------------------------------------------------------
     # Extraction OHLCV
@@ -371,15 +446,17 @@ class MarketRegimeAgent:
 
     def _fallback(self, reason: str) -> dict:
         return {
-            "agent_name":      "market_regime",
-            "score":           50.0,
-            "signal":          "NEUTRAL",
-            "summary":         f"Regime unknown ({reason})",
-            "confidence":      0.0,
-            "regime":          REGIME_UNKNOWN,
-            "hmm_state":       0,
-            "hmm_state_label": "UNKNOWN",
-            "hmm_prob":        0.5,
-            "transition_prob": 0.2,
-            "features":        {},
+            "agent_name":         "market_regime",
+            "score":              50.0,
+            "signal":             "NEUTRAL",
+            "summary":            f"Regime unknown ({reason})",
+            "confidence":         0.0,
+            "regime":             REGIME_UNKNOWN,
+            "hmm_state":          0,
+            "hmm_state_label":    "UNKNOWN",
+            "hmm_prob":           0.5,
+            "hmm_posteriors":     {},
+            "transition_prob":    0.2,
+            "direction_pressure": "No clear direction",
+            "features":           {},
         }

@@ -11,7 +11,6 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 try:
     from utils.i18n import t
@@ -276,52 +275,86 @@ def toggle_flux(flux_name: str, enabled: bool, settings: dict) -> dict:
 # ===========================================================
 
 def render_pipeline_diagram(statuses: dict[str, dict]) -> None:
-    """Affiche le diagramme du pipeline avec statuts colorés via Mermaid."""
+    """Affiche le diagramme du pipeline avec statuts colorés via Graphviz (natif Streamlit)."""
     def _color(flux_name: str) -> str:
         s = statuses.get(flux_name, {}).get("status", "unknown")
-        return {"ok": "##2ecc71", "error": "##e74c3c", "timeout": "##f39c12",
-                "disabled": "##95a5a6", "unknown": "##bdc3c7"}.get(s, "##bdc3c7")
+        return {"ok": "#2ecc71", "error": "#e74c3c", "timeout": "#f3a10c",
+                "disabled": "#5a6268", "unknown": "#495057"}.get(s, "#495057")
 
-    mermaid = f"""
-graph LR
-    subgraph INT["🌐 Intelligence"]
-        FN["📰 Fast News\\n{STATUS_ICONS.get(statuses.get('fast_news', {}).get('status', 'unknown'), '⚪')}"]
-        CR["🕷 Crawler\\n{STATUS_ICONS.get(statuses.get('crawler', {}).get('status', 'unknown'), '⚪')}"]
-        MD["📊 Market Data\\n{STATUS_ICONS.get(statuses.get('market_data', {}).get('status', 'unknown'), '⚪')}"]
-    end
-    subgraph SIM["🌊 Simulation"]
-        MF["🐟 MiroFish\\n{STATUS_ICONS.get(statuses.get('mirofish', {}).get('status', 'unknown'), '⚪')}"]
-    end
-    subgraph ANA["🤖 Analyse"]
-        AF["📈 Fundamental\\n{STATUS_ICONS.get(statuses.get('agent_fundamental', {}).get('status', 'unknown'), '⚪')}"]
-        AS["🐦 Sentiment\\n{STATUS_ICONS.get(statuses.get('agent_x_sentiment', {}).get('status', 'unknown'), '⚪')}"]
-        AC["🔄 Contrarian\\n{STATUS_ICONS.get(statuses.get('agent_contrarian', {}).get('status', 'unknown'), '⚪')}"]
-        SY["🧠 Synthesis\\n{STATUS_ICONS.get(statuses.get('synthesis', {}).get('status', 'unknown'), '⚪')}"]
-    end
-    subgraph EXE["⚡ Exécution"]
-        PT["📝 Paper Trader\\n{STATUS_ICONS.get(statuses.get('paper_trader', {}).get('status', 'unknown'), '⚪')}"]
-        PM["🔍 Post-Mortem\\n{STATUS_ICONS.get(statuses.get('post_mortem', {}).get('status', 'unknown'), '⚪')}"]
-    end
+    def _lbl(flux_name: str, short: str) -> str:
+        s = statuses.get(flux_name, {}).get("status", "unknown")
+        icon = {"ok": "OK", "error": "ERR", "timeout": "TMO",
+                "disabled": "OFF", "unknown": "?", "hold": "OK"}.get(s, "?")
+        return f"{short}\\n[{icon}]"
 
-    FN & CR --> MF
-    MD --> AF
-    MF --> AF & AS & AC
-    AF & AS & AC --> SY
-    SY --> PT
-    PT --> PM
-    PM --> MF
+    dot = f"""
+digraph pipeline {{
+    rankdir=LR
+    bgcolor="#0e1117"
+    node [shape=box, style="filled,rounded", fontcolor="white", fontname="Helvetica", fontsize=10]
+    edge [color="#7986cb", arrowsize=0.7, penwidth=1.2]
+
+    subgraph cluster_INT {{
+        label="Intelligence"
+        style=filled
+        fillcolor="#10192a"
+        color="#1f77b4"
+        fontcolor="#7bb8e8"
+        fontname="Helvetica-Bold"
+        FN [label="{_lbl('fast_news', 'Fast News')}",   fillcolor="{_color('fast_news')}"]
+        CR [label="{_lbl('crawler', 'Crawler')}",       fillcolor="{_color('crawler')}"]
+        MD [label="{_lbl('market_data', 'Market Data')}", fillcolor="{_color('market_data')}"]
+    }}
+
+    subgraph cluster_SIM {{
+        label="Simulation"
+        style=filled
+        fillcolor="#1a120a"
+        color="#ff7f0e"
+        fontcolor="#ffb87b"
+        fontname="Helvetica-Bold"
+        MF [label="{_lbl('mirofish', 'MiroFish')}", fillcolor="{_color('mirofish')}"]
+    }}
+
+    subgraph cluster_ANA {{
+        label="Analysis"
+        style=filled
+        fillcolor="#0a1a0a"
+        color="#2ca02c"
+        fontcolor="#7bc87b"
+        fontname="Helvetica-Bold"
+        AF [label="{_lbl('agent_fundamental', 'Fundamental')}", fillcolor="{_color('agent_fundamental')}"]
+        AS [label="{_lbl('agent_x_sentiment', 'X Sentiment')}",  fillcolor="{_color('agent_x_sentiment')}"]
+        AC [label="{_lbl('agent_contrarian', 'Contrarian')}",    fillcolor="{_color('agent_contrarian')}"]
+        SY [label="{_lbl('synthesis', 'Synthesis')}",           fillcolor="{_color('synthesis')}"]
+    }}
+
+    subgraph cluster_EXE {{
+        label="Execution"
+        style=filled
+        fillcolor="#1a0a0a"
+        color="#d62728"
+        fontcolor="#e87b7b"
+        fontname="Helvetica-Bold"
+        PT [label="{_lbl('paper_trader', 'Paper Trader')}", fillcolor="{_color('paper_trader')}"]
+        PM [label="{_lbl('post_mortem', 'Post-Mortem')}",  fillcolor="{_color('post_mortem')}"]
+    }}
+
+    FN -> MF
+    CR -> MF
+    MD -> AF
+    MF -> AF
+    MF -> AS
+    MF -> AC
+    AF -> SY
+    AS -> SY
+    AC -> SY
+    SY -> PT
+    PT -> PM
+    PM -> MF [style=dashed, color="#555"]
+}}
 """
-    html = f"""<!DOCTYPE html>
-<html><head>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({{startOnLoad:true,theme:'dark',securityLevel:'loose',fontFamily:'sans-serif'}});</script>
-<style>body{{margin:0;padding:4px;background:transparent;}} .mermaid svg{{max-width:100%;}}</style>
-</head><body>
-<div class="mermaid">
-{mermaid}
-</div>
-</body></html>"""
-    components.html(html, height=380, scrolling=False)
+    st.graphviz_chart(dot, use_container_width=True)
 
 
 def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
@@ -390,31 +423,53 @@ def render_controls(settings: dict) -> dict | None:
     updated_settings = dict(settings)
     changed = False
 
-    cols = st.columns(3)
-    for idx, (flux_name, flux_def) in enumerate(FLUX_DEFINITIONS.items()):
-        col = cols[idx % 3]
-        with col:
-            with st.container(border=True):
+    for cat in ["intelligence", "simulation", "analysis", "execution"]:
+        fluxes_in_cat = [(k, v) for k, v in FLUX_DEFINITIONS.items() if v["category"] == cat]
+        if not fluxes_in_cat:
+            continue
+
+        st.markdown(
+            f"<p style='color:{CATEGORY_COLORS[cat]};font-weight:600;margin:12px 0 4px'>"
+            f"{t(CATEGORY_LABEL_KEYS[cat])}</p>",
+            unsafe_allow_html=True
+        )
+
+        hdr_name, hdr_desc, hdr_toggle, hdr_force = st.columns([3, 4, 1, 1])
+        hdr_name.caption("**Flux**")
+        hdr_desc.caption("**Description**")
+        hdr_toggle.caption("**On**")
+        hdr_force.caption("")
+
+        for flux_name, flux_def in fluxes_in_cat:
+            col_name, col_desc, col_toggle, col_force = st.columns([3, 4, 1, 1])
+            with col_name:
+                st.markdown(f"**{flux_def['label']}**")
+            with col_desc:
+                st.caption(t(f"flux_desc_{flux_name}"))
+            with col_toggle:
                 enabled = is_flux_enabled(flux_name, settings)
                 new_val = st.toggle(
-                    flux_def["label"],
+                    "",
                     value=enabled,
                     key=f"toggle_{flux_name}",
-                    help=t(f"flux_desc_{flux_name}")
+                    label_visibility="hidden"
                 )
                 if new_val != enabled:
                     updated_settings = toggle_flux(flux_name, new_val, updated_settings)
                     changed = True
-
-                if st.button(t("flux_force_btn"), key=f"force_{flux_name}",
-                             use_container_width=True,
-                             help=t("flux_force_help").format(label=flux_def['label'])):
+            with col_force:
+                if st.button(
+                    "🔄",
+                    key=f"force_{flux_name}",
+                    help=t("flux_force_help").format(label=flux_def['label']),
+                    use_container_width=True,
+                ):
                     st.session_state[f"force_{flux_name}"] = True
                     st.toast(t("flux_force_toast").format(label=flux_def['label']), icon="🔄")
 
-    if changed:
-        return updated_settings
-    return None
+        st.divider()
+
+    return updated_settings if changed else None
 
 
 def render_latency_chart(flux_name: str, hours: int = 1) -> None:

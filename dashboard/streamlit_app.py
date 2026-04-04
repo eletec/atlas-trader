@@ -151,6 +151,10 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
+        /* Help ? button — mode clair */
+        button[data-testid="stTooltipHoverTarget"] { color: #6c757d !important; opacity: 1 !important; }
+        button[data-testid="stTooltipHoverTarget"]:hover { color: #31333F !important; }
+        button[data-testid="stTooltipHoverTarget"] svg { fill: currentColor !important; }
     """
 
     _DARK_CSS = """
@@ -277,6 +281,10 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border-bottom-color: #ff4b4b !important;
         }
+        /* Help ? button — mode sombre */
+        button[data-testid="stTooltipHoverTarget"] { color: rgba(255,255,255,0.45) !important; opacity: 1 !important; }
+        button[data-testid="stTooltipHoverTarget"]:hover { color: #FAFAFA !important; }
+        button[data-testid="stTooltipHoverTarget"] svg { fill: currentColor !important; }
     """
 
 
@@ -293,31 +301,56 @@ def _inject_theme_css():
         """, unsafe_allow_html=True)
 
     # CSS global pour les tooltips Streamlit (rendus dans body via portal React)
-    if theme != "light":
-        st.markdown("""
+    # Toujours injecté — couleurs adaptées au thème courant
+    if theme == "light":
+        _t_bg, _t_fg, _t_bdr, _t_sh = "#ffffff", "#31333F", "#dee2e6", "rgba(0,0,0,0.14)"
+        _t_icon, _t_icon_h = "#6c757d", "#31333F"
+    elif theme == "dark":
+        _t_bg, _t_fg, _t_bdr, _t_sh = "#21262d", "#e6edf3", "rgba(255,255,255,0.18)", "rgba(0,0,0,0.55)"
+        _t_icon, _t_icon_h = "rgba(255,255,255,0.45)", "#e6edf3"
+    else:  # system — on choisit dark par défaut (media query n'est pas applicable sur les portals Radix)
+        _t_bg, _t_fg, _t_bdr, _t_sh = "#21262d", "#e6edf3", "rgba(255,255,255,0.18)", "rgba(0,0,0,0.55)"
+        _t_icon, _t_icon_h = "rgba(255,255,255,0.45)", "#e6edf3"
+    st.markdown(f"""
 <style id="atlas-tooltip-global">
-/* Conteneur racine du tooltip — une seule bordure ici */
-div[data-radix-popper-content-wrapper] {
-    background-color: #21262d !important;
-    color: #e6edf3 !important;
-    border: 1px solid rgba(255,255,255,0.18) !important;
+/* Bulle tooltip (portal Radix — hors DOM principal) */
+div[data-radix-popper-content-wrapper] {{
+    background-color: {_t_bg} !important;
+    color: {_t_fg} !important;
+    border: 1px solid {_t_bdr} !important;
     border-radius: 6px !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.55) !important;
+    box-shadow: 0 4px 16px {_t_sh} !important;
     padding: 7px 11px !important;
     font-size: 12px !important;
     line-height: 1.5 !important;
-}
-/* Tous les enfants : pas de bordure ni background propre */
+    max-width: 340px !important;
+}}
 div[data-radix-popper-content-wrapper] *,
 [role="tooltip"],
-[role="tooltip"] * {
+[role="tooltip"] * {{
     border: none !important;
     background: transparent !important;
     box-shadow: none !important;
-    color: #e6edf3 !important;
+    color: {_t_fg} !important;
     padding: 0 !important;
     margin: 0 !important;
-}
+}}
+/* Bouton icône ? (help= Streamlit) */
+button[data-testid="stTooltipHoverTarget"],
+.stTooltipHoverTarget {{
+    color: {_t_icon} !important;
+    opacity: 1 !important;
+    transition: color 0.15s ease !important;
+}}
+button[data-testid="stTooltipHoverTarget"]:hover,
+.stTooltipHoverTarget:hover {{
+    color: {_t_icon_h} !important;
+}}
+button[data-testid="stTooltipHoverTarget"] svg,
+.stTooltipHoverTarget svg {{
+    fill: currentColor !important;
+    stroke: currentColor !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 

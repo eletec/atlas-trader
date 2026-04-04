@@ -112,7 +112,10 @@ class TimesFMAgent:
 
     def analyze(self, state: dict) -> dict:
         """Run TimesFM forecast in a child process and return agent analysis dict."""
-        from concurrent.futures import BrokenProcessPool
+        try:
+            from concurrent.futures import BrokenProcessPool
+        except ImportError:
+            from concurrent.futures.process import BrokenProcessPool
         t0 = time.time()
 
         try:

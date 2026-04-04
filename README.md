@@ -523,10 +523,6 @@ Private project — internal use only.
 
 *Built with 🤖 LangGraph · MiroFish · Claude · Streamlit*
 
----
-
-## Vue d'ensemble
-
 **Atlas Trader** est un système de paper-trading entièrement autonome qui combine plusieurs couches d'intelligence artificielle pour générer des signaux de trading à haute conviction sur BTC/USDT (Binance testnet).
 
 Le système fonctionne en boucle de **15 minutes** par défaut :

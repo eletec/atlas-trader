@@ -363,7 +363,7 @@ button[data-testid="stTooltipIcon"]:hover,
     border-color: {_t_icon_fg_h} !important;
     color: {_t_icon_fg_h} !important;
 }}
-/* SVG et path à l'intérieur */
+/* SVG et path à l'intérieur — taille uniquement, pas de fill forcé */
 button[data-testid="stTooltipHoverTarget"] svg,
 button[data-testid="stTooltipIcon"] svg,
 [data-testid="stTooltipHoverTarget"] svg,
@@ -371,16 +371,6 @@ button[data-testid="stTooltipIcon"] svg,
     width: 11px !important;
     height: 11px !important;
     overflow: visible !important;
-    fill: currentColor !important;
-    stroke: none !important;
-    color: inherit !important;
-}}
-button[data-testid="stTooltipHoverTarget"] svg path,
-button[data-testid="stTooltipIcon"] svg path,
-[data-testid="stTooltipHoverTarget"] svg path,
-[data-testid="stTooltipIcon"] svg path {{
-    fill: currentColor !important;
-    stroke: none !important;
 }}
 </style>
 """, unsafe_allow_html=True)

@@ -584,8 +584,9 @@ def render_flux_manager_page() -> None:
     ])
 
     with tab_status:
-        st.markdown(f'<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>{t("flux_status_realtime")}</h4>', unsafe_allow_html=True)
         col_l, col_r = st.columns([3, 1])
+        with col_l:
+            st.markdown(f'<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>{t("flux_status_realtime")}</h4>', unsafe_allow_html=True)
         with col_r:
             hours = st.selectbox(t("flux_stats_window"), [1, 6, 24, 72],
                                  index=2, format_func=lambda h: f"{h}h")

@@ -265,7 +265,37 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border: none !important;
         }
-        /* Tab navigation */
+        /* Agrandir bouton tooltip pour loger SVG 16px */
+        button[data-testid="stTooltipHoverTarget"],
+        button[data-testid="stTooltipIcon"],
+        [data-testid="stTooltipHoverTarget"],
+        [data-testid="stTooltipIcon"] {
+            width: 20px !important;
+            height: 20px !important;
+            min-width: 20px !important;
+        }
+        /* Table (st.table) fond sombre */
+        [data-testid="stTable"] table {
+            background-color: #161b22 !important;
+            border-collapse: collapse !important;
+            width: 100% !important;
+        }
+        [data-testid="stTable"] thead th {
+            background-color: #21262d !important;
+            color: #FAFAFA !important;
+            border-bottom: 1px solid rgba(255,255,255,0.15) !important;
+            padding: 8px 12px !important;
+        }
+        [data-testid="stTable"] tbody td {
+            background-color: #161b22 !important;
+            color: #FAFAFA !important;
+            border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+            padding: 6px 12px !important;
+        }
+        [data-testid="stTable"] tbody tr:hover td {
+            background-color: #21262d !important;
+        }
+        /* Tabs navigation */
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background-color: #0e1117 !important;
         }
@@ -363,13 +393,13 @@ button[data-testid="stTooltipIcon"]:hover,
     border-color: {_t_icon_fg_h} !important;
     color: {_t_icon_fg_h} !important;
 }}
-/* SVG et path à l'intérieur — taille uniquement, pas de fill forcé */
+/* SVG et path à l'intérieur — taille 16px pour que les strokes soient visibles */
 button[data-testid="stTooltipHoverTarget"] svg,
 button[data-testid="stTooltipIcon"] svg,
 [data-testid="stTooltipHoverTarget"] svg,
 [data-testid="stTooltipIcon"] svg {{
-    width: 11px !important;
-    height: 11px !important;
+    width: 16px !important;
+    height: 16px !important;
     overflow: visible !important;
 }}
 </style>

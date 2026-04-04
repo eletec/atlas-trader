@@ -11,6 +11,7 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 try:
     from utils.i18n import t
@@ -310,10 +311,17 @@ graph LR
     PT --> PM
     PM --> MF
 """
-    st.markdown(
-        f'<div class="mermaid">\n{mermaid}\n</div>',
-        unsafe_allow_html=True
-    )
+    html = f"""<!DOCTYPE html>
+<html><head>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({{startOnLoad:true,theme:'dark',securityLevel:'loose',fontFamily:'sans-serif'}});</script>
+<style>body{{margin:0;padding:4px;background:transparent;}} .mermaid svg{{max-width:100%;}}</style>
+</head><body>
+<div class="mermaid">
+{mermaid}
+</div>
+</body></html>"""
+    components.html(html, height=380, scrolling=False)
 
 
 def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
@@ -399,6 +407,7 @@ def render_controls(settings: dict) -> dict | None:
                     changed = True
 
                 if st.button(t("flux_force_btn"), key=f"force_{flux_name}",
+                             use_container_width=True,
                              help=t("flux_force_help").format(label=flux_def['label'])):
                     st.session_state[f"force_{flux_name}"] = True
                     st.toast(t("flux_force_toast").format(label=flux_def['label']), icon="🔄")
@@ -584,10 +593,9 @@ def render_flux_manager_page() -> None:
     ])
 
     with tab_status:
-        col_l, col_r = st.columns([3, 1])
-        with col_l:
-            st.markdown(f'<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>{t("flux_status_realtime")}</h4>', unsafe_allow_html=True)
-        with col_r:
+        st.markdown(f'<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>{t("flux_status_realtime")}</h4>', unsafe_allow_html=True)
+        col_ctrl, _ = st.columns([1, 3])
+        with col_ctrl:
             hours = st.selectbox(t("flux_stats_window"), [1, 6, 24, 72],
                                  index=2, format_func=lambda h: f"{h}h")
             if st.button(t("flux_refresh"), use_container_width=True):
@@ -633,7 +641,7 @@ def render_flux_manager_page() -> None:
             df_stats[t("flux_col_flux")] = df_stats[t("flux_col_flux")].map(
                 lambda k: FLUX_DEFINITIONS.get(k, {}).get("label", k)
             )
-            st.dataframe(df_stats, use_container_width=True, hide_index=True)
+            st.table(df_stats)
         else:
             st.info(t("flux_no_stats"))
 

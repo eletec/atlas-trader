@@ -265,15 +265,7 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border: none !important;
         }
-        /* Agrandir bouton tooltip pour loger SVG 16px */
-        button[data-testid="stTooltipHoverTarget"],
-        button[data-testid="stTooltipIcon"],
-        [data-testid="stTooltipHoverTarget"],
-        [data-testid="stTooltipIcon"] {
-            width: 20px !important;
-            height: 20px !important;
-            min-width: 20px !important;
-        }
+        /* Agrandir bouton tooltip pour loger SVG 16px — déplacé dans atlas-tooltip-global */
         /* Table (st.table) fond sombre */
         [data-testid="stTable"] table {
             background-color: #161b22 !important;
@@ -371,9 +363,9 @@ button[data-testid="stTooltipIcon"],
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    width: 18px !important;
-    height: 18px !important;
-    min-width: 18px !important;
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
     border-radius: 50% !important;
     border: 1px solid {_t_icon_bdr} !important;
     background: {_t_icon_bg} !important;
@@ -393,7 +385,7 @@ button[data-testid="stTooltipIcon"]:hover,
     border-color: {_t_icon_fg_h} !important;
     color: {_t_icon_fg_h} !important;
 }}
-/* SVG et path à l'intérieur — taille 16px pour que les strokes soient visibles */
+/* SVG — taille 16px, couleur héritée du bouton */
 button[data-testid="stTooltipHoverTarget"] svg,
 button[data-testid="stTooltipIcon"] svg,
 [data-testid="stTooltipHoverTarget"] svg,
@@ -401,6 +393,27 @@ button[data-testid="stTooltipIcon"] svg,
     width: 16px !important;
     height: 16px !important;
     overflow: visible !important;
+    color: inherit !important;
+}}
+/* Masquer le <circle> intégré au SVG — le bouton joue déjà le rôle du cercle.
+   Sans cela, le SVG stroke-based dessine un 2e cercle par-dessus le rond CSS. */
+button[data-testid="stTooltipHoverTarget"] svg circle,
+button[data-testid="stTooltipIcon"] svg circle,
+[data-testid="stTooltipHoverTarget"] svg circle,
+[data-testid="stTooltipIcon"] svg circle {{
+    display: none !important;
+}}
+/* Forcer la couleur du glyphe ? (path + point) — stroke ET fill pour les 2 variantes */
+button[data-testid="stTooltipHoverTarget"] svg path,
+button[data-testid="stTooltipIcon"] svg path,
+[data-testid="stTooltipHoverTarget"] svg path,
+[data-testid="stTooltipIcon"] svg path,
+button[data-testid="stTooltipHoverTarget"] svg line,
+button[data-testid="stTooltipIcon"] svg line,
+[data-testid="stTooltipHoverTarget"] svg line,
+[data-testid="stTooltipIcon"] svg line {{
+    stroke: currentColor !important;
+    fill: none !important;
 }}
 </style>
 """, unsafe_allow_html=True)

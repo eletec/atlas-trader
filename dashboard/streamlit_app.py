@@ -697,7 +697,7 @@ def render_header():
                 f'white-space:nowrap;background:{bg};font-weight:{fw};">{label}</a>')
 
     admin_icon  = '<i class="fas fa-lock-open" style="font-size:13px;"></i>' if st.session_state.get("admin_authenticated") else '<i class="fas fa-gear" style="font-size:13px;"></i>'
-    admin_label = f"{admin_icon}&nbsp; Administration"
+    admin_label = f"{admin_icon}&nbsp; {t('hbg_admin')}"
     admin_bg    = f"background:rgba(255,75,75,0.18);" if show_admin else ""
 
     # ─ Dropdown HTML (rendu seulement si menu_open) ─────────────────────────
@@ -712,14 +712,14 @@ def render_header():
   <a href="{u_admin}" style="text-decoration:none;display:block;padding:10px 16px;
      font-size:14px;color:{nav_fg};{admin_bg}" target="_blank">{admin_label}</a>
   <div style="{S_SEP}"></div>
-  <div style="{S_LBL}"><i class="fas fa-palette" style="margin-right:5px;"></i>Thème</div>
+  <div style="{S_LBL}"><i class="fas fa-palette" style="margin-right:5px;"></i>{t('hbg_theme')}</div>
   <div style="{S_ROW}">
-    {pill(u_t_light,  '<i class="fas fa-sun"></i> Clair',    theme == "light")}
-    {pill(u_t_dark,   '<i class="fas fa-moon"></i> Sombre',   theme == "dark")}
-    {pill(u_t_system, '<i class="fas fa-desktop"></i> Système', theme == "system")}
+    {{pill(u_t_light,  f'<i class="fas fa-sun"></i> {{t("theme_light")}}',    theme == "light")}}
+    {{pill(u_t_dark,   f'<i class="fas fa-moon"></i> {{t("theme_dark")}}',   theme == "dark")}}
+    {{pill(u_t_system, f'<i class="fas fa-desktop"></i> {{t("theme_system")}}', theme == "system")}}
   </div>
   <div style="{S_SEP}"></div>
-  <div style="{S_LBL}"><i class="fas fa-globe" style="margin-right:5px;"></i>Langue</div>
+  <div style="{S_LBL}"><i class="fas fa-globe" style="margin-right:5px;"></i>{t('hbg_lang')}</div>
   <div style="{S_ROW}">
     {pill(u_l_fr, '🇫🇷', lang_param == "fr")}
     {pill(u_l_en, '🇬🇧', lang_param == "en")}
@@ -773,7 +773,7 @@ header[data-testid="stHeader"]{{display:none!important;}}
     <span style="font-weight:400;font-size:12px;opacity:0.5;"> &middot; Paper Trading BTC/USDT</span>
   </span>
   <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{_fmt_utc_local(datetime.utcnow())}</span>
-  <a href="{u_refresh}" style="{S_BTN}" title="Rafra\u00eechir" target="_self"><i class="fas fa-rotate-right"></i></a>
+  <a href="{u_refresh}" style="{S_BTN}" title="{t('hbg_refresh')}" target="_self"><i class="fas fa-rotate-right"></i></a>
   <a href="{u_force}" style="{S_BTN}" title="Force Run" target="_self"
      class="{'atlas-bolt-active' if _cycle_running else ''}"><i class="fas fa-bolt"></i></a>
   <a href="{u_hamburger}" style="{S_HBG}" title="Menu" target="_self"><i class="fas fa-bars"></i></a>
@@ -1499,7 +1499,7 @@ def render_admin_panel():
             help=t("cfg_cache_help"))
 
         # Clés API par provider
-        st.markdown("**Clés API**")
+        st.markdown(f"**{t('cfg_api_keys')}**")
         _provider_now = llm.get("provider", "anthropic")
         import os as _os
         _key_labels = {
@@ -1515,7 +1515,7 @@ def render_admin_panel():
             _lbl,
             value=_current_val,
             type="password",
-            help=f"Sauvegardé dans settings.yaml. Précédence sur la variable d'env {_env_var}.",
+            help=t("cfg_api_key_saved").format(env=_env_var),
             key=f"llm_api_key_{_provider_now}",
         )
         if _new_val:
@@ -1526,8 +1526,8 @@ def render_admin_panel():
         st.divider()
         _provider_label = llm.get("provider", "LLM").capitalize()
         st.markdown(
-            f'<h4><i class="fas fa-terminal" style="margin-right:7px;color:#7986cb;"></i>'
-            f"Analyser avec {_provider_label}</h4>",
+            f"<h4><i class=\"fas fa-terminal\" style=\"margin-right:7px;color:#7986cb;\"></i>"
+            f"{t('cfg_analyze_with').format(provider=_provider_label)}</h4>",
             unsafe_allow_html=True,
         )
         # Clé API du provider actif (lecture seule pour info ; éditable via champ dédié ci-dessus)
@@ -1545,28 +1545,28 @@ def render_admin_panel():
         _cur_key = llm.get(_cfg_k) or _os.environ.get(_env_k, "")
         _placeholder = _cur_key if (_cur_key and not _cur_key.endswith("...")) else ""
         _new_key = st.text_input(
-            f"Clé API {_provider_label}",
+            t("cfg_api_key_for_prov").format(provider=_provider_label),
             value=_placeholder,
             type="password",
-            help=f"Sauvegardée dans settings.yaml. Prioritaire sur la variable d'env {_env_k}.",
+            help=t("cfg_api_key_saved2").format(env=_env_k),
             key=f"ca7_key_{_prov}",
         )
         if _new_key:
             llm[_cfg_k] = _new_key
             settings["llm"] = llm
         claude_prompt = st.text_area(
-            "Prompt",
+            t("cfg_ca7_prompt"),
             value="Résume les derniers signaux de marché et propose une action.",
             height=100,
             key="ca7_claude_prompt",
         )
         ca7_col1, ca7_col2 = st.columns([1, 3])
         with ca7_col1:
-            ca7_timeout = st.number_input("Timeout (s)", min_value=10, max_value=300,
+            ca7_timeout = st.number_input(t("cfg_ca7_timeout"), min_value=10, max_value=300,
                                           value=60, step=10, key="ca7_timeout")
         with ca7_col2:
-            ca7_inject = st.toggle("Injecter les données réelles (décisions, trades)", value=True, key="ca7_inject")
-        if st.button(f"▶ Lancer l'analyse {_provider_label}", key="ca7_run_btn"):
+            ca7_inject = st.toggle(t("cfg_ca7_inject"), value=True, key="ca7_inject")
+        if st.button(t("cfg_ca7_run").format(provider=_provider_label), key="ca7_run_btn"):
             with st.spinner("Analyse en cours…"):
                 try:
                     from utils.claude_cli import run_claude_analysis
@@ -1609,7 +1609,7 @@ def render_admin_panel():
                                 + claude_prompt
                             )
                     ca7_result = run_claude_analysis(_full_prompt, timeout=int(ca7_timeout))
-                    st.text_area("Résultat", value=ca7_result, height=300, key="ca7_result")
+                    st.text_area(t("cfg_ca7_result"), value=ca7_result, height=300, key="ca7_result")
                 except Exception as _ca7_exc:
                     st.error(f"Erreur : {_ca7_exc}")
 

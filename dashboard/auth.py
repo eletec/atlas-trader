@@ -24,6 +24,7 @@ from pathlib import Path
 
 import streamlit as st
 import yaml
+from utils.i18n import t
 
 logger = logging.getLogger("zeitgeist.auth")
 
@@ -513,45 +514,44 @@ def render_users_admin() -> None:
 
     st.markdown(
         '<h4><i class="fas fa-users" style="margin-right:7px;color:#7986cb;"></i>'
-        "Gestion des utilisateurs</h4>",
+        f"{t('usr_title')}</h4>",
         unsafe_allow_html=True,
     )
 
     # ── Paramètres globaux ──────────────────────────────────────────────────
-    st.markdown("**Paramètres de session**")
+    st.markdown(f"**{t('usr_session_settings')}**")
     col1, col2 = st.columns(2)
     with col1:
         settings["guest_mode"] = st.toggle(
-            "Mode invité (front visible sans connexion)",
+            t("usr_guest_mode"),
             value=settings.get("guest_mode", True),
-            help="Si activé, le front est accessible sans login. "
-                 "Le back-office nécessite toujours une authentification.",
+            help=t("usr_guest_help"),
         )
     with col2:
         settings["cookie_expiry_days"] = st.number_input(
-            "Durée de session (jours)",
+            t("usr_session_days"),
             min_value=1,
             max_value=90,
             value=int(settings.get("cookie_expiry_days", 7)),
-            help="Durée de vie du cookie de session.",
+            help=t("usr_session_days_help"),
         )
     cfg["settings"] = settings
     st.markdown("---")
 
     # ── Liste des utilisateurs ───────────────────────────────────────────────
-    st.markdown("**Utilisateurs configurés**")
+    st.markdown(f"**{t('usr_users_configured')}**")
     if not users:
-        st.info("Aucun utilisateur. L'assistant de création s'affiche à la prochaine connexion.")
+        st.info(t("usr_no_users"))
     else:
         for uname, udata in list(users.items()):
             with st.expander(f"👤 {uname} — rôles : {', '.join(udata.get('roles', []))}"):
                 roles = udata.get("roles", [])
                 col_r1, col_r2 = st.columns(2)
                 with col_r1:
-                    has_front = st.toggle("Accès Front", value="front" in roles, key=f"front_{uname}")
+                    has_front = st.toggle(t("usr_access_front"), value="front" in roles, key=f"front_{uname}")
                 with col_r2:
                     has_back = st.toggle(
-                        "Accès Back-office (+ 2FA obligatoire)",
+                        t("usr_access_back"),
                         value="back" in roles,
                         key=f"back_{uname}",
                     )
@@ -563,30 +563,30 @@ def render_users_admin() -> None:
                 udata["roles"] = new_roles
 
                 # Reset mot de passe
-                st.markdown("**Changer le mot de passe**")
+                st.markdown(f"**{t('usr_change_pwd')}**")
                 with st.form(f"reset_pwd_{uname}"):
-                    new_pwd = st.text_input("Nouveau mot de passe", type="password", key=f"npwd_{uname}")
-                    if st.form_submit_button("Mettre à jour", key=f"btn_pwd_{uname}"):
+                    new_pwd = st.text_input(t("usr_new_pwd"), type="password", key=f"npwd_{uname}")
+                    if st.form_submit_button(t("usr_update_pwd"), key=f"btn_pwd_{uname}"):
                         if len(new_pwd) >= 8:
                             udata["password_hash"] = hash_password(new_pwd)
-                            st.success("Mot de passe mis à jour.")
+                            st.success(t("usr_pwd_updated"))
                         else:
-                            st.error("Minimum 8 caractères.")
+                            st.error(t("usr_min_8"))
 
                 # Reset TOTP
                 if udata.get("totp_secret"):
                     if st.button(
-                        "🔄 Réinitialiser le 2FA (nouveau QR code à la prochaine connexion)",
+                        t("usr_reset_2fa"),
                         key=f"reset_totp_{uname}",
                     ):
                         udata["totp_secret"] = ""
-                        st.success("2FA réinitialisé — l'utilisateur devra re-scanner le QR code.")
+                        st.success(t("usr_reset_2fa_ok"))
 
                 # Supprimer utilisateur
-                if st.button(f"🗑 Supprimer {uname}", key=f"del_{uname}", type="secondary"):
+                if st.button(t("usr_delete_btn").format(uname=uname), key=f"del_{uname}", type="secondary"):
                     del cfg["users"][uname]
                     save_users_config(cfg)
-                    st.success(f"Utilisateur '{uname}' supprimé.")
+                    st.success(t("usr_deleted_ok").format(uname=uname))
                     st.rerun()
 
                 users[uname] = udata
@@ -594,27 +594,27 @@ def render_users_admin() -> None:
     st.markdown("---")
 
     # ── Ajouter un utilisateur ───────────────────────────────────────────────
-    st.markdown("**Ajouter un utilisateur**")
+    st.markdown(f"**{t('usr_add_title')}**")
     with st.form("add_user"):
         col1, col2 = st.columns(2)
         with col1:
-            new_username = st.text_input("Identifiant")
-            new_pwd1 = st.text_input("Mot de passe", type="password")
-            new_pwd2 = st.text_input("Confirmer", type="password")
+            new_username = st.text_input(t("usr_new_username"))
+            new_pwd1 = st.text_input(t("usr_new_password"), type="password")
+            new_pwd2 = st.text_input(t("usr_confirm_pwd"), type="password")
         with col2:
-            role_front = st.toggle("Accès Front", value=True, key="new_front")
-            role_back = st.toggle("Accès Back-office (+ 2FA)", value=False, key="new_back")
-        submitted = st.form_submit_button("Ajouter", type="primary")
+            role_front = st.toggle(t("usr_access_front"), value=True, key="new_front")
+            role_back = st.toggle(t("usr_access_back_2fa"), value=False, key="new_back")
+        submitted = st.form_submit_button(t("usr_add_btn"), type="primary")
 
     if submitted:
         if not new_username:
-            st.error("L'identifiant est obligatoire.")
+            st.error(t("usr_id_required"))
         elif new_username in users:
-            st.error(f"L'utilisateur '{new_username}' existe déjà.")
+            st.error(t("usr_already_exists").format(uname=new_username))
         elif len(new_pwd1) < 8:
-            st.error("Minimum 8 caractères.")
+            st.error(t("usr_min_8"))
         elif new_pwd1 != new_pwd2:
-            st.error("Les mots de passe ne correspondent pas.")
+            st.error(t("usr_pwd_mismatch"))
         else:
             new_roles = []
             if role_front:
@@ -628,7 +628,7 @@ def render_users_admin() -> None:
                 "totp_secret": "",
             }
             save_users_config(cfg)
-            st.success(f"✅ Utilisateur '{new_username}' créé avec les rôles : {new_roles}")
+            st.success(t("usr_created_ok").format(uname=new_username))
             st.rerun()
 
     # Sauvegarder les modifications (rôles, settings)

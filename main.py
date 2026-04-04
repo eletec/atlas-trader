@@ -168,7 +168,9 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
     - Surveille le score marché continu → cycle forcé si signal technique extrême
     """
     logger.info(f"Monitor rapide démarré — intervalle {monitor_interval}s | seuil breaking={breaking_threshold}")
-    last_news_titles: set[str] = set()  # évite les re-détections
+    from collections import deque
+    last_news_titles: deque[str] = deque(maxlen=500)  # borné — évite la fuite mémoire sur durée longue
+    _last_news_titles_set: set[str] = set()  # lookup O(1) — rebuildé depuis le deque
     _last_market_score_trigger = 0.0  # anti-spam score marché (pas d'annotation — nonlocal l'exige)
 
     while not _shutdown_event.is_set():
@@ -181,11 +183,14 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
             breaking = [
                 n for n in items
                 if n.get("relevance_score", 0) >= breaking_threshold
-                and n.get("title", "") not in last_news_titles
+                and n.get("title", "") not in _last_news_titles_set
             ]
             if breaking:
                 titles = [n["title"][:80] for n in breaking[:3]]
-                last_news_titles.update(n["title"] for n in breaking)
+                for n in breaking:
+                    last_news_titles.append(n["title"])
+                _last_news_titles_set.clear()
+                _last_news_titles_set.update(last_news_titles)
                 # Ne forcer un cycle que si aucun cycle n'est déjà en cours
                 from utils.cycle_lock import is_locked as _cycle_locked
                 if not _cycle_locked():

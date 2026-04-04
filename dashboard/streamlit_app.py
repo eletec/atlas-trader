@@ -1461,6 +1461,7 @@ def render_admin_panel():
         f"⬡ {t('tab_agents')}",
         f"≡ {t('tab_logging')}",
         f"⏱ {t('tab_timesfm')}",
+        f"⊞ {t('tab_market_regime')}",
         f"⇄ {t('tab_flux')}",
         f"👤 {t('tab_users')}",
     ])
@@ -1816,6 +1817,18 @@ def render_admin_panel():
                     key=f"weight_{agent_name}"
                 )
             agents[agent_name] = cfg
+
+        # market_regime — info-only (weight toujours 0.0, configure via onglet dédié)
+        st.markdown("---")
+        mr_cfg = agents.get("market_regime", {})
+        mr_cfg["enabled"] = st.toggle(
+            t("cfg_agent_toggle").format(name="market_regime"),
+            mr_cfg.get("enabled", True),
+            key="toggle_market_regime"
+        )
+        st.caption(t("cfg_regime_agent_note"))
+        agents["market_regime"] = mr_cfg
+
         settings["agents"] = agents
 
     with sub_tabs[7]:  # Logging
@@ -1907,11 +1920,83 @@ def render_admin_panel():
         except Exception as exc:
             st.warning(f"TimesFM stats unavailable: {exc}")
 
-    with sub_tabs[9]:  # Flux Manager
+    with sub_tabs[9]:  # Market Regime
+        st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_regime_info"))
+
+        # --- Régime Actuel (lecture DB) ---
+        try:
+            from storage.database import get_recent_decisions
+            last_decisions = get_recent_decisions(1)
+            import json as _json
+            last_ws = _json.loads(last_decisions[0].get("weights_snapshot") or "{}") if last_decisions else {}
+            _regime_now   = last_ws.get("regime", "UNKNOWN")
+            _hmm_prob_now = float(last_ws.get("hmm_prob", 0.5))
+            _feat_now     = last_ws.get("regime_features", {})
+            _ts_now       = last_decisions[0].get("timestamp", "?") if last_decisions else "?"
+
+            _badge_color = {
+                "TRENDING_UP":   "#43a047",   # vert
+                "TRENDING_DOWN": "#e53935",   # rouge
+                "SIDEWAYS":      "#fb8c00",   # orange
+                "HIGH_VOLATILITY": "#e53935", # rouge
+            }.get(_regime_now, "#757575")     # gris = UNKNOWN
+
+            _regime_emoji = {
+                "TRENDING_UP": "▲", "TRENDING_DOWN": "▼",
+                "SIDEWAYS": "↔", "HIGH_VOLATILITY": "⚡",
+            }.get(_regime_now, "?")
+
+            st.markdown(
+                f'<div style="border:1px solid {_badge_color};border-radius:8px;padding:12px 18px;'
+                f'background:rgba(0,0,0,0.2);margin-bottom:12px">'
+                f'<span style="font-size:1.25rem;font-weight:700;color:{_badge_color}">'
+                f'  {_regime_emoji} {_regime_now}</span>'
+                f'  &nbsp;&nbsp;<span style="color:#aaa;font-size:0.9rem">'
+                f'HMM {_hmm_prob_now:.0%} confiance</span><br>'
+                f'<span style="color:#ccc;font-size:0.85rem">'
+                f'ADX : {_feat_now.get("adx", "—"):.1f} &nbsp;|&nbsp; '
+                f'Vol. rel. : {_feat_now.get("rel_volatility", 0):.2f}× &nbsp;|&nbsp; '
+                f'Dernier cycle : {_ts_now}</span>'
+                + (f'<br><span style="color:#ef9a9a;font-size:0.82rem">⚠ Circuit breaker funding actif dès 0.035&nbsp;% (seuil abaissé en HIGH_VOL)</span>'
+                   if _regime_now == "HIGH_VOLATILITY" else "")
+                + '</div>',
+                unsafe_allow_html=True
+            )
+        except Exception:
+            st.caption(t("cfg_regime_no_data"))
+
+        mr = settings.get("market_regime", {})
+        col1, col2 = st.columns(2)
+        with col1:
+            mr["n_hmm_states"] = st.number_input(
+                t("cfg_regime_n_states"), 2, 4,
+                int(mr.get("n_hmm_states", 2)), 1,
+                help=t("cfg_regime_n_states_help")
+            )
+            mr["adx_period"] = st.slider(
+                t("cfg_regime_adx_period"), 7, 30,
+                int(mr.get("adx_period", 18)),
+                help=t("cfg_regime_adx_help")
+            )
+        with col2:
+            mr["vol_window"] = st.slider(
+                t("cfg_regime_vol_window"), 10, 60,
+                int(mr.get("vol_window", 30)),
+                help=t("cfg_regime_vol_help")
+            )
+            mr["trend_window"] = st.slider(
+                t("cfg_regime_trend_window"), 20, 100,
+                int(mr.get("trend_window", 50)),
+                help=t("cfg_regime_trend_help")
+            )
+        settings["market_regime"] = mr
+
+    with sub_tabs[10]:  # Flux Manager
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
-    with sub_tabs[10]:  # Utilisateurs
+    with sub_tabs[11]:  # Utilisateurs
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin

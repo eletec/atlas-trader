@@ -55,14 +55,40 @@ class ScoreCalculator:
         market_score: float,
         agent_scores: dict[str, float],
         contrarian_score: float,
+        mirofish_n_agents: int = 0,
     ) -> tuple[float, dict]:
         """
         Calcule le score global pondéré.
+
+        Si MiroFish tourne en mode fallback lexical (n_agents_used < 500),
+        son poids est réduit à 12 % et les poids restants sont renormalisés.
+        Cela évite qu'un score lexical naïf (~50) écrase les signaux forts.
 
         Returns:
             score: float [0-100]
             breakdown: dict — contribution de chaque composant
         """
+        # Poids MiroFish adaptatif
+        _MIROFISH_FALLBACK_WEIGHT = 0.12
+        if mirofish_n_agents < 500 and self.weights.mirofish > _MIROFISH_FALLBACK_WEIGHT:
+            # Réduire MiroFish et redistribuer le delta sur market + agents
+            delta = self.weights.mirofish - _MIROFISH_FALLBACK_WEIGHT
+            w_mf = _MIROFISH_FALLBACK_WEIGHT
+            remaining = self.weights.market + self.weights.agents + self.weights.contrarian
+            w_mkt = self.weights.market  + delta * (self.weights.market  / remaining)
+            w_agt = self.weights.agents  + delta * (self.weights.agents  / remaining)
+            w_ctr = self.weights.contrarian + delta * (self.weights.contrarian / remaining)
+            logger.info(
+                f"MiroFish fallback (n_agents={mirofish_n_agents}) — poids réduit "
+                f"{self.weights.mirofish:.0%}→{w_mf:.0%}, "
+                f"market {self.weights.market:.0%}→{w_mkt:.0%}"
+            )
+        else:
+            w_mf, w_mkt, w_agt, w_ctr = (
+                self.weights.mirofish, self.weights.market,
+                self.weights.agents, self.weights.contrarian,
+            )
+
         # Score moyen des agents (hors contrarian)
         agents_mean = (
             sum(agent_scores.values()) / len(agent_scores)
@@ -70,33 +96,34 @@ class ScoreCalculator:
         )
 
         weighted_score = (
-            mirofish_score * self.weights.mirofish
-            + market_score * self.weights.market
-            + agents_mean * self.weights.agents
-            + contrarian_score * self.weights.contrarian
+            mirofish_score * w_mf
+            + market_score * w_mkt
+            + agents_mean * w_agt
+            + contrarian_score * w_ctr
         )
 
         score = max(0.0, min(100.0, weighted_score))
 
         breakdown = {
-            "mirofish": {"score": mirofish_score, "weight": self.weights.mirofish,
-                         "contribution": round(mirofish_score * self.weights.mirofish, 2)},
-            "market": {"score": market_score, "weight": self.weights.market,
-                       "contribution": round(market_score * self.weights.market, 2)},
-            "agents": {"score": agents_mean, "weight": self.weights.agents,
-                       "contribution": round(agents_mean * self.weights.agents, 2),
+            "mirofish": {"score": mirofish_score, "weight": w_mf,
+                         "contribution": round(mirofish_score * w_mf, 2),
+                         "fallback_mode": mirofish_n_agents < 500},
+            "market": {"score": market_score, "weight": w_mkt,
+                       "contribution": round(market_score * w_mkt, 2)},
+            "agents": {"score": agents_mean, "weight": w_agt,
+                       "contribution": round(agents_mean * w_agt, 2),
                        "detail": agent_scores},
-            "contrarian": {"score": contrarian_score, "weight": self.weights.contrarian,
-                           "contribution": round(contrarian_score * self.weights.contrarian, 2)},
+            "contrarian": {"score": contrarian_score, "weight": w_ctr,
+                           "contribution": round(contrarian_score * w_ctr, 2)},
             "final_score": round(score, 2),
         }
 
         logger.debug(
             f"Score: {score:.1f} "
-            f"(MF={mirofish_score:.0f}×{self.weights.mirofish} "
-            f"+ MKT={market_score:.0f}×{self.weights.market} "
-            f"+ AGT={agents_mean:.0f}×{self.weights.agents} "
-            f"+ CTR={contrarian_score:.0f}×{self.weights.contrarian})"
+            f"(MF={mirofish_score:.0f}×{w_mf:.2f} "
+            f"+ MKT={market_score:.0f}×{w_mkt:.2f} "
+            f"+ AGT={agents_mean:.0f}×{w_agt:.2f} "
+            f"+ CTR={contrarian_score:.0f}×{w_ctr:.2f})"
         )
         return round(score, 2), breakdown
 
@@ -129,23 +156,102 @@ class RiskEngine:
         self.kelly_max *= mult
         self.pos_size_pct *= mult
 
-    def is_circuit_breaker_active(self) -> bool:
-        """Vérifie si le drawdown maximal est atteint."""
+    def is_circuit_breaker_active(self, market_indicators: dict | None = None) -> bool:
+        """Vérifie uniquement le drawdown maximal (circuit breaker dur).
+        Pour le funding, utiliser check_funding_circuit_breaker() qui retourne un multiplier graduel.
+        """
         try:
             from storage.database import get_pnl_history
             history = get_pnl_history()
-            if not history:
-                return False
-            cumulative_pnl = sum(h.get("result_24h", 0) or 0 for h in history)
-            drawdown_pct = abs(cumulative_pnl) / self.capital * 100
-            if drawdown_pct >= self.max_dd_pct:
-                logger.warning(
-                    f"CIRCUIT BREAKER ACTIF — drawdown={drawdown_pct:.1f}% >= {self.max_dd_pct}%"
-                )
-                return True
+            if history:
+                cumulative_pnl = sum(h.get("result_24h", 0) or 0 for h in history)
+                drawdown_pct = abs(cumulative_pnl) / self.capital * 100
+                if drawdown_pct >= self.max_dd_pct:
+                    logger.warning(
+                        f"CIRCUIT BREAKER ACTIF — drawdown={drawdown_pct:.1f}% >= {self.max_dd_pct}%"
+                    )
+                    return True
         except Exception:
             pass
         return False
+
+    def check_funding_circuit_breaker(
+        self, market_indicators: dict | None = None, regime: str | None = None
+    ) -> tuple[bool, str, float]:
+        """
+        Évalue le risque de sur-levier via le funding rate.
+
+        Retourne:
+            blocked   : bool   — True = ne pas ouvrir de nouveau BUY
+            reason    : str    — explication pour les logs / SynthesisAgent
+            size_mult : float  — multiplicateur à appliquer sur la taille de position (0.0–1.0)
+
+        Trois niveaux :
+          funding < warning  → normal, taille 100%
+          warning ≤ funding < block → réduction progressive jusqu'à max_reduction
+          funding ≥ block (soutenu sur sustain_cycles) → blocage total
+          funding très négatif → signal contrarian LONG (noté dans reason)
+
+        En régime HIGH_VOLATILITY le seuil de blocage est abaissé de 0.045 % → 0.035 %
+        pour protéger davantage lors des périodes de haute volatilité.
+        """
+        from utils.config import load_settings
+        cfg = load_settings().get("circuit_breaker", {})
+
+        f_warning  = float(cfg.get("funding_warning",  0.00018))  # 0.018 %
+        f_block    = float(cfg.get("funding_block",    0.00045))  # 0.045 %
+        sustain    = int(cfg.get("sustain_period_cycles", 3))
+        max_reduc  = float(cfg.get("max_reduction", 0.75))
+
+        # Seuil plus strict en HIGH_VOLATILITY (0.045 % → 0.035 %)
+        if regime == "HIGH_VOLATILITY":
+            f_block = min(f_block, 0.00035)
+            logger.debug(f"[FundingCB] HIGH_VOLATILITY — f_block abaissé à {f_block:.4%}")
+
+        ind = market_indicators or {}
+        current_funding = float(ind.get("funding_rate", 0.0) or 0.0)
+
+        # Historique récent (liste des N dernières valeurs collectées par MarketDataAgent)
+        recent = list(ind.get("recent_funding_rates") or [current_funding])
+        if not recent:
+            recent = [current_funding]
+
+        # Moyenne sur les derniers `sustain` cycles — filtre les pics isolés
+        window = recent[-sustain:] if len(recent) >= sustain else recent
+        avg_funding = sum(window) / len(window)
+
+        reason = ""
+        size_mult = 1.0
+        blocked = False
+
+        if avg_funding >= f_block:
+            # Blocage dur uniquement si soutenu (avg sur sustain cycles)
+            blocked = True
+            size_mult = 0.0
+            reason = (
+                f"EXTREME_LONG_OVERLEVERAGE: funding moyen={avg_funding:.4%} "
+                f">= seuil blocage {f_block:.4%} (soutenu {len(window)} cycles)"
+            )
+            logger.warning(f"[FundingCB] Blocage BUY — {reason}")
+
+        elif avg_funding >= f_warning:
+            # Réduction progressive : linéaire entre warning et block
+            excess = (avg_funding - f_warning) / max(f_block - f_warning, 1e-9)
+            size_mult = max(1.0 - excess * max_reduc, 1.0 - max_reduc)
+            reason = (
+                f"HIGH_FUNDING_WARNING: funding moyen={avg_funding:.4%} "
+                f"→ taille réduite à {size_mult:.0%}"
+            )
+            logger.info(f"[FundingCB] {reason}")
+
+        else:
+            reason = f"funding_normal ({avg_funding:.4%})"
+
+        # Signal contrarian bonus : funding très négatif = shorts sur-leveragés
+        if avg_funding < -0.00025:  # −0.025 %
+            reason += " | EXTREME_SHORT_CROWDING (potential long squeeze)"
+
+        return blocked, reason, size_mult
 
     def calculate_position_size(
         self, price: float, win_rate: float = 0.55, rr_ratio: float = 1.5,
@@ -303,9 +409,27 @@ class DecisionEngine:
             # mode "off" → aucun filtre
 
         # Sizing et SL/TP seulement si BUY/SELL
+        # --- Funding circuit breaker (graduel) ---
+        funding_blocked = False
+        funding_size_mult = 1.0
+        funding_reason = ""
+        if action == "BUY":
+            _regime = agent_analyses.get("market_regime", {}).get("regime") if agent_analyses else None
+            funding_blocked, funding_reason, funding_size_mult = (
+                self.risk_engine.check_funding_circuit_breaker(market_indicators, regime=_regime)
+            )
+            if funding_blocked:
+                action = "HOLD"
+                logger.info(f"Funding CB: BUY → HOLD — {funding_reason}")
+            elif funding_size_mult < 1.0:
+                logger.info(f"Funding CB: taille BUY ×{funding_size_mult:.2f} — {funding_reason}")
+
         if action in ("BUY", "SELL"):
             position_size = round(
-                self.risk_engine.calculate_position_size(price, score=score) * ma50_size_penalty, 2
+                self.risk_engine.calculate_position_size(price, score=score)
+                * ma50_size_penalty
+                * funding_size_mult,
+                2,
             )
             sl, tp = self.risk_engine.calculate_sl_tp(price, action, atr)
         else:
@@ -336,6 +460,9 @@ class DecisionEngine:
             "ma50_size_penalty": ma50_size_penalty,
             "ma_50": ma_50,
             "above_ma50": above_ma50,
+            "funding_blocked": funding_blocked,
+            "funding_size_mult": funding_size_mult,
+            "funding_reason": funding_reason,
         }
 
     def _build_explanation(

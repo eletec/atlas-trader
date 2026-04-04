@@ -283,6 +283,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     from agents.fear_greed_agent import FearGreedAgent
     from agents.polymarket_agent import PolymarketAgent
     from agents.timesfm_agent import TimesFMAgent
+    from agents.market_regime_agent import MarketRegimeAgent
     from utils.logger import log_flux_metric
     from utils.config import load_settings
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -295,12 +296,13 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     tokens_used = 0
 
     agents_map = {
-        "fundamental": (FundamentalAgent,  agent_cfg.get("fundamental",  {}).get("enabled", True)),
-        "x_sentiment": (XSentimentAgent,   agent_cfg.get("x_sentiment",  {}).get("enabled", True)),
-        "contrarian":  (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
-        "fear_greed":  (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
-        "polymarket":  (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
-        "timesfm":     (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", True)),  # P7: aligned with settings.yaml default
+        "market_regime": (MarketRegimeAgent, agent_cfg.get("market_regime", {}).get("enabled", True)),
+        "fundamental":   (FundamentalAgent,  agent_cfg.get("fundamental",  {}).get("enabled", True)),
+        "x_sentiment":   (XSentimentAgent,   agent_cfg.get("x_sentiment",  {}).get("enabled", True)),
+        "contrarian":    (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
+        "fear_greed":    (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
+        "polymarket":    (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
+        "timesfm":       (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", True)),
     }
 
     enabled_agents = {
@@ -315,19 +317,23 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         try:
             agent = AgentClass()
             # TimesFM gets its own hard timeout (model load + forecast can hang)
+            # IMPORTANT: ne PAS utiliser 'with ThreadPoolExecutor' — __exit__ bloque
+            # sur shutdown(wait=True) si agent.analyze() est lui-même figé.
             if name == "timesfm":
                 import concurrent.futures as _cf
-                with _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="tfm") as _p:
-                    _f = _p.submit(agent.analyze, state)
-                    try:
-                        result = _f.result(timeout=180)
-                    except (_cf.TimeoutError, TimeoutError):
-                        logger.warning(f"[{state['cycle_id']}] Agent timesfm TIMEOUT 180s")
-                        log_flux_metric("agent_timesfm", "error", 180000, 0, "timeout 180s")
-                        return name, AgentAnalysis(
-                            agent_name=name, score=50.0,
-                            signal="NEUTRAL", summary="timeout 180s", confidence=0.0
-                        )
+                _p = _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="tfm")
+                _f = _p.submit(agent.analyze, state)
+                try:
+                    result = _f.result(timeout=180)
+                except (_cf.TimeoutError, TimeoutError):
+                    logger.warning(f"[{state['cycle_id']}] Agent timesfm TIMEOUT 180s")
+                    log_flux_metric("agent_timesfm", "error", 180000, 0, "timeout 180s")
+                    _p.shutdown(wait=False)  # abandon le thread bloqué
+                    return name, AgentAnalysis(
+                        agent_name=name, score=50.0,
+                        signal="NEUTRAL", summary="timeout 180s", confidence=0.0
+                    )
+                _p.shutdown(wait=False)
             else:
                 result = agent.analyze(state)
             _lat = int((time.time() - _t) * 1000)
@@ -344,23 +350,27 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
             )
 
     # Lancement parallèle — timeout 180s (TimesFM a son propre timeout à 120s)
-    with ThreadPoolExecutor(max_workers=len(enabled_agents), thread_name_prefix="agent") as pool:
-        futures = {pool.submit(_run_agent, name, cls): name for name, cls in enabled_agents.items()}
-        try:
-            for future in as_completed(futures, timeout=180):
-                name, result = future.result()
-                analyses[name] = result
-                tokens_used += result.get("tokens_used", 0) if isinstance(result, dict) else 0
-        except TimeoutError:
-            logger.error(f"[{state['cycle_id']}] Agents timeout global (180s) — certains agents ignorés")
-            # Collecter les résultats déjà terminés
-            for fut, fname in futures.items():
-                if fut.done() and fname not in analyses:
-                    try:
-                        _, result = fut.result(timeout=0)
-                        analyses[fname] = result
-                    except Exception:
-                        pass
+    # IMPORTANT: ne PAS utiliser 'with ThreadPoolExecutor' — si as_completed() expire,
+    # __exit__ appelle shutdown(wait=True) et attend les threads figés indéfiniment.
+    pool = ThreadPoolExecutor(max_workers=len(enabled_agents), thread_name_prefix="agent")
+    futures = {pool.submit(_run_agent, name, cls): name for name, cls in enabled_agents.items()}
+    try:
+        for future in as_completed(futures, timeout=180):
+            name, result = future.result()
+            analyses[name] = result
+            tokens_used += result.get("tokens_used", 0) if isinstance(result, dict) else 0
+    except TimeoutError:
+        logger.error(f"[{state['cycle_id']}] Agents timeout global (180s) — certains agents ignorés")
+        # Collecter les résultats déjà terminés
+        for fut, fname in futures.items():
+            if fut.done() and fname not in analyses:
+                try:
+                    _, result = fut.result(timeout=0)
+                    analyses[fname] = result
+                except Exception:
+                    pass
+    finally:
+        pool.shutdown(wait=False)  # abandon les threads figés, ne jamais bloquer
 
     latency_ms = int((time.time() - t0) * 1000)
     logger.info(f"[{state['cycle_id']}] Agents terminés en {latency_ms}ms (parallèle) — {len(analyses)} actifs")
@@ -382,15 +392,38 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
             logger.warning(f"Cannot log TimesFM forecast: {exc}")
 
     # CA6: CoordinatorAgent — pondération dynamique LLM après collecte des analyses
+    # Cache 2 cycles : si le régime n'a pas changé, réutiliser le dernier résultat
     try:
+        import time as _time
         from graph.coordinator import CoordinatorAgent
-        coord_meta = CoordinatorAgent().coordinate(analyses)
+        _current_regime = analyses.get("market_regime", {}).get("regime", "UNKNOWN")
+        _cached = _COORDINATOR_CACHE
+        _cache_valid = (
+            _cached.get("regime") == _current_regime
+            and _cached.get("expires_at", 0) > _time.time()
+        )
+        if _cache_valid:
+            coord_meta = _cached["meta"]
+            logger.info(
+                f"[{state['cycle_id']}] Coordinator (cache) consensus={coord_meta.get('consensus_signal')} "
+                f"régime={_current_regime} (expire dans "
+                f"{int(_cached['expires_at'] - _time.time())}s)"
+            )
+        else:
+            coord_meta = CoordinatorAgent().coordinate(analyses)
+            if coord_meta:
+                _COORDINATOR_CACHE.clear()
+                _COORDINATOR_CACHE.update({
+                    "meta": coord_meta,
+                    "regime": _current_regime,
+                    "expires_at": _time.time() + _COORDINATOR_TTL_SECONDS,
+                })
+                logger.info(
+                    f"[{state['cycle_id']}] Coordinator (fresh) consensus={coord_meta.get('consensus_signal')} "
+                    f"outliers={coord_meta.get('outliers', [])}"
+                )
         if coord_meta:
             analyses["coordinator_meta"] = coord_meta
-            logger.info(
-                f"[{state['cycle_id']}] Coordinator consensus={coord_meta.get('consensus_signal')} "
-                f"outliers={coord_meta.get('outliers', [])}"
-            )
     except Exception as _coord_exc:
         logger.debug("Coordinator ignoré : %s", _coord_exc)
 
@@ -449,6 +482,7 @@ def node_calculate_score(state: ZeitgeistState) -> dict:
     calculator = ScoreCalculator()
 
     mirofish_score = state.get("mirofish_result", {}).get("score", 50.0)
+    mirofish_n_agents = state.get("mirofish_result", {}).get("n_agents_used", 0)
     market_score = _derive_market_score(state.get("market_indicators"))
     agents_scores = {k: v.get("score", 50.0) for k, v in state.get("agent_analyses", {}).items()}
     contrarian_score = agents_scores.pop("contrarian", 50.0)
@@ -457,7 +491,8 @@ def node_calculate_score(state: ZeitgeistState) -> dict:
         mirofish_score=mirofish_score,
         market_score=market_score,
         agent_scores=agents_scores,
-        contrarian_score=contrarian_score
+        contrarian_score=contrarian_score,
+        mirofish_n_agents=mirofish_n_agents,
     )
 
     logger.info(
@@ -474,6 +509,10 @@ def node_calculate_score(state: ZeitgeistState) -> dict:
         "agent_scores": agents_scores,
         "contrarian_score": contrarian_score,
         "breakdown": breakdown,
+        # Régime courant — persisté en DB pour lecture par le dashboard
+        "regime": state.get("agent_analyses", {}).get("market_regime", {}).get("regime", "UNKNOWN"),
+        "hmm_prob": state.get("agent_analyses", {}).get("market_regime", {}).get("hmm_prob", 0.5),
+        "regime_features": state.get("agent_analyses", {}).get("market_regime", {}).get("features", {}),
     }
 
     return {"global_score": global_score, "score_breakdown": score_breakdown}
@@ -562,7 +601,7 @@ def should_execute(state: ZeitgeistState) -> str:
     """Si circuit breaker actif → forcer HOLD."""
     from decision_engine import RiskEngine
     engine = RiskEngine()
-    if engine.is_circuit_breaker_active():
+    if engine.is_circuit_breaker_active(state.get("market_indicators")):
         logger.warning(f"[{state['cycle_id']}] Circuit breaker actif — HOLD forcé")
         return "hold"
     if state.get("global_score", 50) != 50 or state.get("decision"):
@@ -638,6 +677,22 @@ def create_initial_state(asset: str) -> ZeitgeistState:
     )
 
 
+# Workflow compilé une seule fois — évite la fuite mémoire LangGraph par cycle
+_COMPILED_WORKFLOW = None
+
+# Cache CoordinatorAgent — valide pendant 2 cycles (30 min) pour éviter un appel LLM inutile
+# Structure : {"meta": dict, "expires_at": float (epoch)}
+_COORDINATOR_CACHE: dict = {}
+_COORDINATOR_TTL_SECONDS = 1800  # 2 × 15 min
+
+
+def _get_workflow():
+    global _COMPILED_WORKFLOW
+    if _COMPILED_WORKFLOW is None:
+        _COMPILED_WORKFLOW = build_workflow()
+    return _COMPILED_WORKFLOW
+
+
 def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistState:
     """Exécute un cycle complet et retourne l'état final."""
     import time
@@ -648,7 +703,7 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
         return create_initial_state(asset)
 
     try:
-        workflow = build_workflow()
+        workflow = _get_workflow()
         initial_state = create_initial_state(asset)
         t0 = time.time()
         start_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

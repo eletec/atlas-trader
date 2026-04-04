@@ -5,11 +5,16 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from datetime import datetime
 
 import numpy as np
 
 logger = logging.getLogger("zeitgeist.market_data")
+
+# Buffer module-level : garde les 8 dernières valeurs de funding rate (≈ 2h à 15min/cycle)
+# Permet au circuit breaker de détecter un funding élevé soutenu vs un pic isolé
+_FUNDING_HISTORY: deque = deque(maxlen=8)
 
 
 class MarketDataAgent:
@@ -55,6 +60,9 @@ class MarketDataAgent:
                 funding = float(fr.get("fundingRate", 0))
             except Exception:
                 pass
+
+            # Accumuler l'historique funding pour le circuit breaker soutenu
+            _FUNDING_HISTORY.append(funding)
 
             # MA50 journalière (filtre de tendance macro)
             ma_50 = 0.0
@@ -102,6 +110,7 @@ class MarketDataAgent:
                 "atr_14": round(float(self._atr(highs, lows, closes, 14)), 2),
                 "volume_24h": round(float(ticker.get("quoteVolume", 0)), 0),
                 "funding_rate": round(funding, 6),
+                "recent_funding_rates": list(_FUNDING_HISTORY),
                 "ma_50": round(ma_50, 2),
                 "above_ma50": bool(ma_50 > 0 and price > ma_50),
                 "timestamp": datetime.utcnow().isoformat(),
@@ -176,6 +185,7 @@ class MarketDataAgent:
             "atr_14": round(price * 0.015, 2),
             "volume_24h": round(random.uniform(1e9, 5e9), 0),
             "funding_rate": round(random.uniform(-0.01, 0.03), 6),
+            "recent_funding_rates": [round(random.uniform(-0.01, 0.03), 6) for _ in range(4)],
             "ma_50": round(ma_50, 2),
             "above_ma50": bool(price > ma_50),
             "timestamp": datetime.utcnow().isoformat(),

@@ -64,15 +64,18 @@ class CoordinatorAgent:
         if not self.enabled:
             return {}
 
-        # Filtrer les analyses valides
+        # Filtrer les analyses valides (market_regime est info-seulement, pas pondéré)
+        META_KEYS = {"synthesis", "synthesis_agentic", "coordinator_meta", "market_regime"}
         valid = {
             name: v for name, v in agent_analyses.items()
-            if isinstance(v, dict) and name not in ("synthesis", "synthesis_agentic", "coordinator_meta")
+            if isinstance(v, dict) and name not in META_KEYS
         }
         if len(valid) < 2:
             return {}
 
-        prompt_text = self._build_prompt(valid)
+        # Contexte de régime (optionnel — enrichit le prompt sans poids)
+        regime_info = agent_analyses.get("market_regime", {})
+        prompt_text = self._build_prompt(valid, regime_info)
 
         try:
             if self.provider == "anthropic":
@@ -96,8 +99,25 @@ class CoordinatorAgent:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_prompt(valid: dict[str, Any]) -> str:
-        lines = ["Résultats des agents (score 0-100, signal, résumé) :\n"]
+    def _build_prompt(valid: dict[str, Any], regime_info: dict | None = None) -> str:
+        lines = []
+
+        # Contexte de régime de marché (si disponible)
+        if regime_info and isinstance(regime_info, dict):
+            regime = regime_info.get("regime", "UNKNOWN")
+            hmm_label = regime_info.get("hmm_state_label", "?")
+            transition = regime_info.get("transition_prob", 0.0)
+            lines += [
+                f"Régime de marché détecté : {regime} "
+                f"(HMM : {hmm_label}, prob_transition={transition:.0%})",
+                "Consignes d'ajustement des poids selon le régime :",
+                "  TRENDING_UP/DOWN → ↑timesfm ↑contrarian ↓fear_greed",
+                "  SIDEWAYS         → ↑fear_greed ↓timesfm ↓contrarian",
+                "  HIGH_VOLATILITY  → réduis tous les poids extremes, privilégie la prudence",
+                "",
+            ]
+
+        lines.append("Résultats des agents (score 0-100, signal, résumé) :\n")
         for name, v in valid.items():
             lines.append(
                 f"• {name}: score={v.get('score', 50):.0f} "

@@ -5,6 +5,13 @@ to forecast BTC price from OHLCV history.
 
 Returns a score 0-100 based on predicted price direction,
 magnitude, and quantile-based confidence intervals.
+
+ARCHITECTURE — subprocess isolation :
+  TimesFM charge un modèle PyTorch de ~2GB en RAM. Sur NAS, le kernel
+  OOM-killer envoie SIGKILL au process Python — aucun try/except ne peut
+  l'intercepter. Solution : exécuter PyTorch dans un processus ENFANT séparé
+  (ProcessPoolExecutor, spawn). Si l'enfant est tué, le daemon parent survit.
+  Le modèle est mis en cache dans le processus enfant (persist entre cycles).
 """
 from __future__ import annotations
 
@@ -15,71 +22,73 @@ import numpy as np
 
 logger = logging.getLogger("zeitgeist.timesfm")
 
-# Lazy-loaded singleton to avoid reloading model every cycle
-_MODEL = None
+
+# ── Worker subprocess — doit être au niveau module pour être picklable ────────
+
+# Cache du modèle dans le processus ENFANT (survit entre les cycles)
+_CHILD_MODEL = None
 
 
-def _get_model(backend: str = "cpu", horizon: int = 128):
-    """Load TimesFM model once (lazy singleton). Hard timeout 180s."""
-    global _MODEL
-    if _MODEL is not None:
-        logger.debug("TimesFM model already loaded (singleton)")
-        return _MODEL
+def _timesfm_worker(closes_list: list, backend: str, horizon: int) -> tuple[list, list]:
+    """
+    S'exécute dans un processus ENFANT (ProcessPoolExecutor, spawn).
+    Si PyTorch OOM / segfault → seul cet enfant meurt, le daemon survit.
+    Le modèle est chargé une seule fois par vie du processus enfant.
+    """
+    global _CHILD_MODEL
+    import timesfm as _tfm
+    import numpy as _np
 
-    import concurrent.futures as _cf
-
-    def _load():
-        import timesfm
-
-        logger.info("="*60)
-        logger.info("TimesFM: PREMIER CHARGEMENT — téléchargement du modèle 500M...")
-        logger.info("  Repo: google/timesfm-2.0-500m-pytorch")
-        logger.info(f"  Backend: {backend} | Horizon: {horizon}")
-        logger.info("  Ceci peut prendre 2-5 min au premier lancement.")
-        logger.info("="*60)
-
-        t0 = time.time()
-
-        logger.info("TimesFM: Initialisation TimesFmHparams...")
-        hparams = timesfm.TimesFmHparams(
+    if _CHILD_MODEL is None:
+        hparams = _tfm.TimesFmHparams(
             backend=backend,
-            per_core_batch_size=32,
+            per_core_batch_size=1,   # 1 seule série par cycle — réduit la RAM de ~4GB à ~500MB
             horizon_len=horizon,
             num_layers=50,
             use_positional_embedding=False,
-            context_len=2048,
+            context_len=512,         # 512 candles suffisent (était 2048) — réduit les activations x4
         )
-        logger.info(f"TimesFM: Hparams OK ({time.time()-t0:.1f}s)")
-
-        logger.info("TimesFM: Téléchargement/chargement checkpoint HuggingFace...")
-        t_dl = time.time()
-        checkpoint = timesfm.TimesFmCheckpoint(
+        checkpoint = _tfm.TimesFmCheckpoint(
             huggingface_repo_id="google/timesfm-2.0-500m-pytorch",
         )
-        logger.info(f"TimesFM: Checkpoint référencé ({time.time()-t_dl:.1f}s)")
+        _CHILD_MODEL = _tfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
 
-        logger.info("TimesFM: Construction du modèle (TimesFm)...")
-        t_build = time.time()
-        model = timesfm.TimesFm(hparams=hparams, checkpoint=checkpoint)
-        logger.info(f"TimesFM: Modèle construit et prêt ({time.time()-t_build:.1f}s)")
+    closes = _np.array(closes_list, dtype=_np.float64)
+    point_forecast, quantile_forecast = _CHILD_MODEL.forecast([closes], freq=[0])
+    return point_forecast[0].tolist(), quantile_forecast[0].tolist()
 
-        elapsed = time.time() - t0
-        logger.info(f"TimesFM: CHARGEMENT TERMINÉ en {elapsed:.1f}s")
-        return model
 
-    # Timeout 180s sur le chargement complet (download HuggingFace inclus)
-    _pool = _cf.ThreadPoolExecutor(max_workers=1)
-    _fut = _pool.submit(_load)
-    try:
-        _MODEL = _fut.result(timeout=180)
-    except _cf.TimeoutError:
-        _pool.shutdown(wait=False)
-        raise RuntimeError("TimesFM model load timeout (180s) — HuggingFace download trop lent ou inaccessible")
-    except Exception:
-        _pool.shutdown(wait=False)
-        raise
-    _pool.shutdown(wait=False)
-    return _MODEL
+# ── Pool de processus persistant (1 worker — modèle reste en mémoire) ────────
+_PROC_POOL = None
+
+
+def _get_pool():
+    """Retourne le pool existant ou en crée un nouveau."""
+    global _PROC_POOL
+    if _PROC_POOL is None:
+        import multiprocessing as _mp
+        from concurrent.futures import ProcessPoolExecutor
+        _PROC_POOL = ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=_mp.get_context("spawn"),  # toujours spawn — évite fork+PyTorch
+        )
+    return _PROC_POOL
+
+
+def _reset_pool():
+    """Détruit le pool crashé et en crée un neuf."""
+    global _PROC_POOL
+    if _PROC_POOL is not None:
+        try:
+            _PROC_POOL.shutdown(wait=False)
+        except Exception:
+            pass
+    import multiprocessing as _mp
+    from concurrent.futures import ProcessPoolExecutor
+    _PROC_POOL = ProcessPoolExecutor(
+        max_workers=1,
+        mp_context=_mp.get_context("spawn"),
+    )
 
 
 class TimesFMAgent:
@@ -102,7 +111,8 @@ class TimesFMAgent:
         self._backend = self._tfm_cfg.get("backend", "cpu")
 
     def analyze(self, state: dict) -> dict:
-        """Run TimesFM forecast and return agent analysis dict."""
+        """Run TimesFM forecast in a child process and return agent analysis dict."""
+        from concurrent.futures import BrokenProcessPool
         t0 = time.time()
 
         try:
@@ -112,23 +122,30 @@ class TimesFMAgent:
                 return self._fallback("insufficient OHLCV data")
             logger.info(f"TimesFM: {len(closes)} candles récupérées (last={closes[-1]:.2f})")
 
-            logger.info("TimesFM: Chargement du modèle...")
-            model = _get_model(backend=self._backend, horizon=self._horizon)
+            # Soumettre au processus enfant (spawn) — isolé du daemon
+            # Premier appel : enfant démarre + charge le modèle (~2-5 min)
+            # Appels suivants : enfant réutilisé, modèle déjà en mémoire (cache)
+            logger.info("TimesFM: Soumission au processus enfant (subprocess isolé)...")
+            pool = _get_pool()
+            fut = pool.submit(_timesfm_worker, closes.tolist(), self._backend, self._horizon)
+            try:
+                point_list, quant_list = fut.result(timeout=300)
+            except BrokenProcessPool:
+                # L'enfant a été tué (OOM/segfault) — on recrée le pool, daemon intact
+                logger.error("TimesFM: processus enfant tué (OOM/segfault) — pool réinitialisé")
+                _reset_pool()
+                return self._fallback("subprocess killed (OOM/segfault)")
+            except TimeoutError:
+                logger.error("TimesFM: timeout 300s — pool réinitialisé")
+                _reset_pool()
+                return self._fallback("subprocess timeout (300s)")
 
-            logger.info(f"TimesFM: Lancement forecast (horizon={self._horizon})...")
+            point_forecast = np.array(point_list)
+            quantile_forecast = np.array(quant_list)
             t_fc = time.time()
-            # freq=0 → high-frequency (sub-daily) data
-            # Timeout 120s pour éviter les blocages
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
-                _fut = _pool.submit(model.forecast, [closes], freq=[0])
-                try:
-                    point_forecast, quantile_forecast = _fut.result(timeout=120)
-                except concurrent.futures.TimeoutError:
-                    return self._fallback("forecast timeout (120s)")
-            logger.info(f"TimesFM: Forecast terminé en {time.time()-t_fc:.1f}s")
+            logger.info(f"TimesFM: Forecast reçu en {t_fc - t0:.1f}s total")
 
-            result = self._interpret(closes, point_forecast[0], quantile_forecast[0])
+            result = self._interpret(closes, point_forecast, quantile_forecast)
             elapsed_ms = int((time.time() - t0) * 1000)
 
             logger.info(
@@ -157,9 +174,8 @@ class TimesFMAgent:
             }
 
         except BaseException as exc:
-            # BaseException (pas Exception) pour attraper SystemExit, KeyboardInterrupt,
-            # et les crashes PyTorch/C qui bypassent except Exception.
             logger.error(f"TimesFM error ({type(exc).__name__}): {exc}")
+            _reset_pool()
             return self._fallback(str(exc))
 
     def _get_close_prices(self, state: dict) -> np.ndarray | None:

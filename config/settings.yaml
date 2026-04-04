@@ -119,15 +119,28 @@ agents:
     enabled: true
     weight_in_scoring: 0.85  # Marchés prédictifs BTC (probabilités calibrées)
   timesfm:
-    enabled: true             # TimesFM 2.0-500m price forecast (torch + timesfm)
+    enabled: false            # TimesFM désactivé — crash loop PyTorch (OOM/segfault CPU)
     weight_in_scoring: 0.9   # Foundation model signal — high weight when enabled
+  market_regime:
+    enabled: true
+    weight_in_scoring: 0.0   # Info-only — ajuste les autres agents, pas le score
 
 # ----------------------------------------------------------
 # TimesFM — Price Forecasting Foundation Model
 # ----------------------------------------------------------
 timesfm:
   forecast_horizon: 24       # candles ahead (24 × 15min = 6h)
-  # model loaded lazily on first call, kept in memory
+  backend: cpu
+  # Mémoire : per_core_batch_size=1 + context_len=512 → ~500MB RAM (au lieu de 4-6GB)
+
+# ----------------------------------------------------------
+# Market Regime Detection — HMM + ADX
+# ----------------------------------------------------------
+market_regime:
+  n_hmm_states: 2            # états HMM : LOW_VOLATILITY / HIGH_VOLATILITY
+  vol_window: 30             # fenêtre pour volatilité relative (20-40 recommandé BTC 15min)
+  trend_window: 50           # fenêtre SMA longue pour signal tendance (~12.5h en 15min)
+  adx_period: 18             # période ADX — 18 recommandé crypto (moins sensible au bruit que 14)
 
 # ----------------------------------------------------------
 # Scoring — Poids globaux (ajustables par post-mortem)
@@ -166,6 +179,19 @@ risk:
   ma50_strong_signal_threshold: 72   # score minimum pour BUY sous MA50 (mode gradual) — calibré sur plafond ~75
   ma50_gradual_size_factor: 0.5      # multiplicateur de taille sous MA50 (0.0-1.0)
   max_open_positions: 3              # nombre max de positions ouvertes simultanément (0 = illimité)
+
+# ----------------------------------------------------------
+# Circuit Breaker — Funding Rate (sur-levier des longs)
+# Funding Binance BTCUSDT toutes les 8h :
+#   typique bull run : 0.005 % – 0.020 %
+#   surchauffe      : 0.020 % – 0.045 %
+#   extrême         : > 0.045 % (souvent précède une correction)
+# ----------------------------------------------------------
+circuit_breaker:
+  funding_warning: 0.00018      # 0.018 % — début de surchauffe → réduction progressive taille
+  funding_block: 0.00045        # 0.045 % — zone dangereuse → blocage BUY total
+  sustain_period_cycles: 3      # doit être soutenu pendant N cycles avant blocage dur
+  max_reduction: 0.75           # réduction max de taille dans la zone warning (75 %)
 
 # ----------------------------------------------------------
 # Assets & Univers

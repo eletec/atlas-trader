@@ -703,6 +703,9 @@ def render_header():
     # ─ Dropdown HTML (rendu seulement si menu_open) ─────────────────────────
     dropdown_html = ""
     if menu_open:
+        _pill_light  = pill(u_t_light,  f'<i class="fas fa-sun"></i> {t("theme_light")}',      theme == "light")
+        _pill_dark   = pill(u_t_dark,   f'<i class="fas fa-moon"></i> {t("theme_dark")}',       theme == "dark")
+        _pill_system = pill(u_t_system, f'<i class="fas fa-desktop"></i> {t("theme_system")}',  theme == "system")
         dropdown_html = f"""
 <div style="position:fixed;top:49px;right:8px;min-width:235px;
             z-index:9998;background:{dd_bg};
@@ -714,9 +717,9 @@ def render_header():
   <div style="{S_SEP}"></div>
   <div style="{S_LBL}"><i class="fas fa-palette" style="margin-right:5px;"></i>{t('hbg_theme')}</div>
   <div style="{S_ROW}">
-    {{pill(u_t_light,  f'<i class="fas fa-sun"></i> {{t("theme_light")}}',    theme == "light")}}
-    {{pill(u_t_dark,   f'<i class="fas fa-moon"></i> {{t("theme_dark")}}',   theme == "dark")}}
-    {{pill(u_t_system, f'<i class="fas fa-desktop"></i> {{t("theme_system")}}', theme == "system")}}
+    {_pill_light}
+    {_pill_dark}
+    {_pill_system}
   </div>
   <div style="{S_SEP}"></div>
   <div style="{S_LBL}"><i class="fas fa-globe" style="margin-right:5px;"></i>{t('hbg_lang')}</div>

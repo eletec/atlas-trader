@@ -19,6 +19,7 @@ class PaperTrader:
         exchange_cfg = cfg.get("exchange", {})
         self.exchange_name: str = exchange_cfg.get("name", "binance")
         self.capital: float = exchange_cfg.get("paper_capital_usd", 10000.0)
+        self.testnet: bool = exchange_cfg.get("testnet", True)
         # Offset Maker : on poste un ordre limite légèrement meilleur que le cours
         # BUY  → limit à prix * (1 - offset)  → on attend que le marché descende vers nous
         # SELL → limit à prix * (1 + offset)  → on attend que le marché monte vers nous
@@ -139,7 +140,39 @@ class PaperTrader:
         return result
 
     def get_portfolio(self) -> dict:
-        """Retourne le portefeuille paper courant."""
+        """Retourne le portefeuille courant.
+
+        - Live (testnet=False) : lit le solde réel via CCXT fetch_balance().
+        - Paper (testnet=True)  : calcule depuis l'historique SQLite.
+        """
+        # ── Mode LIVE : solde réel depuis l'exchange ──
+        if not self.testnet and self._exchange:
+            try:
+                balance = self._exchange.fetch_balance()
+                usdt_free  = float((balance.get("USDT") or {}).get("free",  0))
+                usdt_total = float((balance.get("USDT") or {}).get("total", 0))
+                btc_total  = float((balance.get("BTC")  or {}).get("total", 0))
+                btc_price  = 0.0
+                try:
+                    ticker = self._exchange.fetch_ticker("BTC/USDT")
+                    btc_price = float(ticker.get("last") or 0)
+                except Exception:
+                    pass
+                current_value = usdt_total + btc_total * btc_price
+                return {
+                    "capital":       self.capital,
+                    "current_value": round(current_value, 2),
+                    "usdt_free":     round(usdt_free, 2),
+                    "btc_total":     btc_total,
+                    "total_pnl":     round(current_value - self.capital, 2),
+                    "total_pnl_pct": round((current_value - self.capital) / self.capital * 100, 2)
+                                     if self.capital else 0.0,
+                    "live_mode":     True,
+                }
+            except Exception as exc:
+                logger.warning(f"fetch_balance échoué, fallback SQLite: {exc}")
+
+        # ── Mode PAPER/TESTNET : calcul depuis l'historique SQLite ──
         try:
             from storage.database import get_recent_decisions, get_pnl_history
             pnl = get_pnl_history()
@@ -147,11 +180,11 @@ class PaperTrader:
             n_trades = len([d for d in get_recent_decisions(1000)
                            if d.get("action") != "HOLD"])
             return {
-                "capital": self.capital,
+                "capital":       self.capital,
                 "current_value": self.capital + total_pnl,
-                "total_pnl": round(total_pnl, 2),
+                "total_pnl":     round(total_pnl, 2),
                 "total_pnl_pct": round(total_pnl / self.capital * 100, 2),
-                "n_trades": n_trades,
+                "n_trades":      n_trades,
             }
         except Exception:
             return {"capital": self.capital, "current_value": self.capital,

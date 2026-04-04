@@ -771,6 +771,40 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "zh": "价格低于MA50时应用于仓位大小的乘数",
     },
 
+    # ── Admin panel – Exchange / Simulation ──
+    "cfg_exchange_title": {
+        "fr": "Exchange & Simulation", "en": "Exchange & Simulation",
+        "de": "Börse & Simulation", "es": "Exchange & Simulación",
+        "it": "Exchange & Simulazione", "pt": "Exchange & Simulação",
+        "nl": "Exchange & Simulatie", "zh": "交易所与模拟",
+    },
+    "cfg_paper_capital": {
+        "fr": "Capital initial simulé (USD)", "en": "Initial simulated capital (USD)",
+        "de": "Anfangskapital simuliert (USD)", "es": "Capital inicial simulado (USD)",
+        "it": "Capitale iniziale simulato (USD)", "pt": "Capital inicial simulado (USD)",
+        "nl": "Initieel gesimuleerd kapitaal (USD)", "zh": "初始模拟资金 (USD)",
+    },
+    "cfg_testnet": {
+        "fr": "Mode Paper / Testnet (désactiver = LIVE réel ⚠️)",
+        "en": "Paper / Testnet mode (disable = REAL LIVE ⚠️)",
+        "de": "Paper / Testnet-Modus (deaktivieren = ECHTGELD ⚠️)",
+        "es": "Modo Paper / Testnet (desactivar = REAL EN VIVO ⚠️)",
+        "it": "Modalità Paper / Testnet (disattiva = LIVE REALE ⚠️)",
+        "pt": "Modo Paper / Testnet (desativar = LIVE REAL ⚠️)",
+        "nl": "Paper / Testnet modus (uitschakelen = ECHT LIVE ⚠️)",
+        "zh": "模拟/测试网模式（关闭 = 真实交易 ⚠️）",
+    },
+    "cfg_testnet_warn": {
+        "fr": "⚠️ ATTENTION : vous êtes en mode LIVE. Les ordres seront exécutés sur le marché réel avec de vrais fonds !",
+        "en": "⚠️ WARNING: You are in LIVE mode. Orders will be executed on the real market with real funds!",
+        "de": "⚠️ WARNUNG: Sie sind im LIVE-Modus. Aufträge werden auf dem echten Markt mit echtem Geld ausgeführt!",
+        "es": "⚠️ ADVERTENCIA: Está en modo LIVE. ¡Las órdenes se ejecutarán en el mercado real con fondos reales!",
+        "it": "⚠️ ATTENZIONE: Sei in modalità LIVE. Gli ordini saranno eseguiti sul mercato reale con fondi reali!",
+        "pt": "⚠️ ATENÇÃO: Você está no modo LIVE. Os pedidos serão executados no mercado real com fundos reais!",
+        "nl": "⚠️ WAARSCHUWING: U bent in LIVE-modus. Orders worden uitgevoerd op de echte markt met echte fondsen!",
+        "zh": "⚠️ 警告：您处于实盘模式。订单将在真实市场中以真实资金执行！",
+    },
+
     # ── Admin panel – Agents ──
     "cfg_agents_title": {
         "fr": "Activation des agents", "en": "Agent Activation",

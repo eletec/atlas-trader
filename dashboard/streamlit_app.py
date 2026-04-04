@@ -1802,6 +1802,26 @@ def render_admin_panel():
 
         settings["risk"] = risk
 
+        st.markdown("---")
+        st.markdown(f'<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#ef9a9a;"></i>{t("cfg_exchange_title")}</h4>', unsafe_allow_html=True)
+        exch = settings.get("exchange", {})
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            exch["paper_capital_usd"] = st.number_input(
+                t("cfg_paper_capital"),
+                min_value=1000, max_value=10_000_000,
+                value=int(exch.get("paper_capital_usd", 10000)),
+                step=500,
+                help="Modifié au prochain redémarrage du daemon trader"
+            )
+        with col_e2:
+            _testnet_current = exch.get("testnet", True)
+            _testnet_new = st.toggle(t("cfg_testnet"), value=_testnet_current)
+            exch["testnet"] = _testnet_new
+            if not _testnet_new:
+                st.error(t("cfg_testnet_warn"))
+        settings["exchange"] = exch
+
     with sub_tabs[6]:  # Agents
         st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
         agents = settings.get("agents", {})

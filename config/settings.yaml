@@ -119,7 +119,7 @@ agents:
     enabled: true
     weight_in_scoring: 0.85  # Marchés prédictifs BTC (probabilités calibrées)
   timesfm:
-    enabled: false            # TimesFM désactivé — crash loop PyTorch (OOM/segfault CPU)
+    enabled: true             # TimesFM activé (désactiver si OOM/segfault sur CPU)
     weight_in_scoring: 0.9   # Foundation model signal — high weight when enabled
   market_regime:
     enabled: true

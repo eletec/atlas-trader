@@ -1068,7 +1068,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "it": "Il crawler raccoglie contesto macro e cripto ogni ciclo. I 'temi' sono gruppi di query (es: 'Bitcoin halving'). Più temi/pagine = segnale più ricco ma cicli più lenti. In modalità 'daily', il crawl completo avviene una volta al giorno.",
         "pt": "O crawler coleta contexto macro e cripto a cada ciclo. Os 'temas' são grupos de consulta (ex: 'Bitcoin halving'). Mais temas/páginas = sinal mais rico mas ciclos mais lentos. Em modo 'daily', o crawl completo roda uma vez por dia.",
         "nl": "De crawler verzamelt macro- en cryptocontext per cyclus. 'Thema's' zijn zoekopdrachtengroepen (bijv. 'Bitcoin halving'). Meer thema's/pagina's = rijker signaal maar langzamere cycli. In 'daily'-modus draait de volledige crawl eenmaal per dag.",
-        "zh": "爬虫每个周期收集宏观和加密货币背景信息。"主题"是查询组（如"比特币减半"）。主题/页面越多=信号越丰富但周期越慢。在"每日"模式下，完整爬取每天只运行一次。",
+        "zh": "爬虫每个周期收集宏观和加密货币背景信息。「主题」是查询组（如「比特币减半」）。主题/页面越多=信号越丰富但周期越慢。在「每日」模式下，完整爬取每天只运行一次。",
     },
     "cfg_news_info": {
         "fr": "Le listener de news rapides tourne en parallèle du crawler, sur son propre intervalle. Les items RSS et NewsAPI sont injectés dans le contexte AirDuTemps de chaque cycle. Réduire le polling si le NAS est sous charge.",
@@ -1098,7 +1098,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "it": "MiroFish simula uno swarm di agenti virtuali che reagiscono al sentiment di mercato. Più agenti/passi = segnale più regolare, ma più tempo di calcolo. Il peso 'news' nel seed controlla il bilanciamento tra notizie grezze e contesto crawlato.",
         "pt": "MiroFish simula um enxame de agentes virtuais que reagem ao sentimento do mercado. Mais agentes/etapas = sinal mais suave e confiável, mas mais tempo de computação. O peso 'news' no seed controla o equilíbrio entre notícias brutas e contexto rastreado.",
         "nl": "MiroFish simuleert een zwerm van virtuele agenten die reageren op marktsentiment. Meer agenten/stappen = vloeiender signaal, maar meer rekentijd. Het 'news' seed-gewicht bepaalt de balans tussen ruwe nieuwsinvloed en gecrawlde context.",
-        "zh": "MiroFish模拟一群对市场情绪做出反应的虚拟代理。代理和步骤越多=信号越平滑可靠，但计算时间越长。"新闻"种子权重控制原始新闻影响与爬取上下文（Air du Temps）之间的平衡。",
+        "zh": "MiroFish模拟一群对市场情绪做出反应的虚拟代理。代理和步骤越多=信号越平滑可靠，但计算时间越长。「新闻」种子权重控制原始新闻影响与爬取上下文（Air du Temps）之间的平衡。",
     },
     "cfg_risk_info": {
         "fr": "Contrôle tout le dimensionnement des positions et les filtres de protection. Le Kelly fractionnel limite le surdimensionnement. Les seuils BUY/SELL définissent les zones de déclenchement du score composite. Le filtre MA50 réduit l'exposition quand le prix est sous la moyenne mobile 50 jours.",
@@ -1230,7 +1230,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "it": "Numero di temi di ricerca web. Ogni tema genera N pagine crawlate. Consigliato: 8–12.",
         "pt": "Número de temas de pesquisa web. Cada tema gera N páginas rastreadas. Recomendado: 8–12.",
         "nl": "Aantal webzoekthema's. Elk thema genereert N gecrawlde pagina's. Aanbevolen: 8–12.",
-        "zh": "网页搜索主题数量（如"比特币价格分析"）。每个主题生成N个爬取页面。推荐：8–12。",
+        "zh": "网页搜索主题数量（如「比特币价格分析」）。每个主题生成N个爬取页面。推荐：8–12。",
     },
     "cfg_pages_theme_help": {
         "fr": "Pages web collectées par thème. Plus de pages = contexte plus riche mais cycle plus lent. Recommandé : 8–12 pour un NAS.",

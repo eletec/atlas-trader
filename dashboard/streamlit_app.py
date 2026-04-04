@@ -151,10 +151,6 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Help ? button — mode clair */
-        button[data-testid="stTooltipHoverTarget"] { color: #6c757d !important; opacity: 1 !important; }
-        button[data-testid="stTooltipHoverTarget"]:hover { color: #31333F !important; }
-        button[data-testid="stTooltipHoverTarget"] svg { fill: currentColor !important; }
     """
 
     _DARK_CSS = """
@@ -281,10 +277,6 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border-bottom-color: #ff4b4b !important;
         }
-        /* Help ? button — mode sombre */
-        button[data-testid="stTooltipHoverTarget"] { color: rgba(255,255,255,0.45) !important; opacity: 1 !important; }
-        button[data-testid="stTooltipHoverTarget"]:hover { color: #FAFAFA !important; }
-        button[data-testid="stTooltipHoverTarget"] svg { fill: currentColor !important; }
     """
 
 
@@ -304,16 +296,21 @@ def _inject_theme_css():
     # Toujours injecté — couleurs adaptées au thème courant
     if theme == "light":
         _t_bg, _t_fg, _t_bdr, _t_sh = "#ffffff", "#31333F", "#dee2e6", "rgba(0,0,0,0.14)"
-        _t_icon, _t_icon_h = "#6c757d", "#31333F"
-    elif theme == "dark":
+        _t_icon_fg   = "#6c757d"   # couleur du ? au repos
+        _t_icon_fg_h = "#31333F"   # couleur au survol
+        _t_icon_bg   = "rgba(0,0,0,0.05)"
+        _t_icon_bg_h = "rgba(0,0,0,0.10)"
+        _t_icon_bdr  = "rgba(0,0,0,0.18)"
+    else:  # dark ou system
         _t_bg, _t_fg, _t_bdr, _t_sh = "#21262d", "#e6edf3", "rgba(255,255,255,0.18)", "rgba(0,0,0,0.55)"
-        _t_icon, _t_icon_h = "rgba(255,255,255,0.45)", "#e6edf3"
-    else:  # system — on choisit dark par défaut (media query n'est pas applicable sur les portals Radix)
-        _t_bg, _t_fg, _t_bdr, _t_sh = "#21262d", "#e6edf3", "rgba(255,255,255,0.18)", "rgba(0,0,0,0.55)"
-        _t_icon, _t_icon_h = "rgba(255,255,255,0.45)", "#e6edf3"
+        _t_icon_fg   = "rgba(255,255,255,0.70)"
+        _t_icon_fg_h = "#ffffff"
+        _t_icon_bg   = "rgba(255,255,255,0.08)"
+        _t_icon_bg_h = "rgba(255,255,255,0.18)"
+        _t_icon_bdr  = "rgba(255,255,255,0.22)"
     st.markdown(f"""
 <style id="atlas-tooltip-global">
-/* Bulle tooltip (portal Radix — hors DOM principal) */
+/* ── Bulle tooltip (portal Radix — hors DOM principal) ── */
 div[data-radix-popper-content-wrapper] {{
     background-color: {_t_bg} !important;
     color: {_t_fg} !important;
@@ -335,21 +332,55 @@ div[data-radix-popper-content-wrapper] *,
     padding: 0 !important;
     margin: 0 !important;
 }}
-/* Bouton icône ? (help= Streamlit) */
+
+/* ── Bouton icône ? — sélecteurs Streamlit connus ── */
 button[data-testid="stTooltipHoverTarget"],
-.stTooltipHoverTarget {{
-    color: {_t_icon} !important;
+button[data-testid="stTooltipIcon"],
+[data-testid="stTooltipHoverTarget"],
+[data-testid="stTooltipIcon"] {{
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    border-radius: 50% !important;
+    border: 1px solid {_t_icon_bdr} !important;
+    background: {_t_icon_bg} !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, border-color 0.15s ease !important;
+    vertical-align: middle !important;
+    box-shadow: none !important;
+    color: {_t_icon_fg} !important;
     opacity: 1 !important;
-    transition: color 0.15s ease !important;
 }}
 button[data-testid="stTooltipHoverTarget"]:hover,
-.stTooltipHoverTarget:hover {{
-    color: {_t_icon_h} !important;
+button[data-testid="stTooltipIcon"]:hover,
+[data-testid="stTooltipHoverTarget"]:hover,
+[data-testid="stTooltipIcon"]:hover {{
+    background: {_t_icon_bg_h} !important;
+    border-color: {_t_icon_fg_h} !important;
+    color: {_t_icon_fg_h} !important;
 }}
+/* SVG et path à l'intérieur */
 button[data-testid="stTooltipHoverTarget"] svg,
-.stTooltipHoverTarget svg {{
+button[data-testid="stTooltipIcon"] svg,
+[data-testid="stTooltipHoverTarget"] svg,
+[data-testid="stTooltipIcon"] svg {{
+    width: 11px !important;
+    height: 11px !important;
+    overflow: visible !important;
     fill: currentColor !important;
-    stroke: currentColor !important;
+    stroke: none !important;
+    color: inherit !important;
+}}
+button[data-testid="stTooltipHoverTarget"] svg path,
+button[data-testid="stTooltipIcon"] svg path,
+[data-testid="stTooltipHoverTarget"] svg path,
+[data-testid="stTooltipIcon"] svg path {{
+    fill: currentColor !important;
+    stroke: none !important;
 }}
 </style>
 """, unsafe_allow_html=True)

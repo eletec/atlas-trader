@@ -499,6 +499,10 @@ zeitgeist-trader/
 - [x] TimesFM price forecasting enabled by default
 - [x] Full UI internationalization — 8 languages (hamburger, all Admin tabs + tooltips, users panel)
 - [x] LLM sandbox in Admin (ad-hoc prompt → configured provider)
+- [x] Flux Manager fully localized (all 6 tabs: Status Board, Pipeline, Controls, Metrics, Logs, Alerts)
+- [x] Flux Manager pipeline diagram — native Graphviz (no CDN, works offline/NAS)
+- [x] Flux controls redesigned as table layout (name · description · toggle · force-restart per category)
+- [x] Tooltip `?` buttons — unified design across all themes (dark/light/system), consistent rendering (circle + glyph)
 
 ### v1.1 (next)
 - [ ] TimesFM subprocess isolation (CPU offload without blocking main loop)

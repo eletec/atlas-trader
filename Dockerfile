@@ -95,7 +95,7 @@ COPY --chown=atlas:atlas decision_engine.py main.py ./
 
 # Copier les scripts Docker
 COPY --chown=atlas:atlas docker/           ./docker/
-RUN chmod +x ./docker/entrypoint.sh ./docker/healthcheck.sh
+RUN chmod +x ./docker/entrypoint.sh ./docker/healthcheck.sh ./docker/watchdog.sh
 
 # Créer les répertoires persistables (montés en volumes)
 RUN mkdir -p /app/logs /app/storage /data && \

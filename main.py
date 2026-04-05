@@ -91,6 +91,17 @@ def _signal_handler(sig, frame):
     _shutdown_event.set()
 
 
+def _dump_all_stacks(sig, frame):
+    """SIGUSR1 → dump toutes les stacks de threads dans le log — diagnostic freeze."""
+    lines = ["\n=== STACK DUMP (SIGUSR1) ==="]
+    for tid, f in sys._current_frames().items():
+        tname = next((t.name for t in threading.enumerate() if t.ident == tid), str(tid))
+        lines.append(f"\n--- Thread: {tname} (id={tid}) ---")
+        lines.extend(traceback.format_stack(f))
+    lines.append("=== END STACK DUMP ===")
+    logger.warning("\n".join(lines))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Atlas Trader — Système de trading IA autonome"
@@ -314,6 +325,7 @@ def run_daemon(asset: str, interval: int) -> None:
     """Boucle principale avec gestion des erreurs et redémarrage automatique."""
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGUSR1, _dump_all_stacks)  # kill -USR1 <pid> → stack dump
 
     # Charger les paramètres du monitor
     from utils.config import load_settings

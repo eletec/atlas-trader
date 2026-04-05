@@ -731,7 +731,7 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
 
     if not try_acquire(owner=f"daemon-{trigger}"):
         logger.warning(f"Cycle skipped — another cycle is already running (trigger={trigger})")
-        return create_initial_state(asset)
+        raise RuntimeError(f"cycle_lock_busy (trigger={trigger})")
 
     try:
         workflow = _get_workflow()

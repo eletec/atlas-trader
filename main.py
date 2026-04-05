@@ -146,6 +146,16 @@ def bootstrap() -> dict:
     )
 
     init_db(log_cfg.get("sqlite_db", "storage/zeitgeist.db"))
+
+    # Libérer le cycle lock au démarrage — évite le blocage permanent
+    # si le process précédent a été SIGKILL sans libérer le lock
+    try:
+        from utils.cycle_lock import release as _release_stale
+        _release_stale()
+        logger.debug("Cycle lock libéré au démarrage (nettoyage préventif)")
+    except Exception:
+        pass
+
     logger.info("=== Atlas Trader démarré ===")
     logger.info(
         f"Asset: {cfg.get('project', {}).get('asset', 'BTC/USDT')} | "

@@ -14,6 +14,7 @@ import signal
 import sys
 import threading
 import time
+import traceback
 
 logger = logging.getLogger("zeitgeist.main")
 
@@ -392,16 +393,26 @@ def run_daemon(asset: str, interval: int) -> None:
                 f"Cycle #{cycle_count} terminé — "
                 f"{duration:.0f}s | {decision} | score={score:.0f}"
             )
+            # Heartbeat — permet à un watchdog externe de détecter un freeze
+            try:
+                import pathlib
+                pathlib.Path("/tmp/atlas_heartbeat").write_text(
+                    f"{time.time()}\ncycle={cycle_count}\n{decision}\n"
+                )
+            except Exception:
+                pass
         except KeyboardInterrupt:
             _shutdown_event.set()
             break
         except Exception as exc:
             consecutive_errors += 1
-            logger.error(f"Cycle #{cycle_count} échoué ({consecutive_errors} consécutif): {exc}")
+            logger.error(
+                f"Cycle #{cycle_count} échoué ({consecutive_errors} consécutif): {exc}\n"
+                + traceback.format_exc()
+            )
             if consecutive_errors >= 5:
                 logger.critical("5 cycles consécutifs en erreur — arrêt d'urgence")
-                _shutdown_event.set()
-                break
+                import sys as _sys; _sys.exit(1)
 
         # Lancer le post-mortem de façon asynchrone si nécessaire
         logger.debug("Post-mortem check starting...")

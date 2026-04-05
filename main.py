@@ -347,14 +347,29 @@ def run_daemon(asset: str, interval: int) -> None:
 
         try:
             # Timeout global sur un cycle complet — 300s max (news+crawl+agents+LLM)
-            import concurrent.futures as _cf
-            _cycle_pool = _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="cycle")
-            _cycle_fut = _cycle_pool.submit(run_single_cycle, asset, _trigger)
-            try:
-                state = _cycle_fut.result(timeout=300)
-            except (_cf.TimeoutError, TimeoutError):
+            # IMPORTANT: Thread daemon — un cycle bloqué ne retient PAS le processus
+            # et n'empêche pas supervisord de le redémarrer proprement.
+            # ThreadPoolExecutor est INTERDIT ici (threads non-daemon → processus zombie).
+            _result_box: list = [None, None]  # [result, exception]
+            _cycle_done = threading.Event()
+
+            def _cycle_runner():
+                try:
+                    _result_box[0] = run_single_cycle(asset, _trigger)
+                except Exception as _e:
+                    _result_box[1] = _e
+                finally:
+                    _cycle_done.set()
+
+            _cycle_thread = threading.Thread(
+                target=_cycle_runner,
+                name=f"cycle-{cycle_count}",
+                daemon=True,  # DAEMON: ne bloque pas la sortie du processus
+            )
+            _cycle_thread.start()
+
+            if not _cycle_done.wait(timeout=300):
                 logger.error(f"Cycle #{cycle_count} TIMEOUT (300s) — abandon")
-                _cycle_pool.shutdown(wait=False)
                 # Libérer le lock que run_cycle() ne pourra pas relâcher
                 from utils.cycle_lock import release as _force_release
                 _force_release()
@@ -362,10 +377,12 @@ def run_daemon(asset: str, interval: int) -> None:
                 if consecutive_errors >= 5:
                     logger.critical("5 cycles consécutifs en erreur — arrêt d'urgence")
                     _shutdown_event.set()
-                    break
+                    import sys as _sys; _sys.exit(1)
                 continue
-            finally:
-                _cycle_pool.shutdown(wait=False)
+
+            if _result_box[1] is not None:
+                raise _result_box[1]
+            state = _result_box[0]
 
             consecutive_errors = 0
             duration = time.time() - t0

@@ -299,6 +299,17 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border-bottom-color: #ff4b4b !important;
         }
+        /* Dialog modal — fond sombre explicite (évite texte blanc sur fond blanc Streamlit) */
+        div[role="dialog"],
+        [data-baseweb="dialog"] {
+            background-color: #1c2128 !important;
+            border: 1px solid rgba(255,255,255,0.15) !important;
+        }
+        div[role="dialog"] p,
+        div[role="dialog"] span,
+        div[role="dialog"] label {
+            color: #FAFAFA !important;
+        }
     """
 
 
@@ -572,33 +583,59 @@ def _force_run_dialog_inner(asset, _time, _logger,
         ("decide",          t("run_step_decide"),      node_decide),
     ]
 
+    import threading as _threading
+
     state = create_initial_state(asset)
-    # Injection CSS pour réduire les marges entre les éléments markdown du dialog
-    theme = _get_theme()
-    _txt_color = "#f0f0f0" if theme != "light" else "#212529"
-    _sub_color = "#adb5bd" if theme != "light" else "#6c757d"
-    st.markdown(f"""<style>
-    [data-testid="stDialog"] [data-testid="stMarkdown"] p {{
+    # CSS minimal : espacement + police monospace uniquement (pas de couleur hardcodée)
+    st.markdown("""<style>
+    [data-testid="stDialog"] [data-testid="stMarkdown"] p {
         font-size: 13px; line-height: 1.3; font-family: 'SFMono-Regular',Consolas,monospace;
-        margin: 0; padding: 0; color: {_txt_color};
-    }}
-    [data-testid="stDialog"] [data-testid="stMarkdown"] {{
+        margin: 0; padding: 0;
+    }
+    [data-testid="stDialog"] [data-testid="stMarkdown"] {
         margin-bottom: -12px;
-    }}
+    }
     </style>""", unsafe_allow_html=True)
     log_container = st.container()
     t_total = _time.time()
 
+    # Timeouts par étape (s) — garantit qu'aucun nœud ne bloque la session indéfiniment
+    _STEP_TIMEOUTS = {
+        "fetch_news": 45, "crawl_web": 90, "run_mirofish": 45,
+        "fetch_market": 45, "agents": 210, "synthesize": 120,
+        "score": 20, "decide": 20,
+    }
+
+    def _run_step(step_key, fn, s, timeout_s):
+        """Exécute fn(s) dans un thread daemon avec timeout garanti."""
+        _res = [None]; _err = [None]
+        def _w():
+            try: _res[0] = fn(s)
+            except Exception as e: _err[0] = e
+        t = _threading.Thread(target=_w, daemon=True, name=f"force_{step_key}")
+        t.start()
+        t.join(timeout=timeout_s)
+        if t.is_alive():
+            return None, TimeoutError(f"timeout {timeout_s}s — nœud bloqué")
+        if _err[0] is not None:
+            return None, _err[0]
+        return _res[0], None
+
     def _log(txt):
-        log_container.markdown(f"<span style='color:{_txt_color}'>{txt}</span>", unsafe_allow_html=True)
+        log_container.markdown(txt, unsafe_allow_html=True)
     def _log_sub(txt):
-        log_container.markdown(f"<span style='font-size:12px;color:{_sub_color};padding-left:12px'>{txt}</span>", unsafe_allow_html=True)
+        log_container.markdown(
+            f"<span style='font-size:12px;opacity:0.7;padding-left:12px'>{txt}</span>",
+            unsafe_allow_html=True
+        )
 
     for key, label, fn in STEPS:
         _log(f"⏳ <b>{label}</b>")
         t0 = _time.time()
         try:
-            patch = fn(state)
+            patch, _step_err = _run_step(key, fn, state, _STEP_TIMEOUTS.get(key, 90))
+            if _step_err:
+                raise _step_err
             if patch:
                 state.update(patch)
             elapsed = int((_time.time() - t0) * 1000)
@@ -654,7 +691,9 @@ def _force_run_dialog_inner(asset, _time, _logger,
                     _log(f"⏳ <b>{t('run_trade_exec')} ({action})</b>")
                     t0e = _time.time()
                     try:
-                        patch = node_execute(state)
+                        patch, _exec_err = _run_step("execute", node_execute, state, 30)
+                        if _exec_err:
+                            raise _exec_err
                         if patch:
                             state.update(patch)
                         elapsed_e = (_time.time() - t0e)

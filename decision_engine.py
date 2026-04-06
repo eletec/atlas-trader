@@ -38,9 +38,9 @@ class ScoringWeights:
 class ScoreCalculator:
     """Calcule le score global de conviction [0-100]."""
 
-    def __init__(self):
-        from utils.config import load_settings
-        cfg = load_settings()
+    def __init__(self, asset: str | None = None):
+        from utils.config import load_asset_config, load_settings
+        cfg = load_asset_config(asset) if asset else load_settings()
         w = cfg.get("scoring", {}).get("weights", {})
         self.weights = ScoringWeights(
             mirofish=w.get("mirofish", 0.40),
@@ -135,12 +135,13 @@ class ScoreCalculator:
 class RiskEngine:
     """Gestion du risque : sizing, SL/TP, circuit breaker."""
 
-    def __init__(self):
-        from utils.config import load_settings
+    def __init__(self, asset: str | None = None):
+        from utils.config import load_asset_config, load_settings
         from storage.database import get_pnl_history
-        cfg = load_settings()
+        cfg = load_asset_config(asset) if asset else load_settings()
         risk = cfg.get("risk", {})
         exchange = cfg.get("exchange", {})
+        self._asset = asset  # conservé pour check_funding_circuit_breaker
 
         self.mode: str = risk.get("mode", "balanced")
         self.kelly_max: float = risk.get("kelly_max_fraction", 0.25)
@@ -195,8 +196,10 @@ class RiskEngine:
         En régime HIGH_VOLATILITY le seuil de blocage est abaissé de 0.045 % → 0.035 %
         pour protéger davantage lors des périodes de haute volatilité.
         """
-        from utils.config import load_settings
-        cfg = load_settings().get("circuit_breaker", {})
+        from utils.config import load_asset_config, load_settings
+        _asset = getattr(self, "_asset", None)
+        cfg = load_asset_config(_asset) if _asset else load_settings()
+        cfg = cfg.get("circuit_breaker", {})
 
         f_warning  = float(cfg.get("funding_warning",  0.00018))  # 0.018 %
         f_block    = float(cfg.get("funding_block",    0.00045))  # 0.045 %
@@ -310,9 +313,9 @@ class RiskEngine:
 class DecisionEngine:
     """Prend la décision finale et génère l'explication narrative."""
 
-    def __init__(self):
-        from utils.config import load_settings
-        cfg = load_settings()
+    def __init__(self, asset: str | None = None):
+        from utils.config import load_asset_config, load_settings
+        cfg = load_asset_config(asset) if asset else load_settings()
         risk = cfg.get("risk", {})
         self.buy_threshold: float = risk.get("buy_threshold", 70)
         self.exit_threshold: float = risk.get("exit_threshold", 52)  # seuil de sortie d'une position longue
@@ -321,7 +324,7 @@ class DecisionEngine:
         self.ma50_strong_threshold: float = risk.get("ma50_strong_signal_threshold", 80)
         self.ma50_size_factor: float = risk.get("ma50_gradual_size_factor", 0.5)
         self.max_open_positions: int = int(risk.get("max_open_positions", 0))
-        self.risk_engine = RiskEngine()
+        self.risk_engine = RiskEngine(asset=asset)
 
     def decide(
         self,

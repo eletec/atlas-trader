@@ -506,7 +506,7 @@ def node_calculate_score(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    calculator = ScoreCalculator()
+    calculator = ScoreCalculator(asset=state.get("asset"))
 
     mirofish_score = state.get("mirofish_result", {}).get("score", 50.0)
     mirofish_n_agents = state.get("mirofish_result", {}).get("n_agents_used", 0)
@@ -553,7 +553,7 @@ def node_decide(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    engine = DecisionEngine()
+    engine = DecisionEngine(asset=state.get("asset"))
     decision = engine.decide(
         score=state["global_score"],
         market_indicators=state.get("market_indicators"),

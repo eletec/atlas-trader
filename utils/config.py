@@ -3,9 +3,9 @@ utils/config.py — Chargement et sauvegarde de settings.yaml avec validation Py
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _SETTINGS_PATH = Path("config/settings.yaml")
+_ASSETS_DIR = Path("config/assets")
 
 
 def load_settings(path: str | Path | None = None) -> dict:
@@ -28,6 +29,62 @@ def load_settings(path: str | Path | None = None) -> dict:
 
     with open(p, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _asset_slug(asset: str) -> str:
+    """'BTC/USDT' → 'BTC_USDT'"""
+    return asset.replace("/", "_").replace(" ", "_")
+
+
+def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
+    """
+    Charge la config spécifique à un actif depuis config/assets/{slug}.yaml
+    et la merge sur settings.yaml (l'asset yaml a priorité sur le global).
+
+    Retourne un dict complet utilisable par DecisionEngine, MarketDataAgent, etc.
+    """
+    global_cfg = load_settings(base_path)
+
+    slug = _asset_slug(asset)
+    asset_file = _ASSETS_DIR / f"{slug}.yaml"
+
+    if not asset_file.exists():
+        # Pas de config spécifique → on utilise le global tel quel
+        return global_cfg
+
+    with open(asset_file, "r", encoding="utf-8") as f:
+        asset_cfg = yaml.safe_load(f) or {}
+
+    # Merge profond : asset_cfg surcharge global_cfg clé par clé
+    merged = _deep_merge(copy.deepcopy(global_cfg), asset_cfg)
+    return merged
+
+
+def save_asset_config(asset: str, cfg: dict) -> None:
+    """Sauvegarde la config d'un actif dans config/assets/{slug}.yaml."""
+    _ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    slug = _asset_slug(asset)
+    path = _ASSETS_DIR / f"{slug}.yaml"
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+
+def get_active_assets() -> list[str]:
+    """Retourne la liste des actifs activés depuis settings.yaml."""
+    cfg = load_settings()
+    return cfg.get("project", {}).get("active_assets", [
+        cfg.get("project", {}).get("asset", "BTC/USDT")
+    ])
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Merge récursif : override surcharge base, les sous-dicts sont mergés."""
+    for key, val in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(val, dict):
+            _deep_merge(base[key], val)
+        else:
+            base[key] = val
+    return base
 
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:

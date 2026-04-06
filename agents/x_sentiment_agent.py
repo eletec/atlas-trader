@@ -77,7 +77,7 @@ class XSentimentAgent:
 
         if provider == "anthropic":
             import anthropic
-            client = anthropic.Anthropic()
+            client = anthropic.Anthropic(timeout=60.0)
             resp = client.messages.create(
                 model="claude-3-5-haiku-20241022",
                 max_tokens=512,
@@ -95,7 +95,7 @@ class XSentimentAgent:
                 api_key_env = "DEEPSEEK_API_KEY"
                 model = "deepseek-chat"
             import os
-            client = OpenAI(api_key=os.environ.get(api_key_env, ""), base_url=base_url)
+            client = OpenAI(api_key=os.environ.get(api_key_env, ""), base_url=base_url, timeout=60)
             resp = client.chat.completions.create(
                 model=model,
                 max_tokens=512,

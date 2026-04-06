@@ -69,7 +69,7 @@ class BroadWebCrawler:
         """
         try:
             import anthropic
-            client = anthropic.Anthropic()
+            client = anthropic.Anthropic(timeout=120.0)
             response = client.beta.messages.create(
                 model="claude-3-5-haiku-20241022",
                 max_tokens=2048,

@@ -135,14 +135,72 @@ def render_global_overview() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Composant 1b : Prix live multi-actifs (cartes)
+# ---------------------------------------------------------------------------
+
+def render_global_live_prices() -> None:
+    """Grille de prix live pour tous les actifs actifs (appel MarketDataAgent)."""
+    import streamlit as st
+
+    assets = _active_assets()
+    if not assets:
+        return
+
+    st.markdown("### 📡 Prix temps réel")
+
+    try:
+        from agents.market_data_agent import MarketDataAgent
+        agent = MarketDataAgent()
+    except Exception as exc:
+        st.caption(f"Prix indisponibles : {exc}")
+        return
+
+    cols = st.columns(min(len(assets), 5))
+    for i, asset in enumerate(assets):
+        icon = _asset_icon(asset)
+        try:
+            ind   = agent.get_indicators(asset)
+            price = ind.get("price", 0)
+            ma50  = ind.get("ma_50", 0)
+            rsi   = ind.get("rsi_14", 50)
+            above = ind.get("above_ma50")
+            src   = ind.get("_source", "ccxt")
+            delta = (f"{(price/ma50 - 1)*100:+.1f}% vs MA50" if ma50 else None)
+            rsi_tag = (
+                "🟢" if rsi >= 60 else "🔴" if rsi <= 40 else "🟡"
+            )
+            with cols[i % len(cols)]:
+                # Format lisible selon l'ordre de grandeur
+                if price >= 1000:
+                    price_str = f"{price:,.0f}"
+                elif price >= 1:
+                    price_str = f"{price:,.2f}"
+                elif price >= 0.001:
+                    price_str = f"{price:,.4f}"
+                else:
+                    price_str = f"{price:.6f}"
+                st.metric(
+                    label=f"{icon} {asset}",
+                    value=price_str,
+                    delta=delta,
+                )
+                st.caption(f"RSI {rsi_tag} {rsi:.0f} · {'▲ MA50' if above else '▼ MA50' if above is not None else '—'}")
+        except Exception:
+            with cols[i % len(cols)]:
+                st.metric(f"{icon} {asset}", "—")
+    st.markdown("---")
+
+
+# ---------------------------------------------------------------------------
 # Composant 2 : Onglets par actif
 # ---------------------------------------------------------------------------
 
-def render_asset_tabs(render_fn: Callable[[str], None]) -> None:
+def render_asset_tabs(render_fn: Callable[[str], None], global_fn: "Callable[[], None] | None" = None) -> None:
     """
     Crée les onglets [🌐 Global | ₿ BTC/USDT | ⟠ ETH/USDT | …]
     et appelle render_fn(asset) pour chaque onglet actif.
     Si un seul actif est actif, passe directement à render_fn sans onglets.
+    global_fn : si fourni, appelé dans l'onglet Global après le tableau de synthèse.
     """
     import streamlit as st
 
@@ -159,6 +217,9 @@ def render_asset_tabs(render_fn: Callable[[str], None]) -> None:
 
     with tabs[0]:
         render_global_overview()
+        render_global_live_prices()
+        if global_fn is not None:
+            global_fn()
 
     for i, asset in enumerate(assets, start=1):
         with tabs[i]:
@@ -191,6 +252,20 @@ def render_marches_admin_tab() -> None:
         return
 
     # Ajouter/retirer un actif de active_assets
+    st.markdown("""<style>
+/* Fix troncature des tags dans le multiselect "Actifs surveillés" */
+[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+    min-width: 90px !important;
+    max-width: none !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+}
+[data-testid="stMultiSelect"] span[data-baseweb="tag"] span:first-child {
+    overflow: visible !important;
+    white-space: nowrap !important;
+    text-overflow: unset !important;
+}
+</style>""", unsafe_allow_html=True)
     st.markdown("**Actifs actifs**")
     all_known = ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]
     current_active = get_active_assets()
@@ -242,6 +317,19 @@ def _render_asset_config_editor(
         risk = cfg.get("risk", {})
         agents = cfg.get("agents", {})
 
+        # Capital paper par actif
+        col0, = st.columns([1])  # ligne entière
+        paper_cap = st.number_input(
+            "💰 Capital paper (USD)",
+            min_value=500, max_value=1_000_000, step=500,
+            value=int(cfg.get("paper_capital_usd", 10000)),
+            key=f"paper_cap_{slug}",
+            help=(
+                "Montant alloué à cet actif en mode paper trading. "
+                "En production, le solde est lu depuis l'API de l'exchange."
+            ),
+        )
+
         col1, col2, col3 = st.columns(3)
         with col1:
             buy_thr = st.number_input(
@@ -291,6 +379,7 @@ def _render_asset_config_editor(
                 "exit_threshold": exit_thr,
                 "position_size_pct": pos_pct,
             })
+            cfg["paper_capital_usd"] = paper_cap
             for key, enabled in agent_states.items():
                 cfg.setdefault("agents", {}).setdefault(key, {})["enabled"] = enabled
             try:

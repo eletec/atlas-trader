@@ -7,6 +7,10 @@ asset: "BTC/USDT"
 exchange: "binance"
 testnet: true
 
+# Capital alloué à cet actif en mode paper trading (USD)
+# En mode live, le solde est lu via l'API exchange (fetch_balance)
+paper_capital_usd: 10000
+
 # Intervalle de boucle principale (secondes)
 loop_interval_seconds: 900    # 15 min
 

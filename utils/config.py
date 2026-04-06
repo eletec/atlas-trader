@@ -78,10 +78,16 @@ def get_active_assets() -> list[str]:
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Merge récursif : override surcharge base, les sous-dicts sont mergés."""
+    """Merge récursif : override surcharge base, les sous-dicts sont mergés.
+    Si une clé de base est un dict mais override fournit un scalaire, on conserve
+    la valeur de base (le scalaire de l'asset YAML ne doit pas détruire une config complicate).
+    """
     for key, val in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(val, dict):
             _deep_merge(base[key], val)
+        elif key in base and isinstance(base[key], dict) and not isinstance(val, (dict, list)):
+            # Scalaire tente d'écraser un dict — ignorer (ex: exchange: "binance" vs exchange: {...})
+            pass
         else:
             base[key] = val
     return base

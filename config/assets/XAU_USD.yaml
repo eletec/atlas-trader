@@ -7,6 +7,9 @@ asset: "XAU/USD"
 exchange: "oanda"       # Provider OANDA demo
 testnet: true           # Compte démo OANDA (paper trading)
 
+# Capital alloué à cet actif en mode paper trading (USD)
+paper_capital_usd: 5000
+
 # SessionAwareScheduler : XAU fermé le week-end + nuit asiatique limitée
 loop_interval_seconds: 900   # 15 min (overridé dynamiquement par MarketSession)
 

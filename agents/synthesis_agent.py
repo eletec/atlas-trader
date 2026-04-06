@@ -251,7 +251,7 @@ class SynthesisAgentAgentic:
             return SynthesisAgent()._fallback_synthesis(state)
 
         context = self._build_context_summary(state)
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(timeout=60.0)
 
         messages = [{"role": "user", "content": f"Synthesize and decide:\n{context}"}]
 

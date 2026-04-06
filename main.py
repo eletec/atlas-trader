@@ -229,9 +229,9 @@ def fast_monitor_loop(
                     last_news_titles.append(n["title"])
                 _last_news_titles_set.clear()
                 _last_news_titles_set.update(last_news_titles)
-                # Ne forcer un cycle que si aucun cycle n'est déjà en cours
+                # Ne forcer un cycle que si aucun cycle n'est déjà en cours pour cet actif
                 from utils.cycle_lock import is_locked as _cycle_locked
-                if not _cycle_locked():
+                if not _cycle_locked(asset=asset):
                     logger.warning(
                         f"[{slug}] {len(breaking)} breaking news détectée(s) — cycle forcé\n"
                         + "\n".join(f"  · {t}" for t in titles)
@@ -308,7 +308,7 @@ def fast_monitor_loop(
                 now = time.time()
                 if (mkt_score >= 85 or mkt_score <= 15) and (now - _last_market_score_trigger > 1800):
                     from utils.cycle_lock import is_locked as _cycle_locked_mkt
-                    if not _cycle_locked_mkt():
+                    if not _cycle_locked_mkt(asset=asset):
                         logger.warning(
                             f"[{slug}] Signal marché extrême — score={mkt_score:.0f} "
                             f"(RSI={mkt.get('rsi_14', 0):.0f}) → cycle forcé"
@@ -394,6 +394,16 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
         # Intervalle dynamique par session, sauf si override CLI
         interval = interval_override or session.interval_seconds()
 
+        # ── Circuit-breaker anti-gel : trop de threads = zombies LLM accumulés ──
+        _thread_count = threading.active_count()
+        if _thread_count > 100:
+            import os as _os
+            asset_logger.critical(
+                f"[{slug}] THREAD EXPLOSION ({_thread_count} threads) "
+                "— os._exit(1) pour redémarrage supervisord"
+            )
+            _os._exit(1)
+
         cycle_count += 1
         t0 = time.time()
         forced = force_event.is_set()
@@ -427,7 +437,7 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
             if not _cycle_done.wait(timeout=300):
                 asset_logger.error(f"[{slug}] Cycle #{cycle_count} TIMEOUT (300s) — abandon")
                 from utils.cycle_lock import release as _force_release
-                _force_release()
+                _force_release(asset=asset)
                 consecutive_errors += 1
                 if consecutive_errors >= 5:
                     asset_logger.critical(f"[{slug}] 5 cycles consécutifs en erreur — arrêt d'urgence")
@@ -450,13 +460,14 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
             # Heartbeat par actif
             try:
                 import pathlib
+                _tc = threading.active_count()
                 pathlib.Path(f"/tmp/atlas_heartbeat_{slug}").write_text(
-                    f"{time.time()}\ncycle={cycle_count}\n{decision}\n"
+                    f"{time.time()}\ncycle={cycle_count}\n{decision}\nthreads={_tc}\n"
                 )
                 # Compat watchdog legacy (1 actif = BTC)
                 if slug == "BTC_USDT":
                     pathlib.Path("/tmp/atlas_heartbeat").write_text(
-                        f"{time.time()}\ncycle={cycle_count}\n{decision}\n"
+                        f"{time.time()}\ncycle={cycle_count}\n{decision}\nthreads={_tc}\n"
                     )
             except Exception:
                 pass

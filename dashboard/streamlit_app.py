@@ -487,13 +487,14 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 
 @st.cache_data(ttl=15)
-def _get_portfolio() -> dict:
+def _get_portfolio(asset: str | None = None) -> dict:
     try:
         from execution.paper_trader import PaperTrader
-        return PaperTrader().get_portfolio()
+        return PaperTrader().get_portfolio(asset=asset)
     except Exception:
         return {"capital": 10000, "current_value": 10000, "total_pnl": 0,
-                "total_pnl_pct": 0, "n_trades": 0}
+                "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
+                "live_mode": False}
 
 
 @st.cache_data(ttl=30)
@@ -1078,6 +1079,17 @@ def render_portfolio(portfolio: dict):
     pnl_pct = portfolio.get("total_pnl_pct", 0)
     pnl_pos = pnl >= 0
     pnl_col = "#2ecc71" if pnl_pos else "#e74c3c"
+    asset   = portfolio.get("asset", "ALL")
+    is_live = portfolio.get("live_mode", False)
+
+    mode_badge = (
+        '<span style="font-size:10px;background:#e74c3c;color:#fff;border-radius:3px;'
+        'padding:1px 5px;margin-left:6px;vertical-align:middle;">LIVE</span>'
+        if is_live else
+        '<span style="font-size:10px;background:#f39c12;color:#fff;border-radius:3px;'
+        'padding:1px 5px;margin-left:6px;vertical-align:middle;">PAPER</span>'
+    )
+    asset_label = "" if asset == "ALL" else f" — {asset}"
 
     bg, bdr, txt, muted, ic = _card_colors(theme)
     kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
@@ -1095,10 +1107,10 @@ def render_portfolio(portfolio: dict):
     )
 
     st.markdown(
-        f'<h3 style="margin:0 0 10px;font-size:18px;">' +
-        f'<i class="fas fa-briefcase" style="margin-right:8px;color:#7986cb;"></i>' +
-        f'{t("portfolio_title")}</h3>' +
-        f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));' +
+        f'<h3 style="margin:0 0 10px;font-size:18px;">'
+        f'<i class="fas fa-briefcase" style="margin-right:8px;color:#7986cb;"></i>'
+        f'{t("portfolio_title")}{asset_label}{mode_badge}</h3>'
+        f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));'
         f'gap:12px;margin-bottom:16px;">{grid}</div>',
         unsafe_allow_html=True,
     )
@@ -1164,20 +1176,20 @@ def render_pnl_chart(history: list[dict]):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def render_btc_live_chart():
-    """Graphique BTC prix en temps réel avec niveaux SL/TP des positions ouvertes."""
-    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-satellite-dish" style="margin-right:8px;color:#7986cb;"></i>{t("btc_live_title")}</h3>', unsafe_allow_html=True)
+def render_live_chart(asset: str = "BTC/USDT"):
+    """Graphique prix en temps réel avec niveaux SL/TP des positions ouvertes."""
+    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-satellite-dish" style="margin-right:8px;color:#7986cb;"></i>{asset} — {t("open_pos_label")}</h3>', unsafe_allow_html=True)
 
     try:
         from agents.market_data_agent import MarketDataAgent
         from storage.database import get_recent_decisions
         agent = MarketDataAgent()
-        indicators = agent.get_indicators("BTC/USDT")
+        indicators = agent.get_indicators(asset)
         current_price = indicators.get("price", 0)
         ma_50 = indicators.get("ma_50", 0)
 
         open_pos = [
-            d for d in get_recent_decisions(500)
+            d for d in get_recent_decisions(500, asset=asset)
             if d.get("action") in ("BUY", "SELL") and d.get("result_24h") is None
         ]
     except Exception as exc:
@@ -1186,9 +1198,9 @@ def render_btc_live_chart():
 
     if not open_pos:
         c1, c2, c3 = st.columns(3)
-        c1.metric(t("btc_price_label"), f"${current_price:,.2f}" if current_price else "—")
+        c1.metric(f"Prix {asset.split('/')[0]}", f"${current_price:,.2f}" if current_price else "—")
         if ma_50:
-            c2.metric(t("ma50_short", None) if False else "MA50", f"${ma_50:,.2f}",
+            c2.metric("MA50", f"${ma_50:,.2f}",
                       delta=f"{(current_price/ma_50-1)*100:+.1f}%" if current_price and ma_50 else None,
                       delta_color="normal")
         c3.metric(t("open_pos_label"), "0")
@@ -1196,17 +1208,35 @@ def render_btc_live_chart():
         # Graphique prix 24h même sans positions
         try:
             import ccxt
-            exchange = ccxt.binance()
-            ohlcv = exchange.fetch_ohlcv("BTC/USDT", timeframe="15m", limit=96)
-            times  = [row[0] for row in ohlcv]
-            closes = [row[4] for row in ohlcv]
+            _YF_MAP = {"XAU/USD": "GC=F", "EUR/USD": "EURUSD=X",
+                       "GBP/USD": "GBPUSD=X", "USD/JPY": "JPY=X"}
+            try:
+                exchange = ccxt.binance()
+                ohlcv = exchange.fetch_ohlcv(asset, timeframe="15m", limit=96)
+                times  = [row[0] for row in ohlcv]
+                closes = [row[4] for row in ohlcv]
+            except Exception:
+                # Fallback Yahoo Finance pour XAU/USD, EUR/USD, GBP/USD
+                import json, urllib.request as _ur
+                ticker = _YF_MAP.get(asset, asset)
+                req = _ur.Request(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+                    f"?interval=15m&range=1d&includePrePost=false",
+                    headers={"User-Agent": "atlas-trader/2.0"},
+                )
+                with _ur.urlopen(req, timeout=15) as _r:
+                    _yf = json.loads(_r.read())
+                _res = _yf["chart"]["result"][0]
+                times  = [t * 1000 for t in _res["timestamp"]]
+                raw_c  = _res["indicators"]["quote"][0].get("close", [])
+                closes = [c for c in raw_c if c is not None]
             fig_empty = go.Figure()
             fig_empty.add_trace(go.Scatter(
                 x=pd.to_datetime(times, unit="ms"),
                 y=closes,
                 mode="lines",
                 line=dict(color="#00d4ff", width=2),
-                name="BTC/USDT",
+                name=asset,
             ))
             if ma_50:
                 fig_empty.add_hline(y=ma_50,
@@ -1287,7 +1317,7 @@ def render_btc_live_chart():
 
     n_open = len(open_pos)
     c1, c2, c3 = st.columns(3)
-    c1.metric(t("btc_price_label"), f"${current_price:,.2f}" if current_price else "—")
+    c1.metric(f"Prix {asset.split('/')[0]}", f"${current_price:,.2f}" if current_price else "—")
     if ma_50:
         c2.metric("MA50", f"${ma_50:,.2f}",
                   delta=f"{(current_price/ma_50-1)*100:+.1f}%" if current_price else None,
@@ -2411,26 +2441,35 @@ def main():
             st.session_state["_autorefresh_active"] = _autorefresh_active
 
             last_cycle = _get_last_cycle()
-            portfolio  = _get_portfolio()
+            portfolio  = _get_portfolio()          # consolidé (vue globale)
             _get_pnl_history()
 
             from dashboard.multi_asset import render_asset_tabs
 
             def _render_for_asset(asset: str):
                 """Render complet pour un actif donné (utilisé par render_asset_tabs)."""
-                _lc   = _get_recent_decisions(1, asset=asset)
-                _lc   = _lc[0] if _lc else last_cycle
-                _tr   = _get_recent_trades(200, asset=asset)
-                render_portfolio(portfolio)
+                _lc = _get_recent_decisions(1, asset=asset)
+                # Ne pas fallback sur BTC : si aucune décision pour cet actif → état vide
+                _lc = _lc[0] if _lc else None
+                _tr = _get_recent_trades(200, asset=asset)
+                _pf = _get_portfolio(asset=asset)   # portefeuille isolé pour cet actif
+                render_portfolio(_pf)
                 render_climate_metrics(_lc)
                 render_last_decision(_lc)
                 render_pnl_chart(_tr)
-                render_profile_comparison()
-                render_btc_live_chart()
+                render_live_chart(asset)
                 render_trades_list(_tr)
                 render_live_logs()
 
-            render_asset_tabs(_render_for_asset)
+            def _render_global():
+                """Vue consolidée : portfolio global + PnL tous actifs + profils + logs."""
+                _tr_all = _get_recent_trades(500)
+                render_portfolio(portfolio)         # portfolio global (capital total)
+                render_pnl_chart(_tr_all)
+                render_profile_comparison()
+                render_live_logs()
+
+            render_asset_tabs(_render_for_asset, global_fn=_render_global)
             st.markdown(
                 '<div style="text-align:center;padding:24px 0 8px;'
                 'font-size:11px;opacity:0.35;">Atlas Trader &mdash; by Jako 2026</div>',

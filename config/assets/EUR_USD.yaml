@@ -7,6 +7,9 @@ asset: "EUR/USD"
 exchange: "oanda"
 testnet: true
 
+# Capital alloué à cet actif en mode paper trading (USD)
+paper_capital_usd: 5000
+
 # SessionAwareScheduler : EUR/USD fermé la nuit asiatique + week-end
 loop_interval_seconds: 900   # 15 min (dynamique par session via MarketSession)
 

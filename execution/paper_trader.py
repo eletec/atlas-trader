@@ -139,14 +139,24 @@ class PaperTrader:
         )
         return result
 
-    def get_portfolio(self) -> dict:
-        """Retourne le portefeuille courant.
+    def get_portfolio(self, asset: str | None = None) -> dict:
+        """Retourne le portefeuille courant, par actif ou global.
 
-        - Live (testnet=False) : lit le solde réel via CCXT fetch_balance().
-        - Paper (testnet=True)  : calcule depuis l'historique SQLite.
+        - asset=None  : portfolio consolidé tous actifs
+        - asset="BTC/USDT" : portfolio isolé pour cet actif
+
+        Mode LIVE (testnet=False) : lit le solde réel via CCXT fetch_balance().
+        Mode PAPER (testnet=True) : calcule depuis l'historique SQLite.
         """
-        # ── Mode LIVE : solde réel depuis l'exchange ──
-        if not self.testnet and self._exchange:
+        # ── Résoudre le capital de référence ──────────────────────────────
+        if asset:
+            capital = self._get_asset_capital(asset)
+        else:
+            capital = self.capital
+
+        # ── Mode LIVE : solde réel depuis l'exchange ──────────────────────
+        if not self.testnet and self._exchange and not asset:
+            # En mode live on lit le solde global (pas filtrable par actif)
             try:
                 balance = self._exchange.fetch_balance()
                 usdt_free  = float((balance.get("USDT") or {}).get("free",  0))
@@ -160,32 +170,59 @@ class PaperTrader:
                     pass
                 current_value = usdt_total + btc_total * btc_price
                 return {
-                    "capital":       self.capital,
+                    "capital":       capital,
                     "current_value": round(current_value, 2),
                     "usdt_free":     round(usdt_free, 2),
                     "btc_total":     btc_total,
-                    "total_pnl":     round(current_value - self.capital, 2),
-                    "total_pnl_pct": round((current_value - self.capital) / self.capital * 100, 2)
-                                     if self.capital else 0.0,
+                    "total_pnl":     round(current_value - capital, 2),
+                    "total_pnl_pct": round((current_value - capital) / capital * 100, 2)
+                                     if capital else 0.0,
                     "live_mode":     True,
+                    "asset":         "ALL",
                 }
             except Exception as exc:
                 logger.warning(f"fetch_balance échoué, fallback SQLite: {exc}")
 
-        # ── Mode PAPER/TESTNET : calcul depuis l'historique SQLite ──
+        # ── Mode PAPER/TESTNET : calcul depuis l'historique SQLite ────────
         try:
             from storage.database import get_recent_decisions, get_pnl_history
-            pnl = get_pnl_history()
-            total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl)
-            n_trades = len([d for d in get_recent_decisions(1000)
-                           if d.get("action") != "HOLD"])
+
+            if asset:
+                # P&L filtré sur l'actif
+                from storage.database import get_recent_trades as _grt
+                trades = _grt(1000, asset=asset)
+                total_pnl = sum(t.get("result_24h", 0) or 0 for t in trades)
+                n_trades = len(trades)
+            else:
+                pnl_rows = get_pnl_history()
+                total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
+                n_trades = len([d for d in get_recent_decisions(1000)
+                               if d.get("action") != "HOLD"])
+
             return {
-                "capital":       self.capital,
-                "current_value": self.capital + total_pnl,
+                "capital":       capital,
+                "current_value": round(capital + total_pnl, 2),
                 "total_pnl":     round(total_pnl, 2),
-                "total_pnl_pct": round(total_pnl / self.capital * 100, 2),
+                "total_pnl_pct": round(total_pnl / capital * 100, 2) if capital else 0.0,
                 "n_trades":      n_trades,
+                "asset":         asset or "ALL",
+                "live_mode":     False,
             }
         except Exception:
-            return {"capital": self.capital, "current_value": self.capital,
-                    "total_pnl": 0, "total_pnl_pct": 0, "n_trades": 0}
+            return {
+                "capital": capital, "current_value": capital,
+                "total_pnl": 0, "total_pnl_pct": 0, "n_trades": 0,
+                "asset": asset or "ALL", "live_mode": False,
+            }
+
+    def _get_asset_capital(self, asset: str) -> float:
+        """Lit paper_capital_usd depuis config/assets/{slug}.yaml, fallback settings."""
+        try:
+            from utils.config import load_asset_config
+            cfg = load_asset_config(asset)
+            cap = cfg.get("paper_capital_usd")
+            if cap:
+                return float(cap)
+        except Exception:
+            pass
+        return self.capital

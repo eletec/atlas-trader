@@ -119,7 +119,7 @@ class FundamentalAgent:
         provider = self._llm_cfg.get("provider", "anthropic")
         if provider == "anthropic":
             import anthropic
-            client = anthropic.Anthropic()
+            client = anthropic.Anthropic(timeout=60.0)
             resp = client.messages.create(
                 model="claude-3-5-haiku-20241022",
                 max_tokens=512,
@@ -136,7 +136,7 @@ class FundamentalAgent:
                 base_url = "https://api.deepseek.com/v1"
                 api_key_env = "DEEPSEEK_API_KEY"
                 model = "deepseek-chat"
-            client = OpenAI(api_key=os.environ.get(api_key_env, ""), base_url=base_url)
+            client = OpenAI(api_key=os.environ.get(api_key_env, ""), base_url=base_url, timeout=60)
             resp = client.chat.completions.create(
                 model=model, max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
@@ -306,7 +306,7 @@ class FundamentalAgent:
             logger.warning("CA2: anthropic non disponible — fallback rule_based")
             return self._rule_based(state.get("market_indicators", {}))
 
-        client = anthropic.Anthropic()
+        client = anthropic.Anthropic(timeout=60.0)
         model = self._llm_cfg.get("haiku_model", "claude-3-5-haiku-20241022")
 
         tools = [

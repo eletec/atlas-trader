@@ -7,6 +7,9 @@ asset: "ETH/USDT"
 exchange: "binance"
 testnet: true
 
+# Capital alloué à cet actif en mode paper trading (USD)
+paper_capital_usd: 5000
+
 loop_interval_seconds: 900    # 15 min
 
 monitor:

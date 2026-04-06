@@ -16,6 +16,15 @@ logger = logging.getLogger("zeitgeist.market_data")
 # Permet au circuit breaker de détecter un funding élevé soutenu vs un pic isolé
 _FUNDING_HISTORY: deque = deque(maxlen=8)
 
+# Actifs non supportés par Binance CCXT → Yahoo Finance (clé API non requise)
+_YAHOO_SYMBOLS: dict[str, str] = {
+    "XAU/USD": "GC=F",       # Gold Futures
+    "EUR/USD": "EURUSD=X",
+    "GBP/USD": "GBPUSD=X",
+    "USD/JPY": "JPY=X",
+    "AUD/USD": "AUDUSD=X",
+}
+
 
 class MarketDataAgent:
     """Récupère OHLCV et calcule les indicateurs techniques."""
@@ -42,6 +51,10 @@ class MarketDataAgent:
 
     def get_indicators(self, symbol: str = "BTC/USDT") -> dict:
         """Récupère OHLCV et calcule RSI, MACD, BB, ATR."""
+        # Actifs non-Binance → Yahoo Finance directement (pas de clé API requise)
+        if symbol in _YAHOO_SYMBOLS:
+            return self._yahoo_indicators(symbol)
+
         if self._exchange is None:
             return self._generate_mock(symbol)
 
@@ -120,6 +133,86 @@ class MarketDataAgent:
             return self._generate_mock(symbol)
 
     # ---- Indicateurs TA ----
+
+    def _yahoo_indicators(self, symbol: str) -> dict:
+        """Fallback Yahoo Finance Chart API (sans clé API) pour XAU/USD, EUR/USD, etc."""
+        import json
+        import urllib.request as _ur
+
+        ticker = _YAHOO_SYMBOLS.get(symbol, symbol)
+        headers = {"User-Agent": "atlas-trader/2.0", "Accept": "application/json"}
+        timeout = 15
+
+        def _yget(url: str):
+            req = _ur.Request(url, headers=headers)
+            with _ur.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+
+        try:
+            data = _yget(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+                f"?interval=15m&range=1d&includePrePost=false"
+            )
+            res   = data["chart"]["result"][0]
+            meta  = res["meta"]
+            quote = res["indicators"]["quote"][0]
+
+            raw_c = quote.get("close", [])
+            raw_h = quote.get("high",  [])
+            raw_l = quote.get("low",   [])
+            raw_v = quote.get("volume", [])
+            closes  = np.array([c for c in raw_c if c is not None], dtype=float)
+            highs   = np.array([c for c in raw_h if c is not None], dtype=float)
+            lows    = np.array([c for c in raw_l if c is not None], dtype=float)
+            volumes = np.array([c for c in raw_v if c is not None], dtype=float)
+
+            price = float(meta.get("regularMarketPrice") or meta.get("previousClose") or 0)
+
+            # MA50 daily
+            ma_50 = 0.0
+            try:
+                d_data = _yget(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+                    f"?interval=1d&range=3mo"
+                )
+                dc = d_data["chart"]["result"][0]["indicators"]["quote"][0].get("close", [])
+                daily = np.array([c for c in dc if c is not None], dtype=float)
+                if len(daily) >= 10:
+                    ma_50 = float(np.mean(daily[-min(50, len(daily)):]))
+            except Exception:
+                pass
+
+            rsi  = round(float(self._rsi(closes, 14)), 2) if len(closes) >= 15 else 50.0
+            macd, macd_sig = (self._macd(closes) if len(closes) >= 26
+                              else (0.0, 0.0))
+            bb_u, bb_l = (self._bb(closes) if len(closes) >= 20
+                          else (price * 1.02, price * 0.98))
+            atr = (float(self._atr(highs, lows, closes, 14))
+                   if len(closes) >= 15 and len(highs) >= 15 else 0.0)
+
+            return {
+                "symbol":               symbol,
+                "price":                price,
+                "rsi_14":               rsi,
+                "rsi_1h":               None,
+                "rsi_4h":               None,
+                "trend_4h":             None,
+                "macd":                 round(float(macd), 6),
+                "macd_signal":          round(float(macd_sig), 6),
+                "bb_upper":             round(float(bb_u), 6),
+                "bb_lower":             round(float(bb_l), 6),
+                "atr_14":               round(float(atr), 6),
+                "volume_24h":           float(volumes.sum()) if len(volumes) else 0.0,
+                "funding_rate":         0.0,
+                "recent_funding_rates": [],
+                "ma_50":                round(ma_50, 6),
+                "above_ma50":           bool(ma_50 > 0 and price > ma_50),
+                "timestamp":            datetime.utcnow().isoformat(),
+                "_source":              "yahoo",
+            }
+        except Exception as exc:
+            logger.warning(f"Yahoo Finance fallback failed for {symbol} ({ticker}): {exc}")
+            return self._generate_mock(symbol)
 
     @staticmethod
     def _rsi(closes: np.ndarray, period: int = 14) -> float:

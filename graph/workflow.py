@@ -654,11 +654,25 @@ def node_execute(state: ZeitgeistState) -> dict:
 # ===========================================================
 
 def should_continue_after_news(state: ZeitgeistState) -> str:
-    """Si pas de news ET pas d'AirDuTemps en cache → abort."""
-    if not state.get("news_items") and not state.get("air_du_temps"):
-        logger.warning(f"[{state['cycle_id']}] Aucune donnée — cycle annulé")
-        return "abort"
-    return "continue"
+    """Si pas de news ET pas d'AirDuTemps en cache → abort (seulement si des keywords sont configurés)."""
+    if state.get("news_items") or state.get("air_du_temps"):
+        return "continue"
+    # Vérifier si cet actif a des keywords de news configurés
+    # Si non (forex, matières premières), continuer sur les indicateurs de marché seuls
+    try:
+        from utils.config import load_settings
+        asset = state.get("asset", "")
+        kw = load_settings().get("news", {}).get("keywords_per_asset", {})
+        if not kw.get(asset):
+            logger.info(
+                f"[{state['cycle_id']}] Aucune news pour {asset} "
+                "(pas de keywords configurés) — cycle continue sur indicateurs marché"
+            )
+            return "continue"
+    except Exception:
+        pass
+    logger.warning(f"[{state['cycle_id']}] Aucune donnée — cycle annulé")
+    return "abort"
 
 
 def should_execute(state: ZeitgeistState) -> str:
@@ -764,8 +778,8 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
     import time
     from utils.cycle_lock import try_acquire, release
 
-    if not try_acquire(owner=f"daemon-{trigger}"):
-        logger.warning(f"Cycle skipped — another cycle is already running (trigger={trigger})")
+    if not try_acquire(owner=f"daemon-{trigger}", asset=asset):
+        logger.warning(f"Cycle skipped — another cycle is already running for {asset} (trigger={trigger})")
         raise RuntimeError(f"cycle_lock_busy (trigger={trigger})")
 
     try:
@@ -776,6 +790,15 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
 
         logger.info(f"=== CYCLE {initial_state['cycle_id']} DÉBUT à {start_ts} — type: {trigger} ({asset}) ===")
         final_state = workflow.invoke(initial_state)
+        if not final_state:
+            logger.warning(
+                f"[{initial_state['cycle_id']}] workflow.invoke() vide/None pour {asset} — cycle skippé"
+            )
+            return {**initial_state, "global_score": 50.0,
+                    "decision": {"action": "HOLD", "position_size_usd": 0,
+                                 "sl_price": 0, "tp_price": 0},
+                    "errors": initial_state.get("errors", []) + ["workflow_returned_empty"],
+                    "cycle_duration_ms": 0}
         duration_ms = int((time.time() - t0) * 1000)
         end_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -796,7 +819,7 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
 
         return final_state
     finally:
-        release()
+        release(asset=asset)
 
 
 # ===========================================================

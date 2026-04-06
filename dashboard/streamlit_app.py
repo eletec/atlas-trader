@@ -521,14 +521,16 @@ def _save_settings(settings: dict) -> bool:
 # COMPOSANTS UI USER
 # ===========================================================
 
-@st.dialog("⚡ Force Run", width="large")
-def _force_run_dialog(asset: str):
+def _force_run_background(asset: str, log_q) -> None:
     """
-    Popup modal qui exécute un cycle complet noeud par noeud
-    en affichant une trace en temps réel.
+    Exécute le cycle complet depuis un thread background.
+    Poste des chaînes HTML dans log_q au fur et à mesure.
+    Poste ("__done__", (is_error: bool, message: str)) en dernier.
     """
     import time as _time
-    from utils.cycle_lock import try_acquire, release
+    import threading as _threading
+    import logging
+    from utils.i18n import t as _t
     from graph.workflow import (
         create_initial_state,
         node_fetch_news, node_crawl_web, node_run_mirofish,
@@ -536,70 +538,15 @@ def _force_run_dialog(asset: str):
         node_calculate_score, node_decide, node_execute,
         should_continue_after_news, should_execute,
     )
-    import logging
+
     _logger = logging.getLogger("zeitgeist.workflow")
 
-    # Cross-process lock — prevent concurrent cycles with daemon
-    if not try_acquire(owner="dashboard-force"):
-        from utils.cycle_lock import lock_info
-        info = lock_info()
-        if info:
-            owner = info["owner"].replace("daemon-", "")
-            st.warning(f"⏳ {t('run_already_running')} ({owner}, {info['age_s']}s)")
-        else:
-            st.warning(t("run_already_running"))
-        st.session_state.pop("_force_run_asset", None)
-        return
+    def _log(txt):
+        log_q.put(txt)
 
-    try:
-        _force_run_dialog_inner(asset, _time, _logger,
-                                create_initial_state,
-                                node_fetch_news, node_crawl_web, node_run_mirofish,
-                                node_fetch_market_data, node_analyze_agents, node_synthesize,
-                                node_calculate_score, node_decide, node_execute,
-                                should_continue_after_news, should_execute)
-    finally:
-        release()
+    def _log_sub(txt):
+        log_q.put(f"<span style='font-size:12px;opacity:0.7;padding-left:12px'>{txt}</span>")
 
-
-def _force_run_dialog_inner(asset, _time, _logger,
-                            create_initial_state,
-                            node_fetch_news, node_crawl_web, node_run_mirofish,
-                            node_fetch_market_data, node_analyze_agents, node_synthesize,
-                            node_calculate_score, node_decide, node_execute,
-                            should_continue_after_news, should_execute):
-    """Inner logic for Force Run dialog (separated for lock management)."""
-    start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
-    _logger.info(f"=== CYCLE DASHBOARD DÉBUT à {start_ts} — type: dashboard-force ({asset}) ===")
-
-    STEPS = [
-        ("fetch_news",      t("run_step_news"),        node_fetch_news),
-        ("crawl_web",       t("run_step_crawl"),       node_crawl_web),
-        ("run_mirofish",    t("run_step_mirofish"),    node_run_mirofish),
-        ("fetch_market",    t("run_step_market"),      node_fetch_market_data),
-        ("agents",          t("run_step_agents"),      node_analyze_agents),
-        ("synthesize",      t("run_step_synth"),       node_synthesize),
-        ("score",           t("run_step_score"),       node_calculate_score),
-        ("decide",          t("run_step_decide"),      node_decide),
-    ]
-
-    import threading as _threading
-
-    state = create_initial_state(asset)
-    # CSS minimal : espacement + police monospace uniquement (pas de couleur hardcodée)
-    st.markdown("""<style>
-    [data-testid="stDialog"] [data-testid="stMarkdown"] p {
-        font-size: 13px; line-height: 1.3; font-family: 'SFMono-Regular',Consolas,monospace;
-        margin: 0; padding: 0;
-    }
-    [data-testid="stDialog"] [data-testid="stMarkdown"] {
-        margin-bottom: -12px;
-    }
-    </style>""", unsafe_allow_html=True)
-    log_container = st.container()
-    t_total = _time.time()
-
-    # Timeouts par étape (s) — garantit qu'aucun nœud ne bloque la session indéfiniment
     _STEP_TIMEOUTS = {
         "fetch_news": 45, "crawl_web": 90, "run_mirofish": 45,
         "fetch_market": 45, "agents": 210, "synthesize": 120,
@@ -607,27 +554,37 @@ def _force_run_dialog_inner(asset, _time, _logger,
     }
 
     def _run_step(step_key, fn, s, timeout_s):
-        """Exécute fn(s) dans un thread daemon avec timeout garanti."""
         _res = [None]; _err = [None]
         def _w():
-            try: _res[0] = fn(s)
-            except Exception as e: _err[0] = e
-        t = _threading.Thread(target=_w, daemon=True, name=f"force_{step_key}")
-        t.start()
-        t.join(timeout=timeout_s)
-        if t.is_alive():
+            try:
+                _res[0] = fn(s)
+            except Exception as e:
+                _err[0] = e
+        thr = _threading.Thread(target=_w, daemon=True, name=f"frd_{step_key}")
+        thr.start()
+        thr.join(timeout=timeout_s)
+        if thr.is_alive():
             return None, TimeoutError(f"timeout {timeout_s}s — nœud bloqué")
         if _err[0] is not None:
             return None, _err[0]
         return _res[0], None
 
-    def _log(txt):
-        log_container.markdown(txt, unsafe_allow_html=True)
-    def _log_sub(txt):
-        log_container.markdown(
-            f"<span style='font-size:12px;opacity:0.7;padding-left:12px'>{txt}</span>",
-            unsafe_allow_html=True
-        )
+    STEPS = [
+        ("fetch_news",   _t("run_step_news"),    node_fetch_news),
+        ("crawl_web",    _t("run_step_crawl"),   node_crawl_web),
+        ("run_mirofish", _t("run_step_mirofish"),node_run_mirofish),
+        ("fetch_market", _t("run_step_market"),  node_fetch_market_data),
+        ("agents",       _t("run_step_agents"),  node_analyze_agents),
+        ("synthesize",   _t("run_step_synth"),   node_synthesize),
+        ("score",        _t("run_step_score"),   node_calculate_score),
+        ("decide",       _t("run_step_decide"),  node_decide),
+    ]
+
+    start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
+    _logger.info(f"=== CYCLE DASHBOARD DÉBUT à {start_ts} — type: dashboard-force ({asset}) ===")
+
+    state = create_initial_state(asset)
+    t_total = _time.time()
 
     for key, label, fn in STEPS:
         _log(f"⏳ <b>{label}</b>")
@@ -638,57 +595,46 @@ def _force_run_dialog_inner(asset, _time, _logger,
                 raise _step_err
             if patch:
                 state.update(patch)
-            elapsed = int((_time.time() - t0) * 1000)
-            elapsed_s = elapsed / 1000
+            elapsed_s = _time.time() - t0
 
-            # Arrêt conditionnel après fetch_news
             if key == "fetch_news":
                 if should_continue_after_news(state) == "abort":
-                    _log(f"⚠️ {t('run_no_news_abort')}")
+                    _log(f"⚠️ {_t('run_no_news_abort')}")
                     break
-
-            # Info contextuelle par étape
-            if key == "fetch_news":
                 n = len(state.get("news_items", []))
-                _log(f"✅ <b>{label}</b> — {t('run_news_count').format(n=n)} ({elapsed_s:.1f}s)")
+                _log(f"✅ <b>{label}</b> — {_t('run_news_count').format(n=n)} ({elapsed_s:.1f}s)")
             elif key == "crawl_web":
-                s = state.get("crawler_status", "?")
-                _log(f"✅ <b>{label}</b> — {t('run_status')}: {s} ({elapsed_s:.1f}s)")
+                st_ = state.get("crawler_status", "?")
+                _log(f"✅ <b>{label}</b> — {_t('run_status')}: {st_} ({elapsed_s:.1f}s)")
             elif key == "run_mirofish":
                 mf = state.get("mirofish_result") or {}
-                sig = mf.get("signal", "?")
-                conf = mf.get("confidence", 0)
-                _log(f"✅ <b>{label}</b> — {t('run_signal')}: {sig} {t('run_conf')}: {conf:.0%} ({elapsed_s:.1f}s)")
+                _log(f"✅ <b>{label}</b> — {_t('run_signal')}: {mf.get('signal','?')} {_t('run_conf')}: {mf.get('confidence',0):.0%} ({elapsed_s:.1f}s)")
             elif key == "fetch_market":
                 mi = state.get("market_indicators") or {}
-                price = mi.get("price", 0)
-                rsi = mi.get("rsi_14", 0)
-                _log(f"✅ <b>{label}</b> — BTC: ${price:,.0f} RSI: {rsi:.1f} ({elapsed_s:.1f}s)")
+                _log(f"✅ <b>{label}</b> — BTC: ${mi.get('price',0):,.0f} RSI: {mi.get('rsi_14',0):.1f} ({elapsed_s:.1f}s)")
             elif key == "agents":
                 analyses = state.get("agent_analyses", {})
-                errs = len(state.get("errors", []))
+                errs_n = len(state.get("errors", []))
                 for aname, adata in analyses.items():
                     if isinstance(adata, dict):
-                        asig = adata.get("signal", "?")
-                        asc  = adata.get("score", 50)
+                        asig  = adata.get("signal", "?")
+                        asc   = adata.get("score", 50)
                         aconf = adata.get("confidence", 0)
-                        asum = adata.get("summary", "")
+                        asum  = adata.get("summary", "")
                         if asig == "NEUTRAL" and aconf == 0:
                             _log_sub(f"⚠️ {aname} — fallback ({asum})")
                         else:
                             _log_sub(f"✓ {aname} — {asig} (score {asc:.0f}, conf {aconf:.0%})")
-                _log(f"✅ <b>{label}</b> — {t('run_agents_count').format(n=len(analyses), e=errs)} ({elapsed_s:.1f}s)")
+                _log(f"✅ <b>{label}</b> — {_t('run_agents_count').format(n=len(analyses), e=errs_n)} ({elapsed_s:.1f}s)")
             elif key == "synthesize":
                 _log(f"✅ <b>{label}</b> — tokens: {state.get('llm_tokens_used', 0)} ({elapsed_s:.1f}s)")
             elif key == "score":
-                sc = state.get("global_score", 0)
-                _log(f"✅ <b>{label}</b> — score: {sc:.1f}/100 ({elapsed_s:.1f}s)")
+                _log(f"✅ <b>{label}</b> — score: {state.get('global_score', 0):.1f}/100 ({elapsed_s:.1f}s)")
             elif key == "decide":
-                dec = (state.get("decision") or {})
-                action = dec.get("action", "HOLD")
+                action = (state.get("decision") or {}).get("action", "HOLD")
                 _log(f"✅ <b>{label}</b> — <b>{action}</b> ({elapsed_s:.1f}s)")
                 if should_execute(state) == "execute":
-                    _log(f"⏳ <b>{t('run_trade_exec')} ({action})</b>")
+                    _log(f"⏳ <b>{_t('run_trade_exec')} ({action})</b>")
                     t0e = _time.time()
                     try:
                         patch, _exec_err = _run_step("execute", node_execute, state, 30)
@@ -696,37 +642,114 @@ def _force_run_dialog_inner(asset, _time, _logger,
                             raise _exec_err
                         if patch:
                             state.update(patch)
-                        elapsed_e = (_time.time() - t0e)
                         tr = state.get("trade_result") or {}
-                        _log(f"✅ <b>{t('run_trade_done')}</b> — {tr.get('status','?')} ({elapsed_e:.1f}s)")
+                        _log(f"✅ <b>{_t('run_trade_done')}</b> — {tr.get('status','?')} ({_time.time()-t0e:.1f}s)")
                     except Exception as exc:
-                        _log(f"❌ <b>{t('run_trade_failed')}</b> — {exc}")
+                        _log(f"❌ <b>{_t('run_trade_failed')}</b> — {exc}")
         except Exception as exc:
-            elapsed_s = (_time.time() - t0)
-            _log(f"❌ <b>{label}</b> — {exc} ({elapsed_s:.1f}s)")
+            _log(f"❌ <b>{label}</b> — {exc} ({_time.time()-t0:.1f}s)")
             state.setdefault("errors", []).append(f"{key}: {exc}")
 
-    total_ms = int((_time.time() - t_total) * 1000)
+    total_s = _time.time() - t_total
+    state["cycle_duration_ms"] = int(total_s * 1000)
     errs = state.get("errors", [])
     final_action = (state.get("decision") or {}).get("action", "N/A")
     final_score  = state.get("global_score", 0)
 
-    total_s = total_ms / 1000
-    st.divider()
-    if errs:
-        st.error(f"{t('run_done_errors').format(n=len(errs))} — {final_action} | score {final_score:.0f} | {total_s:.1f}s")
-    else:
-        st.success(f"{t('run_done')} — {final_action} | score {final_score:.0f} | {total_s:.1f}s")
-
-    state["cycle_duration_ms"] = total_ms
     end_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
     _logger.info(
         f"=== CYCLE DASHBOARD FIN à {end_ts} — "
-        f"{total_s:.1f}s | score={state.get('global_score', 0):.1f} | "
+        f"{total_s:.1f}s | score={final_score:.1f} | "
         f"decision={final_action} | erreurs={len(errs)} ==="
     )
-    st.session_state.pop("_force_run_asset", None)
-    st.cache_data.clear()
+    if errs:
+        msg = f"{_t('run_done_errors').format(n=len(errs))} — {final_action} | score {final_score:.0f} | {total_s:.1f}s"
+    else:
+        msg = f"{_t('run_done')} — {final_action} | score {final_score:.0f} | {total_s:.1f}s"
+    log_q.put(("__done__", (bool(errs), msg)))
+
+
+@st.dialog("⚡ Force Run", width="large")
+def _force_run_dialog(asset: str):
+    """
+    Popup modale non-bloquante.
+    - Au premier appel : acquiert le lock et démarre _force_run_background dans un thread daemon.
+    - Aux appels suivants (via st.rerun() toutes les 0.5s) : draine la queue et affiche les logs.
+    - Quand le thread termine : affiche le résultat final et libère les ressources.
+    """
+    import time as _time
+    import threading as _threading
+    import queue as _queue
+    from utils.cycle_lock import try_acquire, release
+
+    _KEY = "_frd_state"
+
+    # ── Première entrée ── acquérir le lock et démarrer le thread ──────────
+    if _KEY not in st.session_state:
+        if not try_acquire(owner="dashboard-force"):
+            from utils.cycle_lock import lock_info
+            info = lock_info()
+            if info:
+                owner = info["owner"].replace("daemon-", "")
+                st.warning(f"⏳ {t('run_already_running')} ({owner}, {info['age_s']}s)")
+            else:
+                st.warning(t("run_already_running"))
+            st.session_state.pop("_force_run_asset", None)
+            return
+
+        log_q = _queue.Queue()
+
+        def _bg():
+            try:
+                _force_run_background(asset, log_q)
+            finally:
+                release()
+
+        thr = _threading.Thread(target=_bg, daemon=True, name="force_run_bg")
+        thr.start()
+        st.session_state[_KEY] = {"log_q": log_q, "logs": [], "final": None, "thread": thr}
+
+    # ── CSS dialog : espacement monospace ───────────────────────────────────
+    st.markdown("""<style>
+    [data-testid="stDialog"] [data-testid="stMarkdown"] p {
+        font-size: 13px; line-height: 1.3; font-family: 'SFMono-Regular',Consolas,monospace;
+        margin: 0; padding: 0;
+    }
+    [data-testid="stDialog"] [data-testid="stMarkdown"] { margin-bottom: -12px; }
+    </style>""", unsafe_allow_html=True)
+
+    # ── Drainer la queue des logs ────────────────────────────────────────────
+    s = st.session_state[_KEY]
+    try:
+        while True:
+            item = s["log_q"].get_nowait()
+            if isinstance(item, tuple) and item[0] == "__done__":
+                s["final"] = item[1]   # (is_error: bool, message: str)
+            else:
+                s["logs"].append(item)
+    except _queue.Empty:
+        pass
+
+    # ── Afficher les logs accumulés ──────────────────────────────────────────
+    log_c = st.container()
+    for msg in s["logs"]:
+        log_c.markdown(msg, unsafe_allow_html=True)
+
+    # ── Terminé ou encore en cours ───────────────────────────────────────────
+    if s["final"] is not None:
+        is_error, msg = s["final"]
+        st.divider()
+        if is_error:
+            st.error(msg)
+        else:
+            st.success(msg)
+        st.session_state.pop(_KEY, None)
+        st.session_state.pop("_force_run_asset", None)
+        st.cache_data.clear()
+    else:
+        with st.spinner(""):
+            _time.sleep(0.5)
+        st.rerun()
 
 
 def render_header():

@@ -219,7 +219,16 @@ class FastNewsListener:
 
     def _fetch_rss(self, url: str) -> list[dict]:
         import feedparser
-        feed = feedparser.parse(url)
+        import urllib.request
+        # feedparser.parse() n'a pas de timeout natif — on pré-télécharge avec urllib (timeout=15s)
+        # pour éviter que Nitter/Reddit/RSS bloque le thread fast-monitor indéfiniment.
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "AtlasTrader/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+            feed = feedparser.parse(raw)
+        except Exception:
+            feed = feedparser.parse(url)  # fallback sans timeout si urlopen non dispo
         items = []
         for entry in feed.entries[:10]:
             published = entry.get("published", datetime.utcnow().isoformat())

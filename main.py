@@ -195,13 +195,17 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
     _last_news_titles_set: set[str] = set()  # lookup O(1) — rebuildé depuis le deque
     _last_market_score_trigger = 0.0  # anti-spam score marché (pas d'annotation — nonlocal l'exige)
 
+    # Singletons réutilisés à chaque itération — évite l'accumulation de connexions CCXT
+    from agents.fast_news_listener import FastNewsListener as _FNL
+    from agents.market_data_agent import MarketDataAgent as _MDA
+    _listener = _FNL()
+    _mda_singleton = _MDA()
+
     while not _shutdown_event.is_set():
         t0 = time.time()
         try:
             # --- 1. Breaking news ---
-            from agents.fast_news_listener import FastNewsListener
-            listener = FastNewsListener()
-            items = listener.fetch_all(asset)
+            items = _listener.fetch_all(asset)
             breaking = [
                 n for n in items
                 if n.get("relevance_score", 0) >= breaking_threshold
@@ -230,7 +234,6 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
             # --- 2. Surveillance SL/TP — prix WebSocket (ou fallback polling) ---
             try:
                 from storage.database import get_open_positions, close_position
-                from agents.market_data_agent import MarketDataAgent
 
                 open_positions = [
                     p for p in get_open_positions()
@@ -245,8 +248,7 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
                         price = ws_price
                         indicators = {"price": price}
                     else:
-                        mda = MarketDataAgent()
-                        indicators = mda.get_indicators(asset)
+                        indicators = _mda_singleton.get_indicators(asset)
                         price = indicators.get("price", 0)
                     if price > 0:
                         for pos in open_positions:
@@ -286,10 +288,8 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
             # --- 3. Score marché continu — signal technique extrême ---
             # Déclenche un cycle immédiat si RSI/MACD très extrêmes SANS attendre 15min
             try:
-                from agents.market_data_agent import MarketDataAgent
                 from graph.workflow import _derive_market_score
-                mda = MarketDataAgent()
-                mkt = mda.get_indicators(asset)
+                mkt = _mda_singleton.get_indicators(asset)
                 mkt_score = _derive_market_score(mkt)
                 # Seuils extrêmes : score ≥ 85 (très bullish) ou ≤ 15 (très bearish)
                 now = time.time()

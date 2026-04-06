@@ -299,16 +299,33 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border-bottom-color: #ff4b4b !important;
         }
-        /* Dialog modal — fond sombre explicite (évite texte blanc sur fond blanc Streamlit) */
+        /* Dialog modal — fond sombre + taille compacte */
         div[role="dialog"],
         [data-baseweb="dialog"] {
             background-color: #1c2128 !important;
             border: 1px solid rgba(255,255,255,0.15) !important;
+            max-width: 560px !important;
         }
+        /* Texte dans le dialog — SAUF bouton X et ses enfants */
         div[role="dialog"] p,
-        div[role="dialog"] span,
         div[role="dialog"] label {
             color: #FAFAFA !important;
+        }
+        /* Bouton X (fermeture) : fond transparent + icône visible */
+        div[role="dialog"] button[aria-label="Close"],
+        div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"] {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        div[role="dialog"] button[aria-label="Close"] svg,
+        div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"] svg {
+            fill: rgba(255,255,255,0.8) !important;
+            stroke: rgba(255,255,255,0.8) !important;
+        }
+        div[role="dialog"] button[aria-label="Close"]:hover svg,
+        div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"]:hover svg {
+            fill: #ffffff !important;
         }
     """
 
@@ -669,7 +686,7 @@ def _force_run_background(asset: str, log_q) -> None:
     log_q.put(("__done__", (bool(errs), msg)))
 
 
-@st.dialog("⚡ Force Run", width="large")
+@st.dialog("⚡ Force Run", width="small")
 def _force_run_dialog(asset: str):
     """
     Popup modale non-bloquante.
@@ -709,13 +726,16 @@ def _force_run_dialog(asset: str):
         thr.start()
         st.session_state[_KEY] = {"log_q": log_q, "logs": [], "final": None, "thread": thr}
 
-    # ── CSS dialog : espacement monospace ───────────────────────────────────
+    # ── CSS dialog : compact + scrollable ─────────────────────────────────
     st.markdown("""<style>
     [data-testid="stDialog"] [data-testid="stMarkdown"] p {
-        font-size: 13px; line-height: 1.3; font-family: 'SFMono-Regular',Consolas,monospace;
+        font-size: 11px; line-height: 1.2; font-family: 'SFMono-Regular',Consolas,monospace;
         margin: 0; padding: 0;
     }
-    [data-testid="stDialog"] [data-testid="stMarkdown"] { margin-bottom: -12px; }
+    [data-testid="stDialog"] [data-testid="stMarkdown"] { margin-bottom: -8px; }
+    [data-testid="stDialog"] [data-testid="stVerticalBlock"] {
+        max-height: 55vh; overflow-y: auto;
+    }
     </style>""", unsafe_allow_html=True)
 
     # ── Drainer la queue des logs ────────────────────────────────────────────

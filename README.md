@@ -85,7 +85,7 @@ The system runs on a **15-minute loop** by default:
 │    MiroFish 12% · Market 40% · Agents LLM 30% · Contrarian 18%  │
 │  ↓                                                              │
 │  Decision Engine                                                │
-│    BUY (score ≥ 68) · SELL (score < 52) · HOLD (otherwise)      │
+│    BUY (score ≥ 62) · SELL (score < 52) · HOLD (otherwise)      │
 │    + Filters: MA50 gradual · Funding CB · HIGH_VOL ×0.65        │
 │  ↓                                                              │
 │  Risk Engine → Kelly × conviction × ma50 × funding × high_vol   │
@@ -304,11 +304,12 @@ docker compose up -d
 docker exec atlas-trader-app supervisorctl restart all
 ```
 
-`supervisord` runs two processes:
+`supervisord` runs three processes:
 - `trader` — `python main.py --daemon` (15min loop)
 - `dashboard` — `streamlit run dashboard/streamlit_app.py --server.port 8501`
+- `watchdog` — shell script that monitors `/tmp/atlas_heartbeat`; restarts `trader` after 30 min stale + sends `SIGUSR1` for a stack dump before restart
 
-Both restart automatically (`startretries=100`).
+All three restart automatically (`startretries=100`).
 
 ---
 
@@ -330,7 +331,7 @@ scoring:
 
 risk:
   mode: balanced                 # conservative | balanced | aggressive
-  buy_threshold: 68
+  buy_threshold: 62
   exit_threshold: 52
   kelly_max_fraction: 0.25
   position_size_pct: 5.0
@@ -371,7 +372,7 @@ The Streamlit dashboard (`http://localhost:8501`) provides:
   - Last 5 cycles history
 - Paper P&L + performance curve
 - Real-time log stream (last 50 lines)
-- "Force Run" button
+- **"Force Run" button** — runs a full cycle on demand in a background thread (non-blocking); streams live per-step logs into the dialog at 0.5 s intervals without disconnecting the WebSocket
 
 **Admin view (2FA protected)**
 - All `settings.yaml` parameters editable inline
@@ -483,6 +484,10 @@ zeitgeist-trader/
 ## Status & Roadmap
 
 ### MVP v1.0 (current)
+- [x] **Watchdog** — supervisord process monitors heartbeat file, auto-restarts trader after 30 min stale + SIGUSR1 stack dump
+- [x] **Force Run non-blocking** — background thread + `queue.Queue` polling; live log stream, no Streamlit WebSocket timeout
+- [x] **CCXT connection leak fix** — `MarketDataAgent` singleton in monitor loop (was re-instantiated every 60 s → socket exhaustion after ~1–2 h)
+- [x] **feedparser timeout** — `urllib.urlopen(timeout=15)` wrapper before `feedparser.parse()` (Nitter/Reddit could block indefinitely)
 - [x] Complete LangGraph pipeline
 - [x] MiroFish swarm integration
 - [x] MarketRegimeAgent (HMM + ADX/DI±) — fixed ADX computation (EMA not SMMA for final step)

@@ -171,7 +171,7 @@ risk:
   atr_multiplier_sl: 2.0     # multiplicateur ATR pour Stop Loss
   atr_multiplier_tp: 3.0     # multiplicateur ATR pour Take Profit
   atr_period: 14
-  buy_threshold: 68          # score ≥ N → BUY (pas de position ouverte)
+  buy_threshold: 62          # score ≥ N → BUY (pas de position ouverte)
   exit_threshold: 52         # score < N → SELL pour clore une position longue (ex sell_threshold)
   human_in_the_loop: false   # validation manuelle avant exécution
   # Filtre de tendance MA50 journalière

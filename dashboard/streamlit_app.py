@@ -468,20 +468,20 @@ def _init_session():
 # ===========================================================
 
 @st.cache_data(ttl=30)
-def _get_recent_decisions(n: int = 50) -> list[dict]:
+def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
     try:
         from storage.database import get_recent_decisions
-        return get_recent_decisions(n)
+        return get_recent_decisions(n, asset=asset)
     except Exception:
         return []
 
 
 @st.cache_data(ttl=30)
-def _get_recent_trades(n: int = 200) -> list[dict]:
+def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     """P3: utilise get_recent_trades (filtre SQL) au lieu de charger 2000 lignes."""
     try:
         from storage.database import get_recent_trades
-        return get_recent_trades(n)
+        return get_recent_trades(n, asset=asset)
     except Exception:
         return []
 
@@ -1646,6 +1646,7 @@ def render_admin_panel():
         f"⊞ {t('tab_market_regime')}",
         f"⇄ {t('tab_flux')}",
         f"👤 {t('tab_users')}",
+        "🌐 Marchés",
     ])
 
     with sub_tabs[0]:  # LLM
@@ -2282,6 +2283,10 @@ def render_admin_panel():
         render_users_admin()
         # sauvegarde gérée dans render_users_admin
 
+    with sub_tabs[12]:  # Marchés multi-actifs
+        from dashboard.multi_asset import render_marches_admin_tab
+        render_marches_admin_tab()
+
     # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager)
     st.markdown("---")
     if st.button(t('save_config_btn'), type="primary", use_container_width=True):
@@ -2409,16 +2414,23 @@ def main():
             portfolio  = _get_portfolio()
             _get_pnl_history()
 
-            render_portfolio(portfolio)
-            render_climate_metrics(last_cycle)
+            from dashboard.multi_asset import render_asset_tabs
 
-            recent_trades = _get_recent_trades()
-            render_last_decision(last_cycle)
-            render_pnl_chart(recent_trades)
-            render_profile_comparison()
-            render_btc_live_chart()
-            render_trades_list(recent_trades)
-            render_live_logs()
+            def _render_for_asset(asset: str):
+                """Render complet pour un actif donné (utilisé par render_asset_tabs)."""
+                _lc   = _get_recent_decisions(1, asset=asset)
+                _lc   = _lc[0] if _lc else last_cycle
+                _tr   = _get_recent_trades(200, asset=asset)
+                render_portfolio(portfolio)
+                render_climate_metrics(_lc)
+                render_last_decision(_lc)
+                render_pnl_chart(_tr)
+                render_profile_comparison()
+                render_btc_live_chart()
+                render_trades_list(_tr)
+                render_live_logs()
+
+            render_asset_tabs(_render_for_asset)
             st.markdown(
                 '<div style="text-align:center;padding:24px 0 8px;'
                 'font-size:11px;opacity:0.35;">Atlas Trader &mdash; by Jako 2026</div>',

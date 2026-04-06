@@ -31,6 +31,19 @@ class XSentimentAgent:
                 "confidence": 0.1,
             }
 
+        # Récupérer les keywords depuis la config actif si disponibles
+        asset = state.get("asset")
+        if asset:
+            try:
+                from utils.config import load_asset_config
+                asset_cfg = load_asset_config(asset)
+                xs_cfg = asset_cfg.get("agents", {}).get("x_sentiment", {})
+                self._keywords = xs_cfg.get("keywords", None)
+            except Exception:
+                self._keywords = None
+        else:
+            self._keywords = None
+
         items = news_items[:20]
         try:
             result = self._analyze_with_llm(items)

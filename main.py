@@ -20,11 +20,11 @@ logger = logging.getLogger("zeitgeist.main")
 
 # Événements inter-threads
 _shutdown_event = threading.Event()   # arrêt propre global
-_force_cycle_event = threading.Event()  # cycle immédiat demandé par le monitor
+_force_cycle_events: dict[str, threading.Event] = {}  # par actif
 
-# Prix live partagé entre threads (mis à jour par le WebSocket)
-_live_price: dict = {"price": 0.0, "ts": 0.0}  # thread-safe : GIL suffit pour float
-_live_price_lock = threading.Lock()
+# Prix live partagé entre threads (mis à jour par le WebSocket) — clé = symbole
+_live_prices: dict[str, dict] = {}  # {"BTC/USDT": {"price": 0.0, "ts": 0.0}}
+_live_prices_lock = threading.Lock()
 
 
 def _websocket_price_loop(symbol: str) -> None:
@@ -37,6 +37,10 @@ def _websocket_price_loop(symbol: str) -> None:
     url = f"wss://stream.binance.com:9443/ws/{ws_symbol}@miniTicker"
     logger.info(f"WebSocket prix démarré : {url}")
 
+    # Initialiser l'entrée pour cet actif
+    with _live_prices_lock:
+        _live_prices.setdefault(symbol, {"price": 0.0, "ts": 0.0})
+
     while not _shutdown_event.is_set():
         try:
             import websocket as ws_lib  # websocket-client
@@ -46,9 +50,9 @@ def _websocket_price_loop(symbol: str) -> None:
                 data = json.loads(msg)
                 price = float(data.get("c", 0))  # 'c' = close price
                 if price > 0:
-                    with _live_price_lock:
-                        _live_price["price"] = price
-                        _live_price["ts"] = time.time()
+                    with _live_prices_lock:
+                        _live_prices[symbol]["price"] = price
+                        _live_prices[symbol]["ts"] = time.time()
 
             def on_error(ws, err):
                 logger.debug(f"WebSocket prix erreur : {err}")
@@ -182,14 +186,22 @@ def run_single_cycle(asset: str, trigger: str = "scheduled") -> dict:
     return run_cycle(asset=asset, trigger=trigger)
 
 
-def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: float) -> None:
+def fast_monitor_loop(
+    asset: str,
+    monitor_interval: int,
+    breaking_threshold: float,
+    force_event: threading.Event | None = None,
+) -> None:
     """
     Boucle de surveillance rapide (toutes les ~60s).
     - Détecte les breaking news (score > threshold) → déclenche un cycle immédiat
     - Vérifie SL/TP via prix WebSocket (tick-by-tick) ou polling 60s
     - Surveille le score marché continu → cycle forcé si signal technique extrême
     """
-    logger.info(f"Monitor rapide démarré — intervalle {monitor_interval}s | seuil breaking={breaking_threshold}")
+    slug = asset.replace("/", "_")
+    if force_event is None:
+        force_event = _force_cycle_events.setdefault(asset, threading.Event())
+    logger.info(f"[{slug}] Monitor rapide démarré — intervalle {monitor_interval}s | seuil breaking={breaking_threshold}")
     from collections import deque
     last_news_titles: deque[str] = deque(maxlen=500)  # borné — évite la fuite mémoire sur durée longue
     _last_news_titles_set: set[str] = set()  # lookup O(1) — rebuildé depuis le deque
@@ -221,13 +233,13 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
                 from utils.cycle_lock import is_locked as _cycle_locked
                 if not _cycle_locked():
                     logger.warning(
-                        f"[MONITOR] {len(breaking)} breaking news détectée(s) — cycle forcé\n"
+                        f"[{slug}] {len(breaking)} breaking news détectée(s) — cycle forcé\n"
                         + "\n".join(f"  · {t}" for t in titles)
                     )
-                    _force_cycle_event.set()
+                    force_event.set()
                 else:
                     logger.info(
-                        f"[MONITOR] {len(breaking)} breaking news — cycle déjà actif, ignoré\n"
+                        f"[{slug}] {len(breaking)} breaking news — cycle déjà actif, ignoré\n"
                         + "\n".join(f"  · {t}" for t in titles)
                     )
 
@@ -241,9 +253,10 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
                 ]
                 if open_positions:
                     # Utiliser le prix WebSocket si récent (< 10s), sinon polling
-                    with _live_price_lock:
-                        ws_price = _live_price["price"]
-                        ws_age = time.time() - _live_price["ts"]
+                    with _live_prices_lock:
+                        _ap = _live_prices.get(asset, {"price": 0.0, "ts": 0.0})
+                        ws_price = _ap["price"]
+                        ws_age = time.time() - _ap["ts"]
                     if ws_price > 0 and ws_age < 10:
                         price = ws_price
                         indicators = {"price": price}
@@ -297,20 +310,20 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
                     from utils.cycle_lock import is_locked as _cycle_locked_mkt
                     if not _cycle_locked_mkt():
                         logger.warning(
-                            f"[MONITOR] Signal marché extrême — score={mkt_score:.0f} "
+                            f"[{slug}] Signal marché extrême — score={mkt_score:.0f} "
                             f"(RSI={mkt.get('rsi_14', 0):.0f}) → cycle forcé"
                         )
                         _last_market_score_trigger = now
-                        _force_cycle_event.set()
+                        force_event.set()
                     else:
-                        logger.debug(f"[MONITOR] Signal extrême score={mkt_score:.0f} — cycle actif, ignoré")
+                        logger.debug(f"[{slug}] Signal extrême score={mkt_score:.0f} — cycle actif, ignoré")
                 else:
-                    logger.debug(f"[MONITOR] Market score={mkt_score:.0f} (RSI={mkt.get('rsi_14', 0):.0f})")
+                    logger.debug(f"[{slug}] Market score={mkt_score:.0f} (RSI={mkt.get('rsi_14', 0):.0f})")
             except Exception as exc:
                 logger.debug(f"Monitor market score ignoré : {exc}")
 
         except Exception as exc:
-            logger.warning(f"[MONITOR] Erreur non bloquante : {exc}")
+            logger.warning(f"[{slug}] Monitor erreur non bloquante : {exc}")
 
         elapsed = time.time() - t0
         # Garantir un délai minimum de 30s entre les itérations même si fetch_all()
@@ -321,58 +334,78 @@ def fast_monitor_loop(asset: str, monitor_interval: int, breaking_threshold: flo
     logger.info("Monitor rapide arrêté.")
 
 
-def run_daemon(asset: str, interval: int) -> None:
-    """Boucle principale avec gestion des erreurs et redémarrage automatique."""
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
-    signal.signal(signal.SIGUSR1, _dump_all_stacks)  # kill -USR1 <pid> → stack dump
+def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
+    """
+    Boucle dédiée à un seul actif.
+    Lancée dans son propre thread par run_multi_daemon().
+    Utilise MarketSession pour l'intervalle dynamique si interval_override est None.
+    """
+    from utils.config import load_asset_config
+    from utils.session import MarketSession
 
-    # Charger les paramètres du monitor
-    from utils.config import load_settings
-    cfg = load_settings()
+    slug = asset.replace("/", "_")
+    asset_logger = logging.getLogger(f"zeitgeist.{slug}")
+
+    cfg = load_asset_config(asset)
     monitor_cfg = cfg.get("monitor", {})
     monitor_interval = monitor_cfg.get("interval_seconds", 60)
     breaking_threshold = monitor_cfg.get("breaking_news_threshold", 0.8)
 
-    # Démarrer le WebSocket prix (tick-by-tick)
-    ws_thread = threading.Thread(
-        target=_websocket_price_loop,
-        args=(asset,),
-        daemon=True,
-        name="ws-price",
-    )
-    ws_thread.start()
+    # Créer l'event force par actif
+    force_event = _force_cycle_events.setdefault(asset, threading.Event())
 
-    # Démarrer le thread de surveillance rapide
+    session = MarketSession(asset)
+
+    # WebSocket prix — seulement pour les actifs Binance (crypto)
+    from utils.session import _get_profile as _sess_profile
+    if _sess_profile(asset) == "crypto":
+        ws_thread = threading.Thread(
+            target=_websocket_price_loop,
+            args=(asset,),
+            daemon=True,
+            name=f"ws-price-{slug}",
+        )
+        ws_thread.start()
+
+    # Thread de surveillance rapide
     monitor_thread = threading.Thread(
         target=fast_monitor_loop,
-        args=(asset, monitor_interval, breaking_threshold),
+        args=(asset, monitor_interval, breaking_threshold, force_event),
         daemon=True,
-        name="fast-monitor",
+        name=f"monitor-{slug}",
     )
     monitor_thread.start()
-    logger.info(f"Mode daemon — intervalle {interval}s — asset {asset}")
+    asset_logger.info(f"[{slug}] Daemon démarré — session={session.profile}")
 
     cycle_count = 0
     consecutive_errors = 0
 
     while not _shutdown_event.is_set():
+        # Attendre l'ouverture de marché si nécessaire (XAU/Forex)
+        wait_secs = session.wait_seconds_until_open()
+        if wait_secs > 0:
+            asset_logger.info(
+                f"[{slug}] Marché fermé — attente {wait_secs}s "
+                f"({session.status_label()})"
+            )
+            _shutdown_event.wait(min(wait_secs, 300))
+            continue
+
+        # Intervalle dynamique par session, sauf si override CLI
+        interval = interval_override or session.interval_seconds()
+
         cycle_count += 1
         t0 = time.time()
-        forced = _force_cycle_event.is_set()
-        _force_cycle_event.clear()
+        forced = force_event.is_set()
+        force_event.clear()
 
         _trigger = "monitor" if forced else "scheduled"
         if forced:
-            logger.info(f"Cycle #{cycle_count} FORCÉ par le monitor (breaking news / SL/TP)")
+            asset_logger.info(f"[{slug}] Cycle #{cycle_count} FORCÉ par le monitor")
         else:
-            logger.info(f"Cycle #{cycle_count} démarré (planifié)")
+            asset_logger.info(f"[{slug}] Cycle #{cycle_count} démarré (planifié, intervalle={interval}s)")
 
         try:
-            # Timeout global sur un cycle complet — 300s max (news+crawl+agents+LLM)
-            # IMPORTANT: Thread daemon — un cycle bloqué ne retient PAS le processus
-            # et n'empêche pas supervisord de le redémarrer proprement.
-            # ThreadPoolExecutor est INTERDIT ici (threads non-daemon → processus zombie).
             _result_box: list = [None, None]  # [result, exception]
             _cycle_done = threading.Event()
 
@@ -386,19 +419,18 @@ def run_daemon(asset: str, interval: int) -> None:
 
             _cycle_thread = threading.Thread(
                 target=_cycle_runner,
-                name=f"cycle-{cycle_count}",
-                daemon=True,  # DAEMON: ne bloque pas la sortie du processus
+                name=f"cycle-{slug}-{cycle_count}",
+                daemon=True,
             )
             _cycle_thread.start()
 
             if not _cycle_done.wait(timeout=300):
-                logger.error(f"Cycle #{cycle_count} TIMEOUT (300s) — abandon")
-                # Libérer le lock que run_cycle() ne pourra pas relâcher
+                asset_logger.error(f"[{slug}] Cycle #{cycle_count} TIMEOUT (300s) — abandon")
                 from utils.cycle_lock import release as _force_release
                 _force_release()
                 consecutive_errors += 1
                 if consecutive_errors >= 5:
-                    logger.critical("5 cycles consécutifs en erreur — arrêt d'urgence")
+                    asset_logger.critical(f"[{slug}] 5 cycles consécutifs en erreur — arrêt d'urgence")
                     _shutdown_event.set()
                     import sys as _sys; _sys.exit(1)
                 continue
@@ -411,16 +443,21 @@ def run_daemon(asset: str, interval: int) -> None:
             duration = time.time() - t0
             decision = (state.get("decision") or {}).get("action", "N/A")
             score = state.get("global_score", 0)
-            logger.info(
-                f"Cycle #{cycle_count} terminé — "
+            asset_logger.info(
+                f"[{slug}] Cycle #{cycle_count} terminé — "
                 f"{duration:.0f}s | {decision} | score={score:.0f}"
             )
-            # Heartbeat — permet à un watchdog externe de détecter un freeze
+            # Heartbeat par actif
             try:
                 import pathlib
-                pathlib.Path("/tmp/atlas_heartbeat").write_text(
+                pathlib.Path(f"/tmp/atlas_heartbeat_{slug}").write_text(
                     f"{time.time()}\ncycle={cycle_count}\n{decision}\n"
                 )
+                # Compat watchdog legacy (1 actif = BTC)
+                if slug == "BTC_USDT":
+                    pathlib.Path("/tmp/atlas_heartbeat").write_text(
+                        f"{time.time()}\ncycle={cycle_count}\n{decision}\n"
+                    )
             except Exception:
                 pass
         except KeyboardInterrupt:
@@ -428,26 +465,58 @@ def run_daemon(asset: str, interval: int) -> None:
             break
         except Exception as exc:
             consecutive_errors += 1
-            logger.error(
-                f"Cycle #{cycle_count} échoué ({consecutive_errors} consécutif): {exc}\n"
+            asset_logger.error(
+                f"[{slug}] Cycle #{cycle_count} échoué ({consecutive_errors} consécutif): {exc}\n"
                 + traceback.format_exc()
             )
             if consecutive_errors >= 5:
-                logger.critical("5 cycles consécutifs en erreur — arrêt d'urgence")
+                asset_logger.critical(f"[{slug}] 5 cycles consécutifs en erreur — arrêt d'urgence")
+                _shutdown_event.set()
                 import sys as _sys; _sys.exit(1)
 
-        # Lancer le post-mortem de façon asynchrone si nécessaire
-        logger.debug("Post-mortem check starting...")
         _run_post_mortem_if_needed()
-        logger.debug("Post-mortem check done.")
 
-        # Attendre jusqu'au prochain cycle (ou interruption par le monitor)
         elapsed = time.time() - t0
         wait = max(0, interval - elapsed)
         if wait > 0:
-            logger.debug(f"Prochain cycle dans {wait:.0f}s (ou plus tôt si breaking news)")
-            # Attendre en surveillant à la fois l'arrêt et le forçage
-            _force_cycle_event.wait(timeout=wait)
+            asset_logger.debug(f"[{slug}] Prochain cycle dans {wait:.0f}s")
+            force_event.wait(timeout=wait)
+
+    asset_logger.info(f"[{slug}] Daemon arrêté proprement.")
+
+
+def run_daemon(assets: list[str] | str, interval: int | None = None) -> None:
+    """
+    Coordinateur multi-actifs.
+    Installe les handlers UNIX (SIGINT/SIGTERM/SIGUSR1) puis lance un thread
+    run_asset_daemon() par actif. Attend la fin de tous les threads.
+
+    Compatibilité ascendante : si ``assets`` est une str, la convertit en list.
+    """
+    if isinstance(assets, str):
+        assets = [assets]
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGUSR1, _dump_all_stacks)
+
+    asset_threads: list[threading.Thread] = []
+    for asset in assets:
+        slug = asset.replace("/", "_")
+        t = threading.Thread(
+            target=run_asset_daemon,
+            args=(asset, interval),
+            name=f"daemon-{slug}",
+            daemon=False,  # non-daemon : le processus attend leur fin
+        )
+        t.start()
+        asset_threads.append(t)
+
+    logger.info(f"Multi-daemon démarré — {len(assets)} actif(s) : {', '.join(assets)}")
+
+    # Attendre que tous les threads finissent (ils s'arrêtent via _shutdown_event)
+    for t in asset_threads:
+        t.join()
 
     logger.info("=== Atlas Trader arrêté proprement ===")
 
@@ -525,14 +594,20 @@ def main() -> None:
 
     cfg = bootstrap()
 
-    # Override depuis args
-    asset = args.asset or cfg.get("project", {}).get("asset", "BTC/USDT")
-    interval = args.interval or cfg.get("project", {}).get("loop_interval_seconds", 900)
+    # Override depuis args (--asset force un seul actif, sinon multi-actifs depuis config)
+    if args.asset:
+        active_assets = [args.asset]
+    else:
+        from utils.config import get_active_assets
+        active_assets = get_active_assets()
+
+    interval = args.interval  # None = dynamique via MarketSession par actif
 
     if args.log_level:
         logging.getLogger().setLevel(args.log_level)
 
     if args.run_once:
+        asset = active_assets[0]
         logger.info(f"Mode run-once | asset={asset}")
         state = run_single_cycle(asset)
         decision = (state.get("decision") or {}).get("action", "HOLD")
@@ -550,7 +625,7 @@ def main() -> None:
         print(f"{'='*50}\n")
 
     elif args.daemon:
-        run_daemon(asset, interval)
+        run_daemon(active_assets, interval)
 
     elif args.post_mortem:
         from storage.database import get_pending_postmortems

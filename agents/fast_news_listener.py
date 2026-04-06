@@ -76,6 +76,16 @@ class FastNewsListener:
         """Collecte toutes les sources et retourne une liste dédupliquée."""
         all_items = []
 
+        # Enrichir les keywords avec la config par actif si disponible
+        try:
+            from utils.config import load_asset_config
+            asset_cfg = load_asset_config(asset)
+            xs_kw = asset_cfg.get("agents", {}).get("x_sentiment", {}).get("keywords")
+            if xs_kw and asset not in self.keywords:
+                self.keywords[asset] = xs_kw
+        except Exception:
+            pass
+
         # RSS (sources configurées + sources crypto fixes)
         for rss_url in self.rss_sources:
             try:

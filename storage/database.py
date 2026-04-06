@@ -284,27 +284,64 @@ def count_open_positions() -> int:
         return int(row["n"]) if row else 0
 
 
-def get_recent_decisions(n: int = 50) -> list[dict]:
-    """Retourne les N dernières décisions."""
+def get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
+    """Retourne les N dernières décisions, filtré par actif si précisé."""
+    with get_connection() as conn:
+        if asset:
+            rows = conn.execute(
+                "SELECT * FROM decisions WHERE asset = ? ORDER BY timestamp DESC LIMIT ?",
+                (asset, n),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?", (n,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
+    """P3: retourne les n derniers BUY/SELL (sans HOLD) — filtre SQL, pas Python."""
+    with get_connection() as conn:
+        if asset:
+            rows = conn.execute(
+                "SELECT * FROM decisions WHERE action IN ('BUY', 'SELL') AND asset = ? "
+                "ORDER BY timestamp DESC LIMIT ?", (asset, n)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM decisions WHERE action IN ('BUY', 'SELL') "
+                "ORDER BY timestamp DESC LIMIT ?", (n,)
+            ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_assets_summary() -> list[dict]:
+    """
+    Retourne une ligne par actif avec son dernier signal, score et P&L.
+    Utilisé par la vue globale multi-actifs du dashboard.
+    """
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?", (n,)
+            """
+            SELECT d.asset,
+                   d.action,
+                   d.score,
+                   d.timestamp,
+                   d.entry_price,
+                   d.result_24h
+            FROM decisions d
+            INNER JOIN (
+                SELECT asset, MAX(timestamp) AS max_ts
+                FROM decisions
+                GROUP BY asset
+            ) latest ON d.asset = latest.asset AND d.timestamp = latest.max_ts
+            ORDER BY d.asset
+            """
         ).fetchall()
         return [dict(row) for row in rows]
 
 
-def get_recent_trades(n: int = 200) -> list[dict]:
-    """P3: retourne les n derniers BUY/SELL (sans HOLD) — filtre SQL, pas Python."""
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM decisions WHERE action IN ('BUY', 'SELL') "
-            "ORDER BY timestamp DESC LIMIT ?", (n,)
-        ).fetchall()
-    return [dict(row) for row in rows]
-
-
 def get_pending_postmortems(delay_hours: int = 24) -> list[dict]:
-    """Retourne les décisions sans résultat 24h et ayant le délai écoulé."""
     cutoff = (
         datetime.utcnow().replace(microsecond=0).isoformat()
     )

@@ -1,0 +1,104 @@
+# ============================================================
+# Atlas Trader — Config spécifique EUR/USD (Forex)
+# Surcharge les valeurs globales de settings.yaml
+# ============================================================
+
+asset: "EUR/USD"
+exchange: "oanda"
+testnet: true
+
+# SessionAwareScheduler : EUR/USD fermé la nuit asiatique + week-end
+loop_interval_seconds: 900   # 15 min (dynamique par session via MarketSession)
+
+monitor:
+  interval_seconds: 120
+  breaking_news_threshold: 0.65
+
+# ----------------------------------------------------------
+# Risk & Decision Engine — Forex : spreads serrés, positions plus petites
+# ----------------------------------------------------------
+risk:
+  mode: "conservative"
+  buy_threshold: 57           # threshold plus bas : forex trend-follower
+  exit_threshold: 46
+  kelly_max_fraction: 0.12
+  position_size_pct: 2.0      # position petite (levier forex)
+  max_open_positions: 2
+  atr_multiplier_sl: 1.5
+  atr_multiplier_tp: 2.0
+  atr_period: 14
+  max_drawdown_pct: 8.0
+  ma50_filter_mode: "strict"
+  ma50_strong_signal_threshold: 68
+  ma50_gradual_size_factor: 0.5
+  human_in_the_loop: false
+
+circuit_breaker:
+  funding_warning: 0.0
+  funding_block: 0.0
+  sustain_period_cycles: 0
+  max_reduction: 0.0
+
+# ----------------------------------------------------------
+# Scoring — Forex : macro très orienté BCE/Fed + calendrier
+# ----------------------------------------------------------
+scoring:
+  weights:
+    mirofish: 0.05
+    market: 0.30
+    agents: 0.50              # fundamental + economic_calendar + central_bank
+    contrarian: 0.15
+
+# ----------------------------------------------------------
+# Market Regime
+# ----------------------------------------------------------
+market_regime:
+  n_hmm_states: 2
+  vol_window: 20
+  trend_window: 50
+  adx_period: 14
+
+# ----------------------------------------------------------
+# Agents spécifiques EUR/USD
+# ----------------------------------------------------------
+agents:
+  market_data:
+    enabled: true
+  fundamental:
+    enabled: true
+    provider: "forex_fundamental"   # → ForexFundamentalAgent
+    on_chain_enabled: false
+  economic_calendar:
+    enabled: true
+    high_impact_only: true
+  central_bank:
+    enabled: true                   # → CentralBankAgent (BCE + Fed communiqués)
+  x_sentiment:
+    enabled: true
+    keywords: ["euro", "EUR", "ECB", "BCE", "Lagarde", "Fed", "Powell", "USD", "dollar", "rate", "inflation", "parity"]
+  contrarian:
+    enabled: true
+  fear_greed:
+    enabled: false
+  polymarket:
+    enabled: false
+  timesfm:
+    enabled: true
+  market_regime:
+    enabled: true
+  bull_bear_debate:
+    enabled: false
+
+# ----------------------------------------------------------
+# Dashboard
+# ----------------------------------------------------------
+dashboard:
+  widgets:
+    funding_rate: false
+    btc_dominance: false
+    liquidations: false
+    economic_calendar: true
+    dxy_gauge: true
+    session_clock: true
+    interest_rate_diff: true    # différentiel de taux BCE/Fed
+    cot_positioning: true        # futures COT (CFTC) — EUR positioning

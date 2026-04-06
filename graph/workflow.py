@@ -277,7 +277,6 @@ def node_fetch_market_data(state: ZeitgeistState) -> dict:
 
 def node_analyze_agents(state: ZeitgeistState) -> dict:
     """Nœud 5 : Exécution parallèle des agents d'analyse (ThreadPoolExecutor)."""
-    from agents.fundamental_agent import FundamentalAgent
     from agents.x_sentiment_agent import XSentimentAgent
     from agents.contrarian_agent import ContrarianAgent
     from agents.fear_greed_agent import FearGreedAgent
@@ -285,28 +284,64 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     from agents.timesfm_agent import TimesFMAgent
     from agents.market_regime_agent import MarketRegimeAgent
     from utils.logger import log_flux_metric
-    from utils.config import load_settings
+    from utils.config import load_asset_config
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import time
 
     t0 = time.time()
-    settings = load_settings()
+    asset = state.get("asset")
+    settings = load_asset_config(asset)
     agent_cfg = settings.get("agents", {})
     analyses: dict = {}
     tokens_used = 0
 
+    # --- Sélection de l'agent fondamental selon le provider configuré ---
+    fund_cfg = agent_cfg.get("fundamental", {})
+    _fund_provider = fund_cfg.get("provider", "blockchain_info")
+    if _fund_provider == "eth_fundamental":
+        from agents.eth_fundamental_agent import EthFundamentalAgent as _FundAgent
+    elif _fund_provider == "gold_fundamental":
+        from agents.gold_fundamental_agent import GoldFundamentalAgent as _FundAgent  # type: ignore[assignment]
+    elif _fund_provider == "forex_fundamental":
+        from agents.forex_fundamental_agent import ForexFundamentalAgent as _FundAgent  # type: ignore[assignment]
+    else:
+        from agents.fundamental_agent import FundamentalAgent as _FundAgent  # type: ignore[assignment]
+
+    # --- XSentimentAgent : keywords depuis la config actif ---
+    _xs_keywords = agent_cfg.get("x_sentiment", {}).get("keywords", None)
+
+    # --- EconomicCalendarAgent ---
+    _eco_cfg = agent_cfg.get("economic_calendar", {})
+    _eco_enabled = _eco_cfg.get("enabled", False)
+    if _eco_enabled:
+        from agents.economic_calendar_agent import EconomicCalendarAgent as _EcoAgent
+    else:
+        _EcoAgent = None  # type: ignore[assignment]
+
+    # --- CentralBankAgent ---
+    _cb_cfg = agent_cfg.get("central_bank", {})
+    _cb_enabled = _cb_cfg.get("enabled", False)
+    if _cb_enabled:
+        from agents.central_bank_agent import CentralBankAgent as _CbAgent
+    else:
+        _CbAgent = None  # type: ignore[assignment]
+
     agents_map = {
-        "market_regime": (MarketRegimeAgent, agent_cfg.get("market_regime", {}).get("enabled", True)),
-        "fundamental":   (FundamentalAgent,  agent_cfg.get("fundamental",  {}).get("enabled", True)),
-        "x_sentiment":   (XSentimentAgent,   agent_cfg.get("x_sentiment",  {}).get("enabled", True)),
-        "contrarian":    (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
-        "fear_greed":    (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
-        "polymarket":    (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
-        "timesfm":       (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", True)),
+        "market_regime":      (MarketRegimeAgent, agent_cfg.get("market_regime", {}).get("enabled", True)),
+        "fundamental":        (_FundAgent,        fund_cfg.get("enabled", True)),
+        "x_sentiment":        (XSentimentAgent,   agent_cfg.get("x_sentiment",  {}).get("enabled", True)),
+        "contrarian":         (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
+        "fear_greed":         (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
+        "polymarket":         (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
+        "timesfm":            (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", True)),
+        "economic_calendar":  (_EcoAgent,         _eco_enabled),
+        "central_bank":       (_CbAgent,          _cb_enabled),
     }
 
     enabled_agents = {
-        name: cls for name, (cls, enabled) in agents_map.items() if enabled
+        name: cls
+        for name, (cls, enabled) in agents_map.items()
+        if enabled and cls is not None
     }
     disabled = [name for name, (_, enabled) in agents_map.items() if not enabled]
     for name in disabled:

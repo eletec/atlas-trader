@@ -1,0 +1,101 @@
+# ============================================================
+# Atlas Trader — Config spécifique XAU/USD (Or)
+# Surcharge les valeurs globales de settings.yaml
+# ============================================================
+
+asset: "XAU/USD"
+exchange: "oanda"       # Provider OANDA demo
+testnet: true           # Compte démo OANDA (paper trading)
+
+# SessionAwareScheduler : XAU fermé le week-end + nuit asiatique limitée
+loop_interval_seconds: 900   # 15 min (overridé dynamiquement par MarketSession)
+
+monitor:
+  interval_seconds: 120     # vérification toutes les 2 min (vs 1 min pour crypto)
+  breaking_news_threshold: 0.65
+
+# ----------------------------------------------------------
+# Risk & Decision Engine — Or : moins volatil, position plus grosse
+# ----------------------------------------------------------
+risk:
+  mode: "conservative"       # Or = actif refugg moins spéculatif
+  buy_threshold: 58           # seuil plus bas : trend suiveur
+  exit_threshold: 48
+  kelly_max_fraction: 0.15
+  position_size_pct: 3.0      # position plus petite (levier OANDA)
+  max_open_positions: 2
+  atr_multiplier_sl: 1.5      # SL plus serré sur l'or
+  atr_multiplier_tp: 2.5
+  atr_period: 14
+  max_drawdown_pct: 10.0
+  ma50_filter_mode: "strict"  # MA50 filtre strict sur tendance or
+  ma50_strong_signal_threshold: 70
+  ma50_gradual_size_factor: 0.6
+  human_in_the_loop: false
+
+circuit_breaker:
+  funding_warning: 0.0        # pas de funding rate sur spot or
+  funding_block: 0.0
+  sustain_period_cycles: 0
+  max_reduction: 0.0
+
+# ----------------------------------------------------------
+# Scoring — or : fortement macro + ETW (economic calendar)
+# ----------------------------------------------------------
+scoring:
+  weights:
+    mirofish: 0.08
+    market: 0.35
+    agents: 0.42              # fundamental + economic calendar pèsent plus
+    contrarian: 0.15
+
+# ----------------------------------------------------------
+# Market Regime
+# ----------------------------------------------------------
+market_regime:
+  n_hmm_states: 2
+  vol_window: 30
+  trend_window: 50
+  adx_period: 14
+
+# ----------------------------------------------------------
+# Agents spécifiques XAU
+# ----------------------------------------------------------
+agents:
+  market_data:
+    enabled: true
+  fundamental:
+    enabled: true
+    provider: "gold_fundamental"   # → GoldFundamentalAgent
+    on_chain_enabled: false
+  economic_calendar:
+    enabled: true                  # → EconomicCalendarAgent (CPI, NFP, Fed…)
+    high_impact_only: true
+  x_sentiment:
+    enabled: true
+    keywords: ["gold", "XAU", "inflation", "CPI", "Fed", "rate hike", "USD", "safe haven", "geopolitics"]
+  contrarian:
+    enabled: true
+  fear_greed:
+    enabled: false    # Fear&Greed est crypto-centrique, peu pertinent pour l'or
+  polymarket:
+    enabled: false
+  timesfm:
+    enabled: true
+  market_regime:
+    enabled: true
+  bull_bear_debate:
+    enabled: false
+
+# ----------------------------------------------------------
+# Dashboard
+# ----------------------------------------------------------
+dashboard:
+  widgets:
+    funding_rate: false
+    btc_dominance: false
+    liquidations: false
+    economic_calendar: true    # prochain événement macro
+    dxy_gauge: true            # DXY (dollar index) corrélé négatif à l'or
+    session_clock: true        # horloge London/NY session
+    gold_spot_chart: true

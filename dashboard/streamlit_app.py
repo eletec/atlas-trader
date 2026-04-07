@@ -2472,8 +2472,9 @@ def render_admin_panel():
                 if _pafile.exists():
                     with open(_pafile, "r", encoding="utf-8") as _paf:
                         _pacfg = _pa_yaml.safe_load(_paf) or {}
-                _is_crypto_pa = _pas in ("BTC/USDT", "ETH/USDT")
-                _is_forex_pa  = _pas in ("EUR/USD", "GBP/USD")
+                _is_crypto_pa = _pas.endswith("/USDT") or _pas.endswith("/BTC")
+                _is_forex_pa  = any(_pas.endswith(s) for s in ("/USD", "/EUR", "/GBP", "/JPY")) and not _is_crypto_pa
+                _is_commodity_pa = _pas in ("XAU/USD", "XAG/USD", "WTI/USD")
 
                 # ── Général ──────────────────────────────────────────────────
                 with st.expander("⚙ Général", expanded=True):
@@ -2651,8 +2652,10 @@ def render_admin_panel():
                         "market_data", "fundamental", "x_sentiment", "contrarian",
                         "fear_greed", "polymarket", "timesfm", "market_regime",
                     ]
+                    if _is_forex_pa or _is_commodity_pa:
+                        _ag_list.append("economic_calendar")
                     if _is_forex_pa:
-                        _ag_list += ["economic_calendar", "central_bank"]
+                        _ag_list.append("central_bank")
                     for _agn in _ag_list:
                         _agc = dict(_pags.get(_agn, {}))
                         _agc["enabled"] = st.toggle(

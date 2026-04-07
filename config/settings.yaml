@@ -292,7 +292,7 @@ agents:
     weight_in_scoring: 0.85
   timesfm:
     enabled: true
-    weight_in_scoring: 0.9
+    weight_in_scoring: 0.3  # signal non prouvé (54% acc., n<500) — à remonter si acc. ≥ 60% sur 500+ samples
   market_regime:
     enabled: true
     weight_in_scoring: 0.0

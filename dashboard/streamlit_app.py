@@ -2314,11 +2314,14 @@ def render_admin_panel():
         )
         try:
             from storage.database import get_agent_performance_stats
-            _ap_asset_sel = st.selectbox(
-                "Actif", ["Tous"] + list(settings.get("project", {}).get("active_assets", [])),
-                key="ap_asset_sel"
-            )
-            _ap_days = st.select_slider("Fenêtre", [7, 14, 30, 60, 90], value=30, key="ap_days")
+            _ap_c1, _ap_c2 = st.columns(2)
+            with _ap_c1:
+                _ap_asset_sel = st.selectbox(
+                    "Actif", ["Tous"] + list(settings.get("project", {}).get("active_assets", [])),
+                    key="ap_asset_sel"
+                )
+            with _ap_c2:
+                _ap_days = st.selectbox("Fenêtre", [7, 14, 30, 60, 90], index=2, key="ap_days")
             _ap_asset = None if _ap_asset_sel == "Tous" else _ap_asset_sel
             _ap_stats = get_agent_performance_stats(asset=_ap_asset, days=_ap_days)
 
@@ -2389,10 +2392,17 @@ def render_admin_panel():
 
             _ma_analyses = get_last_meta_analysis(limit=3)
 
-            # Bouton force-run (Admin)
-            _ma_col1, _ma_col2 = st.columns([3, 1])
-            with _ma_col2:
-                if st.button("▶ Lancer analyse", key="btn_run_meta", help="Force une méta-analyse LLM maintenant"):
+            # Fenêtre + bouton force-run sur la même ligne
+            _ma_r1, _ma_r2, _ma_r3 = st.columns([2, 2, 1])
+            with _ma_r1:
+                _ma_days_sel = st.selectbox("Fenêtre d'analyse", [14, 30, 60, 90], index=1, key="ma_days")
+            with _ma_r2:
+                st.write("")
+            with _ma_r3:
+                st.write("")
+                if st.button("▶ Lancer analyse", key="btn_run_meta",
+                             help="Force une méta-analyse LLM maintenant",
+                             use_container_width=True):
                     try:
                         from agents.post_mortem_agent import PostMortemAgent as _PMA
                         with st.spinner("Analyse en cours (30–90s)..."):
@@ -2401,8 +2411,6 @@ def render_admin_panel():
                         st.rerun()
                     except Exception as _ma_btn_exc:
                         st.error(f"Erreur : {_ma_btn_exc}")
-            with _ma_col1:
-                _ma_days_sel = st.select_slider("Fenêtre d'analyse", [14, 30, 60, 90], value=30, key="ma_days")
 
             if not _ma_analyses:
                 _ma_trades = get_decisions_for_meta(days=_ma_days_sel)

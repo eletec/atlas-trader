@@ -1,0 +1,80 @@
+asset: SOL/USDT
+exchange: binance
+testnet: true
+paper_capital_usd: 5000
+loop_interval_seconds: 900
+monitor:
+  interval_seconds: 60
+  breaking_news_threshold: 0.65
+risk:
+  mode: balanced
+  buy_threshold: 60
+  exit_threshold: 50
+  kelly_max_fraction: 0.2
+  position_size_pct: 4.0
+  max_open_positions: 3
+  atr_multiplier_sl: 2.2
+  atr_multiplier_tp: 3.2
+  atr_period: 14
+  max_drawdown_pct: 20.0
+  ma50_filter_mode: gradual
+  ma50_strong_signal_threshold: 72
+  ma50_gradual_size_factor: 0.5
+  human_in_the_loop: false
+circuit_breaker:
+  funding_warning: 0.00020
+  funding_block: 0.00050
+  sustain_period_cycles: 3
+  max_reduction: 0.75
+scoring:
+  weights:
+    mirofish: 0.1
+    market: 0.38
+    agents: 0.34
+    contrarian: 0.18
+market_regime:
+  n_hmm_states: 2
+  vol_window: 30
+  trend_window: 50
+  adx_period: 18
+agents:
+  market_data:
+    enabled: true
+  fundamental:
+    enabled: true
+    provider: sol_fundamental
+    on_chain_enabled: false
+  x_sentiment:
+    enabled: true
+    keywords:
+    - solana
+    - SOL
+    - Firedancer
+    - Anatoly
+    - pump.fun
+    - meme coin
+    - DeFi solana
+    - Solana Foundation
+  contrarian:
+    enabled: true
+  fear_greed:
+    enabled: true
+  polymarket:
+    enabled: true
+  timesfm:
+    enabled: false
+  market_regime:
+    enabled: true
+  bull_bear_debate:
+    enabled: false
+dashboard:
+  widgets:
+    funding_rate: true
+    btc_dominance: true
+    liquidations: false
+    economic_calendar: false
+    dxy_gauge: false
+    session_clock: false
+    gas_price: false
+    staking_yield: false
+    defi_tvl: false

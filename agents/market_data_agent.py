@@ -19,6 +19,8 @@ _FUNDING_HISTORY: deque = deque(maxlen=8)
 # Actifs non supportés par Binance CCXT → Yahoo Finance (clé API non requise)
 _YAHOO_SYMBOLS: dict[str, str] = {
     "XAU/USD": "GC=F",       # Gold Futures
+    "XAG/USD": "SI=F",       # Silver Futures
+    "WTI/USD": "CL=F",       # WTI Crude Oil Futures
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
     "USD/JPY": "JPY=X",

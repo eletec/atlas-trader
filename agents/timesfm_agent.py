@@ -114,6 +114,8 @@ class TimesFMAgent:
     # Symboles Yahoo Finance pour les actifs non-crypto
     _YF_MAP = {
         "XAU/USD": "GC=F",
+        "XAG/USD": "SI=F",
+        "WTI/USD": "CL=F",
         "EUR/USD": "EURUSD=X",
         "GBP/USD": "GBPUSD=X",
         "USD/JPY": "JPY=X",

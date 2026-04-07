@@ -6,7 +6,10 @@ project:
   active_assets:
   - BTC/USDT
   - ETH/USDT
+  - SOL/USDT
   - XAU/USD
+  - XAG/USD
+  - WTI/USD
   - GBP/USD
   - EUR/USD
 crawler:
@@ -184,6 +187,74 @@ news:
       - Forex
       - unitedkingdom
 
+    XAG/USD:
+      keywords:
+      - silver
+      - XAG
+      - argent
+      - precious metals
+      - inflation
+      - Fed
+      - safe haven
+      - XAGUSD
+      rss:
+      - https://www.kitco.com/rss/kitcogoldrss.xml
+      - https://www.fxstreet.com/rss/news
+      nitter:
+      - KitcoNews
+      - SilverInstitute
+      - LynAldenContact
+      reddit:
+      - Silverbugs
+      - investing
+
+    WTI/USD:
+      keywords:
+      - oil
+      - crude
+      - WTI
+      - OPEC
+      - petroleum
+      - energy
+      - EIA
+      - barrel
+      - brent
+      rss:
+      - https://oilprice.com/rss/main
+      - https://www.fxstreet.com/rss/news
+      - https://feeds.bbci.co.uk/news/business/rss.xml
+      nitter:
+      - OilPrice_com
+      - EIAgov
+      - zerohedge
+      reddit:
+      - energy
+      - investing
+      - oil
+
+    SOL/USDT:
+      keywords:
+      - solana
+      - SOL
+      - Firedancer
+      - Anatoly
+      - pump.fun
+      - meme coin
+      - DeFi solana
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
+      - https://www.theblock.co/rss.xml
+      nitter:
+      - aeyakovenko
+      - rajgokal
+      - SolanaFndn
+      - DefiLlama
+      reddit:
+      - solana
+      - CryptoCurrency
+
   cryptopanic:
     enabled: true
     max_items: 15
@@ -191,6 +262,7 @@ news:
     asset_currency_map:
       BTC/USDT: BTC
       ETH/USDT: ETH
+      SOL/USDT: SOL
 mirofish:
   n_agents: 5000
   n_steps: 100

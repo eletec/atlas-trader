@@ -30,7 +30,10 @@ def _asset_icon(asset: str) -> str:
     icons = {
         "BTC/USDT": "₿",
         "ETH/USDT": "⟠",
+        "SOL/USDT": "◎",
         "XAU/USD":  "🥇",
+        "XAG/USD":  "🥈",
+        "WTI/USD":  "🛢️",
         "EUR/USD":  "€",
         "GBP/USD":  "£",
         "USD/JPY":  "¥",

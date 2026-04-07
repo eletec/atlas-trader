@@ -250,6 +250,7 @@ def fast_monitor_loop(
                 open_positions = [
                     p for p in get_open_positions()
                     if p.get("sl_price") and p.get("tp_price")
+                    and p.get("asset") == asset  # Ne vérifier que les positions de CET actif
                 ]
                 if open_positions:
                     # Utiliser le prix WebSocket si récent (< 10s), sinon polling

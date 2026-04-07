@@ -468,6 +468,7 @@ def render_controls(settings: dict) -> dict | None:
                     "🔄",
                     key=f"force_{flux_name}",
                     help=t("flux_force_help").format(label=flux_def['label']),
+                    use_container_width=True,
                 ):
                     st.session_state[f"force_{flux_name}"] = True
                     st.toast(t("flux_force_toast").format(label=flux_def['label']), icon="🔄")

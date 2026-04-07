@@ -59,6 +59,7 @@ class PostMortemAgent:
             self._maybe_adjust_individual_agent_weights()
             self._maybe_calibrate_scores()
             self._maybe_promote_champion()
+            self._run_meta_analysis()
 
             # CA5: AtlasDream — consolidation mémorielle tous les N cycles évalués
             try:
@@ -497,6 +498,267 @@ class PostMortemAgent:
             logger.warning(f"Calibration isotonique echouee: {exc}")
 
     # ------------------------------------------------------------------
+    # Méta-analyse LLM — patterns d'échec
+    # ------------------------------------------------------------------
+
+    def _meta_analysis_due(self) -> bool:
+        """Retourne True si meta_analysis_interval_days sont écoulés depuis la dernière analyse."""
+        from utils.config import load_settings
+        cfg = load_settings()
+        interval_days = int(cfg.get("post_mortem", {}).get("meta_analysis_interval_days", 14))
+        state = self._load_pm_state()
+        last = state.get("last_meta_analysis_at", 0.0)
+        elapsed_days = (time.time() - float(last)) / 86_400
+        due = elapsed_days >= interval_days
+        if not due:
+            logger.debug(
+                f"[MetaAnalysis] prochain run dans {interval_days - elapsed_days:.1f} jours"
+            )
+        return due
+
+    def _run_meta_analysis(self, trigger: str = "auto") -> None:
+        """
+        Méta-analyse LLM : Claude analyse les patterns d'échec sur les N dernières décisions.
+
+        - Collecte les trades perdants + un échantillon de trades gagnants
+        - Construit un prompt structuré
+        - Appelle le LLM (même provider que synthesis_agent)
+        - Persiste le résultat dans meta_analyses
+        - Intervalle configurable : post_mortem.meta_analysis_interval_days (défaut 14)
+        """
+        if trigger == "auto" and not self._meta_analysis_due():
+            return
+
+        try:
+            from storage.database import get_decisions_for_meta, save_meta_analysis
+            from utils.config import load_settings
+
+            cfg = load_settings()
+            days = int(cfg.get("post_mortem", {}).get("meta_analysis_days", 30))
+
+            trades = get_decisions_for_meta(days=days, limit=100)
+            if not trades:
+                logger.info("[MetaAnalysis] Pas de trades évalués — analyse reportée")
+                return
+
+            losing = [t for t in trades if t["result"] < 0]
+            winning = [t for t in trades if t["result"] > 0]
+
+            if len(losing) < 5:
+                logger.info(
+                    f"[MetaAnalysis] Seulement {len(losing)} trades perdants (<5) — reportée"
+                )
+                return
+
+            logger.info(
+                f"[MetaAnalysis] Lancement — {len(losing)} pertes, {len(winning)} gains "
+                f"sur {days} jours"
+            )
+
+            # Construire le prompt
+            def _fmt_trade(t: dict) -> str:
+                agents_str = ", ".join(
+                    f"{k}={int(v)}" for k, v in (t.get("agents") or {}).items()
+                ) or "n/a"
+                regime = t.get("regime") or "?"
+                return (
+                    f"  [{t['ts']}] {t['asset']} {t['action']} score={t['score']:.0f} "
+                    f"résultat={t['result']:+.2f}$ | "
+                    f"MF={t.get('mf_score') or '?'} MKT={t.get('market_score') or '?'} "
+                    f"CTR={t.get('ctr_score') or '?'} régime={regime} | agents: {agents_str}"
+                )
+
+            losing_text = "\n".join(_fmt_trade(t) for t in losing[:40])
+            winning_sample = winning[:20]
+            winning_text = (
+                "\n".join(_fmt_trade(t) for t in winning_sample)
+                if winning_sample else "  (aucun trade gagnant dans la période)"
+            )
+
+            prompt = (
+                f"Tu es un analyste quantitatif expert en analyse post-mortem de systèmes de trading algorithmique.\n\n"
+                f"Voici {len(losing)} TRADES PERDANTS et {len(winning_sample)} TRADES GAGNANTS "
+                f"(pour comparaison) sur les {days} derniers jours.\n\n"
+                f"Chaque ligne : [date] actif action score résultat$ | MiroFish MarketData Contrarian régime | scores par agent\n\n"
+                f"TRADES PERDANTS (résultat < 0) :\n{losing_text}\n\n"
+                f"TRADES GAGNANTS (échantillon) :\n{winning_text}\n\n"
+                f"Analyse et réponds en JSON valide avec cette structure exacte :\n"
+                f'{{\n'
+                f'  "resume": "2-3 phrases de synthèse exécutive",\n'
+                f'  "patterns": [\n'
+                f'    {{"pattern": "description du pattern", "frequence": "X/Y trades", "impact": "fort|moyen|faible"}}\n'
+                f'  ],\n'
+                f'  "agents_problematiques": [\n'
+                f'    {{"agent": "nom", "probleme": "description", "condition": "dans quel contexte"}}\n'
+                f'  ],\n'
+                f'  "recos": [\n'
+                f'    {{"priorite": 1, "action": "action concrète", "rationale": "pourquoi"}}\n'
+                f'  ],\n'
+                f'  "points_positifs": "ce qui fonctionne bien dans le système"\n'
+                f'}}'
+            )
+
+            # Initialiser le LLM
+            llm = self._build_llm_for_meta(cfg)
+            if llm is None:
+                logger.warning("[MetaAnalysis] LLM non disponible — analyse ignorée")
+                return
+
+            # Appel LLM avec timeout
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+            system = (
+                "Tu es un expert en trading algorithmique. "
+                "Tu analyses les patterns d'échec d'un système de paper-trading multi-actifs. "
+                "Réponds UNIQUEMENT en JSON valide, sans markdown, sans commentaires."
+            )
+            messages = [
+                SystemMessage(content=system),
+                HumanMessage(content=prompt),
+            ]
+
+            timeout_s = int(cfg.get("llm", {}).get("request_timeout_seconds", 60)) + 30
+            _pool = ThreadPoolExecutor(max_workers=1)
+            _fut = _pool.submit(llm.invoke, messages)
+            try:
+                response = _fut.result(timeout=timeout_s)
+                raw_text = response.content if hasattr(response, "content") else str(response)
+            except FuturesTimeout:
+                logger.warning("[MetaAnalysis] Timeout LLM — analyse ignorée")
+                _pool.shutdown(wait=False)
+                return
+            finally:
+                _pool.shutdown(wait=False)
+
+            # Parser le JSON
+            import re as _re
+            patterns_json = None
+            summary_text = raw_text.strip()
+            try:
+                # Extraire le JSON de la réponse (peut être entouré de ```json ... ```)
+                json_match = _re.search(r'\{[\s\S]*\}', raw_text)
+                if json_match:
+                    parsed = json.loads(json_match.group())
+                    patterns_json = json.dumps(parsed, ensure_ascii=False)
+                    # Construire un résumé Markdown depuis le JSON
+                    summary_text = self._meta_json_to_markdown(parsed, len(losing), len(winning))
+            except Exception as parse_exc:
+                logger.debug(f"[MetaAnalysis] JSON parse échoué ({parse_exc}) — texte brut conservé")
+
+            save_meta_analysis(
+                summary_text=summary_text,
+                n_trades=len(trades),
+                n_losing=len(losing),
+                patterns_json=patterns_json,
+                run_trigger=trigger,
+            )
+            self._persist_pm_state({"last_meta_analysis_at": time.time()})
+            logger.info(
+                f"[MetaAnalysis] Analyse sauvegardée — {len(losing)} pertes analysées, "
+                f"{len(json.loads(patterns_json).get('recos', [])) if patterns_json else 0} recommandation(s)"
+            )
+
+        except Exception as exc:
+            logger.warning(f"[MetaAnalysis] Erreur : {exc}")
+
+    @staticmethod
+    def _build_llm_for_meta(cfg: dict):
+        """Initialise le LLM selon le provider configuré (même logique que SynthesisAgent)."""
+        try:
+            from utils.config import get_env
+            provider = cfg.get("llm", {}).get("provider", "anthropic")
+            model = cfg.get("llm", {}).get("model", "claude-3-5-haiku-20241022")
+            temperature = float(cfg.get("llm", {}).get("temperature", 0.2))
+            max_tokens = 2048
+            timeout_s = int(cfg.get("llm", {}).get("request_timeout_seconds", 60))
+
+            if provider == "anthropic":
+                from langchain_anthropic import ChatAnthropic
+                return ChatAnthropic(
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    api_key=get_env("ANTHROPIC_API_KEY"),
+                    timeout=timeout_s,
+                )
+            elif provider in ("deepseek", "github", "xai", "openai"):
+                from langchain_openai import ChatOpenAI
+                base_urls = {
+                    "deepseek": "https://api.deepseek.com/v1",
+                    "github": "https://models.inference.ai.azure.com",
+                    "xai": "https://api.x.ai/v1",
+                    "openai": None,
+                }
+                api_keys = {
+                    "deepseek": get_env("DEEPSEEK_API_KEY"),
+                    "github": get_env("GITHUB_TOKEN"),
+                    "xai": get_env("XAI_API_KEY"),
+                    "openai": get_env("OPENAI_API_KEY"),
+                }
+                kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens,
+                              openai_api_key=api_keys[provider], request_timeout=timeout_s)
+                if base_urls[provider]:
+                    kwargs["openai_api_base"] = base_urls[provider]
+                return ChatOpenAI(**kwargs)
+            elif provider == "ollama":
+                from langchain_openai import ChatOpenAI
+                base_url = get_env("OLLAMA_BASE_URL", required=False, default="http://localhost:11434/v1")
+                return ChatOpenAI(model=model, temperature=temperature, max_tokens=max_tokens,
+                                  openai_api_key="ollama", openai_api_base=base_url,
+                                  request_timeout=timeout_s)
+        except Exception as exc:
+            logger.warning(f"[MetaAnalysis] LLM init échoué : {exc}")
+        return None
+
+    def run_meta_analysis_now(self) -> None:
+        """Méthode publique pour forcer une méta-analyse depuis le dashboard Admin."""
+        self._run_meta_analysis(trigger="manual")
+
+    @staticmethod
+    def _meta_json_to_markdown(data: dict, n_losing: int, n_winning: int) -> str:
+        """Convertit le JSON structuré de méta-analyse en Markdown lisible."""
+        lines = []
+        lines.append(f"## 📋 Résumé")
+        lines.append(data.get("resume", "_Non disponible_"))
+        lines.append(f"\n_Basé sur **{n_losing}** trades perdants et **{n_winning}** trades gagnants._")
+
+        patterns = data.get("patterns", [])
+        if patterns:
+            lines.append("\n## 🔴 Patterns d'échec récurrents")
+            for p in patterns:
+                impact = p.get("impact", "?")
+                icon = "🔴" if impact == "fort" else ("🟡" if impact == "moyen" else "🟢")
+                lines.append(
+                    f"- {icon} **{p.get('pattern', '?')}** "
+                    f"_(fréquence: {p.get('frequence', '?')})_"
+                )
+
+        agents = data.get("agents_problematiques", [])
+        if agents:
+            lines.append("\n## ⚠️ Agents problématiques")
+            for a in agents:
+                lines.append(
+                    f"- **{a.get('agent', '?')}** : {a.get('probleme', '?')}"
+                    f"\n  ↳ _Condition : {a.get('condition', '?')}_"
+                )
+
+        recos = data.get("recos", [])
+        if recos:
+            lines.append("\n## ✅ Recommandations")
+            for r in sorted(recos, key=lambda x: x.get("priorite", 99)):
+                lines.append(
+                    f"{r.get('priorite', '?')}. **{r.get('action', '?')}**"
+                    f"\n   → {r.get('rationale', '')}"
+                )
+
+        positifs = data.get("points_positifs", "")
+        if positifs:
+            lines.append(f"\n## 💚 Points positifs\n{positifs}")
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
     # F7 — Champion-Challenger
     # ------------------------------------------------------------------
     def _maybe_promote_champion(self) -> None:
@@ -577,145 +839,3 @@ def get_calibrated_probability(score: float) -> float | None:
     except Exception:
         pass
     return None
-
-
-
-class PostMortemAgent:
-    """
-    Analyse les décisions passées, compare prédiction vs résultat,
-    et propose des ajustements de poids pour les prochains cycles.
-    """
-
-    def __init__(self):
-        from utils.config import load_settings
-        cfg = load_settings()
-        pm = cfg.get("post_mortem", {})
-        self.learning_rate: float = pm.get("learning_rate", 0.05)
-        self.min_history: int = pm.get("min_history_for_adjustment", 10)
-        self.weight_min: float = cfg.get("scoring", {}).get("min_weight", 0.05)
-        self.weight_max: float = cfg.get("scoring", {}).get("max_weight", 0.60)
-
-    def run(self, pending_decisions: list[dict]) -> None:
-        """
-        Pour chaque décision en attente :
-        1. Récupère le prix 24h plus tard
-        2. Calcule le résultat réel
-        3. Met à jour la DB
-        4. Si assez d'historique, ajuste les poids
-        """
-        from utils.logger import log_flux_metric
-
-        logger.info(f"Post-mortem : analyse de {len(pending_decisions)} décisions")
-        t0 = time.time()
-        try:
-            for decision in pending_decisions:
-                self._process_single(decision)
-
-            # Ajustement des poids si assez d'historique
-            self._maybe_adjust_weights()
-
-            latency_ms = int((time.time() - t0) * 1000)
-            log_flux_metric("post_mortem", "ok", latency_ms, len(pending_decisions))
-        except Exception as exc:
-            latency_ms = int((time.time() - t0) * 1000)
-            log_flux_metric("post_mortem", "error", latency_ms, 0, str(exc))
-            raise
-
-    def _process_single(self, decision: dict) -> None:
-        """Calcule le résultat réel d'une décision et l'enregistre."""
-        from storage.database import update_decision_result
-        try:
-            cycle_id = decision["cycle_id"]
-            action = decision.get("action", "HOLD")
-            entry_price = decision.get("entry_price", 0) or 0
-
-            if action == "HOLD" or entry_price == 0:
-                update_decision_result(cycle_id, 0.0)
-                return
-
-            # Prix actuel via market data
-            current_price = self._get_current_price(decision.get("asset", "BTC/USDT"))
-            position_size = decision.get("position_size", 0) or 0
-
-            if current_price and entry_price:
-                price_change_pct = (current_price - entry_price) / entry_price
-                direction = 1 if action == "BUY" else -1
-                pnl = position_size * price_change_pct * direction
-            else:
-                pnl = 0.0
-
-            update_decision_result(cycle_id, round(pnl, 2))
-            logger.info(
-                f"Post-mortem {cycle_id}: {action} entry={entry_price:.2f} "
-                f"current={current_price:.2f} P&L={pnl:.2f}$"
-            )
-        except Exception as exc:
-            logger.error(f"Erreur post-mortem décision {decision.get('cycle_id')}: {exc}")
-
-    def _get_current_price(self, asset: str) -> float:
-        """Récupère le prix actuel via CCXT."""
-        try:
-            from agents.market_data_agent import MarketDataAgent
-            agent = MarketDataAgent()
-            indicators = agent.get_indicators(asset)
-            return indicators.get("price", 0)
-        except Exception:
-            return 0.0
-
-    def _maybe_adjust_weights(self) -> None:
-        """Ajuste les poids de scoring si assez d'historique disponible."""
-        from storage.database import get_pnl_history
-        from utils.config import load_settings, save_settings
-
-        history = [h for h in get_pnl_history() if h.get("result_24h") is not None]
-        if len(history) < self.min_history:
-            logger.info(
-                f"Post-mortem : {len(history)}/{self.min_history} décisions — "
-                f"ajustement des poids reporté"
-            )
-            return
-
-        # Analyse des dernières N décisions
-        recent = history[-self.min_history:]
-        wins = [h for h in recent if (h.get("result_24h") or 0) > 0]
-        win_rate = len(wins) / len(recent)
-
-        logger.info(
-            f"Post-mortem : win_rate={win_rate:.0%} sur {len(recent)} décisions"
-        )
-
-        # Ajustement simple basé sur le win_rate
-        # Si win_rate > 60% → légèrement augmenter MiroFish (signal de qualité)
-        # Si win_rate < 40% → légèrement diminuer MiroFish
-        cfg = load_settings()
-        weights = cfg.get("scoring", {}).get("weights", {})
-
-        delta = (win_rate - 0.50) * self.learning_rate
-        mf_new = weights.get("mirofish", 0.40) + delta
-        market_new = weights.get("market", 0.30) - delta / 2
-        agents_new = weights.get("agents", 0.20) - delta / 2
-
-        # Borner les poids
-        mf_new = max(self.weight_min, min(self.weight_max, mf_new))
-        market_new = max(self.weight_min, min(self.weight_max, market_new))
-        agents_new = max(self.weight_min, min(self.weight_max, agents_new))
-
-        # Normaliser pour que la somme reste 1
-        total = mf_new + market_new + agents_new + weights.get("contrarian", 0.10)
-        mf_new /= total
-        market_new /= total
-        agents_new /= total
-        contrarian_new = weights.get("contrarian", 0.10) / total
-
-        cfg["scoring"]["weights"] = {
-            "mirofish": round(mf_new, 4),
-            "market": round(market_new, 4),
-            "agents": round(agents_new, 4),
-            "contrarian": round(contrarian_new, 4),
-        }
-        save_settings(cfg)
-        logger.info(
-            f"Post-mortem : poids mis à jour → "
-            f"mirofish={mf_new:.3f} market={market_new:.3f} "
-            f"agents={agents_new:.3f} contrarian={contrarian_new:.3f}"
-        )

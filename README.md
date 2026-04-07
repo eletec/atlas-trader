@@ -1,13 +1,13 @@
 # Atlas Trader 🤖
 
-> Autonomous AI trading system — **Multi-Asset Paper Trading** (BTC · ETH · XAU · EUR · GBP)  
+> Autonomous AI trading system — **Multi-Asset Paper Trading** (BTC · ETH · SOL · XAU · XAG · WTI · EUR · GBP)  
 > MiroFish Swarm · LangGraph Agents · HMM Market Regime · Kelly Sizing · Per-Asset Configuration
 
 ---
 
 ## Overview
 
-**Atlas Trader** is a fully autonomous paper-trading system that combines multiple AI layers to generate high-conviction trading signals across **5 assets** (BTC/USDT · ETH/USDT · XAU/USD · EUR/USD · GBP/USD). Each asset runs its own independent configuration, risk profile, and regime monitoring.
+**Atlas Trader** is a fully autonomous paper-trading system that combines multiple AI layers to generate high-conviction trading signals across **8 assets** (BTC/USDT · ETH/USDT · SOL/USDT · XAU/USD · XAG/USD · WTI/USD · EUR/USD · GBP/USD). Each asset runs its own independent configuration, risk profile, and regime monitoring.
 
 The system runs on a **15-minute loop** by default:
 1. Crawls the web to capture the *air du temps* (news, macro, social signals)
@@ -35,6 +35,9 @@ The system runs on a **15-minute loop** by default:
 | 🌐 **i18n** | Full UI in 8 languages: FR · EN · DE · ES · IT · PT · NL · ZH |
 | 🐳 **Docker** | Supervisord multi-process, healthcheck, NAS-ready |
 | 📉 **Backtesting** | Historical simulation with per-regime metrics, HMM 2 vs 3 states |
+| 📊 **Agent Perf Stats** | Per-agent win rate, Brier score, P&L on BUY — admin dashboard tab |
+| 🤖 **Auto-tune weights** | PostMortem auto-adjusts `weight_in_scoring` per agent every 7 days |
+| 🔍 **Meta-Analysis LLM** | Claude analyzes failure patterns, surfaces weak agents, gives ranked recommendations |
 
 ---
 
@@ -114,6 +117,7 @@ The system runs on a **15-minute loop** by default:
 | `SynthesisAgent` | Final synthesis | Aggregation + weighted scoring |
 | `CoordinatorAgent` | Orchestration | Adaptive regime weights, 30min cache |
 | `PostMortemAgent` | 24h feedback | Actual P&L vs prediction, walk-forward weight adjustment |
+| `MetaAnalysisLLM` | Pattern detection | LLM analyzes losing trades to surface failure patterns + recommendations |
 
 ---
 
@@ -330,7 +334,10 @@ project:
   active_assets:
     - "BTC/USDT"
     - "ETH/USDT"
+    - "SOL/USDT"
     - "XAU/USD"
+    - "XAG/USD"
+    - "WTI/USD"
     - "EUR/USD"
     - "GBP/USD"
   loop_interval_seconds: 900    # 15 min

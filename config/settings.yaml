@@ -382,6 +382,8 @@ post_mortem:
   learning_rate: 0.05
   walk_forward_days: 7
   correlation_threshold: 0.75
+  meta_analysis_interval_days: 14  # LLM failure-pattern analysis, every N days
+  meta_analysis_days: 30            # lookback window for the analysis
 monitor:
   interval_seconds: 60
   breaking_news_threshold: 0.8

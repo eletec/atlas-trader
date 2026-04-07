@@ -1771,6 +1771,7 @@ def render_admin_panel():
         f"≡ {t('tab_logging')}",
         f"⏱ {t('tab_timesfm')}",
         "📊 Agents Perf",
+        "🔍 Méta-Analyse",
         f"⊞ {t('tab_market_regime')}",
         f"⇄ {t('tab_flux')}",
         f"👤 {t('tab_users')}",
@@ -2376,7 +2377,103 @@ def render_admin_panel():
         except Exception as _ap_exc:
             st.warning(f"Stats agents indisponibles : {_ap_exc}")
 
-    with sub_tabs[10]:  # Market Regime
+    with sub_tabs[11]:  # Méta-Analyse
+        st.markdown('<h4>🔍 Méta-Analyse LLM — Patterns d\'échec</h4>', unsafe_allow_html=True)
+        st.caption(
+            "Claude analyse les décisions perdantes pour détecter des patterns récurrents, "
+            "identifier les agents peu fiables et formuler des recommandations concrètes."
+        )
+        try:
+            from storage.database import get_last_meta_analysis, get_decisions_for_meta
+            import json as _ma_json
+
+            _ma_analyses = get_last_meta_analysis(limit=3)
+
+            # Bouton force-run (Admin)
+            _ma_col1, _ma_col2 = st.columns([3, 1])
+            with _ma_col2:
+                if st.button("▶ Lancer analyse", key="btn_run_meta", help="Force une méta-analyse LLM maintenant"):
+                    try:
+                        from agents.post_mortem_agent import PostMortemAgent as _PMA
+                        with st.spinner("Analyse en cours (30–90s)..."):
+                            _PMA().run_meta_analysis_now()
+                        st.success("Analyse terminée — rechargez la page")
+                        st.rerun()
+                    except Exception as _ma_btn_exc:
+                        st.error(f"Erreur : {_ma_btn_exc}")
+            with _ma_col1:
+                _ma_days_sel = st.select_slider("Fenêtre d'analyse", [14, 30, 60, 90], value=30, key="ma_days")
+
+            if not _ma_analyses:
+                _ma_trades = get_decisions_for_meta(days=_ma_days_sel)
+                _ma_losing = [t for t in _ma_trades if t["result"] < 0]
+                st.info(
+                    f"Aucune méta-analyse disponible. "
+                    f"{len(_ma_losing)} trades perdants sur {_ma_days_sel}j. "
+                    f"Cliquez ▶ pour lancer une analyse (nécessite ≥5 pertes)."
+                )
+            else:
+                for _ma_idx, _ma_item in enumerate(_ma_analyses):
+                    _ma_ts = _ma_item.get("timestamp", "")[:16]
+                    _ma_n  = _ma_item.get("n_trades", 0)
+                    _ma_nl = _ma_item.get("n_losing", 0)
+                    _ma_trig = _ma_item.get("run_trigger", "auto")
+
+                    with st.expander(
+                        f"{'🕐' if _ma_idx > 0 else '🔍'} Analyse du {_ma_ts} UTC — "
+                        f"{_ma_nl} pertes / {_ma_n} trades ({_ma_trig})",
+                        expanded=(_ma_idx == 0),
+                    ):
+                        # Afficher les recommandations structurées si JSON disponible
+                        if _ma_item.get("patterns_json"):
+                            try:
+                                _ma_data = _ma_json.loads(_ma_item["patterns_json"])
+
+                                _ma_resume = _ma_data.get("resume", "")
+                                if _ma_resume:
+                                    st.info(_ma_resume)
+
+                                _ma_recos = _ma_data.get("recos", [])
+                                if _ma_recos:
+                                    st.markdown("**✅ Recommandations :**")
+                                    for _r in sorted(_ma_recos, key=lambda x: x.get("priorite", 99)):
+                                        st.markdown(
+                                            f"{_r.get('priorite','?')}. **{_r.get('action','?')}**  "
+                                            f"→ *{_r.get('rationale','')}*"
+                                        )
+
+                                _ma_ags = _ma_data.get("agents_problematiques", [])
+                                if _ma_ags:
+                                    st.markdown("**⚠️ Agents problématiques :**")
+                                    for _ag in _ma_ags:
+                                        st.markdown(
+                                            f"- **{_ag.get('agent','?')}** : {_ag.get('probleme','?')}  "
+                                            f"  ↳ *{_ag.get('condition','')}*"
+                                        )
+
+                                _ma_patterns = _ma_data.get("patterns", [])
+                                if _ma_patterns:
+                                    st.markdown("**🔴 Patterns récurrents :**")
+                                    for _p in _ma_patterns:
+                                        _imp = _p.get("impact", "")
+                                        _ic = "🔴" if _imp == "fort" else ("🟡" if _imp == "moyen" else "🟢")
+                                        st.markdown(
+                                            f"- {_ic} {_p.get('pattern','?')} "
+                                            f"*(fréquence: {_p.get('frequence','?')})*"
+                                        )
+
+                                _ma_pos = _ma_data.get("points_positifs", "")
+                                if _ma_pos:
+                                    st.markdown(f"**💚 Points positifs :** {_ma_pos}")
+                            except Exception:
+                                st.markdown(_ma_item.get("summary_text", ""))
+                        else:
+                            st.markdown(_ma_item.get("summary_text", "_Aucun contenu_"))
+
+        except Exception as _ma_exc:
+            st.warning(f"Méta-analyse indisponible : {_ma_exc}")
+
+    with sub_tabs[11]:  # Market Regime
         st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_regime_info"))
 
@@ -2466,18 +2563,18 @@ def render_admin_panel():
 
         st.caption("💡 Les paramètres HMM, ADX, fenêtres vol/trend sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
 
-    with sub_tabs[11]:  # Flux Manager
+    with sub_tabs[12]:  # Flux Manager
         st.info(t("cfg_flux_info"))
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
-    with sub_tabs[12]:  # Utilisateurs
+    with sub_tabs[13]:  # Utilisateurs
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin
 
-    with sub_tabs[13]:  # Par Actif — config/assets/{slug}.yaml
+    with sub_tabs[14]:  # Par Actif — config/assets/{slug}.yaml
         st.markdown(
             '<h4><i class="fas fa-layer-group" style="margin-right:7px;color:#7986cb;"></i>'
             'Configuration par actif</h4>',

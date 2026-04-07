@@ -120,12 +120,26 @@ DDL_STATEMENTS = [
     )
     """,
     # Index pour les requêtes fréquentes
+    # ── Méta-analyses LLM (patterns d'échec) ──
+    """
+    CREATE TABLE IF NOT EXISTS meta_analyses (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp       TEXT    NOT NULL,
+        asset           TEXT,              -- NULL = analyse globale multi-actifs
+        summary_text    TEXT    NOT NULL,  -- Markdown rendu par le LLM
+        patterns_json   TEXT,              -- JSON structuré (patterns, recos, agents_faibles)
+        n_trades        INTEGER DEFAULT 0,
+        n_losing        INTEGER DEFAULT 0,
+        run_trigger     TEXT    DEFAULT 'auto'  -- 'auto' | 'manual'
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_flux_name_ts ON flux_metrics(flux_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_tfm_ts ON timesfm_forecasts(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_profile ON shadow_decisions(profile_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_cycle ON shadow_decisions(cycle_id)",
+    "CREATE INDEX IF NOT EXISTS idx_meta_ts ON meta_analyses(timestamp DESC)",
 ]
 
 
@@ -1161,3 +1175,136 @@ def get_shadow_pnl_series() -> dict[str, list[dict]]:
         logger.warning(f"Shadow PnL series erreur : {exc}")
 
     return series
+
+
+# ===========================================================
+# MÉTA-ANALYSE LLM — patterns d'échec
+# ===========================================================
+
+def get_decisions_for_meta(
+    days: int = 30,
+    limit: int = 80,
+    asset: str | None = None,
+) -> list[dict]:
+    """
+    Retourne les décisions BUY/SELL évaluées (result_24h NOT NULL) pour la méta-analyse.
+    Extrait les scores de chaque composant depuis weights_snapshot.
+    """
+    import json as _json
+
+    cutoff = datetime.utcnow().replace(microsecond=0).isoformat()
+    with get_connection() as conn:
+        if asset:
+            rows = conn.execute(
+                """
+                SELECT timestamp, asset, action, score, result_24h,
+                       weights_snapshot, explanation
+                FROM decisions
+                WHERE asset = ?
+                  AND action IN ('BUY', 'SELL')
+                  AND result_24h IS NOT NULL
+                  AND datetime(timestamp) >= datetime(?, ?)
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (asset, cutoff, f"-{days} days", limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT timestamp, asset, action, score, result_24h,
+                       weights_snapshot, explanation
+                FROM decisions
+                WHERE action IN ('BUY', 'SELL')
+                  AND result_24h IS NOT NULL
+                  AND datetime(timestamp) >= datetime(?, ?)
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (cutoff, f"-{days} days", limit),
+            ).fetchall()
+
+    result = []
+    for row in rows:
+        entry: dict = {
+            "ts":         row["timestamp"][:16],
+            "asset":      row["asset"],
+            "action":     row["action"],
+            "score":      row["score"],
+            "result":     round(float(row["result_24h"]), 2),
+        }
+        # Extraire les scores depuis le breakdown stocké
+        try:
+            ws = _json.loads(row["weights_snapshot"] or "{}")
+            # Format decision_engine breakdown: agents.detail, mirofish.score, etc.
+            entry["mf_score"]      = ws.get("mirofish", {}).get("score") or ws.get("mirofish_score")
+            entry["market_score"]  = ws.get("market",   {}).get("score") or ws.get("market_score")
+            entry["ctr_score"]     = ws.get("contrarian", {}).get("score") or ws.get("contrarian_score")
+            entry["regime"]        = ws.get("regime")
+            # Per-agent scores (deux formats possibles)
+            agent_detail = ws.get("agents", {}).get("detail") or ws.get("agent_scores") or {}
+            entry["agents"]        = {k: round(float(v), 0) for k, v in agent_detail.items() if v is not None}
+        except Exception:
+            pass
+        result.append(entry)
+    return result
+
+
+def save_meta_analysis(
+    summary_text: str,
+    n_trades: int,
+    n_losing: int,
+    patterns_json: str | None = None,
+    asset: str | None = None,
+    run_trigger: str = "auto",
+) -> None:
+    """Persiste une méta-analyse LLM dans la table meta_analyses."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO meta_analyses
+                (timestamp, asset, summary_text, patterns_json, n_trades, n_losing, run_trigger)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    datetime.utcnow().isoformat(),
+                    asset,
+                    summary_text,
+                    patterns_json,
+                    n_trades,
+                    n_losing,
+                    run_trigger,
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"save_meta_analysis erreur : {exc}")
+
+
+def get_last_meta_analysis(asset: str | None = None, limit: int = 3) -> list[dict]:
+    """Retourne les N dernières méta-analyses (globales ou par actif)."""
+    try:
+        with get_connection() as conn:
+            if asset:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM meta_analyses
+                    WHERE asset = ? OR asset IS NULL
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    (asset, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM meta_analyses
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []

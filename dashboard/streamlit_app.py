@@ -2314,14 +2314,18 @@ def render_admin_panel():
         )
         try:
             from storage.database import get_agent_performance_stats
+            _ap_all_assets = list(settings.get("project", {}).get("active_assets", []))
             _ap_c1, _ap_c2 = st.columns(2)
             with _ap_c1:
-                _ap_asset_sel = st.selectbox(
-                    "Actif", ["Tous"] + list(settings.get("project", {}).get("active_assets", [])),
-                    key="ap_asset_sel"
+                _ap_asset_sel = st.radio(
+                    "Actif", ["Tous"] + _ap_all_assets,
+                    horizontal=True, key="ap_asset_sel"
                 )
             with _ap_c2:
-                _ap_days = st.selectbox("Fenêtre", [7, 14, 30, 60, 90], index=2, key="ap_days")
+                _ap_days = st.radio(
+                    "Fenêtre (jours)", [7, 14, 30, 60, 90],
+                    index=2, horizontal=True, key="ap_days"
+                )
             _ap_asset = None if _ap_asset_sel == "Tous" else _ap_asset_sel
             _ap_stats = get_agent_performance_stats(asset=_ap_asset, days=_ap_days)
 
@@ -2395,7 +2399,10 @@ def render_admin_panel():
             # Fenêtre + bouton force-run sur la même ligne
             _ma_r1, _ma_r2, _ma_r3 = st.columns([2, 2, 1])
             with _ma_r1:
-                _ma_days_sel = st.selectbox("Fenêtre d'analyse", [14, 30, 60, 90], index=1, key="ma_days")
+                _ma_days_sel = st.radio(
+                    "Fenêtre d'analyse (jours)", [14, 30, 60, 90],
+                    index=1, horizontal=True, key="ma_days"
+                )
             with _ma_r2:
                 st.write("")
             with _ma_r3:

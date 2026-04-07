@@ -101,9 +101,9 @@ def _reset_pool():
 
 class TimesFMAgent:
     """
-    Agent TimesFM — forecast prix BTC via foundation model.
+    Agent TimesFM — forecast prix via foundation model.
 
-    Prend les N dernières candles OHLCV 15min du MarketDataAgent,
+    Prend les N dernières candles OHLCV 15min,
     génère un forecast multi-horizon avec quantiles,
     et retourne un score de conviction basé sur :
       - direction prédite (hausse/baisse)
@@ -111,12 +111,33 @@ class TimesFMAgent:
       - largeur de l'intervalle de confiance (incertitude)
     """
 
+    # Symboles Yahoo Finance pour les actifs non-crypto
+    _YF_MAP = {
+        "XAU/USD": "GC=F",
+        "EUR/USD": "EURUSD=X",
+        "GBP/USD": "GBPUSD=X",
+        "USD/JPY": "JPY=X",
+    }
+
     def __init__(self):
-        from utils.config import load_settings
-        cfg = load_settings()
-        self._tfm_cfg = cfg.get("timesfm", {})
-        self._horizon = int(self._tfm_cfg.get("forecast_horizon", 24))  # candles
-        self._backend = self._tfm_cfg.get("backend", "cpu")
+        # Config chargée au moment de analyze() pour respecter le per-asset
+        self._horizon = 24
+        self._backend = "cpu"
+
+    def _load_config(self, asset: str | None) -> None:
+        """Charge horizon et backend depuis la config per-asset si dispo."""
+        try:
+            if asset:
+                from utils.config import load_asset_config
+                cfg = load_asset_config(asset)
+            else:
+                from utils.config import load_settings
+                cfg = load_settings()
+            tfm_cfg = cfg.get("timesfm", {})
+            self._horizon = int(tfm_cfg.get("forecast_horizon", 24))
+            self._backend = tfm_cfg.get("backend", "cpu")
+        except Exception:
+            pass  # garder les valeurs par défaut
 
     def analyze(self, state: dict) -> dict:
         """Run TimesFM forecast in a child process and return agent analysis dict."""
@@ -125,18 +146,18 @@ class TimesFMAgent:
         except ImportError:
             from concurrent.futures.process import BrokenProcessPool
         t0 = time.time()
+        asset = state.get("asset", "BTC/USDT")
+        self._load_config(asset)
 
         try:
-            logger.info("TimesFM: Récupération des prix close...")
             closes = self._get_close_prices(state)
             if closes is None or len(closes) < 50:
                 return self._fallback("insufficient OHLCV data")
-            logger.info(f"TimesFM: {len(closes)} candles récupérées (last={closes[-1]:.2f})")
+            logger.info(f"TimesFM [{asset}]: {len(closes)} candles (last={closes[-1]:.4f})")
 
             # Soumettre au processus enfant (spawn) — isolé du daemon
             # Sémaphore global : 1 seul actif à la fois utilise le worker
             # (évite 5×2GB RAM en simultané avec 5 actifs parallèles)
-            asset = state.get("asset", "?")
             logger.info(f"TimesFM [{asset}]: attente sémaphore (1 worker partagé)...")
             acquired = _TFM_SEMAPHORE.acquire(timeout=360)  # attend max 6min
             if not acquired:
@@ -199,23 +220,46 @@ class TimesFMAgent:
             return self._fallback(str(exc))
 
     def _get_close_prices(self, state: dict) -> np.ndarray | None:
-        """Extract close prices from market_indicators or fetch directly."""
+        """Extract close prices (500 candles) — CCXT pour crypto, Yahoo Finance pour le reste."""
         indicators = state.get("market_indicators") or {}
+        asset = state.get("asset", "BTC/USDT")
 
-        # Try to get OHLCV from market data agent's raw data
+        # Récupérer depuis le cache ohlcv_raw si disponible
         ohlcv_raw = indicators.get("ohlcv_raw")
-        if ohlcv_raw is not None and len(ohlcv_raw) > 50:
+        if ohlcv_raw is not None and len(ohlcv_raw) >= 50:
             return np.array([c[4] for c in ohlcv_raw], dtype=np.float64)
 
-        # Fallback: fetch directly via CCXT (mainnet for real prices)
+        # Actifs crypto — CCXT Binance (500 candles 15m)
+        if asset not in self._YF_MAP:
+            try:
+                import ccxt
+                exchange = ccxt.binance({"enableRateLimit": True})
+                ohlcv = exchange.fetch_ohlcv(asset, "15m", limit=500)
+                return np.array([c[4] for c in ohlcv], dtype=np.float64)
+            except Exception as exc:
+                logger.warning(f"TimesFM CCXT fallback échoué ({asset}): {exc}")
+                return None
+
+        # Actifs non-crypto (XAU, EUR, GBP) — Yahoo Finance 15m (5 jours ≈ 480 candles)
         try:
-            import ccxt
-            exchange = ccxt.binance({"enableRateLimit": True})
-            asset = state.get("asset", "BTC/USDT")
-            ohlcv = exchange.fetch_ohlcv(asset, "15m", limit=500)
-            return np.array([c[4] for c in ohlcv], dtype=np.float64)
+            import json
+            import urllib.request as _ur
+            yf_ticker = self._YF_MAP[asset]
+            req = _ur.Request(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
+                f"?interval=15m&range=5d&includePrePost=false",
+                headers={"User-Agent": "atlas-trader/2.0"},
+            )
+            with _ur.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read())
+            raw_c = data["chart"]["result"][0]["indicators"]["quote"][0].get("close", [])
+            closes = np.array([c for c in raw_c if c is not None], dtype=np.float64)
+            if len(closes) >= 50:
+                return closes
+            logger.warning(f"TimesFM Yahoo Finance trop peu de candles ({len(closes)}) pour {asset}")
+            return None
         except Exception as exc:
-            logger.warning(f"CCXT fallback failed: {exc}")
+            logger.warning(f"TimesFM Yahoo Finance fallback échoué ({asset}): {exc}")
             return None
 
     def _interpret(

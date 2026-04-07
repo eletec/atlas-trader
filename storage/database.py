@@ -321,6 +321,21 @@ def get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def count_trades(asset: str | None = None) -> int:
+    """Nombre total de trades BUY/SELL dans la table decisions (sans limite)."""
+    with get_connection() as conn:
+        if asset:
+            row = conn.execute(
+                "SELECT COUNT(*) as n FROM decisions WHERE action IN ('BUY','SELL') AND asset = ?",
+                (asset,)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) as n FROM decisions WHERE action IN ('BUY','SELL')"
+            ).fetchone()
+    return int(row["n"]) if row else 0
+
+
 def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     """P3: retourne les n derniers BUY/SELL (sans HOLD) — filtre SQL, pas Python."""
     with get_connection() as conn:
@@ -392,6 +407,58 @@ def get_pnl_history() -> list[dict]:
             """
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_agent_scores_history(asset: str | None = None, hours: int = 24) -> list[dict]:
+    """
+    Retourne l'historique des scores par agent sur les N dernières heures.
+    Chaque entrée : {timestamp, action, score, agent_scores: {agent: score}, contrarian_score, mirofish_score, market_score}
+    """
+    import json as _json
+    cutoff = (datetime.utcnow().replace(microsecond=0)
+              .isoformat())
+    with get_connection() as conn:
+        if asset:
+            rows = conn.execute(
+                """
+                SELECT timestamp, action, score, weights_snapshot
+                FROM decisions
+                WHERE asset = ?
+                  AND datetime(timestamp) >= datetime(?, ?)
+                  AND weights_snapshot IS NOT NULL
+                ORDER BY timestamp ASC
+                """,
+                (asset, cutoff, f"-{hours} hours")
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT timestamp, action, score, weights_snapshot
+                FROM decisions
+                WHERE datetime(timestamp) >= datetime(?, ?)
+                  AND weights_snapshot IS NOT NULL
+                ORDER BY timestamp ASC
+                LIMIT 2000
+                """,
+                (cutoff, f"-{hours} hours")
+            ).fetchall()
+
+    result = []
+    for row in rows:
+        try:
+            ws = _json.loads(row["weights_snapshot"] or "{}")
+            result.append({
+                "timestamp": row["timestamp"],
+                "action": row["action"],
+                "global_score": row["score"],
+                "agent_scores": ws.get("agent_scores", {}),
+                "contrarian_score": ws.get("contrarian_score", 50),
+                "mirofish_score": ws.get("mirofish_score", 50),
+                "market_score": ws.get("market_score", 50),
+            })
+        except Exception:
+            continue
+    return result
 
 
 # ===========================================================

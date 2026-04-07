@@ -660,10 +660,14 @@ def should_continue_after_news(state: ZeitgeistState) -> str:
     # Vérifier si cet actif a des keywords de news configurés
     # Si non (forex, matières premières), continuer sur les indicateurs de marché seuls
     try:
-        from utils.config import load_settings
+        from utils.config import load_asset_config
         asset = state.get("asset", "")
-        kw = load_settings().get("news", {}).get("keywords_per_asset", {})
-        if not kw.get(asset):
+        asset_cfg = load_asset_config(asset) if asset else {}
+        has_kw = bool(
+            asset_cfg.get("news", {}).get("sources_per_asset", {}).get(asset, {}).get("keywords")
+            or asset_cfg.get("agents", {}).get("x_sentiment", {}).get("keywords")
+        )
+        if not has_kw:
             logger.info(
                 f"[{state['cycle_id']}] Aucune news pour {asset} "
                 "(pas de keywords configurés) — cycle continue sur indicateurs marché"

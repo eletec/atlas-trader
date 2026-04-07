@@ -484,8 +484,9 @@ def _init_session():
 # CHARGEMENT DES DONNÉES
 # ===========================================================
 
+@st.cache_data(ttl=20)
 def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
-    """Pas de cache — données critiques, doit toujours être fraîche."""
+    """Cache 20s — évite les requêtes SQLite redondantes lors de chaque rerun auto."""
     try:
         from storage.database import get_recent_decisions
         return get_recent_decisions(n, asset=asset)
@@ -493,9 +494,9 @@ def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
         return []
 
 
-@st.cache_data(ttl=45)
+@st.cache_data(ttl=90)
 def _get_live_indicators(asset: str) -> dict:
-    """Indicateurs live avec cache 45s — évite un appel CCXT bloquant à chaque rerun."""
+    """Indicateurs live avec cache 90s — TTL > autorefresh (60s) évite un appel réseau bloquant à chaque rerun."""
     try:
         from agents.market_data_agent import MarketDataAgent
         return MarketDataAgent().get_indicators(asset)
@@ -543,7 +544,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
         return []
 
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=60)
 def _get_portfolio(asset: str | None = None) -> dict:
     try:
         from execution.paper_trader import PaperTrader
@@ -906,16 +907,18 @@ def render_header():
         nav_bg  = "#0e1117"; nav_fg = "#FAFAFA"
         nav_bdr = "rgba(128,128,128,0.3)"; dd_bg = "#1e2128"; dd_sep = "rgba(255,255,255,0.1)"
 
-    # ─ Cycle running? (actif OU daemon vivant = heartbeat < 30 min) ─────────
+    # ─ Cycle running? ─────────────────────────────────────────────────────
+    # _cycle_locked : un cycle est ACTIF en ce moment (lock posé)
+    # _daemon_alive : daemon vivant (heartbeat < 30 min) mais pas forcément en train de cycler
     from utils.cycle_lock import is_locked as _cycle_is_locked
-    _cycle_running = _cycle_is_locked()
-    if not _cycle_running:
-        # Vert tant que le daemon est en vie (dernier heartbeat < 30 min)
+    _cycle_locked = _cycle_is_locked()
+    _daemon_alive = _cycle_locked
+    if not _daemon_alive:
         import glob as _hb_glob, os as _hb_os, time as _hb_time
         for _hbf in _hb_glob.glob("/tmp/atlas_heartbeat_*"):
             try:
                 if _hb_time.time() - _hb_os.path.getmtime(_hbf) < 1800:
-                    _cycle_running = True
+                    _daemon_alive = True
                     break
             except Exception:
                 pass
@@ -1002,8 +1005,12 @@ header[data-testid="stHeader"]{{display:none!important;}}
 }}
 .atlas-bolt-active {{
   animation: atlas-pulse 1.2s ease-in-out infinite !important;
-  background: rgba(34,197,94,0.18) !important;
+  background: rgba(34,197,94,0.25) !important;
   color: #22c55e !important;
+}}
+.atlas-bolt-alive {{
+  background: rgba(34,197,94,0.13) !important;
+  color: #4ade80 !important;
 }}
 </style>
 <nav style="position:fixed;top:0;left:0;right:0;height:48px;
@@ -1026,7 +1033,7 @@ header[data-testid="stHeader"]{{display:none!important;}}
   <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{_fmt_utc_local(datetime.utcnow())}</span>
   <a href="{u_refresh}" style="{S_BTN}" title="{t('hbg_refresh')}" target="_self"><i class="fas fa-rotate-right"></i></a>
   <a href="{u_force}" style="{S_BTN}" title="Force Run" target="_self"
-     class="{'atlas-bolt-active' if _cycle_running else ''}"><i class="fas fa-bolt"></i></a>
+     class="{'atlas-bolt-active' if _cycle_locked else ('atlas-bolt-alive' if _daemon_alive else '')}"><i class="fas fa-bolt"></i></a>
   <a href="{u_hamburger}" style="{S_HBG}" title="Menu" target="_self"><i class="fas fa-bars"></i></a>
 </nav>
 {dropdown_html}
@@ -2841,10 +2848,10 @@ def main():
             # Front protégé
             render_auth()
         else:
-            # F12 — Auto-refresh toutes les 30s (rerun complet côté Streamlit)
+            # Auto-refresh toutes les 60s (aligné avec les TTL des caches)
             try:
                 from streamlit_autorefresh import st_autorefresh
-                st_autorefresh(interval=30_000, limit=None, key="atlas_autorefresh")
+                st_autorefresh(interval=60_000, limit=None, key="atlas_autorefresh")
             except ImportError:
                 pass
 

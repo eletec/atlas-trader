@@ -60,7 +60,7 @@ agents:
   polymarket:
     enabled: true
   timesfm:
-    enabled: false
+    enabled: true
   market_regime:
     enabled: true
   bull_bear_debate:

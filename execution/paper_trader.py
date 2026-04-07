@@ -189,15 +189,15 @@ class PaperTrader:
 
             if asset:
                 # P&L filtré sur l'actif
-                from storage.database import get_recent_trades as _grt
+                from storage.database import get_recent_trades as _grt, count_trades as _ct
                 trades = _grt(1000, asset=asset)
                 total_pnl = sum(t.get("result_24h", 0) or 0 for t in trades)
-                n_trades = len(trades)
+                n_trades = _ct(asset=asset)
             else:
                 pnl_rows = get_pnl_history()
                 total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
-                n_trades = len([d for d in get_recent_decisions(1000)
-                               if d.get("action") != "HOLD"])
+                from storage.database import count_trades as _ct
+                n_trades = _ct()
 
             return {
                 "capital":       capital,

@@ -47,13 +47,28 @@ class MarketRegimeAgent:
     MIN_CANDLES = 60  # minimum pour un HMM fiable
 
     def __init__(self):
-        from utils.config import load_settings
-        cfg = load_settings()
-        regime_cfg = cfg.get("market_regime", {})
-        self._n_hmm_states  = int(regime_cfg.get("n_hmm_states", 2))
-        self._vol_window    = int(regime_cfg.get("vol_window", 20))
-        self._trend_window  = int(regime_cfg.get("trend_window", 50))
-        self._adx_period    = int(regime_cfg.get("adx_period", 14))
+        # Valeurs par défaut — rechargées depuis la config per-asset dans analyze()
+        self._n_hmm_states  = 2
+        self._vol_window    = 20
+        self._trend_window  = 50
+        self._adx_period    = 14
+
+    def _load_config(self, asset: str | None = None) -> None:
+        """Charge (ou recharge) les paramètres depuis la config per-asset si dispo."""
+        try:
+            if asset:
+                from utils.config import load_asset_config
+                cfg = load_asset_config(asset)
+            else:
+                from utils.config import load_settings
+                cfg = load_settings()
+            regime_cfg = cfg.get("market_regime", {})
+            self._n_hmm_states  = int(regime_cfg.get("n_hmm_states",  self._n_hmm_states))
+            self._vol_window    = int(regime_cfg.get("vol_window",    self._vol_window))
+            self._trend_window  = int(regime_cfg.get("trend_window",  self._trend_window))
+            self._adx_period    = int(regime_cfg.get("adx_period",    self._adx_period))
+        except Exception:
+            pass  # garder les valeurs par défaut si la config est inaccessible
 
     # ------------------------------------------------------------------
     # Interface principale
@@ -62,6 +77,7 @@ class MarketRegimeAgent:
     def analyze(self, state: dict) -> dict:
         """Point d'entrée — compatible avec le pipeline d'agents."""
         try:
+            self._load_config(state.get("asset"))
             closes, highs, lows, volumes = self._extract_ohlcv(state)
             if closes is None or len(closes) < self.MIN_CANDLES:
                 return self._fallback("insufficient data")

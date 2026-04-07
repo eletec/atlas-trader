@@ -2426,11 +2426,22 @@ def render_admin_panel():
     overflow:visible!important;white-space:nowrap!important;text-overflow:unset!important;
 }
 </style>""", unsafe_allow_html=True)
-        _pa_known = ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]
+        # Découverte dynamique depuis les fichiers config/assets/*.yaml
+        try:
+            from pathlib import Path as _PKPath
+            _pk_dir = _PKPath(__file__).parent.parent / "config" / "assets"
+            _pa_known = sorted([
+                p.stem.replace("_", "/", 1)
+                for p in _pk_dir.glob("*.yaml")
+            ])
+        except Exception:
+            _pa_known = ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]
         _pa_current_active = list(settings.get("project", {}).get("active_assets", _pa_known))
+        # S'assurer que tous les actifs actifs sont dans les options
+        _pa_options = sorted(set(_pa_known) | set(_pa_current_active))
         _pa_new_active = st.multiselect(
             "🌐 Actifs surveillés",
-            options=_pa_known,
+            options=_pa_options,
             default=_pa_current_active,
             help="Seuls les actifs ayant un fichier config/assets/*.yaml sont supportés.",
             key="pa_active_assets",

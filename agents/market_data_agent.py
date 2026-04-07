@@ -170,14 +170,19 @@ class MarketDataAgent:
 
             price = float(meta.get("regularMarketPrice") or meta.get("previousClose") or 0)
 
-            # MA50 daily
+            # MA50 daily — utilise adjclose si dispo (gère les rolls futurs)
             ma_50 = 0.0
             try:
                 d_data = _yget(
                     f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
                     f"?interval=1d&range=3mo"
                 )
-                dc = d_data["chart"]["result"][0]["indicators"]["quote"][0].get("close", [])
+                d_res = d_data["chart"]["result"][0]
+                # adjclose corrige les discontinuités de roll pour les futures (CL=F, SI=F, GC=F)
+                adjc_arr = d_res.get("indicators", {}).get("adjclose", [{}])
+                dc_adj = (adjc_arr[0].get("adjclose", []) if adjc_arr else [])
+                dc_raw = d_res["indicators"]["quote"][0].get("close", [])
+                dc = dc_adj if dc_adj else dc_raw
                 daily = np.array([c for c in dc if c is not None], dtype=float)
                 if len(daily) >= 10:
                     ma_50 = float(np.mean(daily[-min(50, len(daily)):]))

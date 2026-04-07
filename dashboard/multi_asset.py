@@ -174,7 +174,17 @@ def render_global_live_prices() -> None:
             rsi   = ind.get("rsi_14", 50)
             above = ind.get("above_ma50")
             src   = ind.get("_source", "ccxt")
-            delta = (f"{(price/ma50 - 1)*100:+.1f}% vs MA50" if ma50 else None)
+            delta_str = None
+            if ma50 and price:
+                delta_pct = (price / ma50 - 1) * 100
+                # Ne pas afficher si > ±30% : signe probable de roll de contrat (futures)
+                if abs(delta_pct) <= 30:
+                    delta_str = f"{delta_pct:+.1f}% vs MA50"
+                elif src == "yahoo":
+                    delta_str = None  # roll artifact — masqué
+                else:
+                    delta_str = f"{delta_pct:+.1f}% vs MA50"
+            delta = delta_str
             rsi_tag = (
                 "🟢" if rsi >= 60 else "🔴" if rsi <= 40 else "🟡"
             )

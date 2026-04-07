@@ -409,6 +409,121 @@ def get_pnl_history() -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> list[dict]:
+    """
+    Calcule les statistiques de performance par agent individuel.
+
+    Pour chaque agent connu (market_data, fundamental, x_sentiment, etc.) :
+    - signal_count   : nb de fois où il a émis un signal (score ≠ None)
+    - win_rate       : % des fois où son signal (>50=bull, <50=bear) était correct vs résultat réel
+    - avg_score      : score moyen émis
+    - avg_score_wins : score moyen quand il avait raison
+    - brier_score    : erreur quadratique moyenne (0=parfait, 0.25=hasard pur)
+    - current_weight : weight_in_scoring dans settings.yaml
+
+    Retourne une liste triée par win_rate desc.
+    """
+    import json as _json
+
+    cutoff = datetime.utcnow().replace(microsecond=0).isoformat()
+
+    with get_connection() as conn:
+        if asset:
+            rows = conn.execute(
+                """
+                SELECT action, weights_snapshot, result_24h
+                FROM decisions
+                WHERE asset = ?
+                  AND result_24h IS NOT NULL
+                  AND weights_snapshot IS NOT NULL
+                  AND datetime(timestamp) >= datetime(?, ?)
+                ORDER BY timestamp ASC
+                """,
+                (asset, cutoff, f"-{days} days"),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT action, weights_snapshot, result_24h
+                FROM decisions
+                WHERE result_24h IS NOT NULL
+                  AND weights_snapshot IS NOT NULL
+                  AND datetime(timestamp) >= datetime(?, ?)
+                ORDER BY timestamp ASC
+                LIMIT 5000
+                """,
+                (cutoff, f"-{days} days"),
+            ).fetchall()
+
+    # Agréger par agent
+    from collections import defaultdict
+    buckets: dict[str, list] = defaultdict(list)  # agent -> [(agent_score, result_24h)]
+
+    for row in rows:
+        try:
+            ws = _json.loads(row["weights_snapshot"] or "{}")
+            agent_scores = ws.get("agent_scores", {})
+            result = row["result_24h"]
+            if result is None:
+                continue
+            for agent_name, agent_score in agent_scores.items():
+                if agent_score is None:
+                    continue
+                buckets[agent_name].append((float(agent_score), float(result)))
+        except Exception:
+            continue
+
+    # Charger les poids actuels depuis settings.yaml
+    try:
+        from utils.config import load_settings
+        cfg_agents = load_settings().get("agents", {})
+    except Exception:
+        cfg_agents = {}
+
+    stats = []
+    for agent_name, pairs in buckets.items():
+        if len(pairs) < 5:
+            continue
+
+        signal_count = len(pairs)
+        # Direction correcte : agent bullish (>50) et résultat >0, ou agent bearish (<50) et résultat <0
+        correct = [
+            1 for s, r in pairs
+            if (s > 50 and r > 0) or (s < 50 and r < 0)
+        ]
+        win_rate = len(correct) / signal_count
+
+        scores = [s for s, _ in pairs]
+        results = [r for _, r in pairs]
+        avg_score = sum(scores) / len(scores)
+
+        win_scores = [s for s, r in pairs if (s > 50 and r > 0) or (s < 50 and r < 0)]
+        avg_score_wins = sum(win_scores) / len(win_scores) if win_scores else avg_score
+
+        # Brier score : MSE entre probabilité agent (score/100) et outcome binaire
+        brier = sum((s / 100 - (1 if r > 0 else 0)) ** 2 for s, r in pairs) / signal_count
+
+        # P&L moyen quand l'agent recommandait BUY (score > 50)
+        buy_signals = [(s, r) for s, r in pairs if s > 50]
+        avg_pnl_on_buy = sum(r for _, r in buy_signals) / len(buy_signals) if buy_signals else 0.0
+
+        current_weight = cfg_agents.get(agent_name, {}).get("weight_in_scoring", None)
+
+        stats.append({
+            "agent": agent_name,
+            "signal_count": signal_count,
+            "win_rate": round(win_rate * 100, 1),
+            "avg_score": round(avg_score, 1),
+            "avg_score_wins": round(avg_score_wins, 1),
+            "brier_score": round(brier, 4),
+            "avg_pnl_on_buy": round(avg_pnl_on_buy, 2),
+            "current_weight": current_weight,
+        })
+
+    stats.sort(key=lambda x: x["win_rate"], reverse=True)
+    return stats
+
+
 def get_agent_scores_history(asset: str | None = None, hours: int = 24) -> list[dict]:
     """
     Retourne l'historique des scores par agent sur les N dernières heures.

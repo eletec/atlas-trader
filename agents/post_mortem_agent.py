@@ -56,6 +56,7 @@ class PostMortemAgent:
 
             n_evaluated = len(pending_decisions)
             self._maybe_adjust_weights()
+            self._maybe_adjust_individual_agent_weights()
             self._maybe_calibrate_scores()
             self._maybe_promote_champion()
 
@@ -192,6 +193,78 @@ class PostMortemAgent:
             f"agents={agents_new/total:.3f} contrarian={contrarian_new/total:.3f}"
         )
         self._persist_pm_state({"last_adjustment_at": time.time()})
+
+    # ------------------------------------------------------------------
+    # Auto-tune poids individuels par agent (weight_in_scoring)
+    # ------------------------------------------------------------------
+    def _maybe_adjust_individual_agent_weights(self) -> None:
+        """
+        Ajuste le weight_in_scoring de chaque agent individuel dans settings.yaml
+        en fonction de son win_rate sur les 30 derniers jours.
+
+        Règles :
+        - win_rate ≥ 60% → +5% poids (récompense)
+        - win_rate 50-60% → poids inchangé
+        - win_rate < 50% → -10% poids (pénalité)
+        - win_rate < 40% avec ≥ 20 signaux → désactiver (warning log)
+
+        Walk-forward : ne s'exécute que si _maybe_adjust_weights() vient de tourner.
+        """
+        if not self._walk_forward_due():
+            return
+
+        try:
+            from storage.database import get_agent_performance_stats
+            from utils.config import load_settings, save_settings
+
+            stats = get_agent_performance_stats(days=30)
+            if not stats:
+                return
+
+            cfg = load_settings()
+            agents_cfg = cfg.setdefault("agents", {})
+            changed = False
+
+            for s in stats:
+                agent = s["agent"]
+                wr = s["win_rate"]          # 0–100
+                n  = s["signal_count"]
+                if n < 15:
+                    # Pas assez de données pour ajuster
+                    continue
+
+                agent_entry = agents_cfg.setdefault(agent, {})
+                current_w = float(agent_entry.get("weight_in_scoring", 0.5))
+
+                if wr >= 60:
+                    new_w = min(0.95, current_w * 1.05)
+                    logger.info(
+                        f"[AutoTune] {agent}: win_rate={wr}% ≥ 60% "
+                        f"→ poids {current_w:.3f} → {new_w:.3f} (+5%)"
+                    )
+                elif wr < 50:
+                    new_w = max(0.05, current_w * 0.90)
+                    logger.info(
+                        f"[AutoTune] {agent}: win_rate={wr}% < 50% "
+                        f"→ poids {current_w:.3f} → {new_w:.3f} (-10%)"
+                    )
+                    if wr < 40 and n >= 20:
+                        logger.warning(
+                            f"[AutoTune] {agent}: win_rate={wr}% < 40% sur {n} signaux "
+                            f"— envisager de désactiver dans la config"
+                        )
+                else:
+                    continue  # 50–60% : neutre, on ne touche pas
+
+                agent_entry["weight_in_scoring"] = round(new_w, 4)
+                changed = True
+
+            if changed:
+                save_settings(cfg)
+                logger.info("[AutoTune] weight_in_scoring mis à jour dans settings.yaml")
+
+        except Exception as exc:
+            logger.warning(f"[AutoTune] Ajustement poids individuels échoué: {exc}")
 
     def _compute_logistic_weights(self, history: list[dict]) -> dict | None:
         """

@@ -1770,6 +1770,7 @@ def render_admin_panel():
         f"⬡ {t('tab_agents')}",
         f"≡ {t('tab_logging')}",
         f"⏱ {t('tab_timesfm')}",
+        "📊 Agents Perf",
         f"⊞ {t('tab_market_regime')}",
         f"⇄ {t('tab_flux')}",
         f"👤 {t('tab_users')}",
@@ -2304,7 +2305,78 @@ def render_admin_panel():
         except Exception as exc:
             st.warning(f"TimesFM stats unavailable: {exc}")
 
-    with sub_tabs[9]:  # Market Regime
+    with sub_tabs[9]:  # Agents Perf
+        st.markdown('<h4>📊 Performance par agent</h4>', unsafe_allow_html=True)
+        st.caption(
+            "Win rate, Brier score et P&L moyen par agent individuel sur les décisions évaluées. "
+            "Win rate > 55% = signal utile. Brier < 0.22 = meilleur que le hasard."
+        )
+        try:
+            from storage.database import get_agent_performance_stats
+            _ap_asset_sel = st.selectbox(
+                "Actif", ["Tous"] + list(settings.get("project", {}).get("active_assets", [])),
+                key="ap_asset_sel"
+            )
+            _ap_days = st.select_slider("Fenêtre", [7, 14, 30, 60, 90], value=30, key="ap_days")
+            _ap_asset = None if _ap_asset_sel == "Tous" else _ap_asset_sel
+            _ap_stats = get_agent_performance_stats(asset=_ap_asset, days=_ap_days)
+
+            if not _ap_stats:
+                st.info("Pas encore assez de décisions évaluées (min 5 par agent).")
+            else:
+                # Tableau HTML
+                def _wr_color(wr):
+                    if wr >= 60: return "#27ae60"
+                    if wr >= 50: return "#f39c12"
+                    return "#e74c3c"
+
+                def _brier_color(b):
+                    if b < 0.20: return "#27ae60"
+                    if b < 0.24: return "#f39c12"
+                    return "#e74c3c"
+
+                _ap_rows = ""
+                for _ap in _ap_stats:
+                    _wrc = _wr_color(_ap["win_rate"])
+                    _bc  = _brier_color(_ap["brier_score"])
+                    _pnl_color = "#27ae60" if _ap["avg_pnl_on_buy"] >= 0 else "#e74c3c"
+                    _wt = f"{_ap['current_weight']:.2f}" if _ap["current_weight"] is not None else "–"
+                    _ap_rows += (
+                        f"<tr>"
+                        f"<td style='padding:5px 10px;'><b>{_ap['agent']}</b></td>"
+                        f"<td style='padding:5px 10px;color:{_wrc};font-weight:bold;'>{_ap['win_rate']}%</td>"
+                        f"<td style='padding:5px 10px;'>{_ap['signal_count']}</td>"
+                        f"<td style='padding:5px 10px;'>{_ap['avg_score']:.0f}</td>"
+                        f"<td style='padding:5px 10px;color:{_bc};'>{_ap['brier_score']:.4f}</td>"
+                        f"<td style='padding:5px 10px;color:{_pnl_color};'>{_ap['avg_pnl_on_buy']:+.2f}$</td>"
+                        f"<td style='padding:5px 10px;opacity:.7;'>{_wt}</td>"
+                        f"</tr>"
+                    )
+                st.markdown(
+                    f"""<table style='width:100%;border-collapse:collapse;'>
+                    <thead><tr style='border-bottom:1px solid #444;font-size:11px;opacity:.6;'>
+                      <th style='padding:4px 10px;text-align:left;'>Agent</th>
+                      <th style='padding:4px 10px;text-align:left;'>Win Rate</th>
+                      <th style='padding:4px 10px;text-align:left;'>Signaux</th>
+                      <th style='padding:4px 10px;text-align:left;'>Score moy.</th>
+                      <th style='padding:4px 10px;text-align:left;'>Brier ↓</th>
+                      <th style='padding:4px 10px;text-align:left;'>P&L moy/BUY</th>
+                      <th style='padding:4px 10px;text-align:left;'>Poids actuel</th>
+                    </tr></thead>
+                    <tbody>{_ap_rows}</tbody>
+                    </table>""",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("---")
+                st.caption(
+                    "🟢 Win rate ≥ 60% → signal fiable | "
+                    "🟡 50-60% → signal marginalement utile | "
+                    "🔴 < 50% → signal néfaste, envisager de désactiver"
+                )
+        except Exception as _ap_exc:
+            st.warning(f"Stats agents indisponibles : {_ap_exc}")
+
+    with sub_tabs[10]:  # Market Regime
         st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_regime_info"))
 
@@ -2394,18 +2466,18 @@ def render_admin_panel():
 
         st.caption("💡 Les paramètres HMM, ADX, fenêtres vol/trend sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
 
-    with sub_tabs[10]:  # Flux Manager
+    with sub_tabs[11]:  # Flux Manager
         st.info(t("cfg_flux_info"))
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
-    with sub_tabs[11]:  # Utilisateurs
+    with sub_tabs[12]:  # Utilisateurs
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin
 
-    with sub_tabs[12]:  # Par Actif — config/assets/{slug}.yaml
+    with sub_tabs[13]:  # Par Actif — config/assets/{slug}.yaml
         st.markdown(
             '<h4><i class="fas fa-layer-group" style="margin-right:7px;color:#7986cb;"></i>'
             'Configuration par actif</h4>',

@@ -1788,9 +1788,9 @@ def render_admin_panel():
             _llm_default = llm.get("provider", "anthropic")
             if _llm_default not in _llm_providers:
                 _llm_providers.append(_llm_default)
-            llm["provider"] = st.selectbox(t("cfg_provider"), _llm_providers,
+            llm["provider"] = st.radio(t("cfg_provider"), _llm_providers,
                 index=_llm_providers.index(_llm_default),
-                help=t("cfg_provider_help"))
+                horizontal=True, help=t("cfg_provider_help"))
             llm["model"] = st.text_input(t("cfg_model"), value=llm.get("model", "claude-3-5-sonnet-20241022"),
                 help=t("cfg_model_help"))
         with col2:
@@ -1935,9 +1935,9 @@ def render_admin_panel():
             _crawler_default = crawler.get("provider", "tavily")
             if _crawler_default not in _crawler_providers:
                 _crawler_providers.append(_crawler_default)
-            crawler["provider"] = st.selectbox(t("cfg_provider"), _crawler_providers,
+            crawler["provider"] = st.radio(t("cfg_provider"), _crawler_providers,
                 index=_crawler_providers.index(_crawler_default), key="crawler_provider",
-                help=t("cfg_provider_help"))
+                horizontal=True, help=t("cfg_provider_help"))
             crawler["n_themes"] = st.slider(t("cfg_n_themes"), 5, 15, int(crawler.get("n_themes", 10)),
                 help=t("cfg_n_themes_help"))
         with col2:
@@ -1948,9 +1948,9 @@ def render_admin_panel():
             _freq_default = crawler.get("frequency", "daily")
             if _freq_default not in _freq_opts:
                 _freq_opts.append(_freq_default)
-            crawler["frequency"] = st.selectbox(t("cfg_frequency"), _freq_opts,
+            crawler["frequency"] = st.radio(t("cfg_frequency"), _freq_opts,
                 index=_freq_opts.index(_freq_default),
-                help=t("cfg_frequency_help"))
+                horizontal=True, help=t("cfg_frequency_help"))
         _cr_all_assets = list(settings.get("project", {}).get("active_assets",
                          ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
         _cr_icons = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
@@ -2221,9 +2221,9 @@ def render_admin_panel():
         _log_default = log_cfg.get("level", "INFO")
         if _log_default not in _log_levels:
             _log_levels.append(_log_default)
-        log_cfg["level"] = st.selectbox(t("cfg_log_level"), _log_levels,
+        log_cfg["level"] = st.radio(t("cfg_log_level"), _log_levels,
             index=_log_levels.index(_log_default),
-            help=t("cfg_log_level_help"))
+            horizontal=True, help=t("cfg_log_level_help"))
         log_cfg["alert_score_threshold"] = st.slider(t("cfg_alert_threshold"),
             50, 100, int(log_cfg.get("alert_score_threshold", 85)),
             help=t("cfg_alert_threshold_help"))
@@ -2688,9 +2688,9 @@ def render_admin_panel():
                         _rdef_pa = _par.get("mode", "balanced")
                         if _rdef_pa not in _rmodes_pa:
                             _rmodes_pa.append(_rdef_pa)
-                        _par["mode"] = st.selectbox(
+                        _par["mode"] = st.radio(
                             "Mode", _rmodes_pa, index=_rmodes_pa.index(_rdef_pa),
-                            key=f"pa_rmode_{_paslug}"
+                            horizontal=True, key=f"pa_rmode_{_paslug}"
                         )
                         _par["buy_threshold"] = st.slider(
                             "Seuil BUY", 50, 95, int(_par.get("buy_threshold", 62)),

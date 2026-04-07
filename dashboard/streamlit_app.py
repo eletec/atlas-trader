@@ -2396,28 +2396,19 @@ def render_admin_panel():
 
             _ma_analyses = get_last_meta_analysis(limit=3)
 
-            # Fenêtre + bouton force-run sur la même ligne
-            _ma_r1, _ma_r2, _ma_r3 = st.columns([2, 2, 1])
-            with _ma_r1:
-                _ma_days_sel = st.radio(
-                    "Fenêtre d'analyse (jours)", [14, 30, 60, 90],
-                    index=1, horizontal=True, key="ma_days"
-                )
-            with _ma_r2:
-                st.write("")
-            with _ma_r3:
-                st.write("")
-                if st.button("▶ Lancer analyse", key="btn_run_meta",
-                             help="Force une méta-analyse LLM maintenant",
-                             use_container_width=True):
-                    try:
-                        from agents.post_mortem_agent import PostMortemAgent as _PMA
-                        with st.spinner("Analyse en cours (30–90s)..."):
-                            _PMA().run_meta_analysis_now()
-                        st.success("Analyse terminée — rechargez la page")
-                        st.rerun()
-                    except Exception as _ma_btn_exc:
-                        st.error(f"Erreur : {_ma_btn_exc}")
+            _ma_days_sel = st.radio(
+                "Fenêtre d'analyse (jours)", [14, 30, 60, 90],
+                index=1, horizontal=True, key="ma_days"
+            )
+            if st.button("▶ Lancer une méta-analyse maintenant", key="btn_run_meta"):
+                try:
+                    from agents.post_mortem_agent import PostMortemAgent as _PMA
+                    with st.spinner("Analyse en cours (30–90s)..."):
+                        _PMA().run_meta_analysis_now()
+                    st.success("Analyse terminée — rechargez la page")
+                    st.rerun()
+                except Exception as _ma_btn_exc:
+                    st.error(f"Erreur : {_ma_btn_exc}")
 
             if not _ma_analyses:
                 _ma_trades = get_decisions_for_meta(days=_ma_days_sel)

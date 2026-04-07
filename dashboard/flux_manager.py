@@ -655,12 +655,11 @@ def render_flux_manager_page() -> None:
 
     with tab_status:
         st.markdown(f'<h4><i class="fas fa-circle-check" style="margin-right:7px;color:#7986cb;"></i>{t("flux_status_realtime")}</h4>', unsafe_allow_html=True)
-        col_ctrl, _ = st.columns([1, 3])
-        with col_ctrl:
-            hours = st.selectbox(t("flux_stats_window"), [1, 6, 24, 72],
-                                 index=2, format_func=lambda h: f"{h}h")
-            if st.button(t("flux_refresh"), use_container_width=True):
-                st.rerun()
+        hours = st.radio(t("flux_stats_window"), [1, 6, 24, 72],
+                         index=2, format_func=lambda h: f"{h}h",
+                         horizontal=True, key="status_hours")
+        if st.button(t("flux_refresh"), use_container_width=False):
+            st.rerun()
         render_status_board(statuses, stats, settings)
 
     with tab_pipeline:
@@ -678,16 +677,15 @@ def render_flux_manager_page() -> None:
 
     with tab_charts:
         st.markdown(f'<h4><i class="fas fa-chart-bar" style="margin-right:7px;color:#7986cb;"></i>{t("flux_perf_metrics")}</h4>', unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
-        with col1:
-            selected_flux = st.selectbox(
-                t("flux_to_analyze"),
-                list(FLUX_DEFINITIONS.keys()),
-                format_func=lambda k: FLUX_DEFINITIONS[k]["label"]
-            )
-        with col2:
-            hours_chart = st.selectbox(t("flux_period"), [1, 6, 24], index=1,
-                                       format_func=lambda h: f"{h}h", key="chart_hours")
+        selected_flux = st.radio(
+            t("flux_to_analyze"),
+            list(FLUX_DEFINITIONS.keys()),
+            format_func=lambda k: FLUX_DEFINITIONS[k]["label"],
+            horizontal=True, key="chart_flux"
+        )
+        hours_chart = st.radio(t("flux_period"), [1, 6, 24], index=1,
+                               format_func=lambda h: f"{h}h",
+                               horizontal=True, key="chart_hours")
 
         render_latency_chart(selected_flux, hours=hours_chart)
 
@@ -708,16 +706,14 @@ def render_flux_manager_page() -> None:
 
     with tab_logs:
         st.markdown(f'<h4><i class="fas fa-file-lines" style="margin-right:7px;color:#7986cb;"></i>{t("flux_logs_title")}</h4>', unsafe_allow_html=True)
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            log_flux = st.selectbox(
-                t("flux_filter_by"),
-                ["Tous"] + list(FLUX_DEFINITIONS.keys()),
-                format_func=lambda k: t("flux_all") if k == "Tous"
-                else FLUX_DEFINITIONS[k]["label"]
-            )
-        with col2:
-            n_logs = st.number_input(t("flux_nb_lines"), 10, 500, 50, step=10)
+        log_flux = st.radio(
+            t("flux_filter_by"),
+            ["Tous"] + list(FLUX_DEFINITIONS.keys()),
+            format_func=lambda k: t("flux_all") if k == "Tous"
+            else FLUX_DEFINITIONS[k]["label"],
+            horizontal=True, key="log_flux"
+        )
+        n_logs = st.number_input(t("flux_nb_lines"), 10, 500, 50, step=10)
 
         render_flux_logs(
             flux_name=None if log_flux == "Tous" else log_flux,

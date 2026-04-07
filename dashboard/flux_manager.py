@@ -426,16 +426,6 @@ def render_controls(settings: dict) -> dict | None:
     """Panneau de contrôle — enable/disable + force refresh par flux."""
     st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
-    # Supprime le fond gris des boutons "Relancer" (colonne force)
-    st.markdown(
-        "<style>div[data-testid='stButton']>button{"
-        "background:transparent!important;border:none!important;"
-        "box-shadow:none!important;padding:0!important;"
-        "font-size:1.3rem!important;"
-        "}</style>",
-        unsafe_allow_html=True,
-    )
-
     updated_settings = dict(settings)
     changed = False
 

@@ -2460,8 +2460,8 @@ def render_admin_panel():
         st.markdown("---")
         import yaml as _pa_yaml
         from pathlib import Path as _PAPath
-        _pa_icons_m = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
-        _pa_tabs = st.tabs([f"{_pa_icons_m.get(a, '◆')} {a.split('/')[0]}" for a in _pa_all])
+        from dashboard.multi_asset import _asset_icon as _pa_icon
+        _pa_tabs = st.tabs([f"{_pa_icon(a)} {a.split('/')[0]}" for a in _pa_all])
         _padir = _PAPath(__file__).parent.parent / "config" / "assets"
 
         for _pai, _pas in enumerate(_pa_all):

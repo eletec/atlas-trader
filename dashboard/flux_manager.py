@@ -326,6 +326,8 @@ digraph pipeline {{
         AF [label="{_lbl('agent_fundamental', 'Fundamental')}", fillcolor="{_color('agent_fundamental')}"]
         AS [label="{_lbl('agent_x_sentiment', 'X Sentiment')}",  fillcolor="{_color('agent_x_sentiment')}"]
         AC [label="{_lbl('agent_contrarian', 'Contrarian')}",    fillcolor="{_color('agent_contrarian')}"]
+        FG [label="{_lbl('agent_fear_greed', 'Fear & Greed')}",  fillcolor="{_color('agent_fear_greed')}"]
+        PO [label="{_lbl('agent_polymarket', 'Polymarket')}",    fillcolor="{_color('agent_polymarket')}"]
         SY [label="{_lbl('synthesis', 'Synthesis')}",           fillcolor="{_color('synthesis')}"]
     }}
 
@@ -346,9 +348,13 @@ digraph pipeline {{
     MF -> AF
     MF -> AS
     MF -> AC
+    MF -> FG
+    MF -> PO
     AF -> SY
     AS -> SY
     AC -> SY
+    FG -> SY
+    PO -> SY
     SY -> PT
     PT -> PM
     PM -> MF [style=dashed, color="#555"]

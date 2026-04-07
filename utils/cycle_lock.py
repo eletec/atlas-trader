@@ -18,7 +18,7 @@ logger = logging.getLogger("zeitgeist.cycle_lock")
 _IN_CONTAINER = os.path.exists("/app")
 _LOCK_DIR = Path("/tmp") if _IN_CONTAINER else Path(__file__).resolve().parent.parent / "storage"
 _LOCK_FILE = _LOCK_DIR / "atlas_cycle.lock"  # global fallback (backward compat)
-_MAX_CYCLE_DURATION = 600  # seconds — stale lock threshold
+_MAX_CYCLE_DURATION = 300  # seconds — stale lock threshold (cycles ~90s, 300s = ample marge)
 
 
 def _lock_path(asset: str | None = None) -> Path:
@@ -77,7 +77,32 @@ def release(asset: str | None = None):
 
 
 def is_locked(asset: str | None = None) -> bool:
-    """Check if a cycle is currently running for `asset` (non-stale lock exists)."""
+    """Check if a cycle is currently running for `asset` (non-stale lock exists).
+    Si asset=None, retourne True si N'IMPORTE quel actif a un cycle actif
+    (V2 utilise des locks par actif : atlas_cycle_BTC_USDT.lock, etc.)
+    """
+    if asset is None:
+        # Chercher tout lock actif parmi les actifs V2
+        import glob as _glob
+        for lf in _glob.glob(str(_LOCK_DIR / "atlas_cycle_*.lock")):
+            try:
+                content = Path(lf).read_text().strip().split("\n")
+                ts = float(content[1])
+                if (time.time() - ts) < _MAX_CYCLE_DURATION:
+                    return True
+            except Exception:
+                pass
+        # Fallback : lock global legacy
+        lock_file = _lock_path(None)
+        if not lock_file.exists():
+            return False
+        try:
+            content = lock_file.read_text().strip().split("\n")
+            ts = float(content[1])
+            return (time.time() - ts) < _MAX_CYCLE_DURATION
+        except Exception:
+            return False
+
     lock_file = _lock_path(asset)
     if not lock_file.exists():
         return False

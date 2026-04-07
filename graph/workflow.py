@@ -220,7 +220,7 @@ def node_run_mirofish(state: ZeitgeistState) -> dict:
 
     try:
         from agents.mirofish_wrapper import MiroFishWrapper
-        wrapper = MiroFishWrapper()
+        wrapper = MiroFishWrapper(asset=state.get("asset"))
         seed = wrapper.prepare_seed(state["news_items"], state["air_du_temps"])
         result = wrapper.run_simulation(seed)
         latency_ms = int((time.time() - t0) * 1000)
@@ -675,6 +675,27 @@ def should_continue_after_news(state: ZeitgeistState) -> str:
     return "abort"
 
 
+def node_log_hold(state: ZeitgeistState) -> dict:
+    """Nœud terminal HOLD : log la décision sans exécuter de trade.
+    Route d'arrivée quand circuit breaker actif ou score insuffisant.
+    Sans ce nœud le branchement 'hold → END' court-circuitait log_decision.
+    """
+    from storage.database import log_decision
+    from utils.logger import log_flux_metric
+    # S'assurer qu'il y a un objet decision HOLD minimal dans le state
+    if not state.get("decision"):
+        state = {**state, "decision": {
+            "action": "HOLD", "position_size_usd": 0,
+            "sl_price": 0, "tp_price": 0, "entry_price": 0,
+        }}
+    try:
+        log_decision(state["cycle_id"], state)
+        log_flux_metric("paper_trader", "hold", 0, 0)
+    except Exception as exc:
+        logger.error(f"[{state['cycle_id']}] node_log_hold — log_decision failed: {exc}")
+    return {"trade_executed": False}
+
+
 def should_execute(state: ZeitgeistState) -> str:
     """Si circuit breaker actif → forcer HOLD."""
     from decision_engine import RiskEngine
@@ -707,6 +728,7 @@ def build_workflow() -> StateGraph:
     graph.add_node("calculate_score", node_calculate_score)
     graph.add_node("decide", node_decide)
     graph.add_node("execute", node_execute)
+    graph.add_node("log_hold", node_log_hold)
 
     # Point d'entrée
     graph.set_entry_point("fetch_news")
@@ -727,8 +749,9 @@ def build_workflow() -> StateGraph:
     graph.add_conditional_edges(
         "decide",
         should_execute,
-        {"execute": "execute", "hold": END}
+        {"execute": "execute", "hold": "log_hold"}
     )
+    graph.add_edge("log_hold", END)
     graph.add_edge("execute", END)
 
     return graph.compile()

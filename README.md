@@ -1,13 +1,13 @@
 # Atlas Trader 🤖
 
-> Autonomous AI trading system — Paper Trading BTC/USDT  
-> MiroFish Swarm · LangGraph Agents · HMM Market Regime · Kelly Sizing
+> Autonomous AI trading system — **Multi-Asset Paper Trading** (BTC · ETH · XAU · EUR · GBP)  
+> MiroFish Swarm · LangGraph Agents · HMM Market Regime · Kelly Sizing · Per-Asset Configuration
 
 ---
 
 ## Overview
 
-**Atlas Trader** is a fully autonomous paper-trading system that combines multiple AI layers to generate high-conviction trading signals for BTC/USDT (Binance testnet).
+**Atlas Trader** is a fully autonomous paper-trading system that combines multiple AI layers to generate high-conviction trading signals across **5 assets** (BTC/USDT · ETH/USDT · XAU/USD · EUR/USD · GBP/USD). Each asset runs its own independent configuration, risk profile, and regime monitoring.
 
 The system runs on a **15-minute loop** by default:
 1. Crawls the web to capture the *air du temps* (news, macro, social signals)
@@ -23,14 +23,15 @@ The system runs on a **15-minute loop** by default:
 | Feature | Description |
 |---------|-------------|
 | 🧠 **Multi-agent LLM** | 7 specialized agents orchestrated by LangGraph |
-| 🐟 **MiroFish Swarm** | 5,000 simulated agents, quantified sentiment score |
-| 📡 **Web Crawling** | Free DuckDuckGo + Tavily/Firecrawl, 10 themes × 10 pages |
-| 📊 **Market Regime** | HMM (hmmlearn) + ADX/DI± — 4 regimes: TRENDING/SIDEWAYS/HIGH_VOL |
+| 🐟 **MiroFish Swarm** | 5,000 simulated agents, quantified sentiment score — **per-asset seed/air weights** |
+| 📡 **Web Crawling** | Free DuckDuckGo + Tavily/Firecrawl, 10 themes × 10 pages — **per-asset templates** |
+| 📊 **Market Regime** | HMM (hmmlearn) + ADX/DI± — 4 regimes: TRENDING/SIDEWAYS/HIGH_VOL — **per-asset cards** |
 | 🥊 **Bull/Bear Debate** | Two parallel LLM calls debating bull vs bear thesis before synthesis |
 | 🔗 **On-chain Metrics** | blockchain.info · mempool.space · CoinGecko (free APIs, no key) |
-| ⚖️ **Risk Engine** | Fractional Kelly, dynamic sizing, 4 size multipliers |
+| ⚖️ **Risk Engine** | Fractional Kelly, dynamic sizing, 4 size multipliers — **per-asset thresholds** |
 | 🛡️ **Circuit Breakers** | Funding rate (3 levels), max drawdown, gradual MA50 filter |
-| 📈 **Dashboard** | Real-time Streamlit, regime badge, P&L, logs, 2FA-protected Admin |
+| 📈 **Dashboard** | Real-time Streamlit, per-asset regime cards, P&L, logs, 2FA Admin |
+| 🎯 **Per-Asset Config** | Independent YAML per asset — risk, regime, MiroFish, scoring, agents, keywords |
 | 🌐 **i18n** | Full UI in 8 languages: FR · EN · DE · ES · IT · PT · NL · ZH |
 | 🐳 **Docker** | Supervisord multi-process, healthcheck, NAS-ready |
 | 📉 **Backtesting** | Historical simulation with per-regime metrics, HMM 2 vs 3 states |
@@ -313,13 +314,25 @@ All three restart automatically (`startretries=100`).
 
 ---
 
-## Configuration (`config/settings.yaml`)
+## Configuration
 
-All parameters are editable live via the **Admin interface** in the dashboard.
+Atlas Trader uses a **two-layer config system**:
+
+- `config/settings.yaml` — global defaults (LLM provider, loop interval, global risk, agents)
+- `config/assets/{slug}.yaml` — **per-asset overrides** (`BTC_USDT.yaml`, `ETH_USDT.yaml`, `XAU_USD.yaml`, `EUR_USD.yaml`, `GBP_USD.yaml`)
+
+Per-asset files deep-merge over the global defaults. If an asset key is absent, the global value applies. All parameters are editable live via the **Admin interface → 🎯 Par Actif** tab.
+
+### `config/settings.yaml` (global defaults)
 
 ```yaml
 project:
-  asset: "BTC/USDT"
+  active_assets:
+    - "BTC/USDT"
+    - "ETH/USDT"
+    - "XAU/USD"
+    - "EUR/USD"
+    - "GBP/USD"
   loop_interval_seconds: 900    # 15 min
 
 scoring:
@@ -356,6 +369,35 @@ agents:
     enabled: false               # enable for narrative-enriched synthesis
 ```
 
+### `config/assets/BTC_USDT.yaml` (per-asset example)
+
+```yaml
+risk:
+  buy_threshold: 62
+  exit_threshold: 52
+  kelly_max_fraction: 0.25
+  ma50_filter_mode: gradual
+
+market_regime:
+  adx_period: 18
+  vol_window: 30
+
+mirofish:
+  seed_news_weight: 0.70          # weight of fresh news in MiroFish swarm
+  air_du_temps_weight: 0.30       # weight of ambient context
+
+news:
+  keywords:
+    - "bitcoin"
+    - "BTC"
+    - "crypto"
+  x_keywords:
+    - "bitcoin"
+    - "BTC"
+    - "halving"
+    - "whale"
+```
+
 ---
 
 ## Dashboard
@@ -376,9 +418,20 @@ The Streamlit dashboard (`http://localhost:8501`) provides:
 
 **Admin view (2FA protected)**
 - All `settings.yaml` parameters editable inline
+- **🎯 Par Actif** — per-asset configuration panel with tabs (₿ BTC · ⟠ ETH · ◎ XAU · € EUR · £ GBP):
+  - Général & scoring weights
+  - Risk & Seuils (buy/exit thresholds, Kelly, MA50 mode, drawdown)
+  - Circuit Breaker (funding levels, HIGH_VOL CB threshold)
+  - Agents (per-agent toggles, keywords injected into LLM context)
+  - Market Regime (ADX period, vol window, HMM states)
+  - **🐟 MiroFish** — `seed_news_weight` / `air_du_temps_weight` per asset
+  - Crawler templates per asset
+- **📰 News / 🕷 Crawler / 📡 Sources** — tabbed interface per asset (no more selectbox)
+  - Sources: RSS feeds, Nitter, Reddit, **CryptoPanic toggle** (BTC/ETH only)
+  - News: keywords per asset (used in fetching + X Sentiment LLM context)
+- **📊 Market Regime** — 5 per-asset cards showing: regime, HMM%, direction pressure, ADX+DI±, vol (relative + annualized), HMM posteriors, last 5 cycles history with %
 - Per-agent enable/disable toggles
 - LLM cost monitoring (tokens/cycle)
-- Crawler template management
 - **Exchange settings**: paper capital (`paper_capital_usd`) and testnet toggle
 - **LLM sandbox**: run an ad-hoc prompt against the configured provider directly from the Admin UI
 - User management (roles, password reset, 2FA reset)
@@ -430,8 +483,14 @@ zeitgeist-trader/
 │   └── core.py                      # Swarm simulation wrapper
 │
 ├── config/
-│   ├── settings.yaml                # Main configuration
-│   └── prompts.yaml                 # LLM prompt templates
+│   ├── settings.yaml                # Global configuration (defaults for all assets)
+│   ├── prompts.yaml                 # LLM prompt templates
+│   └── assets/                      # Per-asset overrides (deep-merged over settings.yaml)
+│       ├── BTC_USDT.yaml
+│       ├── ETH_USDT.yaml
+│       ├── XAU_USD.yaml
+│       ├── EUR_USD.yaml
+│       └── GBP_USD.yaml
 │
 └── utils/
     ├── config.py                    # Config loading + validation

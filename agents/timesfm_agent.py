@@ -59,36 +59,44 @@ def _timesfm_worker(closes_list: list, backend: str, horizon: int) -> tuple[list
 
 
 # ── Pool de processus persistant (1 worker — modèle reste en mémoire) ────────
+# SINGLETON : un seul pool partagé entre tous les actifs (5 assets × 2GB = OOM sinon)
+# Le sémaphore garantit qu'un seul actif soumet au worker à la fois.
+import threading as _threading
 _PROC_POOL = None
+_POOL_LOCK = _threading.Lock()           # protège la création du pool
+_TFM_SEMAPHORE = _threading.Semaphore(1) # 1 seul appel TimesFM en parallèle
 
 
 def _get_pool():
-    """Retourne le pool existant ou en crée un nouveau."""
+    """Retourne le pool singleton (crée-le si besoin, thread-safe)."""
     global _PROC_POOL
     if _PROC_POOL is None:
-        import multiprocessing as _mp
-        from concurrent.futures import ProcessPoolExecutor
-        _PROC_POOL = ProcessPoolExecutor(
-            max_workers=1,
-            mp_context=_mp.get_context("spawn"),  # toujours spawn — évite fork+PyTorch
-        )
+        with _POOL_LOCK:
+            if _PROC_POOL is None:  # double-check sous lock
+                import multiprocessing as _mp
+                from concurrent.futures import ProcessPoolExecutor
+                _PROC_POOL = ProcessPoolExecutor(
+                    max_workers=1,
+                    mp_context=_mp.get_context("spawn"),  # toujours spawn — évite fork+PyTorch
+                )
     return _PROC_POOL
 
 
 def _reset_pool():
-    """Détruit le pool crashé et en crée un neuf."""
+    """Détruit le pool crashé et en crée un neuf (thread-safe)."""
     global _PROC_POOL
-    if _PROC_POOL is not None:
-        try:
-            _PROC_POOL.shutdown(wait=False)
-        except Exception:
-            pass
-    import multiprocessing as _mp
-    from concurrent.futures import ProcessPoolExecutor
-    _PROC_POOL = ProcessPoolExecutor(
-        max_workers=1,
-        mp_context=_mp.get_context("spawn"),
-    )
+    with _POOL_LOCK:
+        if _PROC_POOL is not None:
+            try:
+                _PROC_POOL.shutdown(wait=False)
+            except Exception:
+                pass
+        import multiprocessing as _mp
+        from concurrent.futures import ProcessPoolExecutor
+        _PROC_POOL = ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=_mp.get_context("spawn"),
+        )
 
 
 class TimesFMAgent:
@@ -126,22 +134,31 @@ class TimesFMAgent:
             logger.info(f"TimesFM: {len(closes)} candles récupérées (last={closes[-1]:.2f})")
 
             # Soumettre au processus enfant (spawn) — isolé du daemon
-            # Premier appel : enfant démarre + charge le modèle (~2-5 min)
-            # Appels suivants : enfant réutilisé, modèle déjà en mémoire (cache)
-            logger.info("TimesFM: Soumission au processus enfant (subprocess isolé)...")
-            pool = _get_pool()
-            fut = pool.submit(_timesfm_worker, closes.tolist(), self._backend, self._horizon)
+            # Sémaphore global : 1 seul actif à la fois utilise le worker
+            # (évite 5×2GB RAM en simultané avec 5 actifs parallèles)
+            asset = state.get("asset", "?")
+            logger.info(f"TimesFM [{asset}]: attente sémaphore (1 worker partagé)...")
+            acquired = _TFM_SEMAPHORE.acquire(timeout=360)  # attend max 6min
+            if not acquired:
+                logger.warning(f"TimesFM [{asset}]: timeout sémaphore 360s — fallback")
+                return self._fallback("semaphore timeout")
             try:
-                point_list, quant_list = fut.result(timeout=300)
-            except BrokenProcessPool:
-                # L'enfant a été tué (OOM/segfault) — on recrée le pool, daemon intact
-                logger.error("TimesFM: processus enfant tué (OOM/segfault) — pool réinitialisé")
-                _reset_pool()
-                return self._fallback("subprocess killed (OOM/segfault)")
-            except TimeoutError:
-                logger.error("TimesFM: timeout 300s — pool réinitialisé")
-                _reset_pool()
-                return self._fallback("subprocess timeout (300s)")
+                logger.info(f"TimesFM [{asset}]: sémaphore acquis — soumission au worker...")
+                pool = _get_pool()
+                fut = pool.submit(_timesfm_worker, closes.tolist(), self._backend, self._horizon)
+                try:
+                    point_list, quant_list = fut.result(timeout=300)
+                except BrokenProcessPool:
+                    logger.error("TimesFM: processus enfant tué (OOM/segfault) — pool réinitialisé")
+                    _reset_pool()
+                    return self._fallback("subprocess killed (OOM/segfault)")
+                except TimeoutError:
+                    logger.error("TimesFM: timeout 300s — pool réinitialisé")
+                    _reset_pool()
+                    return self._fallback("subprocess timeout (300s)")
+            finally:
+                _TFM_SEMAPHORE.release()
+                logger.info(f"TimesFM [{asset}]: sémaphore libéré")
 
             point_forecast = np.array(point_list)
             quantile_forecast = np.array(quant_list)

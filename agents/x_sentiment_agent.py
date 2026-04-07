@@ -45,11 +45,12 @@ class XSentimentAgent:
             self._keywords = None
 
         items = news_items[:20]
+        keywords = self._keywords or []
         try:
-            result = self._analyze_with_llm(items)
+            result = self._analyze_with_llm(items, keywords)
         except Exception as exc:
             logger.warning(f"LLM sentiment fallback (lexical): {exc}")
-            result = self._analyze_lexical(items)
+            result = self._analyze_lexical(items, keywords)
 
         logger.debug(
             f"Sentiment score={result['score']:.0f} signal={result['signal']} "
@@ -57,20 +58,27 @@ class XSentimentAgent:
         )
         return result
 
-    def _analyze_with_llm(self, news_items: list[dict]) -> dict:
-        """Appel Claude Haiku pour une analyse sentiment consciente du contexte crypto."""
+    def _analyze_with_llm(self, news_items: list[dict], keywords: list[str] | None = None) -> dict:
+        """Appel Claude Haiku pour une analyse sentiment consciente du contexte de l'actif."""
         titles = "\n".join(
             f"- {n.get('title', '')}" for n in news_items if n.get("title")
         )
         n = len(news_items)
+        kw_hint = ""
+        if keywords:
+            kw_hint = (
+                f"Mots-clés contextuels pour cet actif : {', '.join(keywords[:15])}.\n"
+                "Pondère davantage les titres qui concernent ces thèmes spécifiques.\n"
+            )
         prompt = (
-            f"Analyse le sentiment de ces {n} titres de news crypto/Bitcoin.\n\n"
+            f"Analyse le sentiment de ces {n} titres de news financières.\n\n"
+            f"{kw_hint}"
             f"{titles}\n\n"
             "Reponds en JSON strict :\n"
             '{"score": <0-100>, "signal": "BULLISH"|"NEUTRAL"|"BEARISH", '
             '"dominant_themes": ["..."], "confidence": <0.0-1.0>}\n\n'
-            "Score : 0=tres baissier, 50=neutre, 100=tres haussier. "
-            "Tiens compte du vocabulaire crypto (rekt=bearish, ath=bullish, hodl=neutre, etc.)"
+            "Score : 0=très baissier, 50=neutre, 100=très haussier.\n"
+            "Adapte ton analyse au contexte de l'actif (crypto, or, forex…) selon les mots-clés fournis."
         )
 
         provider = self._llm_cfg.get("provider", "anthropic")
@@ -127,17 +135,22 @@ class XSentimentAgent:
         }
 
     @staticmethod
-    def _analyze_lexical(news_items: list[dict]) -> dict:
+    def _analyze_lexical(news_items: list[dict], keywords: list[str] | None = None) -> dict:
         """Fallback lexical si le LLM est indisponible."""
-        positive = ["bull", "rally", "growth", "gain", "pump", "ath", "adoption", "etf"]
-        negative = ["bear", "crash", "loss", "dump", "fear", "hack", "ban", "rekt"]
+        positive = ["bull", "rally", "growth", "gain", "pump", "ath", "adoption", "etf",
+                    "rise", "surge", "record", "strong", "beat", "hawkish"]
+        negative = ["bear", "crash", "loss", "dump", "fear", "hack", "ban", "rekt",
+                    "fall", "drop", "weak", "miss", "dovish", "recession", "risk"]
+        # Mots-clés spécifiques à l'actif : on double leur poids s'ils matchent
+        asset_kw = [k.lower() for k in (keywords or [])]
         scores = []
         for item in news_items:
             text = (item.get("title", "") + " " + item.get("summary", "")).lower()
+            relevance = 2.0 if asset_kw and any(k in text for k in asset_kw) else 1.0
             pos = sum(1 for w in positive if w in text)
             neg = sum(1 for w in negative if w in text)
             total = pos + neg + 1
-            scores.append((pos - neg) / total)
+            scores.append(((pos - neg) / total) * relevance)
 
         mean = sum(scores) / len(scores) if scores else 0.0
         normalized = round((mean + 1) / 2 * 100, 1)

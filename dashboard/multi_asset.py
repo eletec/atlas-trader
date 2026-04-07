@@ -195,12 +195,17 @@ def render_global_live_prices() -> None:
 # Composant 2 : Onglets par actif
 # ---------------------------------------------------------------------------
 
-def render_asset_tabs(render_fn: Callable[[str], None], global_fn: "Callable[[], None] | None" = None) -> None:
+def render_asset_tabs(
+    render_fn: Callable[[str], None],
+    global_fn: "Callable[[], None] | None" = None,
+    pre_global_fn: "Callable[[], None] | None" = None,
+) -> None:
     """
     Crée les onglets [🌐 Global | ₿ BTC/USDT | ⟠ ETH/USDT | …]
     et appelle render_fn(asset) pour chaque onglet actif.
     Si un seul actif est actif, passe directement à render_fn sans onglets.
-    global_fn : si fourni, appelé dans l'onglet Global après le tableau de synthèse.
+    pre_global_fn : si fourni, appelé AVANT le tableau de synthèse (ex: Portefeuille).
+    global_fn    : si fourni, appelé après le tableau de synthèse + live prices.
     """
     import streamlit as st
 
@@ -216,6 +221,8 @@ def render_asset_tabs(render_fn: Callable[[str], None], global_fn: "Callable[[],
     tabs = st.tabs(tab_labels)
 
     with tabs[0]:
+        if pre_global_fn is not None:
+            pre_global_fn()
         render_global_overview()
         render_global_live_prices()
         if global_fn is not None:

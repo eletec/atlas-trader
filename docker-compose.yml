@@ -67,6 +67,7 @@ services:
       - ./config/settings.yaml:/app/config/settings.yaml:rw
       - ./config/prompts.yaml:/app/config/prompts.yaml:ro
       - ./config/profiles.yaml:/app/config/profiles.yaml:ro
+      - ./config/assets:/app/config/assets:rw
       # Config Streamlit (thème, toolbar…)
       - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
       # Montage du code source — permet les mises a jour sans rebuild

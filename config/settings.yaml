@@ -17,66 +17,180 @@ crawler:
   frequency: per_cycle
   llm_summarizer_model: claude-3-5-haiku-20241022
   request_timeout_seconds: 15
-  templates:
-  - '{asset} macro outlook {year}'
-  - geopolitics energy price {year}
-  - inflation central bank policy {year}
-  - crypto regulation news {year}
-  - tech innovation AI disruption {year}
-  - global market sentiment {year}
-  - DeFi on-chain activity {year}
-  - institutional crypto adoption {year}
-  - risk-off risk-on sentiment {year}
-  - blockchain network metrics {year}
+
+  # ── Templates macro — pertinents pour TOUS les actifs ────────────────────
+  templates_macro:
+  - 'geopolitics energy price {year}'
+  - 'inflation central bank policy {year}'
+  - 'global market sentiment {year}'
+  - 'risk-off risk-on sentiment {year}'
+  - 'USD dollar index outlook {year}'
+  - 'recession financial crisis risk {year}'
+
+  # ── Templates par actif dans config/assets/{slug}.yaml ───────────────────
+  # (clé : crawler.templates)
+  # Fallback legacy — ignoré si templates_macro + assets définis
+  templates: []
 news:
   polling_interval_seconds: 1800
-  keywords_per_asset:
-    BTC/USDT:
-    - bitcoin
-    - BTC
-    - crypto
-    - blockchain
-    - halving
-    - ETF
-  sources_rss:
-  - https://feeds.feedburner.com/CoinDesk
-  - https://cointelegraph.com/rss
-  - https://cryptonews.com/news/feed/
-  - https://bitcoinmagazine.com/.rss/full/
-  - https://decrypt.co/feed
-  - https://www.theblock.co/rss.xml
-  - https://ambcrypto.com/feed/
-  - https://news.8btc.com/feed
-  - https://www.coindesk.com/arc/outboundfeeds/rss/
-  - https://en.caixin.com/rss/finance.xml
-  - https://forklog.com/feed/
-  - https://bits.media/rss/
-  - https://feeds.zerohedge.com/feeds/zerohedge.xml
-  - https://www.rt.com/rss/business/
-  - https://www.scmp.com/rss/92/feed
-  - https://feeds.bbci.co.uk/news/business/rss.xml
-  - https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best
-  - https://asia.nikkei.com/rss/feed/technology
   max_items_per_cycle: 30
   relevance_score_threshold: 0.4
-  sources_nitter:
-  - saylor
-  - BitcoinMagazine
-  - whale_alert
-  - woonomic
-  - CryptoHayes
-  - RayDalio
-  - zerohedge
-  - LynAldenContact
-  - WuBlockchain
-  - colin_wu_
-  sources_reddit:
-  - Bitcoin
-  - CryptoCurrency
-  - btc
+
+  # ── Sources macro — pertinentes pour TOUS les actifs ──────────────────────
+  # Géopolitique, banques centrales, économie globale, marchés actions
+  sources_rss_macro:
+  - https://feeds.bbci.co.uk/news/business/rss.xml
+  - https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best
+  - https://feeds.zerohedge.com/feeds/zerohedge.xml
+  - https://www.scmp.com/rss/92/feed
+  - https://asia.nikkei.com/rss/feed/technology
+  - https://www.rt.com/rss/business/
+  - https://en.caixin.com/rss/finance.xml
+
+  # ── Configuration spécifique par actif ────────────────────────────────────
+  # Chaque actif a ses propres mots-clés, sources RSS, comptes Twitter/X et subreddits.
+  # Le scorer de pertinence utilise uniquement les keywords de l'actif courant.
+  sources_per_asset:
+    BTC/USDT:
+      keywords:
+      - bitcoin
+      - BTC
+      - crypto
+      - blockchain
+      - halving
+      - ETF
+      - Satoshi
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://cryptonews.com/news/feed/
+      - https://bitcoinmagazine.com/.rss/full/
+      - https://decrypt.co/feed
+      - https://www.theblock.co/rss.xml
+      - https://ambcrypto.com/feed/
+      - https://news.8btc.com/feed
+      - https://www.coindesk.com/arc/outboundfeeds/rss/
+      - https://forklog.com/feed/
+      - https://bits.media/rss/
+      nitter:
+      - saylor
+      - BitcoinMagazine
+      - whale_alert
+      - woonomic
+      - CryptoHayes
+      - RayDalio
+      - LynAldenContact
+      - WuBlockchain
+      - colin_wu_
+      reddit:
+      - Bitcoin
+      - CryptoCurrency
+      - btc
+
+    ETH/USDT:
+      keywords:
+      - ethereum
+      - ETH
+      - DeFi
+      - EIP
+      - layer2
+      - staking
+      - smart contract
+      - Vitalik
+      - Pectra
+      rss:
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
+      - https://www.theblock.co/rss.xml
+      - https://beincrypto.com/feed/
+      nitter:
+      - VitalikButerin
+      - sassal0x
+      - EthereumJoseph
+      - DefiLlama
+      - LefterisJP
+      reddit:
+      - ethereum
+      - ethfinance
+      - ethtrader
+
+    XAU/USD:
+      keywords:
+      - gold
+      - XAU
+      - precious metals
+      - inflation
+      - Fed
+      - interest rate
+      - safe haven
+      - commodities
+      - XAUUSD
+      - central bank
+      rss:
+      - https://www.kitco.com/rss/kitcogoldrss.xml
+      - https://www.fxstreet.com/rss/news
+      nitter:
+      - KitcoNews
+      - GoldTelegraph_
+      - LynAldenContact
+      - zerohedge
+      reddit:
+      - Gold
+      - investing
+      - Economics
+
+    EUR/USD:
+      keywords:
+      - euro
+      - EUR
+      - ECB
+      - eurozone
+      - European Central Bank
+      - dollar
+      - DXY
+      - Lagarde
+      - EURUSD
+      - inflation
+      rss:
+      - https://www.fxstreet.com/rss/news
+      - https://www.forexlive.com/feed/news
+      nitter:
+      - Lagarde
+      - BundesbankDE
+      - ecb
+      - EurActiv
+      reddit:
+      - Forex
+      - investing
+      - europe
+
+    GBP/USD:
+      keywords:
+      - pound
+      - GBP
+      - sterling
+      - Bank of England
+      - BoE
+      - UK economy
+      - GBPUSD
+      - Brexit
+      rss:
+      - https://www.fxstreet.com/rss/news
+      - https://www.forexlive.com/feed/news
+      nitter:
+      - bankofengland
+      - BBCBusiness
+      reddit:
+      - Forex
+      - unitedkingdom
+
   cryptopanic:
     enabled: true
     max_items: 15
+    # Mapping actif → code devise CryptoPanic (actifs non-crypto ignorés automatiquement)
+    asset_currency_map:
+      BTC/USDT: BTC
+      ETH/USDT: ETH
 mirofish:
   n_agents: 5000
   n_steps: 100

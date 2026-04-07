@@ -1,4 +1,4 @@
-asset: XAU/USD
+asset: GBP/USD
 exchange: oanda
 testnet: true
 paper_capital_usd: 5000
@@ -8,18 +8,18 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: conservative
-  buy_threshold: 58
-  exit_threshold: 48
-  kelly_max_fraction: 0.15
-  position_size_pct: 3.0
+  buy_threshold: 57
+  exit_threshold: 46
+  kelly_max_fraction: 0.12
+  position_size_pct: 2.0
   max_open_positions: 2
   atr_multiplier_sl: 1.5
-  atr_multiplier_tp: 2.5
+  atr_multiplier_tp: 2.0
   atr_period: 14
-  max_drawdown_pct: 10.0
+  max_drawdown_pct: 8.0
   ma50_filter_mode: strict
-  ma50_strong_signal_threshold: 70
-  ma50_gradual_size_factor: 0.6
+  ma50_strong_signal_threshold: 68
+  ma50_gradual_size_factor: 0.5
   human_in_the_loop: false
 circuit_breaker:
   funding_warning: 0.0
@@ -28,13 +28,13 @@ circuit_breaker:
   max_reduction: 0.0
 scoring:
   weights:
-    mirofish: 0.08
-    market: 0.35
-    agents: 0.42
+    mirofish: 0.05
+    market: 0.3
+    agents: 0.5
     contrarian: 0.15
 market_regime:
   n_hmm_states: 2
-  vol_window: 30
+  vol_window: 20
   trend_window: 50
   adx_period: 14
 agents:
@@ -42,23 +42,28 @@ agents:
     enabled: true
   fundamental:
     enabled: true
-    provider: gold_fundamental
+    provider: forex_fundamental
     on_chain_enabled: false
   economic_calendar:
     enabled: true
     high_impact_only: true
+  central_bank:
+    enabled: true
   x_sentiment:
     enabled: true
     keywords:
-    - gold
-    - XAU
-    - inflation
-    - CPI
+    - euro
+    - EUR
+    - ECB
+    - BCE
+    - Lagarde
     - Fed
-    - rate hike
+    - Powell
     - USD
-    - safe haven
-    - geopolitics
+    - dollar
+    - rate
+    - inflation
+    - parity
   contrarian:
     enabled: true
   fear_greed:
@@ -79,17 +84,17 @@ dashboard:
     economic_calendar: true
     dxy_gauge: true
     session_clock: true
-    gold_spot_chart: true
+    interest_rate_diff: true
+    cot_positioning: true
 crawler:
   templates:
-  - '{asset} gold price outlook {year}'
-  - gold safe haven demand {year}
-  - central bank gold reserves {year}
-  - real interest rates gold {year}
-  - inflation hedge precious metals {year}
-  - gold ETF flows {year}
-  - USD strength gold correlation {year}
-  - geopolitics gold demand {year}
+  - GBP USD outlook {year}
+  - Bank of England interest rate {year}
+  - UK economy recession risk {year}
+  - sterling dollar forecast {year}
+  - UK inflation GDP data {year}
+  - GBP USD technical analysis {year}
+  - Brexit trade impact UK economy {year}
 mirofish:
-  seed_news_weight: 0.5
-  air_du_temps_weight: 0.5
+  seed_news_weight: 0.4
+  air_du_temps_weight: 0.6

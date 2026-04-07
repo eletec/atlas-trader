@@ -20,9 +20,9 @@ class MiroFishWrapper:
     de fallback déterministe basé sur l'analyse du seed texte.
     """
 
-    def __init__(self):
-        from utils.config import load_settings
-        cfg = load_settings()
+    def __init__(self, asset: str | None = None):
+        from utils.config import load_settings, load_asset_config
+        cfg = load_asset_config(asset) if asset else load_settings()
         mf = cfg.get("mirofish", {})
         self.n_agents: int = mf.get("n_agents", 5000)
         self.n_steps: int = mf.get("n_steps", 100)

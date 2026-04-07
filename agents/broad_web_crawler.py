@@ -20,17 +20,30 @@ class BroadWebCrawler:
         self.fallback: str = crawler_cfg.get("fallback_provider", "serpapi")
         self.n_themes: int = crawler_cfg.get("n_themes", 10)
         self.max_pages: int = crawler_cfg.get("max_pages_per_theme", 10)
-        self.templates: list = crawler_cfg.get("templates", [])
         self.timeout: int = crawler_cfg.get("request_timeout_seconds", 15)
         self.llm_model: str = crawler_cfg.get("llm_summarizer_model",
                                                 "claude-3-5-haiku-20241022")
+        # Templates macro communs (fallback sur ancienne clé 'templates' pour compat)
+        self._templates_macro: list = (
+            crawler_cfg.get("templates_macro")
+            or crawler_cfg.get("templates", [])
+        )
 
     def crawl_themes(self, asset: str = "BTC/USDT") -> list[dict]:
         """Crawle tous les thèmes configurés et retourne les documents bruts."""
         year = datetime.utcnow().year
+
+        # Résoudre les templates : macro + spécifiques à l'actif
+        try:
+            from utils.config import load_asset_config
+            asset_cfg = load_asset_config(asset)
+            asset_templates: list = asset_cfg.get("crawler", {}).get("templates", [])
+        except Exception:
+            asset_templates = []
+        templates = self._templates_macro + asset_templates
         docs = []
 
-        for template in self.templates[:self.n_themes]:
+        for template in templates[:self.n_themes]:
             # S7: rejette les templates contenant des patterns d'IP privée (SSRF)
             _t_lower = template.lower()
             if any(p in _t_lower for p in ("localhost", "127.0.", "192.168.", "10.", "172.16.", "file://", "gopher://")):
@@ -44,7 +57,7 @@ class BroadWebCrawler:
             except Exception as exc:
                 logger.warning(f"Thème '{query}' échoué: {exc}")
 
-        logger.info(f"Crawler: {len(docs)} thèmes récupérés")
+        logger.info(f"Crawler: {len(docs)} thèmes récupérés ({len(self._templates_macro)} macro + {len(asset_templates)} spécifiques {asset})")
         return docs
 
     def _search(self, query: str) -> list[dict]:

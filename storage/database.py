@@ -17,7 +17,7 @@ logger = logging.getLogger("zeitgeist.db")
 
 # Chemin de la DB (configurable)
 _DB_PATH = Path("storage/zeitgeist.db")
-_lock = threading.Lock()
+_lock = threading.RLock()  # RLock (réentrant) — évite le deadlock si logger appelle get_connection()
 
 
 # ===========================================================
@@ -147,8 +147,30 @@ def init_db(db_path: str | Path | None = None) -> None:
         conn.execute("PRAGMA synchronous=NORMAL")
         for stmt in DDL_STATEMENTS:
             conn.execute(stmt)
+        # Migrations V1 → V2 : ajouter les colonnes manquantes sans casser l'existant
+        _migrate_v2(conn)
         conn.commit()
     logger.info(f"Base de données initialisée : {_DB_PATH}")
+    _start_sqlite_log_writer()
+
+
+def _migrate_v2(conn) -> None:
+    """Migrations idempotentes V1 → V2 — ajoute les colonnes manquantes."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(decisions)")}
+    migrations = [
+        ("asset",             "ALTER TABLE decisions ADD COLUMN asset TEXT NOT NULL DEFAULT 'BTC/USDT'"),
+        ("weights_snapshot",  "ALTER TABLE decisions ADD COLUMN weights_snapshot TEXT"),
+        ("llm_tokens",        "ALTER TABLE decisions ADD COLUMN llm_tokens INTEGER DEFAULT 0"),
+        ("cycle_duration_ms", "ALTER TABLE decisions ADD COLUMN cycle_duration_ms INTEGER DEFAULT 0"),
+        ("errors",            "ALTER TABLE decisions ADD COLUMN errors TEXT"),
+    ]
+    for col, stmt in migrations:
+        if col not in existing:
+            try:
+                conn.execute(stmt)
+                logger.info(f"Migration DB: colonne '{col}' ajoutée à decisions")
+            except Exception as exc:
+                logger.warning(f"Migration '{col}' ignorée: {exc}")
 
 
 @contextmanager
@@ -406,28 +428,58 @@ def log_flux_metric(
 # LOGS DANS SQLite (handler optionnel)
 # ===========================================================
 
+# File d'attente unique — UN seul thread écrit dans SQLite (évite deadlock + explosion de threads)
+_LOG_QUEUE: "queue.SimpleQueue[logging.LogRecord | None]" = None  # type: ignore[assignment]
+
+
+def _start_sqlite_log_writer() -> None:
+    """Démarre le thread unique d'écriture SQLite des logs (appelé une seule fois)."""
+    import queue as _queue
+    global _LOG_QUEUE
+    if _LOG_QUEUE is not None:
+        return
+    _LOG_QUEUE = _queue.SimpleQueue()
+
+    def _writer():
+        while True:
+            try:
+                record = _LOG_QUEUE.get()
+                if record is None:
+                    break
+                with get_connection() as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO logs (timestamp, level, module, message, context_json)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            datetime.utcfromtimestamp(record.created).isoformat(),
+                            record.levelname,
+                            record.name,
+                            record.getMessage(),
+                            None,
+                        )
+                    )
+                    conn.commit()
+            except Exception:
+                pass  # Ne jamais crasher à cause du logging
+
+    _t = threading.Thread(target=_writer, daemon=True, name="sqlite-log-writer")
+    _t.start()
+
+
 class SQLiteLogHandler(logging.Handler):
-    """Handler logging qui écrit dans la table logs SQLite."""
+    """Handler logging qui écrit dans la table logs SQLite via une queue.
+    emit() est non-bloquant et lock-free : enfile le record, le thread writer l'écrit.
+    Évite tout deadlock (AB-BA avec _lock) et toute explosion de threads.
+    """
 
     def emit(self, record: logging.LogRecord) -> None:
-        try:
-            with get_connection() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO logs (timestamp, level, module, message, context_json)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        datetime.utcfromtimestamp(record.created).isoformat(),
-                        record.levelname,
-                        record.name,
-                        record.getMessage(),
-                        None,
-                    )
-                )
-                conn.commit()
-        except Exception:
-            pass  # Ne jamais crasher à cause du logging
+        if _LOG_QUEUE is not None:
+            try:
+                _LOG_QUEUE.put_nowait(record)
+            except Exception:
+                pass
 
 
 # ===========================================================

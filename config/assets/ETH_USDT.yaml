@@ -1,78 +1,60 @@
-# ============================================================
-# Atlas Trader — Config spécifique ETH/USDT
-# Surcharge les valeurs globales de settings.yaml
-# ============================================================
-
-asset: "ETH/USDT"
-exchange: "binance"
+asset: ETH/USDT
+exchange: binance
 testnet: true
-
-# Capital alloué à cet actif en mode paper trading (USD)
 paper_capital_usd: 5000
-
-loop_interval_seconds: 900    # 15 min
-
+loop_interval_seconds: 900
 monitor:
   interval_seconds: 60
   breaking_news_threshold: 0.65
-
-# ----------------------------------------------------------
-# Risk & Decision Engine
-# ----------------------------------------------------------
 risk:
-  mode: "balanced"
+  mode: balanced
   buy_threshold: 60
   exit_threshold: 50
-  kelly_max_fraction: 0.20
+  kelly_max_fraction: 0.2
   position_size_pct: 4.0
   max_open_positions: 3
   atr_multiplier_sl: 2.0
   atr_multiplier_tp: 3.0
   atr_period: 14
   max_drawdown_pct: 18.0
-  ma50_filter_mode: "gradual"
+  ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
   ma50_gradual_size_factor: 0.5
   human_in_the_loop: false
-
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045
   sustain_period_cycles: 3
   max_reduction: 0.75
-
-# ----------------------------------------------------------
-# Scoring — ETH a un beta plus élevé vs BTC
-# ----------------------------------------------------------
 scoring:
   weights:
-    mirofish: 0.10
+    mirofish: 0.1
     market: 0.38
     agents: 0.34
     contrarian: 0.18
-
-# ----------------------------------------------------------
-# Market Regime
-# ----------------------------------------------------------
 market_regime:
   n_hmm_states: 2
   vol_window: 30
   trend_window: 50
   adx_period: 18
-
-# ----------------------------------------------------------
-# Agents on/off spécifiques ETH
-# ----------------------------------------------------------
 agents:
   market_data:
     enabled: true
   fundamental:
     enabled: true
-    provider: "eth_fundamental"   # → EthFundamentalAgent
+    provider: eth_fundamental
     on_chain_enabled: true
   x_sentiment:
     enabled: true
-    keywords: ["ethereum", "ETH", "EIP", "layer2", "L2", "staking", "DeFi", "Pectra"]
+    keywords:
+    - ethereum
+    - ETH
+    - EIP
+    - layer2
+    - L2
+    - staking
+    - DeFi
+    - Pectra
   contrarian:
     enabled: true
   fear_greed:
@@ -80,15 +62,11 @@ agents:
   polymarket:
     enabled: true
   timesfm:
-    enabled: true
+    enabled: false
   market_regime:
     enabled: true
   bull_bear_debate:
     enabled: false
-
-# ----------------------------------------------------------
-# Dashboard
-# ----------------------------------------------------------
 dashboard:
   widgets:
     funding_rate: true
@@ -100,3 +78,16 @@ dashboard:
     gas_price: true
     staking_yield: true
     defi_tvl: true
+crawler:
+  templates:
+  - '{asset} macro outlook {year}'
+  - ethereum price prediction {year}
+  - DeFi on-chain activity {year}
+  - layer2 scaling adoption {year}
+  - ethereum staking yield {year}
+  - EVM ecosystem developments {year}
+  - crypto regulation news {year}
+  - smart contract security {year}
+mirofish:
+  seed_news_weight: 0.7
+  air_du_temps_weight: 0.3

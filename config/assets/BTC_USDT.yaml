@@ -1,29 +1,13 @@
-# ============================================================
-# Atlas Trader — Config spécifique BTC/USDT
-# Surcharge les valeurs globales de settings.yaml
-# ============================================================
-
-asset: "BTC/USDT"
-exchange: "binance"
+asset: BTC/USDT
+exchange: binance
 testnet: true
-
-# Capital alloué à cet actif en mode paper trading (USD)
-# En mode live, le solde est lu via l'API exchange (fetch_balance)
 paper_capital_usd: 10000
-
-# Intervalle de boucle principale (secondes)
-loop_interval_seconds: 900    # 15 min
-
-# Fast monitor
+loop_interval_seconds: 900
 monitor:
   interval_seconds: 60
   breaking_news_threshold: 0.65
-
-# ----------------------------------------------------------
-# Risk & Decision Engine
-# ----------------------------------------------------------
 risk:
-  mode: "balanced"
+  mode: balanced
   buy_threshold: 62
   exit_threshold: 52
   kelly_max_fraction: 0.25
@@ -33,50 +17,42 @@ risk:
   atr_multiplier_tp: 3.0
   atr_period: 14
   max_drawdown_pct: 15.0
-  ma50_filter_mode: "gradual"
+  ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
   ma50_gradual_size_factor: 0.5
   human_in_the_loop: false
-
-# Circuit breaker funding rate
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045
   sustain_period_cycles: 3
   max_reduction: 0.75
-
-# ----------------------------------------------------------
-# Scoring — poids par actif
-# ----------------------------------------------------------
 scoring:
   weights:
     mirofish: 0.12
-    market: 0.40
-    agents: 0.30
+    market: 0.4
+    agents: 0.3
     contrarian: 0.18
-
-# ----------------------------------------------------------
-# Market Regime
-# ----------------------------------------------------------
 market_regime:
   n_hmm_states: 2
   vol_window: 30
   trend_window: 50
   adx_period: 18
-
-# ----------------------------------------------------------
-# Agents on/off spécifiques à cet actif
-# ----------------------------------------------------------
 agents:
   market_data:
     enabled: true
   fundamental:
     enabled: true
-    provider: "blockchain_info"   # blockchain_info | etherscan | coingecko_only
+    provider: blockchain_info
     on_chain_enabled: true
   x_sentiment:
     enabled: true
-    keywords: ["bitcoin", "BTC", "crypto", "blockchain", "halving", "ETF"]
+    keywords:
+    - bitcoin
+    - BTC
+    - crypto
+    - blockchain
+    - halving
+    - ETF
   contrarian:
     enabled: true
   fear_greed:
@@ -84,15 +60,11 @@ agents:
   polymarket:
     enabled: true
   timesfm:
-    enabled: true
+    enabled: false
   market_regime:
     enabled: true
   bull_bear_debate:
     enabled: false
-
-# ----------------------------------------------------------
-# Dashboard — widgets spécifiques à afficher
-# ----------------------------------------------------------
 dashboard:
   widgets:
     funding_rate: true
@@ -101,3 +73,17 @@ dashboard:
     economic_calendar: false
     dxy_gauge: false
     session_clock: false
+crawler:
+  templates:
+  - '{asset} macro outlook {year}'
+  - bitcoin price prediction {year}
+  - crypto regulation news {year}
+  - DeFi on-chain activity {year}
+  - institutional crypto adoption {year}
+  - blockchain network metrics {year}
+  - tech innovation AI disruption {year}
+  - BTC ETF flows market impact {year}
+  - bitcoin halving cycle analysis {year}
+mirofish:
+  seed_news_weight: 0.7
+  air_du_temps_weight: 0.3

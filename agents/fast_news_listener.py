@@ -59,24 +59,52 @@ class FastNewsListener:
         from utils.config import load_settings
         cfg = load_settings()
         news_cfg = cfg.get("news", {})
-        self.keywords = news_cfg.get("keywords_per_asset", {})
-        self.rss_sources = news_cfg.get("sources_rss", [])
+
+        # ── Sources par actif (nouvelle structure) ─────────────────────────
+        self.sources_per_asset: dict = news_cfg.get("sources_per_asset", {})
+
+        # Keywords : priorité sources_per_asset, fallback legacy keywords_per_asset
+        legacy_kw = news_cfg.get("keywords_per_asset", {})
+        self.keywords: dict = {
+            asset: data.get("keywords", legacy_kw.get(asset, []))
+            for asset, data in self.sources_per_asset.items()
+        }
+        self.keywords.update({k: v for k, v in legacy_kw.items() if k not in self.keywords})
+
+        # Sources macro communes à tous les actifs
+        self.sources_rss_macro: list = news_cfg.get(
+            "sources_rss_macro",
+            news_cfg.get("sources_rss", []),   # compat ancienne clé
+        )
+        # Fallback pour code legacy qui lirait self.rss_sources
+        self.rss_sources = self.sources_rss_macro
+
         self.max_items = news_cfg.get("max_items_per_cycle", 30)
         self.threshold = news_cfg.get("relevance_score_threshold", 0.4)
-        self.nitter_accounts = news_cfg.get("sources_nitter", [
+
+        # Comptes Nitter et subreddits globaux (fallback si non définis par actif)
+        self.nitter_accounts: list = news_cfg.get("sources_nitter", [
             "saylor", "BitcoinMagazine", "whale_alert", "woonomic", "CryptoHayes",
             "RayDalio", "zerohedge", "LynAldenContact", "WuBlockchain", "colin_wu_",
         ])
-        self.reddit_subs = news_cfg.get("sources_reddit", ["Bitcoin", "CryptoCurrency", "btc"])
+        self.reddit_subs: list = news_cfg.get("sources_reddit", ["Bitcoin", "CryptoCurrency", "btc"])
+
         cp_cfg = news_cfg.get("cryptopanic", {})
         self.cryptopanic_enabled = cp_cfg.get("enabled", True)
         self.cryptopanic_max = int(cp_cfg.get("max_items", 15))
+        self.cryptopanic_asset_map: dict = cp_cfg.get("asset_currency_map", {
+            "BTC/USDT": "BTC",
+            "ETH/USDT": "ETH",
+        })
 
     def fetch_all(self, asset: str = "BTC/USDT") -> list[dict]:
         """Collecte toutes les sources et retourne une liste dédupliquée."""
         all_items = []
 
-        # Enrichir les keywords avec la config par actif si disponible
+        # ── Résolution des sources pour cet actif ────────────────────────────
+        asset_src = self.sources_per_asset.get(asset, {})
+
+        # Enrichir les keywords avec la config par actif si disponible (compat x_sentiment)
         try:
             from utils.config import load_asset_config
             asset_cfg = load_asset_config(asset)
@@ -86,8 +114,10 @@ class FastNewsListener:
         except Exception:
             pass
 
+        # RSS : sources macro (toujours) + sources spécifiques à l'actif
+        rss_urls = self.sources_rss_macro + asset_src.get("rss", [])
         # RSS (sources configurées + sources crypto fixes)
-        for rss_url in self.rss_sources:
+        for rss_url in rss_urls:
             try:
                 items = self._fetch_rss(rss_url)
                 all_items.extend(items)
@@ -97,8 +127,9 @@ class FastNewsListener:
 
         # CryptoPanic et NewsAPI gérés plus bas avec cache rate-limit
 
-        # Reddit RSS — subreddits configurés
-        for subreddit in self.reddit_subs:
+        # Reddit RSS — subreddits spécifiques à l'actif (fallback : global)
+        reddit_subs = asset_src.get("reddit", self.reddit_subs)
+        for subreddit in reddit_subs:
             try:
                 items = self._fetch_rss(f"https://www.reddit.com/r/{subreddit}/hot.rss")
                 all_items.extend(items)
@@ -106,8 +137,9 @@ class FastNewsListener:
             except Exception as exc:
                 logger.warning(f"Reddit r/{subreddit} échoué: {exc}")
 
-        # Nitter RSS — comptes X configurés (instances publiques)
-        for account in self.nitter_accounts:
+        # Nitter RSS — comptes X spécifiques à l'actif (fallback : global)
+        nitter_accounts = asset_src.get("nitter", self.nitter_accounts)
+        for account in nitter_accounts:
             try:
                 items = self._fetch_rss(f"https://nitter.net/{account}/rss")
                 all_items.extend(items)
@@ -120,21 +152,26 @@ class FastNewsListener:
         global _cryptopanic_last_call
         now = datetime.utcnow()
         if self.cryptopanic_enabled:
-            cp_ok = (
-                _cryptopanic_last_call is None
-                or (now - _cryptopanic_last_call).total_seconds() > _CRYPTOPANIC_MIN_INTERVAL_MINUTES * 60
-            )
-            if cp_ok:
-                try:
-                    items = self._fetch_cryptopanic()
-                    all_items.extend(items)
-                    _cryptopanic_last_call = now
-                    logger.info(f"CryptoPanic: {len(items)} articles")
-                except Exception as exc:
-                    logger.warning(f"CryptoPanic échoué: {exc}")
+            # CryptoPanic ne couvre QUE les crypto — ignoré pour forex/matières premières
+            cp_currency = self.cryptopanic_asset_map.get(asset)
+            if cp_currency is None:
+                logger.debug(f"CryptoPanic ignoré pour {asset} (non-crypto)")
             else:
-                remaining = int(_CRYPTOPANIC_MIN_INTERVAL_MINUTES * 60 - (now - _cryptopanic_last_call).total_seconds())
-                logger.debug(f"CryptoPanic ignoré (cache actif, {remaining}s restantes)")
+                cp_ok = (
+                    _cryptopanic_last_call is None
+                    or (now - _cryptopanic_last_call).total_seconds() > _CRYPTOPANIC_MIN_INTERVAL_MINUTES * 60
+                )
+                if cp_ok:
+                    try:
+                        items = self._fetch_cryptopanic(cp_currency)
+                        all_items.extend(items)
+                        _cryptopanic_last_call = now
+                        logger.info(f"CryptoPanic ({cp_currency}): {len(items)} articles")
+                    except Exception as exc:
+                        logger.warning(f"CryptoPanic échoué: {exc}")
+                else:
+                    remaining = int(_CRYPTOPANIC_MIN_INTERVAL_MINUTES * 60 - (now - _cryptopanic_last_call).total_seconds())
+                    logger.debug(f"CryptoPanic ignoré (cache actif, {remaining}s restantes)")
 
         # NewsAPI — plan gratuit limité
         # Lock multi-thread + compteur 429 consécutifs → blackout auto
@@ -203,12 +240,12 @@ class FastNewsListener:
         logger.info(f"{len(result)} news pertinentes collectées (/{len(unique)} totales)")
         return result
 
-    def _fetch_cryptopanic(self) -> list[dict]:
+    def _fetch_cryptopanic(self, currency: str = "BTC") -> list[dict]:
         """CryptoPanic public feed — gratuit, sans clé API."""
         import requests
         response = requests.get(
             "https://cryptopanic.com/api/free/v1/posts/",
-            params={"auth_token": "free", "currencies": "BTC", "kind": "news"},
+            params={"auth_token": "free", "currencies": currency, "kind": "news"},
             timeout=10,
             headers={"User-Agent": "AtlasTrader/1.0"}
         )

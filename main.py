@@ -511,6 +511,16 @@ def run_daemon(assets: list[str] | str, interval: int | None = None) -> None:
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGUSR1, _dump_all_stacks)
 
+    # Nettoyage des verrous résiduels d'une exécution précédente (arrêt brutal SIGKILL)
+    import glob as _glob
+    for _lf in _glob.glob("/tmp/atlas_cycle*.lock"):
+        try:
+            import os as _os2
+            _os2.unlink(_lf)
+            logger.info(f"Verrou résiduel supprimé au démarrage : {_lf}")
+        except Exception:
+            pass
+
     asset_threads: list[threading.Thread] = []
     for asset in assets:
         slug = asset.replace("/", "_")

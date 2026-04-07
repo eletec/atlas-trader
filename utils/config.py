@@ -52,8 +52,17 @@ def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
         # Pas de config spécifique → on utilise le global tel quel
         return global_cfg
 
-    with open(asset_file, "r", encoding="utf-8") as f:
-        asset_cfg = yaml.safe_load(f) or {}
+    try:
+        raw_bytes = asset_file.read_bytes()
+        try:
+            raw_text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raw_text = raw_bytes.decode("utf-8", errors="replace")
+            # Re-save as clean UTF-8 to prevent future errors
+            asset_file.write_text(raw_text, encoding="utf-8")
+        asset_cfg = yaml.safe_load(raw_text) or {}
+    except Exception:
+        asset_cfg = {}
 
     # Merge profond : asset_cfg surcharge global_cfg clé par clé
     merged = _deep_merge(copy.deepcopy(global_cfg), asset_cfg)

@@ -2377,7 +2377,7 @@ def render_admin_panel():
         except Exception as _ap_exc:
             st.warning(f"Stats agents indisponibles : {_ap_exc}")
 
-    with sub_tabs[11]:  # Méta-Analyse
+    with sub_tabs[10]:  # Méta-Analyse
         st.markdown('<h4>🔍 Méta-Analyse LLM — Patterns d\'échec</h4>', unsafe_allow_html=True)
         st.caption(
             "Claude analyse les décisions perdantes pour détecter des patterns récurrents, "

@@ -426,6 +426,14 @@ def render_controls(settings: dict) -> dict | None:
     """Panneau de contrôle — enable/disable + force refresh par flux."""
     st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
+    # Centre l'emoji dans les boutons de la colonne "Relancer"
+    st.markdown(
+        "<style>div[data-testid='stButton']>button{"
+        "display:flex;align-items:center;justify-content:center;"
+        "}</style>",
+        unsafe_allow_html=True,
+    )
+
     updated_settings = dict(settings)
     changed = False
 

@@ -79,9 +79,18 @@ class PaperTrader:
         fill_price = limit_price
         status = "executed"
 
-        if self._exchange and entry_price > 0:
+        # Actifs non-crypto (forex, commodités) → simulation pure sans CCXT
+        from agents.market_data_agent import _YAHOO_SYMBOLS
+        symbol = decision.get("symbol", "BTC/USDT")
+        is_non_crypto = symbol in _YAHOO_SYMBOLS
+        if is_non_crypto:
+            logger.info(
+                f"[{symbol}] Actif non-crypto — simulation pure (pas d'ordre CCXT). "
+                f"Prix de référence Yahoo Finance @ {limit_price:.4f}"
+            )
+
+        if self._exchange and entry_price > 0 and not is_non_crypto:
             try:
-                symbol = decision.get("symbol", "BTC/USDT")
                 qty = round(size_usd / limit_price, 6)
                 side = "buy" if action == "BUY" else "sell"
 

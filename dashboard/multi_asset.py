@@ -74,14 +74,20 @@ def render_global_overview() -> None:
     try:
         from storage.database import get_assets_summary
         from utils.session import MarketSession
-        rows = get_assets_summary()
+        db_rows = get_assets_summary()
     except Exception as exc:
         st.warning(f"Données globales indisponibles : {exc}")
         return
 
-    if not rows:
-        st.info("Aucune décision enregistrée encore.")
-        return
+    # Fusionner avec tous les actifs actifs (afficher même sans décision en base)
+    db_by_asset = {r["asset"]: r for r in db_rows}
+    all_assets = _active_assets()
+    rows = []
+    for asset in all_assets:
+        if asset in db_by_asset:
+            rows.append(db_by_asset[asset])
+        else:
+            rows.append({"asset": asset, "action": "–", "score": None, "timestamp": None, "result_24h": None})
 
     st.markdown("### 🌐 Vue globale des actifs")
 

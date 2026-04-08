@@ -162,6 +162,12 @@ def bootstrap() -> dict:
 
     init_db(log_cfg.get("sqlite_db", "storage/zeitgeist.db"))
 
+    # Timeout socket global — filet de sécurité contre les appels HTTP sans timeout
+    # LangChain, Yahoo Finance, DuckDuckGo peuvent bloquer sans cette protection
+    import socket as _socket
+    _socket.setdefaulttimeout(90)
+    logger.info("Socket timeout global : 90s")
+
     # Libérer le cycle lock au démarrage — évite le blocage permanent
     # si le process précédent a été SIGKILL sans libérer le lock
     try:
@@ -435,16 +441,35 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
             )
             _cycle_thread.start()
 
-            if not _cycle_done.wait(timeout=300):
-                asset_logger.error(f"[{slug}] Cycle #{cycle_count} TIMEOUT (300s) — abandon")
+            # Attente interruptible : vérifie _shutdown_event toutes les 2s
+            # → réagit au SIGTERM en < 2s au lieu de bloquer 300s
+            _CYCLE_TIMEOUT = 120  # secondes — cycles normaux durent 30-90s
+            _deadline = time.time() + _CYCLE_TIMEOUT
+            _timed_out = True
+            while time.time() < _deadline:
+                if _cycle_done.wait(timeout=2):
+                    _timed_out = False
+                    break
+                if _shutdown_event.is_set():
+                    _timed_out = False  # arrêt propre demandé, pas une erreur
+                    break
+            if _timed_out:
+                asset_logger.error(f"[{slug}] Cycle #{cycle_count} TIMEOUT ({_CYCLE_TIMEOUT}s) — abandon")
                 from utils.cycle_lock import release as _force_release
                 _force_release(asset=asset)
                 consecutive_errors += 1
                 if consecutive_errors >= 5:
-                    asset_logger.critical(f"[{slug}] 5 cycles consécutifs en erreur — arrêt d'urgence")
-                    _shutdown_event.set()
-                    import sys as _sys; _sys.exit(1)
+                    # Circuit breaker per-asset : pause 10 min, pas d'arrêt global
+                    asset_logger.critical(
+                        f"[{slug}] 5 cycles consécutifs en erreur "
+                        f"— pause 10 min puis reprise automatique"
+                    )
+                    consecutive_errors = 0
+                    _shutdown_event.wait(timeout=600)  # pause interruptible
                 continue
+
+            if _shutdown_event.is_set():
+                break  # arrêt propre demandé pendant le cycle
 
             if _result_box[1] is not None:
                 raise _result_box[1]
@@ -482,9 +507,13 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
                 + traceback.format_exc()
             )
             if consecutive_errors >= 5:
-                asset_logger.critical(f"[{slug}] 5 cycles consécutifs en erreur — arrêt d'urgence")
-                _shutdown_event.set()
-                import sys as _sys; _sys.exit(1)
+                # Circuit breaker per-asset : pause 10 min, pas d'arrêt global
+                asset_logger.critical(
+                    f"[{slug}] 5 cycles consécutifs en erreur "
+                    f"— pause 10 min puis reprise automatique"
+                )
+                consecutive_errors = 0
+                _shutdown_event.wait(timeout=600)  # pause interruptible
 
         _run_post_mortem_if_needed()
 
@@ -580,8 +609,6 @@ def _run_post_mortem_if_needed() -> None:
         except Exception as exc:
             logger.debug(f"Shadow post-mortem skipped: {exc}")
 
-    # IMPORTANT: ne PAS utiliser "with ThreadPoolExecutor" — son __exit__ appelle
-    # shutdown(wait=True) même après un TimeoutError, ce qui bloque indéfiniment.
     _pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     _fut = _pool.submit(_post_mortem_work)
     try:
@@ -591,7 +618,7 @@ def _run_post_mortem_if_needed() -> None:
     except Exception as exc:
         logger.warning(f"Post-mortem ignoré : {exc}")
     finally:
-        _pool.shutdown(wait=False)  # abandon le thread, ne jamais bloquer
+        _pool.shutdown(wait=False)  # toujours libérer — évite la fuite de threads
 
 
 def launch_dashboard() -> None:

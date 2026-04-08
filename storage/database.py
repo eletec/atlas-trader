@@ -186,6 +186,18 @@ def _migrate_v2(conn) -> None:
             except Exception as exc:
                 logger.warning(f"Migration '{col}' ignorée: {exc}")
 
+    # Nettoyage : les lignes SELL orphelines (result_24h IS NULL) sont des signaux
+    # de sortie, pas des shorts réels. On les clôture proprement (P&L=0).
+    # Système long-only spot — les SELL ne sont jamais des positions ouvertes.
+    try:
+        n = conn.execute(
+            "UPDATE decisions SET result_24h = 0.0 WHERE action = 'SELL' AND result_24h IS NULL"
+        ).rowcount
+        if n > 0:
+            logger.info(f"Nettoyage DB: {n} ligne(s) SELL orpheline(s) clôturée(s) (result_24h=0)")
+    except Exception as exc:
+        logger.warning(f"Nettoyage SELL orphelins ignoré: {exc}")
+
 
 @contextmanager
 def get_connection():
@@ -298,13 +310,13 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
 
 
 def get_open_positions() -> list[dict]:
-    """Retourne les positions BUY/SELL ouvertes (result_24h IS NULL)."""
+    """Retourne les positions BUY ouvertes (long-only spot, result_24h IS NULL)."""
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT * FROM decisions
             WHERE result_24h IS NULL
-              AND action IN ('BUY', 'SELL')
+              AND action = 'BUY'
             ORDER BY timestamp ASC
             """
         ).fetchall()
@@ -312,10 +324,10 @@ def get_open_positions() -> list[dict]:
 
 
 def count_open_positions() -> int:
-    """Compte les positions actuellement ouvertes."""
+    """Compte les positions BUY actuellement ouvertes (long-only spot)."""
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT COUNT(*) as n FROM decisions WHERE result_24h IS NULL AND action IN ('BUY','SELL')"
+            "SELECT COUNT(*) as n FROM decisions WHERE result_24h IS NULL AND action = 'BUY'"
         ).fetchone()
         return int(row["n"]) if row else 0
 

@@ -1298,7 +1298,7 @@ def render_live_chart(asset: str = "BTC/USDT"):
 
         open_pos = [
             d for d in get_recent_decisions(500, asset=asset)
-            if d.get("action") in ("BUY", "SELL") and d.get("result_24h") is None
+            if d.get("action") == "BUY" and d.get("result_24h") is None
         ]
     except Exception as exc:
         st.warning(f'{t("data_load_error")} : {exc}')

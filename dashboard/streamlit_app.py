@@ -1626,6 +1626,10 @@ def render_agent_scores_chart(asset: str):
                 hovertemplate=f"{action}: %{{y:.1f}}<extra></extra>",
             ))
 
+    from datetime import datetime, timezone, timedelta
+    now_utc = datetime.now(timezone.utc)
+    x_start = now_utc - timedelta(hours=hours)
+
     fig.update_layout(
         height=300,
         margin=dict(l=0, r=50, t=8, b=0),
@@ -1633,7 +1637,10 @@ def render_agent_scores_chart(asset: str):
                     xanchor="left", x=0, font=dict(size=9)),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=False, tickfont=dict(size=10)),
+        xaxis=dict(
+            showgrid=False, tickfont=dict(size=10),
+            range=[x_start, now_utc],
+        ),
         yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)",
                    range=[0, 100], tickfont=dict(size=10)),
         font=dict(color="#c8c8c8"),

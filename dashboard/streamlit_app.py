@@ -1530,6 +1530,124 @@ def render_last_decision(last_cycle: dict | None):
 _LOGS_PAGE_SIZE = 100
 
 
+def render_agent_scores_chart(asset: str):
+    """Graphique d'évolution des scores agents dans le temps pour un actif."""
+    try:
+        import plotly.graph_objects as go
+        from storage.database import get_agent_scores_history
+        import pandas as pd
+    except ImportError:
+        st.caption("plotly non disponible")
+        return
+
+    WINDOWS = [24, 48, 168, 720]
+    WINDOW_LABELS = {24: "24h", 48: "48h", 168: "7j", 720: "30j"}
+    COLORS = [
+        "#7986cb", "#4fc3f7", "#81c784", "#ffb74d",
+        "#f06292", "#ce93d8", "#80cbc4", "#fff176",
+        "#ffcc80", "#a1c4fd",
+    ]
+
+    radio_key = f"agent_chart_win_{asset.replace('/', '_')}"
+    hours = st.radio(
+        "Fenêtre",
+        WINDOWS,
+        format_func=lambda h: WINDOW_LABELS[h],
+        horizontal=True,
+        key=radio_key,
+        label_visibility="collapsed",
+    )
+
+    data = get_agent_scores_history(asset=asset, hours=hours)
+    if not data:
+        st.info(f"Pas encore d'historique ({WINDOW_LABELS[hours]}) pour {asset}.")
+        return
+
+    rows = []
+    for entry in data:
+        base = {
+            "ts": entry["timestamp"],
+            "action": entry.get("action", ""),
+            "score_global": entry.get("global_score", 50),
+            "market": entry.get("market_score", 50),
+            "contrarian": entry.get("contrarian_score", 50),
+            "mirofish": entry.get("mirofish_score", 50),
+        }
+        for ag, sc in entry.get("agent_scores", {}).items():
+            base[ag] = sc
+        rows.append(base)
+
+    df = pd.DataFrame(rows)
+    df["ts"] = pd.to_datetime(df["ts"])
+    df = df.sort_values("ts").reset_index(drop=True)
+
+    agent_cols = [c for c in df.columns if c not in ("ts", "action", "score_global")]
+
+    fig = go.Figure()
+
+    fig.add_hline(y=62, line_dash="dash", line_color="#2ecc71", line_width=1,
+                  opacity=0.45, annotation_text="BUY≥62",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color="#2ecc71"))
+    fig.add_hline(y=52, line_dash="dash", line_color="#e74c3c", line_width=1,
+                  opacity=0.45, annotation_text="EXIT<52",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color="#e74c3c"))
+
+    for i, col in enumerate(agent_cols):
+        if col not in df.columns:
+            continue
+        fig.add_trace(go.Scatter(
+            x=df["ts"], y=df[col],
+            mode="lines", name=col,
+            line=dict(color=COLORS[i % len(COLORS)], width=1.4),
+            opacity=0.85,
+            hovertemplate=f"{col}: %{{y:.0f}}<extra></extra>",
+        ))
+
+    # Score global en surimpression (blanc, plus épais)
+    fig.add_trace(go.Scatter(
+        x=df["ts"], y=df["score_global"],
+        mode="lines", name="Global",
+        line=dict(color="#ffffff", width=2.5),
+        opacity=0.95,
+        hovertemplate="Global: %{y:.1f}<extra></extra>",
+    ))
+
+    # Marqueurs BUY / SELL sur la ligne globale
+    for action, sym, clr in [("BUY", "triangle-up", "#2ecc71"), ("SELL", "triangle-down", "#e74c3c")]:
+        mask = df["action"] == action
+        if mask.any():
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, "ts"], y=df.loc[mask, "score_global"],
+                mode="markers", name=action,
+                marker=dict(symbol=sym, size=11, color=clr,
+                            line=dict(width=1, color="#000")),
+                hovertemplate=f"{action}: %{{y:.1f}}<extra></extra>",
+            ))
+
+    fig.update_layout(
+        height=300,
+        margin=dict(l=0, r=50, t=8, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01,
+                    xanchor="left", x=0, font=dict(size=9)),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, tickfont=dict(size=10)),
+        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)",
+                   range=[0, 100], tickfont=dict(size=10)),
+        font=dict(color="#c8c8c8"),
+        hovermode="x unified",
+    )
+
+    st.markdown(
+        '<p style="font-size:12px;font-weight:600;margin:4px 0 2px;">'
+        '📈 Évolution des scores agents</p>',
+        unsafe_allow_html=True,
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
 def render_live_logs(key: str = "global"):
     """Affiche tous les logs avec pagination (100 lignes par page)."""
     st.markdown(
@@ -3059,7 +3177,11 @@ def main():
                 _pf = _get_portfolio(asset=asset)   # portefeuille isolé pour cet actif
                 render_portfolio(_pf)
                 render_climate_metrics(_lc)
-                render_last_decision(_lc)
+                col_dec, col_chart = st.columns([1, 1], gap="medium")
+                with col_dec:
+                    render_last_decision(_lc)
+                with col_chart:
+                    render_agent_scores_chart(asset)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_chart(asset)
                 render_trades_list(_tr)

@@ -1093,16 +1093,38 @@ def render_climate_metrics(last_cycle: dict | None):
     # Indicateur propre à l'asset :
     #  - ⟳ en cours  : lock actif pour cet asset
     #  - ✓ actif     : heartbeat de cet asset < 30 min (cycles récents)
-    #  - ⏸ hors session : heartbeat de cet asset > 30 min (forex fermé, etc.)
+    #  - 🌙 hors session : heartbeat de cet asset > 30 min (forex fermé, etc.)
     _asset_hb = f"/tmp/atlas_heartbeat_{asset}" if asset else None
-    if _is_cycle_locked(asset.replace("_", "/") if asset else None):
+    _asset_slash = asset.replace("_", "/") if asset else None
+    if _is_cycle_locked(_asset_slash):
         time_ago += ' <span style="color:#22c55e;font-size:11px;">⟳ en cours</span>'
     elif _asset_hb and _cm_os.path.exists(_asset_hb):
         _hb_age = _cm_time.time() - _cm_os.path.getmtime(_asset_hb)
         if _hb_age < 1800:
             time_ago += ' <span style="color:#22c55e;font-size:11px;">✓ actif</span>'
         else:
-            time_ago += ' <span style="color:#888;font-size:11px;">⏸ hors session</span>'
+            # Calcul heure de reprise via MarketSession
+            _next_label = ""
+            try:
+                from utils.session import MarketSession as _MarketSession
+                _sess = _MarketSession(_asset_slash or "BTC/USDT")
+                _nxt = _sess.next_open()
+                _nxt_utc = _nxt.strftime("%H:%M UTC")
+                _wait_min = int((_nxt - __import__('datetime').datetime.now(
+                    __import__('datetime').timezone.utc)).total_seconds() / 60)
+                if _wait_min < 60:
+                    _next_label = f" — reprise dans {_wait_min} min ({_nxt_utc})"
+                elif _wait_min < 1440:
+                    _next_label = f" — reprise à {_nxt_utc}"
+                else:
+                    _nxt_day = _nxt.strftime("%a %H:%M UTC")
+                    _next_label = f" — reprise {_nxt_day}"
+            except Exception:
+                pass
+            time_ago += (
+                f' <span style="color:#888;font-size:11px;">'
+                f'🌙 hors session{_next_label}</span>'
+            )
 
     act_map = {
         "BUY":  ("#2ecc71", "fas fa-arrow-trend-up"),

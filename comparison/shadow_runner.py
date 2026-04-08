@@ -145,7 +145,14 @@ def _evaluate_single(
     ma50_strong = risk_cfg.get("ma50_strong_signal_threshold", 72)
     ma50_size_fac = risk_cfg.get("ma50_gradual_size_factor", 0.5)
     max_pos = risk_cfg.get("max_open_positions", 3)
-    capital = 10_000.0  # capital standard pour comparaison équitable
+
+    # Capital virtuel dynamique : capital initial + P&L réalisés - positions ouvertes
+    from storage.database import get_shadow_virtual_capital, _SHADOW_INITIAL_CAPITAL
+    capital = get_shadow_virtual_capital(profile_name)
+    # Si le capital virtuel tombe sous 10% du capital initial → plus de nouveaux trades
+    if capital < _SHADOW_INITIAL_CAPITAL * 0.10:
+        return {"action": "HOLD", "score": global_score, "position_size_usd": 0,
+                "entry_price": price, "sl_price": price, "tp_price": price}
 
     mode_mult = {"conservative": 0.5, "balanced": 1.0, "aggressive": 1.5}.get(mode, 1.0)
     kelly_max = 0.25 * mode_mult

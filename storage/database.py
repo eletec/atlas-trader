@@ -1025,6 +1025,8 @@ def get_shadow_comparison_stats() -> list[dict]:
             for row in rows:
                 evaluated = row["evaluated"] or 0
                 wins = row["wins"] or 0
+                total_pnl = round(row["total_pnl"], 2)
+                virtual_capital = round(_SHADOW_INITIAL_CAPITAL + total_pnl, 2)
                 stats.append({
                     "profile": row["profile_name"],
                     "total_trades": row["total_trades"],
@@ -1034,7 +1036,9 @@ def get_shadow_comparison_stats() -> list[dict]:
                     "wins": wins,
                     "losses": row["losses"] or 0,
                     "win_rate": round(wins / evaluated * 100, 1) if evaluated > 0 else 0,
-                    "total_pnl": round(row["total_pnl"], 2),
+                    "total_pnl": total_pnl,
+                    "return_pct": round(total_pnl / _SHADOW_INITIAL_CAPITAL * 100, 2),
+                    "virtual_capital": virtual_capital,
                     "avg_pnl": round(row["avg_pnl"], 2),
                     "best_trade": round(row["best_trade"], 2),
                     "worst_trade": round(row["worst_trade"], 2),
@@ -1065,6 +1069,13 @@ def get_shadow_comparison_stats() -> list[dict]:
             if baseline_row and baseline_row["total_trades"]:
                 evaluated = baseline_row["evaluated"] or 0
                 wins = baseline_row["wins"] or 0
+                total_pnl = round(baseline_row["total_pnl"], 2)
+                # Baseline: capital réel depuis le portefeuille
+                try:
+                    real_pf = get_portfolio()
+                    real_capital = float(real_pf.get("current_value", _SHADOW_INITIAL_CAPITAL))
+                except Exception:
+                    real_capital = _SHADOW_INITIAL_CAPITAL + total_pnl
                 stats.insert(0, {
                     "profile": "baseline",
                     "total_trades": baseline_row["total_trades"],
@@ -1074,7 +1085,9 @@ def get_shadow_comparison_stats() -> list[dict]:
                     "wins": wins,
                     "losses": baseline_row["losses"] or 0,
                     "win_rate": round(wins / evaluated * 100, 1) if evaluated > 0 else 0,
-                    "total_pnl": round(baseline_row["total_pnl"], 2),
+                    "total_pnl": total_pnl,
+                    "return_pct": round(total_pnl / _SHADOW_INITIAL_CAPITAL * 100, 2),
+                    "virtual_capital": round(real_capital, 2),
                     "avg_pnl": round(baseline_row["avg_pnl"], 2),
                     "best_trade": round(baseline_row["best_trade"], 2),
                     "worst_trade": round(baseline_row["worst_trade"], 2),
@@ -1098,7 +1111,9 @@ def get_shadow_comparison_stats() -> list[dict]:
                     "profile": name,
                     "total_trades": 0, "buys": 0, "sells": 0,
                     "evaluated": 0, "wins": 0, "losses": 0,
-                    "win_rate": 0, "total_pnl": 0, "avg_pnl": 0,
+                    "win_rate": 0, "total_pnl": 0, "return_pct": 0,
+                    "virtual_capital": _SHADOW_INITIAL_CAPITAL,
+                    "avg_pnl": 0,
                     "best_trade": 0, "worst_trade": 0,
                     "first_trade": None, "last_trade": None,
                 })
@@ -1106,6 +1121,45 @@ def get_shadow_comparison_stats() -> list[dict]:
         pass
 
     return stats
+
+
+_SHADOW_INITIAL_CAPITAL = 10_000.0  # capital de départ de chaque profil shadow
+
+
+def get_shadow_virtual_capital(profile_name: str) -> float:
+    """
+    Retourne le capital virtuel actuel d'un profil shadow.
+    = capital_initial + somme des P&L évalués - somme des positions ouvertes.
+    Utilisé par shadow_runner pour un sizing proportionnel au capital restant.
+    """
+    try:
+        with get_connection() as conn:
+            # Somme des P&L évalués
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(result_24h), 0) as realized_pnl
+                FROM shadow_decisions
+                WHERE profile_name = ? AND result_24h IS NOT NULL
+                """,
+                (profile_name,),
+            ).fetchone()
+            realized = float(row["realized_pnl"]) if row else 0.0
+
+            # Somme des positions ouvertes (capital engagé)
+            open_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(position_size), 0) as engaged
+                FROM shadow_decisions
+                WHERE profile_name = ? AND action = 'BUY' AND result_24h IS NULL
+                """,
+                (profile_name,),
+            ).fetchone()
+            engaged = float(open_row["engaged"]) if open_row else 0.0
+
+            virtual = _SHADOW_INITIAL_CAPITAL + realized - engaged
+            return max(0.0, round(virtual, 2))
+    except Exception:
+        return _SHADOW_INITIAL_CAPITAL
 
 
 def get_shadow_recent_decisions(n: int = 20) -> list[dict]:

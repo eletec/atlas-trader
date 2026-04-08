@@ -1795,8 +1795,17 @@ def render_profile_comparison():
         for name, cfg in profiles_cfg.items():
             profile_colors[name] = cfg.get("color", "#888")
 
+        # Note méthodologique
+        st.markdown(
+            '<p style="font-size:11px;color:#888;margin:0 0 10px;">'
+            '⚠️ Les profils shadow utilisent un capital virtuel de $10 000 qui évolue avec les P&L '
+            '(sizing proportionnel au capital restant). Seul <strong>Baseline</strong> reflète '
+            'le capital réel. Le rendement <strong>%</strong> est la métrique fiable pour comparer.</p>',
+            unsafe_allow_html=True,
+        )
+
         cols = ["Profil", t("profiles_trades"), t("profiles_winrate"),
-                t("profiles_total_pnl"), t("profiles_avg_pnl"), "Best", "Worst"]
+                "Rendement %", "Capital virtuel", t("profiles_avg_pnl"), "Best", "Worst"]
         header = "".join(
             f'<th style="padding:8px 12px;text-align:{"left" if i == 0 else "right"};'
             f'background:{head_bg};font-weight:600;font-size:12px;'
@@ -1814,9 +1823,16 @@ def render_profile_comparison():
                     label = cfg.get("label", name)
                     break
 
-            pnl_color = "#00c853" if s["total_pnl"] >= 0 else "#ff1744"
-            avg_color = "#00c853" if s["avg_pnl"] >= 0 else "#ff1744"
+            ret_pct = s.get("return_pct", 0)
+            vcap = s.get("virtual_capital", 10000)
+            avg_pnl = s.get("avg_pnl", 0)
+            ret_color = "#00c853" if ret_pct >= 0 else "#ff1744"
+            avg_color = "#00c853" if avg_pnl >= 0 else "#ff1744"
             wr_color = "#00c853" if s["win_rate"] >= 50 else ("#ff9800" if s["win_rate"] >= 40 else "#ff1744")
+            # Capital virtuel : vert si au-dessus du capital initial, rouge si en dessous
+            vcap_color = "#00c853" if vcap >= 10000 else "#ff1744"
+            # Avertissement si trop peu d'échantillons
+            sample_warn = ' <span style="color:#ff9800;font-size:10px;" title="< 5 évaluations — statistiquement peu fiable">⚠</span>' if s["evaluated"] < 5 and s["total_trades"] > 0 else ""
 
             rows_html += (
                 f'<tr style="background:{bg};">'
@@ -1824,13 +1840,15 @@ def render_profile_comparison():
                 f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
                 f'background:{color};margin-right:6px;"></span>{label}</td>'
                 f'<td style="padding:6px 12px;text-align:right;">{s["total_trades"]}'
-                f' <span style="color:#888;font-size:11px;">({s["evaluated"]} éval.)</span></td>'
+                f' <span style="color:#888;font-size:11px;">({s["evaluated"]} éval.)</span>{sample_warn}</td>'
                 f'<td style="padding:6px 12px;text-align:right;color:{wr_color};font-weight:600;">'
                 f'{s["win_rate"]:.0f}%</td>'
-                f'<td style="padding:6px 12px;text-align:right;color:{pnl_color};font-weight:700;">'
-                f'${s["total_pnl"]:+.2f}</td>'
+                f'<td style="padding:6px 12px;text-align:right;color:{ret_color};font-weight:700;">'
+                f'{ret_pct:+.2f}%</td>'
+                f'<td style="padding:6px 12px;text-align:right;color:{vcap_color};">'
+                f'${vcap:,.0f}</td>'
                 f'<td style="padding:6px 12px;text-align:right;color:{avg_color};">'
-                f'${s["avg_pnl"]:+.2f}</td>'
+                f'${avg_pnl:+.2f}</td>'
                 f'<td style="padding:6px 12px;text-align:right;color:#00c853;">'
                 f'${s["best_trade"]:+.2f}</td>'
                 f'<td style="padding:6px 12px;text-align:right;color:#ff1744;">'
@@ -1846,7 +1864,7 @@ def render_profile_comparison():
             unsafe_allow_html=True,
         )
 
-        # ── Courbe P&L cumulé ──
+        # ── Courbe rendement % cumulé (normalisée sur $10k initial) ──
         pnl_series = get_shadow_pnl_series()
         if pnl_series:
             st.markdown(
@@ -1864,23 +1882,25 @@ def render_profile_comparison():
                         break
                 fig.add_trace(go.Scatter(
                     x=[p["timestamp"] for p in points],
-                    y=[p["cumulative_pnl"] for p in points],
+                    y=[round(p["cumulative_pnl"] / 10000 * 100, 3) for p in points],
                     mode="lines+markers",
                     name=label,
                     line=dict(color=color, width=2),
                     marker=dict(size=4),
+                    hovertemplate="%{y:+.2f}%<extra>" + label + "</extra>",
                 ))
+            fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.2)", line_width=1)
             fig.update_layout(
                 height=300,
                 margin=dict(l=0, r=0, t=20, b=0),
+                yaxis_title="Rendement %",
+                yaxis_tickformat="+.1f",
                 legend=dict(orientation="h", y=-0.15),
-                yaxis_title="P&L ($)",
                 xaxis_title="",
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color=tbl_fg, size=11),
             )
-            fig.add_hline(y=0, line_dash="dash", line_color="#888", line_width=1)
             st.plotly_chart(fig, use_container_width=True)
 
     except Exception as exc:

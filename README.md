@@ -419,6 +419,12 @@ The Streamlit dashboard (`http://localhost:8501`) provides:
   - Relative & annualized volatility
   - HMM posteriors (Low-vol / High-vol)
   - Last 5 cycles history
+- **Dernière décision IA + Agent Scores History chart** — side-by-side two-column layout per asset tab:
+  - Left: last decision (action badge, score, LLM explanation, score breakdown)
+  - Right: multi-line Plotly chart — one line per agent + bold global score line
+    - Dashed thresholds at BUY≥62 and EXIT<52
+    - BUY/SELL triangle markers on the global score line
+    - Time window radio: 24h / 48h / 7j / 30j (X axis forced to selected range)
 - Paper P&L + performance curve
 - Real-time log stream (last 50 lines)
 - **"Force Run" button** — runs a full cycle on demand in a background thread (non-blocking); streams live per-step logs into the dialog at 0.5 s intervals without disconnecting the WebSocket
@@ -574,14 +580,20 @@ zeitgeist-trader/
 - [x] Flux Manager pipeline diagram — native Graphviz (no CDN, works offline/NAS)
 - [x] Flux controls redesigned as table layout (name · description · toggle · force-restart per category)
 - [x] Tooltip `?` buttons — unified design across all themes (dark/light/system), consistent rendering (circle + glyph)
+- [x] Flux Manager pipeline diagram — all agents shown (FearGreed + Polymarket nodes)
+- [x] Flux Manager selectboxes → radio horizontal (status window, metric period, log filter)
+- [x] **Agent Scores History chart** — per-asset tab, right of Dernière décision IA
+  - Plotly multi-line (one line/agent + global), dashed BUY/EXIT thresholds, BUY/SELL markers
+  - Time window radio: 24h / 48h / 7j / 30j with forced X-axis range
 
 ### v1.1 (next)
 - [ ] TimesFM subprocess isolation (CPU offload without blocking main loop)
 - [ ] Polymarket smart money integration
 - [ ] Telegram / Discord alerts
+- [ ] Graph B: score distribution histogram per agent (per-asset)
+- [ ] Graph C: correlation heatmap between agents
 
 ### v2.0 (future)
-- [ ] Multi-asset (ETH, SOL, alts)
 - [ ] Live trading (CCXT production, strict risk)
 - [ ] Historical P&L fine-tuning of scoring model
 - [ ] Cross-exchange arbitrage

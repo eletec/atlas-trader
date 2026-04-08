@@ -863,6 +863,8 @@ def _derive_market_score(indicators: MarketIndicators | None) -> float:
     macd = indicators.get("macd", 0)
     macd_signal = indicators.get("macd_signal", 0)
     funding = indicators.get("funding_rate", 0)
+    price = indicators.get("price", 0.0)
+    ma_50 = indicators.get("ma_50", 0.0)
 
     # RSI contribution (±20 points)
     if rsi < 30:
@@ -872,11 +874,20 @@ def _derive_market_score(indicators: MarketIndicators | None) -> float:
     else:
         score += (50 - rsi) * 0.4
 
-    # MACD contribution (±15 points)
+    # MACD contribution (±8 points) — indicateur retardataire, poids réduit
     if macd > macd_signal:
-        score += 15
+        score += 8
     else:
-        score -= 15
+        # Pas de pénalité MACD si RSI en zone survente (signal RSI prioritaire)
+        if rsi >= 30:
+            score -= 8
+
+    # Distance MA50 daily (±12 points) — proximité/croisement de la MA50
+    if ma_50 > 0 and price > 0:
+        pct_vs_ma50 = (price - ma_50) / ma_50  # ex: +0.039 = +3.9%
+        # Linéaire : ±2% → ±4 pts, ±5% → ±10 pts, ±6%+ → ±12 pts (plafonné)
+        ma50_contrib = max(-12.0, min(12.0, pct_vs_ma50 * 200))
+        score += ma50_contrib
 
     # Funding rate contribution (±10 points)
     if funding < -0.01:

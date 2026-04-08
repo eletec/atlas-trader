@@ -28,14 +28,14 @@ profiles:
       agents: 0.25
       contrarian: 0.15
     risk:
-      buy_threshold: 68
+      buy_threshold: 63
       exit_threshold: 52
       mode: balanced
       position_size_pct: 5.0
       atr_multiplier_sl: 2.0
       atr_multiplier_tp: 3.0
       ma50_filter_mode: gradual
-      ma50_strong_signal_threshold: 72
+      ma50_strong_signal_threshold: 67
       ma50_gradual_size_factor: 0.5
       max_open_positions: 3
 

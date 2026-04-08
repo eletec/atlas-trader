@@ -9,11 +9,11 @@ monitor:
 risk:
   mode: balanced
   buy_threshold: 60
-  exit_threshold: 50
+  exit_threshold: 55
   kelly_max_fraction: 0.2
   position_size_pct: 4.0
   max_open_positions: 3
-  atr_multiplier_sl: 2.0
+  atr_multiplier_sl: 1.8
   atr_multiplier_tp: 3.0
   atr_period: 14
   max_drawdown_pct: 18.0

@@ -9,12 +9,12 @@ monitor:
 risk:
   mode: conservative
   buy_threshold: 58
-  exit_threshold: 48
+  exit_threshold: 55
   kelly_max_fraction: 0.15
   position_size_pct: 3.0
   max_open_positions: 2
-  atr_multiplier_sl: 1.8
-  atr_multiplier_tp: 2.8
+  atr_multiplier_sl: 1.5
+  atr_multiplier_tp: 3.0
   atr_period: 14
   max_drawdown_pct: 12.0
   ma50_filter_mode: strict

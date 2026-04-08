@@ -317,6 +317,7 @@ class DecisionEngine:
         from utils.config import load_asset_config, load_settings
         cfg = load_asset_config(asset) if asset else load_settings()
         risk = cfg.get("risk", {})
+        self._asset = asset  # conservé pour filtrer les positions par asset
         self.buy_threshold: float = risk.get("buy_threshold", 70)
         self.exit_threshold: float = risk.get("exit_threshold", 52)  # seuil de sortie d'une position longue
         self.human_loop: bool = risk.get("human_in_the_loop", False)
@@ -340,7 +341,10 @@ class DecisionEngine:
         _open_buys: list[dict] = []
         try:
             from storage.database import get_open_positions
-            _open_buys = [p for p in get_open_positions() if p["action"] == "BUY"]
+            _open_buys = [
+                p for p in get_open_positions()
+                if p["action"] == "BUY" and (not self._asset or p.get("asset") == self._asset)
+            ]
         except Exception:
             pass
 

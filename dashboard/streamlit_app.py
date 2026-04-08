@@ -1450,7 +1450,10 @@ def render_trades_list(trades: list[dict]):
         bg     = row_alt if i % 2 == 1 else tbl_bg
 
         action_color = "#2ecc71" if action == "BUY" else ("#e74c3c" if action == "SELL" else tbl_fg)
-        if pnl is None:
+        if action == "SELL":
+            # SELL = signal de sortie (long-only) — le P&L est sur la ligne BUY d'origine
+            pnl_str   = f'<span style="opacity:.6;font-style:italic;">✓ Clôture</span>'
+        elif pnl is None:
             pnl_str   = f'<span style="opacity:.45;">{t("pending")}</span>'
         elif pnl >= 0:
             pnl_str   = f'<span style="color:#2ecc71;font-weight:600;">${pnl:+,.2f}</span>'

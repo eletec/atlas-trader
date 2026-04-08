@@ -628,6 +628,34 @@ def node_execute(state: ZeitgeistState) -> dict:
         logger.info(f"[{state['cycle_id']}] En attente validation humaine")
         return {"trade_executed": False}
 
+    # ── SELL : clôture des positions longues ouvertes (spot long-only, pas de short) ──
+    if decision.get("action") == "SELL":
+        from storage.database import get_open_positions, close_position, update_decision_result
+        asset = state.get("asset", "")
+        price = float(decision.get("entry_price") or 0)
+        open_buys = [
+            p for p in get_open_positions()
+            if p.get("action") == "BUY" and p.get("asset") == asset
+        ]
+        n_closed = 0
+        for pos in open_buys:
+            close_position(pos["cycle_id"], price, reason="EXIT_SIGNAL")
+            n_closed += 1
+            logger.info(
+                f"[{state['cycle_id']}] Position BUY {pos['cycle_id']} clôturée "
+                f"@ {price:.4f} (EXIT_SIGNAL, score={state.get('global_score', 0):.0f})"
+            )
+        # Logger le signal SELL comme décision narrative (P&L=0 sur cette ligne)
+        # Le P&L réel est porté sur la/les ligne(s) BUY via close_position()
+        log_decision(state["cycle_id"], state)
+        update_decision_result(state["cycle_id"], 0.0)  # évite l'évaluation post-mortem
+        latency_ms = int((time.time() - t0) * 1000)
+        log_flux_metric("paper_trader", "sell_close", latency_ms, n_closed)
+        logger.info(
+            f"[{state['cycle_id']}] SELL — {n_closed} position(s) BUY clôturée(s) @ {price:.4f}"
+        )
+        return {"trade_executed": n_closed > 0}
+
     try:
         trader = PaperTrader()
         result = trader.execute(decision)

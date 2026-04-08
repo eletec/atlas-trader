@@ -92,6 +92,12 @@ class PostMortemAgent:
                 update_decision_result(cycle_id, 0.0)
                 return
 
+            # SELL = signal de sortie, P&L déjà calculé sur la ligne BUY via close_position()
+            # Ne pas réévaluer comme short fictif (système long-only spot)
+            if action == "SELL":
+                update_decision_result(cycle_id, 0.0)
+                return
+
             current_price = self._get_current_price(decision.get("asset", "BTC/USDT"))
             position_size = decision.get("position_size", 0) or 0
 

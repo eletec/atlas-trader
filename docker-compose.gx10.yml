@@ -47,7 +47,7 @@ services:
       - DAEMON_INTERVAL=${DAEMON_INTERVAL:-900}
       - TZ=Europe/Paris
     ports:
-      - "127.0.0.1:${DASHBOARD_PORT:-8501}:8501"
+      - "0.0.0.0:${DASHBOARD_PORT:-8501}:8501"
     volumes:
       # Persistance des données
       - atlas_storage_gx10:/app/storage

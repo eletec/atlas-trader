@@ -33,9 +33,10 @@ The system runs on a **15-minute loop** by default:
 | 📈 **Dashboard** | Real-time Streamlit, per-asset regime cards, P&L, logs, 2FA Admin |
 | 🎯 **Per-Asset Config** | Independent YAML per asset — risk, regime, MiroFish, scoring, agents, keywords |
 | 🌐 **i18n** | Full UI in 8 languages: FR · EN · DE · ES · IT · PT · NL · ZH |
-| 🐳 **Docker** | Supervisord multi-process, healthcheck, NAS-ready |
+| 🐳 **Docker** | Supervisord multi-process, healthcheck, production-ready |
 | 📉 **Backtesting** | Historical simulation with per-regime metrics, HMM 2 vs 3 states |
 | 📊 **Agent Perf Stats** | Per-agent win rate, Brier score, P&L on BUY — admin dashboard tab |
+| ⚖️ **Weighted agent scoring** | `weight_in_scoring` per agent is now **actually used** in the weighted mean (not just displayed) |
 | 🤖 **Auto-tune weights** | PostMortem auto-adjusts `weight_in_scoring` per agent every 7 days |
 | 🔍 **Meta-Analysis LLM** | Claude analyzes failure patterns, surfaces weak agents, gives ranked recommendations |
 
@@ -293,7 +294,7 @@ llm:
 
 > **Ollama (local, free)**: set `provider: ollama` and `model: llama3` (or any model you have pulled). No API key required. Requires a running `ollama serve` instance.
 
-> **TimesFM price forecasting**: enabled by default (`timesfm.enabled: true`). Requires at least 8 GB free RAM on CPU (4–6 GB model). To disable: set `enabled: false` in `settings.yaml` or via the Admin panel.
+> **TimesFM price forecasting**: **disabled** (`timesfm.enabled: false`). Requires a modern GPU (RTX 3060+ / ≥12 GB VRAM). On CPU-only or Pascal-era GPUs (GTX 1050 Ti), the model times out at 180 s and delivers 0 % win-rate — leave disabled unless running on adequate hardware.
 
 ---
 
@@ -303,18 +304,23 @@ llm:
 # Build & run
 docker compose up -d
 
-# Or on NAS (Synology / QNAP):
-# 1. Copy files via deploy.ps1 (Windows)
-# 2. Mount volume /app in Docker
-docker exec atlas-trader-app supervisorctl restart all
+# Deploy from Windows (syncs to remote host via SMB share):
+.\deploy.ps1
+
+# On the container host:
+docker exec atlas-trader-app supervisorctl -s unix:///tmp/supervisor.sock restart trader
+docker exec atlas-trader-app supervisorctl -s unix:///tmp/supervisor.sock status
+docker logs atlas-trader-app --tail 80 -f
 ```
 
 `supervisord` runs three processes:
-- `trader` — `python main.py --daemon` (15min loop)
+- `trader` — `python main.py --daemon` (15min loop, per-asset parallel execution)
 - `dashboard` — `streamlit run dashboard/streamlit_app.py --server.port 8501`
 - `watchdog` — shell script that monitors `/tmp/atlas_heartbeat`; restarts `trader` after 30 min stale + sends `SIGUSR1` for a stack dump before restart
 
 All three restart automatically (`startretries=100`).
+
+> **Hardware requirements**: i7 CPU + 16 GB RAM minimum. TimesFM is disabled by default (requires RTX 3060+ / ≥12 GB VRAM). All other agents run on CPU only.
 
 ---
 
@@ -573,7 +579,7 @@ zeitgeist-trader/
 - [x] Backtesting engine with per-regime metrics + HMM 2 vs 3 states comparison
 - [x] Docker + supervisord
 - [x] Admin UI: paper capital + testnet toggle + live `fetch_balance()` in portfolio
-- [x] TimesFM price forecasting enabled by default
+  - [x] TimesFM price forecasting — **disabled** (GTX 1050 Ti / Pascal GPU incompatible; re-enable with `backend: gpu` on RTX 3060+)
 - [x] Full UI internationalization — 8 languages (hamburger, all Admin tabs + tooltips, users panel)
 - [x] LLM sandbox in Admin (ad-hoc prompt → configured provider)
 - [x] Flux Manager fully localized (all 6 tabs: Status Board, Pipeline, Controls, Metrics, Logs, Alerts)
@@ -586,8 +592,16 @@ zeitgeist-trader/
   - Plotly multi-line (one line/agent + global), dashed BUY/EXIT thresholds, BUY/SELL markers
   - Time window radio: 24h / 48h / 7j / 30j with forced X-axis range
 
-### v1.1 (next)
-- [ ] TimesFM subprocess isolation (CPU offload without blocking main loop)
+### v1.1 (in progress — April 2026)
+- [x] **Weighted agent scoring** — `weight_in_scoring` per agent now applied as true weighted mean in `ScoreCalculator`
+- [x] **Agent weight recalibration** — fear_greed 0.85→0.10, x_sentiment 0.70→0.10, market_regime 0.00→0.40, fundamental 0.80→0.40 (based on Brier scores)
+- [x] **TimesFM disabled** — WR=0%, GTX 1050 Ti incompatible; re-enable on RTX 3060+ (`backend: gpu`)
+- [x] **trend_4h filter** — ±8 pts in `_derive_market_score()` — avoids BUY during 4h downtrend
+- [x] **buy_threshold raised** — ETH/SOL 60→63, forex/commodities 57-58→61 (reduces crash trades)
+- [x] **Inter-asset SELL bug fixed** — `DecisionEngine._open_buys` now filtered by `self._asset`
+- [x] **Session label fix** — XAU/XAG 0-7h UTC shows 🌙 calme (not ⚫ hors session)
+- [x] **Dashboard: trades after last_decision** — reordered per-asset tab layout
+- [x] **Dashboard: sortable global trades table** — HTML+JS clickable headers in Vue globale
 - [ ] Polymarket smart money integration
 - [ ] Telegram / Discord alerts
 - [ ] Graph B: score distribution histogram per agent (per-asset)

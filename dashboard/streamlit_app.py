@@ -1009,8 +1009,8 @@ header[data-testid="stHeader"]{{display:none!important;}}
   color: #22c55e !important;
 }}
 .atlas-bolt-alive {{
-  background: rgba(34,197,94,0.13) !important;
-  color: #4ade80 !important;
+  background: rgba(59,130,246,0.22) !important;
+  color: #60a5fa !important;
 }}
 </style>
 <nav style="position:fixed;top:0;left:0;right:0;height:48px;
@@ -1037,6 +1037,14 @@ header[data-testid="stHeader"]{{display:none!important;}}
   <a href="{u_hamburger}" style="{S_HBG}" title="Menu" target="_self"><i class="fas fa-bars"></i></a>
 </nav>
 {dropdown_html}
+<script>
+  (function(){{
+    if(!window._atlasAutoRefresh){{
+      window._atlasAutoRefresh=true;
+      setTimeout(function(){{window.location.reload();}},90000);
+    }}
+  }})();
+</script>
 """, unsafe_allow_html=True)
 
 
@@ -3207,12 +3215,8 @@ def main():
             # Front protégé
             render_auth()
         else:
-            # Auto-refresh toutes les 60s (aligné avec les TTL des caches)
-            try:
-                from streamlit_autorefresh import st_autorefresh
-                st_autorefresh(interval=60_000, limit=None, key="atlas_autorefresh")
-            except ImportError:
-                pass
+            # Auto-refresh géré via JS dans la navbar (window.location.reload toutes 90s)
+            # → pas de rerun Streamlit, pas d'effet grisé
 
             last_cycle = _get_last_cycle()
             portfolio  = _get_portfolio()          # consolidé (vue globale)

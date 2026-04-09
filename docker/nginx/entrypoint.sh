@@ -1,23 +1,24 @@
 #!/bin/sh
-# Génère un certificat auto-signé si absent (valide 10 ans)
-CERT_DIR=/etc/nginx/certs
+# Entrypoint nginx — Atlas Trader GX10
+# Bootstrap : génère un certificat auto-signé temporaire au chemin Let's Encrypt
+# pour que nginx puisse démarrer avant que Certbot obtienne le vrai certificat.
+DOMAIN=atlastrader.org
+CERT_DIR=/etc/letsencrypt/live/$DOMAIN
 
-# openssl n'est pas inclus dans nginx:alpine — installation si absent
 if ! command -v openssl > /dev/null 2>&1; then
-    apk add --no-cache openssl
+    apk add --no-cache openssl 2>/dev/null
 fi
 
-if [ ! -f "$CERT_DIR/cert.pem" ]; then
-    echo "[nginx-entrypoint] Génération du certificat auto-signé..."
+if [ ! -f "$CERT_DIR/fullchain.pem" ]; then
+    echo "[nginx] Aucun certificat Let's Encrypt trouvé — génération d'un certificat temporaire..."
     mkdir -p "$CERT_DIR"
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-        -keyout "$CERT_DIR/key.pem" \
-        -out    "$CERT_DIR/cert.pem" \
-        -subj "/CN=atlas-trader/O=Atlas/C=FR" \
-        -addext "subjectAltName=IP:127.0.0.1"
-    echo "[nginx-entrypoint] Certificat généré."
+    openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+        -keyout "$CERT_DIR/privkey.pem" \
+        -out    "$CERT_DIR/fullchain.pem" \
+        -subj "/CN=$DOMAIN"
+    echo "[nginx] Certificat temporaire généré. Lancez certbot pour obtenir le vrai."
 else
-    echo "[nginx-entrypoint] Certificat existant trouvé."
+    echo "[nginx] Certificat Let's Encrypt trouvé."
 fi
 
 exec nginx -g "daemon off;"

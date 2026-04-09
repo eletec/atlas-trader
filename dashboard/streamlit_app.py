@@ -1494,6 +1494,55 @@ def render_trades_list(trades: list[dict]):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def render_trades_list_sortable(trades: list[dict]):
+    """Historique global des trades — triable par colonne via st.dataframe."""
+    st.markdown(
+        '<h3 style="margin:16px 0 12px;font-size:18px;">'
+        '<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
+        'Historique des trades — tous actifs</h3>',
+        unsafe_allow_html=True,
+    )
+    if not trades:
+        st.info(t("no_trades"))
+        return
+
+    import pandas as pd
+
+    rows = []
+    for trade in trades:
+        pnl    = trade.get("result_24h")
+        action = trade.get("action", "")
+        rows.append({
+            "Date":       trade.get("timestamp", "")[:16].replace("T", " "),
+            "Actif":      trade.get("asset", "—"),
+            "Action":     action,
+            "Entrée ($)": trade.get("entry_price") or 0.0,
+            "Taille ($)": trade.get("position_size") or 0.0,
+            "SL ($)":     trade.get("sl_price") or 0.0,
+            "TP ($)":     trade.get("tp_price") or 0.0,
+            "P&L ($)":    pnl if pnl is not None else float("nan"),
+            "Score":      trade.get("score") or 0.0,
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        column_config={
+            "Date":       st.column_config.TextColumn("Date",       width="medium"),
+            "Actif":      st.column_config.TextColumn("Actif",      width="small"),
+            "Action":     st.column_config.TextColumn("Action",     width="small"),
+            "Entrée ($)": st.column_config.NumberColumn("Entrée ($)", format="$%.2f"),
+            "Taille ($)": st.column_config.NumberColumn("Taille ($)", format="$%.0f"),
+            "SL ($)":     st.column_config.NumberColumn("SL ($)",   format="$%.2f"),
+            "TP ($)":     st.column_config.NumberColumn("TP ($)",   format="$%.2f"),
+            "P&L ($)":    st.column_config.NumberColumn("P&L ($)",  format="$%+.2f"),
+            "Score":      st.column_config.NumberColumn("Score",    format="%.0f"),
+        },
+    )
+
 
 def render_last_decision(last_cycle: dict | None):
     """Affiche la dernière décision avec explication IA et breakdown des scores."""
@@ -3238,9 +3287,9 @@ def main():
                     render_last_decision(_lc)
                 with col_chart:
                     render_agent_scores_chart(asset)
+                render_trades_list(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_chart(asset)
-                render_trades_list(_tr)
                 render_live_logs(key=asset.replace('/', '_'))
 
             def _render_portfolio_first():
@@ -3250,6 +3299,7 @@ def main():
             def _render_global():
                 """Vue consolidée : PnL tous actifs + profils + logs."""
                 _tr_all = _get_recent_trades(500)
+                render_trades_list_sortable(_tr_all)
                 render_pnl_chart(_tr_all, key="pnl_chart_global")
                 render_profile_comparison()
                 render_live_logs(key="global")

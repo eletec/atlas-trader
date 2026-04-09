@@ -917,6 +917,14 @@ def _derive_market_score(indicators: MarketIndicators | None) -> float:
         ma50_contrib = max(-12.0, min(12.0, pct_vs_ma50 * 200))
         score += ma50_contrib
 
+    # Momentum 4h (±8 points) — filtre tendance intermédiaire
+    # trend_4h="DOWN" en marché baissier → pénalité pour éviter BUY en free-fall
+    trend_4h = indicators.get("trend_4h")
+    if trend_4h == "DOWN":
+        score -= 8
+    elif trend_4h == "UP":
+        score += 8
+
     # Funding rate contribution (±10 points)
     if funding < -0.01:
         score += 10   # funding négatif → shorts surpayés → haussier

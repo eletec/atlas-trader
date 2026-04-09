@@ -8,7 +8,7 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: conservative
-  buy_threshold: 58
+  buy_threshold: 61
   exit_threshold: 55
   kelly_max_fraction: 0.15
   position_size_pct: 3.0

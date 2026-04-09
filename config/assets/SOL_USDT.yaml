@@ -8,7 +8,7 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: balanced
-  buy_threshold: 60
+  buy_threshold: 63
   exit_threshold: 55
   kelly_max_fraction: 0.2
   position_size_pct: 4.0

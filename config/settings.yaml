@@ -277,25 +277,25 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.8
+    weight_in_scoring: 0.40  # Brier 0.21 (quasi-random), P&L -0.38$ — réduit
   x_sentiment:
     enabled: true
-    weight_in_scoring: 0.7
+    weight_in_scoring: 0.10  # Brier 0.53 = toxique (inverse les prédictions)
   contrarian:
     enabled: true
     weight_in_scoring: 0.9
   fear_greed:
     enabled: true
-    weight_in_scoring: 0.85
+    weight_in_scoring: 0.10  # Brier 0.62 = toxique (signal systématiquement inversé)
   polymarket:
     enabled: true
-    weight_in_scoring: 0.85
+    weight_in_scoring: 0.85  # Meilleur WR (14.3%), Brier 0.24 — conservé
   timesfm:
-    enabled: true
-    weight_in_scoring: 0.3  # signal non prouvé (54% acc., n<500) — à remonter si acc. ≥ 60% sur 500+ samples
+    enabled: false           # WR=0%, 82% timeout — désactivé (gain ~25s/cycle)
+    weight_in_scoring: 0.0
   market_regime:
     enabled: true
-    weight_in_scoring: 0.0
+    weight_in_scoring: 0.40  # Brier 0.21, réactivé (était 0.00 mais score fiable)
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0

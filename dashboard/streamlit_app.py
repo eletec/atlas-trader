@@ -1495,7 +1495,7 @@ def render_trades_list(trades: list[dict]):
 
 
 def render_trades_list_sortable(trades: list[dict]):
-    """Historique global des trades — triable par colonne via st.dataframe."""
+    """Historique global des trades — triable par clic sur entête (HTML+JS)."""
     st.markdown(
         '<h3 style="margin:16px 0 12px;font-size:18px;">'
         '<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
@@ -1506,42 +1506,100 @@ def render_trades_list_sortable(trades: list[dict]):
         st.info(t("no_trades"))
         return
 
-    import pandas as pd
+    import json as _json
 
-    rows = []
-    for trade in trades:
+    theme = _get_theme()
+    if theme == "light":
+        tbl_bg  = "#ffffff"; tbl_fg  = "#212529"
+        head_bg = "#f1f3f5"; row_alt = "#f8f9fa"
+        border  = "#dee2e6"; sep     = "#e9ecef"
+        hov     = "#e9ecef"
+    else:
+        tbl_bg  = "#161b22"; tbl_fg  = "#e6edf3"
+        head_bg = "#0d1117"; row_alt = "#1b2129"
+        border  = "rgba(255,255,255,0.08)"; sep = "rgba(255,255,255,0.05)"
+        hov     = "#21262d"
+
+    # Unique ID to avoid JS collision if called multiple times
+    tid = "gtrades"
+
+    cols = ["Date", "Actif", "Action", "Entrée", "Taille", "SL", "TP", "P&L", "Score"]
+
+    header_cells = "".join(
+        f'<th onclick="sortTable(\'{tid}\',{i})" '
+        f'style="padding:9px 12px;font-size:12px;font-weight:600;'
+        f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
+        f'opacity:.8;background:{head_bg};white-space:nowrap;'
+        f'border-bottom:2px solid {border};cursor:pointer;user-select:none;" '
+        f'title="Cliquer pour trier">{c} <span style="opacity:.4;">⇅</span></th>'
+        for i, c in enumerate(cols)
+    )
+
+    rows_html = ""
+    for i, trade in enumerate(trades):
         pnl    = trade.get("result_24h")
         action = trade.get("action", "")
-        rows.append({
-            "Date":       trade.get("timestamp", "")[:16].replace("T", " "),
-            "Actif":      trade.get("asset", "—"),
-            "Action":     action,
-            "Entrée ($)": trade.get("entry_price") or 0.0,
-            "Taille ($)": trade.get("position_size") or 0.0,
-            "SL ($)":     trade.get("sl_price") or 0.0,
-            "TP ($)":     trade.get("tp_price") or 0.0,
-            "P&L ($)":    pnl if pnl is not None else float("nan"),
-            "Score":      trade.get("score") or 0.0,
-        })
+        bg     = row_alt if i % 2 == 1 else tbl_bg
 
-    df = pd.DataFrame(rows)
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=420,
-        column_config={
-            "Date":       st.column_config.TextColumn("Date",       width="medium"),
-            "Actif":      st.column_config.TextColumn("Actif",      width="small"),
-            "Action":     st.column_config.TextColumn("Action",     width="small"),
-            "Entrée ($)": st.column_config.NumberColumn("Entrée ($)", format="$%.2f"),
-            "Taille ($)": st.column_config.NumberColumn("Taille ($)", format="$%.0f"),
-            "SL ($)":     st.column_config.NumberColumn("SL ($)",   format="$%.2f"),
-            "TP ($)":     st.column_config.NumberColumn("TP ($)",   format="$%.2f"),
-            "P&L ($)":    st.column_config.NumberColumn("P&L ($)",  format="$%+.2f"),
-            "Score":      st.column_config.NumberColumn("Score",    format="%.0f"),
-        },
-    )
+        action_color = "#2ecc71" if action == "BUY" else ("#e74c3c" if action == "SELL" else tbl_fg)
+        if action == "SELL":
+            pnl_str = f'<span style="opacity:.6;font-style:italic;">✓ Clôture</span>'
+        elif pnl is None:
+            pnl_str = f'<span style="opacity:.45;">{t("pending")}</span>'
+        elif pnl >= 0:
+            pnl_str = f'<span style="color:#2ecc71;font-weight:600;">${pnl:+,.2f}</span>'
+        else:
+            pnl_str = f'<span style="color:#e74c3c;font-weight:600;">${pnl:+,.2f}</span>'
+
+        asset = trade.get("asset", "—")
+        cells = [
+            trade.get("timestamp", "")[:16].replace("T", " "),
+            f'<span style="font-weight:600;color:#7986cb;">{asset}</span>',
+            f'<span style="color:{action_color};font-weight:600;">{action}</span>',
+            f'${trade.get("entry_price", 0):,.2f}'    if trade.get("entry_price")    else "—",
+            f'${trade.get("position_size", 0):,.0f}'  if trade.get("position_size")  else "—",
+            f'${trade.get("sl_price", 0):,.2f}'       if trade.get("sl_price")       else "—",
+            f'${trade.get("tp_price", 0):,.2f}'       if trade.get("tp_price")       else "—",
+            pnl_str,
+            f'{trade.get("score", 0):.0f}/100',
+        ]
+        td_style = (f'padding:8px 12px;font-size:13px;color:{tbl_fg};'
+                    f'white-space:nowrap;border-bottom:1px solid {sep};')
+        tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
+        rows_html += f'<tr style="background:{bg};">{tds}</tr>'
+
+    html = f"""
+<div style="overflow-y:auto;max-height:520px;border:1px solid {border};
+            border-radius:10px;background:{tbl_bg};">
+  <table id="{tid}" style="border-collapse:collapse;width:100%;min-width:800px;">
+    <thead><tr>{header_cells}</tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+</div>
+<script>
+(function(){{
+  var _dirs = {{}};
+  function sortTable(id, col) {{
+    var tbl = document.getElementById(id);
+    if (!tbl) return;
+    var tbody = tbl.tBodies[0];
+    var rows  = Array.from(tbody.rows);
+    _dirs[id] = _dirs[id] || {{}};
+    var asc   = !_dirs[id][col];
+    _dirs[id][col] = asc;
+    rows.sort(function(a, b) {{
+      var av = a.cells[col] ? a.cells[col].innerText.replace(/[^0-9.+\-]/g,'') : '';
+      var bv = b.cells[col] ? b.cells[col].innerText.replace(/[^0-9.+\-]/g,'') : '';
+      var an = parseFloat(av), bn = parseFloat(bv);
+      if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+      return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+    }});
+    rows.forEach(function(r){{ tbody.appendChild(r); }});
+  }}
+  window.sortTable = sortTable;
+}})();
+</script>"""
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_last_decision(last_cycle: dict | None):

@@ -48,6 +48,12 @@ class ScoreCalculator:
             agents=w.get("agents", 0.20),
             contrarian=w.get("contrarian", 0.10),
         )
+        # Poids individuels par agent (weight_in_scoring) — utilisés pour pondérer agents_mean
+        self._agent_weights: dict[str, float] = {
+            name: float(acfg.get("weight_in_scoring", 1.0))
+            for name, acfg in cfg.get("agents", {}).items()
+            if isinstance(acfg, dict)
+        }
 
     def calculate(
         self,
@@ -89,11 +95,18 @@ class ScoreCalculator:
                 self.weights.agents, self.weights.contrarian,
             )
 
-        # Score moyen des agents (hors contrarian)
-        agents_mean = (
-            sum(agent_scores.values()) / len(agent_scores)
-            if agent_scores else 50.0
-        )
+        # Score moyen des agents — pondéré par weight_in_scoring individuel
+        if agent_scores:
+            total_w = sum(self._agent_weights.get(n, 1.0) for n in agent_scores)
+            if total_w > 0:
+                agents_mean = sum(
+                    s * self._agent_weights.get(n, 1.0)
+                    for n, s in agent_scores.items()
+                ) / total_w
+            else:
+                agents_mean = sum(agent_scores.values()) / len(agent_scores)
+        else:
+            agents_mean = 50.0
 
         weighted_score = (
             mirofish_score * w_mf
@@ -112,7 +125,8 @@ class ScoreCalculator:
                        "contribution": round(market_score * w_mkt, 2)},
             "agents": {"score": agents_mean, "weight": w_agt,
                        "contribution": round(agents_mean * w_agt, 2),
-                       "detail": agent_scores},
+                       "detail": agent_scores,
+                       "agent_weights": {n: self._agent_weights.get(n, 1.0) for n in agent_scores}},
             "contrarian": {"score": contrarian_score, "weight": w_ctr,
                            "contribution": round(contrarian_score * w_ctr, 2)},
             "final_score": round(score, 2),

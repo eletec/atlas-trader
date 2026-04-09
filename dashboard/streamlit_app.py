@@ -1769,8 +1769,10 @@ def render_agent_scores_chart(asset: str):
     from datetime import datetime, timezone, timedelta
     now_utc = datetime.now(timezone.utc)
     x_start_max = now_utc - timedelta(hours=hours)
-    # Si peu de données, ne pas laisser un grand vide : borner au min réel
-    x_start = max(x_start_max, df["ts"].min() - timedelta(minutes=15)) if len(df) else x_start_max
+    # df["ts"] est naive (UTC) — comparer en naive
+    x_start_max_naive = now_utc.replace(tzinfo=None) - timedelta(hours=hours)
+    x_start_naive = max(x_start_max_naive, df["ts"].min() - timedelta(minutes=15)) if len(df) else x_start_max_naive
+    x_start = x_start_naive
 
     fig.update_layout(
         height=300,

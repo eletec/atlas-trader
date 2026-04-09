@@ -861,7 +861,7 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
         logger.info(
             f"=== CYCLE {initial_state['cycle_id']} FIN à {end_ts} — "
             f"{duration_ms}ms | score={final_state.get('global_score', 0):.1f} | "
-            f"decision={final_state.get('decision', {}).get('action', 'N/A')} | "
+            f"decision={(final_state.get('decision') or {}).get('action', 'N/A')} | "
             f"tokens={final_state.get('llm_tokens_used', 0)} | "
             f"erreurs={len(final_state.get('errors', []))} ==="
         )

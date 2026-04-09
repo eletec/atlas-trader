@@ -1,18 +1,12 @@
 # ============================================================
 # Atlas Trader — Settings GX10 (ASUS Accent GX10)
 # ============================================================
-# Fichier monté à la place de settings.yaml dans docker-compose.gx10.yml
-# Différences vs settings.yaml (serveur prod) :
-#   - timesfm.enabled: true  (GPU + RAM suffisants sur GX10)
-#   - timesfm.weight_in_scoring: 0.30  (à recalibrer après 500+ cycles)
-#   - backend: cpu par défaut (sécurité) → passer à gpu si tests GPU OK
+# Copie complète de settings.yaml avec timesfm activé.
+# Différences vs prod :
+#   - timesfm.enabled: true
+#   - timesfm.weight_in_scoring: 0.30
+#   - timesfm.backend: cpu (passer à gpu après validation CUDA)
 # ============================================================
-
-# ────────────────────────────────────────────────────────────
-# Inclure tous les paramètres globaux via le fichier de base
-# YAML ne supporte pas l'inclusion native → on recopie les
-# sections clés et on surcharge uniquement ce qui change.
-# ────────────────────────────────────────────────────────────
 
 project:
   name: Atlas Trader
@@ -28,7 +22,255 @@ project:
   - WTI/USD
   - GBP/USD
   - EUR/USD
+crawler:
+  provider: duckduckgo
+  fallback_provider: duckduckgo
+  n_themes: 10
+  max_pages_per_theme: 10
+  frequency: per_cycle
+  llm_summarizer_model: claude-3-5-haiku-20241022
+  request_timeout_seconds: 15
 
+  templates_macro:
+  - 'geopolitics energy price {year}'
+  - 'inflation central bank policy {year}'
+  - 'global market sentiment {year}'
+  - 'risk-off risk-on sentiment {year}'
+  - 'USD dollar index outlook {year}'
+  - 'recession financial crisis risk {year}'
+
+  templates: []
+news:
+  polling_interval_seconds: 1800
+  max_items_per_cycle: 30
+  relevance_score_threshold: 0.4
+
+  sources_rss_macro:
+  - https://feeds.bbci.co.uk/news/business/rss.xml
+  - https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best
+  - https://feeds.zerohedge.com/feeds/zerohedge.xml
+  - https://www.scmp.com/rss/92/feed
+  - https://asia.nikkei.com/rss/feed/technology
+  - https://www.rt.com/rss/business/
+  - https://en.caixin.com/rss/finance.xml
+
+  sources_per_asset:
+    BTC/USDT:
+      keywords:
+      - bitcoin
+      - BTC
+      - crypto
+      - blockchain
+      - halving
+      - ETF
+      - Satoshi
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://cryptonews.com/news/feed/
+      - https://bitcoinmagazine.com/.rss/full/
+      - https://decrypt.co/feed
+      - https://www.theblock.co/rss.xml
+      - https://ambcrypto.com/feed/
+      - https://news.8btc.com/feed
+      - https://www.coindesk.com/arc/outboundfeeds/rss/
+      - https://forklog.com/feed/
+      - https://bits.media/rss/
+      nitter:
+      - saylor
+      - BitcoinMagazine
+      - whale_alert
+      - woonomic
+      - CryptoHayes
+      - RayDalio
+      - LynAldenContact
+      - WuBlockchain
+      - colin_wu_
+      reddit:
+      - Bitcoin
+      - CryptoCurrency
+      - btc
+
+    ETH/USDT:
+      keywords:
+      - ethereum
+      - ETH
+      - DeFi
+      - EIP
+      - layer2
+      - staking
+      - smart contract
+      - Vitalik
+      - Pectra
+      rss:
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
+      - https://www.theblock.co/rss.xml
+      - https://beincrypto.com/feed/
+      nitter:
+      - VitalikButerin
+      - sassal0x
+      - EthereumJoseph
+      - DefiLlama
+      - LefterisJP
+      reddit:
+      - ethereum
+      - ethfinance
+      - ethtrader
+
+    XAU/USD:
+      keywords:
+      - gold
+      - XAU
+      - precious metals
+      - inflation
+      - Fed
+      - interest rate
+      - safe haven
+      - commodities
+      - XAUUSD
+      - central bank
+      rss:
+      - https://www.kitco.com/rss/kitcogoldrss.xml
+      - https://www.fxstreet.com/rss/news
+      nitter:
+      - KitcoNews
+      - GoldTelegraph_
+      - LynAldenContact
+      - zerohedge
+      reddit:
+      - Gold
+      - investing
+      - Economics
+
+    EUR/USD:
+      keywords:
+      - euro
+      - EUR
+      - ECB
+      - eurozone
+      - European Central Bank
+      - dollar
+      - DXY
+      - Lagarde
+      - EURUSD
+      - inflation
+      rss:
+      - https://www.fxstreet.com/rss/news
+      - https://www.forexlive.com/feed/news
+      nitter:
+      - Lagarde
+      - BundesbankDE
+      - ecb
+      - EurActiv
+      reddit:
+      - Forex
+      - investing
+      - europe
+
+    GBP/USD:
+      keywords:
+      - pound
+      - GBP
+      - sterling
+      - Bank of England
+      - BoE
+      - UK economy
+      - GBPUSD
+      - Brexit
+      rss:
+      - https://www.fxstreet.com/rss/news
+      - https://www.forexlive.com/feed/news
+      nitter:
+      - bankofengland
+      - BBCBusiness
+      reddit:
+      - Forex
+      - unitedkingdom
+
+    XAG/USD:
+      keywords:
+      - silver
+      - XAG
+      - argent
+      - precious metals
+      - inflation
+      - Fed
+      - safe haven
+      - XAGUSD
+      rss:
+      - https://www.kitco.com/rss/kitcogoldrss.xml
+      - https://www.fxstreet.com/rss/news
+      nitter:
+      - KitcoNews
+      - SilverInstitute
+      - LynAldenContact
+      reddit:
+      - Silverbugs
+      - investing
+
+    WTI/USD:
+      keywords:
+      - oil
+      - crude
+      - WTI
+      - OPEC
+      - petroleum
+      - energy
+      - EIA
+      - barrel
+      - brent
+      rss:
+      - https://oilprice.com/rss/main
+      - https://www.fxstreet.com/rss/news
+      - https://feeds.bbci.co.uk/news/business/rss.xml
+      nitter:
+      - OilPrice_com
+      - EIAgov
+      - zerohedge
+      reddit:
+      - energy
+      - investing
+      - oil
+
+    SOL/USDT:
+      keywords:
+      - solana
+      - SOL
+      - Firedancer
+      - Anatoly
+      - pump.fun
+      - meme coin
+      - DeFi solana
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
+      - https://www.theblock.co/rss.xml
+      nitter:
+      - aeyakovenko
+      - rajgokal
+      - SolanaFndn
+      - DefiLlama
+      reddit:
+      - solana
+      - CryptoCurrency
+
+  cryptopanic:
+    enabled: true
+    max_items: 15
+    asset_currency_map:
+      BTC/USDT: BTC
+      ETH/USDT: ETH
+      SOL/USDT: SOL
+mirofish:
+  n_agents: 5000
+  n_steps: 100
+  seed_news_weight: 0.6
+  air_du_temps_weight: 0.4
+  inject_custom_vars: {}
+  async_mode: false
+  timeout_seconds: 120
 agents:
   market_data:
     enabled: true
@@ -49,16 +291,103 @@ agents:
     enabled: true
     weight_in_scoring: 0.85
   timesfm:
-    enabled: true            # ← ACTIVÉ sur GX10 (hardware suffisant)
-    weight_in_scoring: 0.30  # À recalibrer après 500+ signaux (base: 0.30)
+    enabled: true            # ← ACTIVÉ sur GX10
+    weight_in_scoring: 0.30  # À recalibrer après 500+ signaux
   market_regime:
     enabled: true
     weight_in_scoring: 0.40
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0
-
 timesfm:
   forecast_horizon: 24
-  backend: cpu   # Utiliser cpu pour démarrer en sécurité
-                 # → passer à gpu après validation (driver CUDA requis dans le container)
+  backend: cpu   # passer à gpu après validation CUDA
+market_regime:
+  n_hmm_states: 2
+  vol_window: 30
+  trend_window: 50
+  adx_period: 18
+scoring:
+  weights:
+    mirofish: 0.12
+    market: 0.4
+    agents: 0.3
+    contrarian: 0.18
+  min_weight: 0.05
+  max_weight: 0.6
+  normalization_window: 30
+risk:
+  mode: balanced
+  kelly_max_fraction: 0.25
+  max_drawdown_pct: 15.0
+  position_size_pct: 5.0
+  atr_multiplier_sl: 2.0
+  atr_multiplier_tp: 3.0
+  atr_period: 14
+  buy_threshold: 62
+  exit_threshold: 52
+  human_in_the_loop: false
+  ma50_filter_mode: gradual
+  ma50_strong_signal_threshold: 72
+  ma50_gradual_size_factor: 0.5
+  max_open_positions: 3
+  sell_threshold: 30
+circuit_breaker:
+  funding_warning: 0.00018
+  funding_block: 0.00045
+  sustain_period_cycles: 3
+  max_reduction: 0.75
+assets:
+  universe:
+  - symbol: BTC/USDT
+    exchange: binance
+    timeframe: 15m
+    theme_mapping:
+    - bitcoin
+    - crypto
+    - blockchain
+  active_asset: BTC/USDT
+exchange:
+  name: binance
+  testnet: true
+  websocket: true
+  fallback_polling_seconds: 15
+  paper_capital_usd: 10000
+  limit_order_offset_pct: 0.1
+  limit_fill_timeout_s: 120
+logging:
+  level: INFO
+  file_path: logs/zeitgeist.log
+  max_bytes: 5242880
+  backup_count: 5
+  sqlite_db: storage/zeitgeist.db
+  format: '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s'
+  telegram_enabled: false
+  discord_enabled: false
+  alert_score_threshold: 85
+llm:
+  provider: deepseek
+  model: deepseek-chat
+  temperature: 0.3
+  max_tokens: 4096
+  request_timeout_seconds: 60
+  max_tokens_per_cycle: 15000
+  cache_responses: true
+  cache_ttl_seconds: 3600
+  deepseek_api_key: REDACTED_COMPROMISED_KEY
+post_mortem:
+  enabled: true
+  delay_hours: 24
+  min_history_for_adjustment: 10
+  learning_rate: 0.05
+  walk_forward_days: 7
+  correlation_threshold: 0.75
+  meta_analysis_interval_days: 14
+  meta_analysis_days: 30
+monitor:
+  interval_seconds: 60
+  breaking_news_threshold: 0.8
+  sl_tp_check_enabled: true
+admin:
+  password_hash: ''
+  session_timeout_minutes: 60

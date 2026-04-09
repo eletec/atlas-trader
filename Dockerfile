@@ -35,6 +35,8 @@ RUN pip install --prefix=/install --no-cache-dir git+https://github.com/666ghj/M
 
 # Pré-télécharger le modèle TimesFM 500M (~2GB) dans le cache HuggingFace
 # pour éviter le téléchargement au premier lancement du container
+# NOTE: désactivé sur le serveur actuel (GTX 1050 Ti / Pascal incompatible)
+# Activé ici pour le build GX10 — commenter si build pour serveur de prod
 RUN PYTHONPATH=/install/lib/python3.11/site-packages \
     python -c "from huggingface_hub import snapshot_download; snapshot_download('google/timesfm-2.0-500m-pytorch')" || \
     echo "WARNING: TimesFM model download failed, will retry at runtime"

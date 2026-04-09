@@ -1,0 +1,64 @@
+# ============================================================
+# Atlas Trader — Settings GX10 (ASUS Accent GX10)
+# ============================================================
+# Fichier monté à la place de settings.yaml dans docker-compose.gx10.yml
+# Différences vs settings.yaml (serveur prod) :
+#   - timesfm.enabled: true  (GPU + RAM suffisants sur GX10)
+#   - timesfm.weight_in_scoring: 0.30  (à recalibrer après 500+ cycles)
+#   - backend: cpu par défaut (sécurité) → passer à gpu si tests GPU OK
+# ============================================================
+
+# ────────────────────────────────────────────────────────────
+# Inclure tous les paramètres globaux via le fichier de base
+# YAML ne supporte pas l'inclusion native → on recopie les
+# sections clés et on surcharge uniquement ce qui change.
+# ────────────────────────────────────────────────────────────
+
+project:
+  name: Atlas Trader
+  version: 1.0.0-MVP
+  asset: BTC/USDT
+  loop_interval_seconds: 900
+  active_assets:
+  - BTC/USDT
+  - ETH/USDT
+  - SOL/USDT
+  - XAU/USD
+  - XAG/USD
+  - WTI/USD
+  - GBP/USD
+  - EUR/USD
+
+agents:
+  market_data:
+    enabled: true
+    weight_in_scoring: 1.0
+  fundamental:
+    enabled: true
+    weight_in_scoring: 0.40
+  x_sentiment:
+    enabled: true
+    weight_in_scoring: 0.10
+  contrarian:
+    enabled: true
+    weight_in_scoring: 0.9
+  fear_greed:
+    enabled: true
+    weight_in_scoring: 0.10
+  polymarket:
+    enabled: true
+    weight_in_scoring: 0.85
+  timesfm:
+    enabled: true            # ← ACTIVÉ sur GX10 (hardware suffisant)
+    weight_in_scoring: 0.30  # À recalibrer après 500+ signaux (base: 0.30)
+  market_regime:
+    enabled: true
+    weight_in_scoring: 0.40
+  bull_bear_debate:
+    enabled: false
+    weight_in_scoring: 0.0
+
+timesfm:
+  forecast_horizon: 24
+  backend: cpu   # Utiliser cpu pour démarrer en sécurité
+                 # → passer à gpu après validation (driver CUDA requis dans le container)

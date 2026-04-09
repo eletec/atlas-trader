@@ -1792,7 +1792,8 @@ def render_agent_scores_chart(asset: str):
         '📈 Évolution des scores agents</p>',
         unsafe_allow_html=True,
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
+                    key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
 
 
 def render_live_logs(key: str = "global"):

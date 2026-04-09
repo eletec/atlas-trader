@@ -179,4 +179,7 @@ class MarketSession:
             return "🟢 London/NY"
         if 17 <= h < 22:
             return "🟠 NY"
-        return "⚫ hors session"
+        # h = 0-7 ou 22-24 : fenêtre existe mais session calme
+        if w.open_utc in self._no_trade_opens:
+            return "⚫ hors session"  # forex : no-trade explicite
+        return "🌙 calme"  # xau/xag : monitoring actif, volume faible

@@ -22,6 +22,8 @@ volumes:
     driver: local
   atlas_logs_gx10:
     driver: local
+  atlas_certs_gx10:
+    driver: local
 
 networks:
   atlas_net:
@@ -47,7 +49,8 @@ services:
       - DAEMON_INTERVAL=${DAEMON_INTERVAL:-900}
       - TZ=Europe/Paris
     ports:
-      - "0.0.0.0:${DASHBOARD_PORT:-8501}:8501"
+      # LAN uniquement — nginx gère l'accès externe en HTTPS
+      - "127.0.0.1:${DASHBOARD_PORT:-8501}:8501"
     volumes:
       # Persistance des données
       - atlas_storage_gx10:/app/storage
@@ -78,6 +81,29 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # ── Nginx HTTPS reverse proxy ──────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: atlas-nginx-gx10
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/entrypoint.sh:/entrypoint.sh:ro
+      - atlas_certs_gx10:/etc/nginx/certs
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      - atlas
+    networks:
+      - atlas_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
     # GX10 : allouer 12 GB (TimesFM nécessite ~3-4 GB)
     mem_limit: 12g
     memswap_limit: 12g

@@ -1768,7 +1768,9 @@ def render_agent_scores_chart(asset: str):
 
     from datetime import datetime, timezone, timedelta
     now_utc = datetime.now(timezone.utc)
-    x_start = now_utc - timedelta(hours=hours)
+    x_start_max = now_utc - timedelta(hours=hours)
+    # Si peu de données, ne pas laisser un grand vide : borner au min réel
+    x_start = max(x_start_max, df["ts"].min() - timedelta(minutes=15)) if len(df) else x_start_max
 
     fig.update_layout(
         height=300,

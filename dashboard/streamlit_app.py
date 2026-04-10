@@ -2501,6 +2501,45 @@ def render_admin_panel():
         st.caption(t("cfg_regime_agent_note"))
         agents["market_regime"] = mr_cfg
 
+        # AlphaCombination — pondération dynamique IC-based
+        st.markdown("---")
+        st.markdown("**⚗ Alpha Combination** *(Fundamental Law of Active Management)*")
+        ac_cfg = agents.get("alpha_combination", {})
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            ac_cfg["enabled"] = st.toggle(
+                "Poids dynamiques IC-based (remplace weight_in_scoring statiques)",
+                ac_cfg.get("enabled", False),
+                key="toggle_alpha_combination",
+                help="Active la pondération dynamique des agents basée sur leur Information Coefficient historique. Nécessite min_history trades évalués.",
+            )
+        with col2:
+            ac_cfg["min_history"] = st.number_input(
+                "Min trades évalués", 5, 200,
+                int(ac_cfg.get("min_history", 20)), 5,
+                key="ac_min_history",
+                help="Nombre minimum de trades avec result_24h pour activer les poids dynamiques."
+            )
+        col3, col4 = st.columns(2)
+        with col3:
+            ac_cfg["lookback_days"] = st.number_input(
+                "Fenêtre (jours)", 7, 365,
+                int(ac_cfg.get("lookback_days", 90)), 7,
+                key="ac_lookback_days",
+            )
+        with col4:
+            ac_cfg["ic_floor"] = st.number_input(
+                "IC floor (seuil min)", 0.0, 0.5,
+                float(ac_cfg.get("ic_floor", 0.0)), 0.01,
+                key="ac_ic_floor",
+                help="Les agents avec IC ≤ ce seuil reçoivent un poids nul.",
+            )
+        if ac_cfg.get("enabled"):
+            st.info("Actif : les poids seront recalculés à chaque cycle selon l'historique des 20+ derniers trades évalués.")
+        else:
+            st.caption("Inactif — poids statiques weight_in_scoring utilisés.")
+        agents["alpha_combination"] = ac_cfg
+
         settings["agents"] = agents
 
     with sub_tabs[7]:  # Logging

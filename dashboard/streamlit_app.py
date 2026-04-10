@@ -1680,6 +1680,56 @@ def render_last_decision(last_cycle: dict | None):
         unsafe_allow_html=True
     )
 
+    # ── Raisons de filtrage (MA50, Funding CB, HIGH_VOL) ────────────────────
+    _filter_pills = []
+    _above_ma50       = last_cycle.get("above_ma50")
+    _ma50_blocked     = last_cycle.get("ma50_blocked", False)
+    _ma50_penalty     = last_cycle.get("ma50_size_penalty", 1.0)
+    _funding_blocked  = last_cycle.get("funding_blocked", False)
+    _funding_mult     = last_cycle.get("funding_size_mult", 1.0)
+    _funding_reason   = last_cycle.get("funding_reason", "")
+    _hv_mult          = last_cycle.get("high_vol_size_mult", 1.0)
+    _buy_thr          = last_cycle.get("buy_threshold") or last_cycle.get("score_breakdown", {})
+
+    if _ma50_blocked:
+        _filter_pills.append(
+            "<span style='background:rgba(255,152,0,0.18);color:#ffb74d;"
+            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
+            "⚠ MA50 — score &lt; 72 requis sous MA50 → HOLD forcé</span>"
+        )
+    elif _above_ma50 is False and _ma50_penalty and _ma50_penalty < 1.0:
+        _filter_pills.append(
+            "<span style='background:rgba(255,152,0,0.12);color:#ffb74d;"
+            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
+            f"⚠ MA50 — prix sous MA50 · taille ×{_ma50_penalty:.0%}</span>"
+        )
+
+    if _funding_blocked:
+        _filter_pills.append(
+            "<span style='background:rgba(229,57,53,0.18);color:#ef9a9a;"
+            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
+            "🚫 Funding CB — BUY bloqué</span>"
+        )
+    elif _funding_mult and _funding_mult < 1.0:
+        _filter_pills.append(
+            "<span style='background:rgba(229,57,53,0.12);color:#ef9a9a;"
+            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
+            f"⚠ Funding élevé · taille ×{_funding_mult:.0%}</span>"
+        )
+
+    if _hv_mult and _hv_mult < 1.0:
+        _filter_pills.append(
+            "<span style='background:rgba(171,71,188,0.15);color:#ce93d8;"
+            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
+            f"⚡ HIGH_VOL · taille ×{_hv_mult:.0%}</span>"
+        )
+
+    if _filter_pills:
+        st.markdown(
+            f"<div style='margin-top:6px;'>{''.join(_filter_pills)}</div>",
+            unsafe_allow_html=True,
+        )
+
     # F11 — Score breakdown : contribution de chaque composant
     breakdown = last_cycle.get("breakdown") or last_cycle.get("score_breakdown") or {}
     if isinstance(breakdown, str):

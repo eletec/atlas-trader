@@ -299,7 +299,7 @@ def _inject_custom_sidenav(items: list, active_key: str) -> None:
     '<div class="ans">Actifs</div>' +
     ITEMS.map(function(it) {{
       var cls = 'ani' + (it.key === ACTIVE ? ' a' : '');
-      return '<a class="' + cls + '" href="' + navUrl(it.key) + '">' +
+      return '<a class="' + cls + '" href="' + navUrl(it.key) + '" title="' + it.text + '">' +
              '<span class="ani-ic">' + it.icon + '</span>' +
              '<span class="ani-tx">' + it.text + '</span></a>';
     }}).join('');

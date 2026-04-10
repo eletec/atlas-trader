@@ -55,6 +55,22 @@ class ScoreCalculator:
             if isinstance(acfg, dict)
         }
 
+        # AlphaCombination — poids dynamiques IC-based (Fundamental Law of Active Management)
+        # Remplace les poids statiques si activé et si l'historique est suffisant.
+        try:
+            from agents.alpha_combination_agent import AlphaCombinationAgent
+            _ac = AlphaCombinationAgent()
+            if _ac.enabled:
+                dynamic_weights = _ac.run(asset=asset)
+                if dynamic_weights:
+                    self._agent_weights.update(dynamic_weights)
+                    logger.info(
+                        f"AlphaCombination: poids dynamiques actifs "
+                        f"({len(dynamic_weights)} agents)"
+                    )
+        except Exception as _e:
+            logger.debug(f"AlphaCombination: non disponible — {_e}")
+
     def calculate(
         self,
         mirofish_score: float,

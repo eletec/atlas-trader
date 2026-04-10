@@ -232,7 +232,8 @@ def _inject_custom_sidenav(items: list, active_key: str) -> None:
   /* Hauteur du header Streamlit (mesurée dynamiquement) */
   function hdrH() {{
     var h = d.querySelector('[data-testid="stHeader"]');
-    return h ? h.getBoundingClientRect().height : 60;
+    return (h && h.getBoundingClientRect().height > 10)
+           ? h.getBoundingClientRect().height : 60;
   }}
 
   var collapsed = p.localStorage.getItem('atlas_nav_c') === '1';
@@ -250,6 +251,7 @@ def _inject_custom_sidenav(items: list, active_key: str) -> None:
   }}
 
   function positionNav(nav) {{
+    if (!nav) return;
     var top = hdrH();
     nav.style.top = top + 'px';
     nav.style.height = 'calc(100vh - ' + top + 'px)';
@@ -308,6 +310,8 @@ def _inject_custom_sidenav(items: list, active_key: str) -> None:
   else d.body.appendChild(nav);
 
   positionNav(nav);
+  setTimeout(function() {{ positionNav(d.getElementById('atlas-sidenav')); }}, 200);
+  setTimeout(function() {{ positionNav(d.getElementById('atlas-sidenav')); }}, 700);
   setPad(wasC);
 
   /* Re-positionner si le header change de taille */

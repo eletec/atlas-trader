@@ -159,6 +159,11 @@ class SynthesisAgent:
 
     def _build_prompt(self, state: dict) -> str:
         """Construit le prompt de synthèse depuis l'état."""
+        from utils.config import load_settings
+        _risk = load_settings().get("risk", {})
+        buy_threshold = float(_risk.get("buy_threshold", 62))
+        exit_threshold = float(_risk.get("exit_threshold", 52))
+
         analyses = state.get("agent_analyses", {})
         mirofish = state.get("mirofish_result", {})
         market = state.get("market_indicators", {})
@@ -166,6 +171,7 @@ class SynthesisAgent:
 
         parts = [
             f"**Asset** : {state.get('asset', 'BTC/USDT')}",
+            f"**Decision zones (AUTHORITATIVE — do NOT invent other values)** : BUY ≥ {buy_threshold:.0f} | HOLD [{exit_threshold:.0f}–{buy_threshold-1:.0f}] | EXIT < {exit_threshold:.0f}",
             f"**News collectées** : {news_count}",
             f"**Score MiroFish** : {mirofish.get('score', 50):.1f}/100",
             f"**Narrative dominante MiroFish** : {mirofish.get('dominant_narrative', 'N/A')}",
@@ -225,6 +231,8 @@ class SynthesisAgentAgentic:
         "before rendering your final decision. "
         "Use web_search only to confirm or refute a critical signal "
         "(max 2 searches). "
+        "CRITICAL: The context contains a 'Decision zones' line with the exact configured "
+        "BUY/HOLD/EXIT thresholds. Reference those exact numbers — never invent threshold values. "
         "Respond ONLY with a valid JSON object (no markdown) containing: "
         "score_global (int 0-100), signal (BULLISH/BEARISH/NEUTRAL), "
         "resume_court (str ≤ 120 chars), explication_complete (str), "
@@ -328,6 +336,11 @@ class SynthesisAgentAgentic:
     # ------------------------------------------------------------------
 
     def _build_context_summary(self, state: dict) -> str:
+        from utils.config import load_settings
+        _risk = load_settings().get("risk", {})
+        buy_threshold = float(_risk.get("buy_threshold", 62))
+        exit_threshold = float(_risk.get("exit_threshold", 52))
+
         market = state.get("market_data", {})
         mirofish = state.get("mirofish_analysis", {})
         analyses = state.get("agent_analyses", {})
@@ -335,6 +348,7 @@ class SynthesisAgentAgentic:
 
         parts = [
             f"Asset : {state.get('asset', 'BTC/USDT')}",
+            f"Decision zones (AUTHORITATIVE) : BUY ≥ {buy_threshold:.0f} | HOLD [{exit_threshold:.0f}–{buy_threshold-1:.0f}] | EXIT < {exit_threshold:.0f}",
             f"Prix : {market.get('price', 0):.2f}  RSI : {market.get('rsi_14', 50):.1f}",
             f"Funding : {market.get('funding_rate', 0):.4f}",
             f"Score MiroFish : {mirofish.get('score', 50):.1f}/100",

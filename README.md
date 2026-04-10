@@ -31,6 +31,7 @@ The system runs on a **15-minute loop** by default:
 | ⚖️ **Risk Engine** | Fractional Kelly, dynamic sizing, 4 size multipliers — **per-asset thresholds** |
 | 🛡️ **Circuit Breakers** | Funding rate (3 levels), max drawdown, gradual MA50 filter |
 | 📈 **Dashboard** | Real-time Streamlit, per-asset regime cards, P&L, logs, 2FA Admin |
+| 🧭 **Custom nav sidebar** | Fixed collapsible sidebar injected into DOM — asset nav (`_asset`) + admin nav (`_atab`), tooltip on collapse, localStorage state |
 | 🎯 **Per-Asset Config** | Independent YAML per asset — risk, regime, MiroFish, scoring, agents, keywords |
 | 🌐 **i18n** | Full UI in 8 languages: FR · EN · DE · ES · IT · PT · NL · ZH |
 | 🐳 **Docker** | Supervisord multi-process, healthcheck, production-ready |
@@ -417,6 +418,13 @@ news:
 
 The Streamlit dashboard (`http://localhost:8501`) provides:
 
+**Navigation** — custom fixed sidebar (`<div id="atlas-sidenav">`) injected directly into `document.body` of the Streamlit parent frame:
+- **Front**: asset selector (🌐 Global · ₿ BTC · ⟠ ETH · ◎ SOL · … ) — navigates via `?_asset=BTC_USDT`
+- **Admin**: 15-section panel — navigates via `?admin=1&_atab=llm`
+- Collapsible (☰ toggle), state in `localStorage['atlas_nav_c']`; tooltips when collapsed
+- `position: fixed`, `z-index: 100`, top aligned dynamically below Streamlit header (60 px min fallback, `ResizeObserver` refresh)
+- Width: 180 px expanded · 44 px collapsed
+
 **User view (read-only)**
 - Composite score + current decision
 - Market regime badge:
@@ -436,8 +444,9 @@ The Streamlit dashboard (`http://localhost:8501`) provides:
 - **"Force Run" button** — runs a full cycle on demand in a background thread (non-blocking); streams live per-step logs into the dialog at 0.5 s intervals without disconnecting the WebSocket
 
 **Admin view (2FA protected)**
+- Navigation via the same custom sidebar (15 sections: ⚙ LLM · ⛏ Crawler · ◈ News · ⊛ Sources · ◇ MiroFish · ⚖ Risk · ⬡ Agents · ≡ Logging · ⏱ TimesFM · 📊 Agents Perf · 🔍 Méta-Analyse · ⊞ Market Regime · ⇄ Flux · 👤 Users · 🌐 Par Actif)
 - All `settings.yaml` parameters editable inline
-- **🎯 Par Actif** — per-asset configuration panel with tabs (₿ BTC · ⟠ ETH · ◎ XAU · € EUR · £ GBP):
+- **🌐 Par Actif** — per-asset configuration panel with tabs (₿ BTC · ⟠ ETH · ◎ XAU · € EUR · £ GBP):
   - Général & scoring weights
   - Risk & Seuils (buy/exit thresholds, Kelly, MA50 mode, drawdown)
   - Circuit Breaker (funding levels, HIGH_VOL CB threshold)
@@ -602,6 +611,8 @@ zeitgeist-trader/
 - [x] **Session label fix** — XAU/XAG 0-7h UTC shows 🌙 calme (not ⚫ hors session)
 - [x] **Dashboard: trades after last_decision** — reordered per-asset tab layout
 - [x] **Dashboard: sortable global trades table** — HTML+JS clickable headers in Vue globale
+- [x] **Custom DOM sidebar nav** — `_inject_custom_sidenav()` in `dashboard/multi_asset.py` replaces Streamlit native sidebar (localStorage persistence issue) and horizontal `st.tabs` in admin; fixed collapsible, tooltips, header-aware positioning
+- [x] **Admin nav refactor** — `render_admin_panel()` uses `_inject_custom_sidenav` with 15 sections + `_atab` query param; `st.tabs` removed
 - [ ] Polymarket smart money integration
 - [ ] Telegram / Discord alerts
 - [ ] Graph B: score distribution histogram per agent (per-asset)

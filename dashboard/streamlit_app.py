@@ -348,24 +348,10 @@ def _inject_theme_css():
         </style>
         """, unsafe_allow_html=True)
 
-    # CSS global : onglets scrollables + sticky
-    # stMain est le scroll container (overflow:auto). position:sticky fonctionne
-    # DANS ce container si les éléments intermédiaires n'ont pas overflow:hidden.
+    # CSS global : onglets scrollables horizontalement
     st.markdown("""
     <style>
-    /* Débloquer overflow:hidden sur les wrappers intermédiaires uniquement */
-    [data-testid="stMainBlockContainer"],
-    .block-container,
-    [data-testid="stVerticalBlock"],
-    [data-testid="stVerticalBlockBorderWrapper"],
-    [data-testid="stTabs"] {
-        overflow: visible !important;
-    }
-    /* Onglets sticky dans stMain (top = hauteur navbar) */
     div[data-baseweb="tab-list"] {
-        position: sticky !important;
-        top: 48px !important;
-        z-index: 998 !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         flex-wrap: nowrap !important;
@@ -3409,7 +3395,6 @@ def main():
     _inject_session_persistence_js(bool(session))
 
     _inject_theme_css()
-    _inject_sticky_tabs_js()
     render_header()
 
     show_admin = st.query_params.get("admin", "0") == "1"

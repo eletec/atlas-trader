@@ -220,10 +220,8 @@ def render_asset_tabs(
     pre_global_fn: "Callable[[], None] | None" = None,
 ) -> None:
     """
-    Navigation latérale (sidebar) pour sélectionner l'actif affiché.
-    Si un seul actif est actif, passe directement à render_fn sans sidebar.
-    pre_global_fn : si fourni, appelé AVANT le tableau de synthèse (ex: Portefeuille).
-    global_fn    : si fourni, appelé après le tableau de synthèse + live prices.
+    Navigation par boutons verticaux dans une colonne étroite (pas de sidebar Streamlit).
+    Si un seul actif est actif, passe directement à render_fn sans navigation.
     """
     import streamlit as st
 
@@ -234,54 +232,54 @@ def render_asset_tabs(
         render_fn(asset)
         return
 
-    # Force la sidebar ouverte si elle est réduite (état localStorage du navigateur)
-    import streamlit.components.v1 as _cv1
-    _cv1.html("""<script>
-(function(){
-  function forceOpen(){
-    try {
-      var d = window.parent.document;
-      var ctrl = d.querySelector('[data-testid="stSidebarCollapsedControl"]');
-      if(ctrl){
-        var btn = ctrl.querySelector('button');
-        if(btn) btn.click();
-      }
-    } catch(e){}
-  }
-  setTimeout(forceOpen, 150);
-  setTimeout(forceOpen, 600);
-})();
-</script>""", height=0, scrolling=False)
-
-    # Sidebar : sélecteur d'actif
     labels = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
-    with st.sidebar:
+
+    # Persistance de la sélection dans session_state
+    if "_asset_nav" not in st.session_state:
+        st.session_state["_asset_nav"] = labels[0]
+
+    # Layout : colonne nav étroite + colonne contenu
+    col_nav, col_main = st.columns([1, 6], gap="small")
+
+    with col_nav:
         st.markdown(
-            "<div style='text-align:center;padding:18px 0 10px;'>"
-            "<span style='font-size:20px;font-weight:700;letter-spacing:.5px;'>📊 Atlas Trader</span>"
-            "</div>",
+            "<div style='padding:10px 0 8px;font-weight:700;font-size:13px;"
+            "opacity:.6;letter-spacing:.5px;'>ACTIFS</div>",
             unsafe_allow_html=True,
         )
-        st.markdown("<hr style='margin:0 0 10px;opacity:.3;'>", unsafe_allow_html=True)
-        selected = st.radio(
-            "Actif",
-            labels,
-            key="_asset_nav",
-            label_visibility="collapsed",
-        )
+        for label in labels:
+            is_active = st.session_state["_asset_nav"] == label
+            style = (
+                "background:rgba(255,75,75,0.18);font-weight:600;"
+                if is_active else "background:transparent;"
+            )
+            if st.button(
+                label,
+                key=f"_nav_btn_{label}",
+                use_container_width=True,
+                type="secondary",
+            ):
+                st.session_state["_asset_nav"] = label
+                st.rerun()
 
-    # Main : render uniquement la vue sélectionnée
-    if selected == "🌐 Global":
-        if pre_global_fn is not None:
-            pre_global_fn()
-        render_global_overview()
-        render_global_live_prices()
-        if global_fn is not None:
-            global_fn()
-    else:
-        idx = labels.index(selected)
-        asset = assets[idx - 1]
-        render_fn(asset)
+    selected = st.session_state["_asset_nav"]
+    # Vérification de cohérence (si config changée)
+    if selected not in labels:
+        selected = labels[0]
+        st.session_state["_asset_nav"] = selected
+
+    with col_main:
+        if selected == "🌐 Global":
+            if pre_global_fn is not None:
+                pre_global_fn()
+            render_global_overview()
+            render_global_live_prices()
+            if global_fn is not None:
+                global_fn()
+        else:
+            idx = labels.index(selected)
+            render_fn(assets[idx - 1])
+
 
 
 # ---------------------------------------------------------------------------

@@ -143,6 +143,10 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
+        /* Sidebar — toujours visible, pas de repli (c'est la nav principale) */
+        [data-testid="stSidebarToggleButton"],
+        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        [data-testid="stSidebar"] { min-width: 190px !important; max-width: 210px !important; }
         /* Sidebar nav — radio styled as menu items (light) */
         [data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 2px !important; }
         [data-testid="stSidebar"] [data-testid="stRadio"] label {
@@ -161,9 +165,9 @@ def _inject_theme_css():
             background: rgba(255,75,75,0.12) !important;
             font-weight: 600 !important;
         }
-        /* Hide radio circle, keep text only */
+        /* Cacher le label titre «Actif» + SEULEMENT le cercle du radio (pas les emojis) */
         [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] { display:none !important; }
-        [data-testid="stSidebar"] [data-testid="stRadio"] svg { display:none !important; }
+        [data-testid="stSidebar"] [data-baseweb="radio"] svg { display:none !important; }
         [data-testid="stSelectbox"] > div,
         [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
@@ -216,6 +220,10 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #1c2128 !important; }
         hr { border-color: rgba(255,255,255,0.1) !important; }
         code, pre { background-color: #161b22 !important; color: #FAFAFA !important; }
+        /* Sidebar — toujours visible, pas de repli (c'est la nav principale) */
+        [data-testid="stSidebarToggleButton"],
+        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        [data-testid="stSidebar"] { min-width: 190px !important; max-width: 210px !important; }
         /* Sidebar nav — radio styled as menu items (dark) */
         [data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 2px !important; }
         [data-testid="stSidebar"] [data-testid="stRadio"] label {
@@ -235,9 +243,9 @@ def _inject_theme_css():
             background: rgba(255,75,75,0.18) !important;
             font-weight: 600 !important;
         }
-        /* Hide radio circle and widget label, keep text only */
+        /* Cacher le label titre «Actif» + SEULEMENT le cercle du radio (pas les emojis) */
         [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] { display:none !important; }
-        [data-testid="stSidebar"] [data-testid="stRadio"] svg { display:none !important; }
+        [data-testid="stSidebar"] [data-baseweb="radio"] svg { display:none !important; }
         /* Textarea (listes RSS, Nitter, Reddit…) */
         textarea, [data-baseweb="textarea"] textarea {
             background-color: #161b22 !important;

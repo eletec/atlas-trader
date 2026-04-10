@@ -3275,6 +3275,53 @@ def render_admin_panel():
 # SESSION PERSISTENCE (localStorage)
 # ===========================================================
 
+def _inject_sticky_tabs_js() -> None:
+    """
+    Rend les barres d'onglets Streamlit sticky via JS (window.parent.document).
+    Le CSS pur `position:sticky` échoue si un ancêtre a overflow:hidden — ce script
+    détecte et corrige les ancêtres bloquants, puis applique le sticky.
+    Appelé une fois au démarrage ; un MutationObserver reapplique après chaque re-render.
+    """
+    import streamlit.components.v1 as _cv1
+    _cv1.html("""<script>
+(function() {
+  var NAV_H = 50; // hauteur navbar fixe en px
+  function applySticky() {
+    var p = window.parent || window;
+    var doc = p.document;
+    var lists = doc.querySelectorAll('[data-baseweb="tab-list"]');
+    lists.forEach(function(list) {
+      // Corriger overflow:hidden sur les ancêtres (casse position:sticky)
+      var el = list.parentElement;
+      while (el && el !== doc.body) {
+        var cs = p.getComputedStyle(el);
+        if (cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.overflowY === 'hidden') {
+          el.style.overflow = 'visible';
+        }
+        el = el.parentElement;
+      }
+      // Appliquer sticky
+      list.style.setProperty('position', 'sticky', 'important');
+      list.style.setProperty('top', NAV_H + 'px', 'important');
+      list.style.setProperty('z-index', '999', 'important');
+    });
+  }
+  // Observer les mutations DOM (Streamlit re-render)
+  try {
+    var obs = new MutationObserver(function(muts) {
+      muts.forEach(function(m) {
+        if (m.addedNodes.length) { applySticky(); }
+      });
+    });
+    obs.observe((window.parent || window).document.body, { childList: true, subtree: true });
+  } catch(e) {}
+  // Appel initial avec délai (attendre que Streamlit ait rendu le DOM)
+  setTimeout(applySticky, 300);
+  setTimeout(applySticky, 800);
+})();
+</script>""", height=0, scrolling=False)
+
+
 def _inject_session_persistence_js(has_valid_session: bool) -> None:
     """
     Persiste _sid dans localStorage pour survivre aux rechargements sans cookie.
@@ -3344,6 +3391,7 @@ def main():
     _inject_session_persistence_js(bool(session))
 
     _inject_theme_css()
+    _inject_sticky_tabs_js()
     render_header()
 
     show_admin = st.query_params.get("admin", "0") == "1"

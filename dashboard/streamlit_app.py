@@ -143,6 +143,11 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
+        /* Tabs navigation — sticky sous la navbar (light) */
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            background-color: #f8f9fa !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12) !important;
+        }
         [data-testid="stSelectbox"] > div,
         [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
@@ -287,9 +292,10 @@ def _inject_theme_css():
         [data-testid="stTable"] tbody tr:hover td {
             background-color: #21262d !important;
         }
-        /* Tabs navigation */
+        /* Tabs navigation — sticky sous la navbar */
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background-color: #0e1117 !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.45) !important;
         }
         [data-testid="stTabs"] button[role="tab"] {
             color: rgba(255,255,255,0.6) !important;
@@ -342,10 +348,13 @@ def _inject_theme_css():
         </style>
         """, unsafe_allow_html=True)
 
-    # CSS global : onglets scrollables horizontalement — évite la troncature des labels
+    # CSS global : onglets scrollables + sticky (front actifs + back admin)
     st.markdown("""
     <style>
     div[data-baseweb="tab-list"] {
+        position: sticky !important;
+        top: 48px !important;
+        z-index: 998 !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
         flex-wrap: nowrap !important;

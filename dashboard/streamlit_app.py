@@ -343,7 +343,7 @@ def _inject_theme_css():
         </style>
         """, unsafe_allow_html=True)
 
-    # CSS global : onglets scrollables horizontalement
+    # CSS global : onglets scrollables horizontalement + restauration espacement vertical
     st.markdown("""
     <style>
     div[data-baseweb="tab-list"] {
@@ -356,6 +356,50 @@ def _inject_theme_css():
     div[data-baseweb="tab"] {
         white-space: nowrap !important;
         flex-shrink: 0 !important;
+    }
+
+    /* ── Restauration espacement vertical global ──────────────────────────────
+       Le menu custom (atlas-pad-css dans <head> parent) peut interférer avec
+       les gaps Streamlit. On restaure explicitement l'espacement attendu.     */
+
+    /* Gap entre blocs verticaux Streamlit */
+    [data-testid="stVerticalBlock"] { gap: 1rem; }
+
+    /* Padding haut du conteneur de contenu principal */
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+    }
+
+    /* Titres Markdown h3/h4/h5 — marges explicites */
+    [data-testid="stMarkdownContainer"] h3 {
+        margin-top: 1.5rem !important;
+        margin-bottom: 0.6rem !important;
+    }
+    [data-testid="stMarkdownContainer"] h4 {
+        margin-top: 1.25rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    [data-testid="stMarkdownContainer"] h5 {
+        margin-top: 1rem !important;
+        margin-bottom: 0.4rem !important;
+    }
+
+    /* Blocs info / warning / error */
+    [data-testid="stAlertContainer"] {
+        margin-top: 0.25rem !important;
+        margin-bottom: 0.75rem !important;
+    }
+
+    /* Espace avant les onglets st.tabs */
+    [data-testid="stTabs"] {
+        margin-top: 0.5rem !important;
+    }
+
+    /* Séparateur st.divider */
+    [data-testid="stMarkdownContainer"] hr {
+        margin-top: 1.25rem !important;
+        margin-bottom: 1.25rem !important;
     }
     </style>
     """, unsafe_allow_html=True)

@@ -349,21 +349,19 @@ def _inject_theme_css():
         """, unsafe_allow_html=True)
 
     # CSS global : onglets scrollables + sticky
-    # Streamlit met height:100vh + overflow:hidden sur stApp, ce qui rend stMain
-    # le scroll container. En forçant stApp à height:auto, c'est le window qui scrolle
-    # et position:sticky fonctionne normalement.
+    # stMain est le scroll container (overflow:auto). position:sticky fonctionne
+    # DANS ce container si les éléments intermédiaires n'ont pas overflow:hidden.
     st.markdown("""
     <style>
-    /* Faire scroller window (pas stMain) → position:sticky fonctionne */
-    [data-testid="stApp"] {
-        height: auto !important;
+    /* Débloquer overflow:hidden sur les wrappers intermédiaires uniquement */
+    [data-testid="stMainBlockContainer"],
+    .block-container,
+    [data-testid="stVerticalBlock"],
+    [data-testid="stVerticalBlockBorderWrapper"],
+    [data-testid="stTabs"] {
         overflow: visible !important;
     }
-    [data-testid="stMain"] {
-        overflow: visible !important;
-        height: auto !important;
-    }
-    /* Onglets sticky sous la navbar (48px) */
+    /* Onglets sticky dans stMain (top = hauteur navbar) */
     div[data-baseweb="tab-list"] {
         position: sticky !important;
         top: 48px !important;

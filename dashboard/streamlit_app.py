@@ -348,9 +348,22 @@ def _inject_theme_css():
         </style>
         """, unsafe_allow_html=True)
 
-    # CSS global : onglets scrollables + sticky (front actifs + back admin)
+    # CSS global : onglets scrollables + sticky
+    # Streamlit met height:100vh + overflow:hidden sur stApp, ce qui rend stMain
+    # le scroll container. En forçant stApp à height:auto, c'est le window qui scrolle
+    # et position:sticky fonctionne normalement.
     st.markdown("""
     <style>
+    /* Faire scroller window (pas stMain) → position:sticky fonctionne */
+    [data-testid="stApp"] {
+        height: auto !important;
+        overflow: visible !important;
+    }
+    [data-testid="stMain"] {
+        overflow: visible !important;
+        height: auto !important;
+    }
+    /* Onglets sticky sous la navbar (48px) */
     div[data-baseweb="tab-list"] {
         position: sticky !important;
         top: 48px !important;
@@ -3402,7 +3415,6 @@ def main():
     _inject_session_persistence_js(bool(session))
 
     _inject_theme_css()
-    _inject_sticky_tabs_js()
     render_header()
 
     show_admin = st.query_params.get("admin", "0") == "1"

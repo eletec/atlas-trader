@@ -220,7 +220,7 @@ def render_asset_tabs(
     pre_global_fn: "Callable[[], None] | None" = None,
 ) -> None:
     """
-    Navigation par boutons verticaux dans une colonne étroite (pas de sidebar Streamlit).
+    Navigation via la sidebar Streamlit native (sticky, pliable/dépliable).
     Si un seul actif est actif, passe directement à render_fn sans navigation.
     """
     import streamlit as st
@@ -234,51 +234,29 @@ def render_asset_tabs(
 
     labels = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
 
-    # Persistance de la sélection dans session_state
-    if "_asset_nav" not in st.session_state:
-        st.session_state["_asset_nav"] = labels[0]
-
-    # Layout : colonne nav étroite + colonne contenu
-    col_nav, col_main = st.columns([1, 6], gap="small")
-
-    with col_nav:
+    with st.sidebar:
         st.markdown(
-            "<div style='padding:10px 0 8px;font-weight:700;font-size:13px;"
-            "opacity:.6;letter-spacing:.5px;'>ACTIFS</div>",
+            "<p style='font-size:11px;font-weight:700;letter-spacing:1.5px;"
+            "opacity:.5;margin:16px 0 8px;text-transform:uppercase;'>Actifs</p>",
             unsafe_allow_html=True,
         )
-        for label in labels:
-            is_active = st.session_state["_asset_nav"] == label
-            style = (
-                "background:rgba(255,75,75,0.18);font-weight:600;"
-                if is_active else "background:transparent;"
-            )
-            if st.button(
-                label,
-                key=f"_nav_btn_{label}",
-                use_container_width=True,
-                type="secondary",
-            ):
-                st.session_state["_asset_nav"] = label
-                st.rerun()
+        selected = st.radio(
+            "Actif",
+            labels,
+            key="_asset_nav",
+            label_visibility="collapsed",
+        )
 
-    selected = st.session_state["_asset_nav"]
-    # Vérification de cohérence (si config changée)
-    if selected not in labels:
-        selected = labels[0]
-        st.session_state["_asset_nav"] = selected
-
-    with col_main:
-        if selected == "🌐 Global":
-            if pre_global_fn is not None:
-                pre_global_fn()
-            render_global_overview()
-            render_global_live_prices()
-            if global_fn is not None:
-                global_fn()
-        else:
-            idx = labels.index(selected)
-            render_fn(assets[idx - 1])
+    if selected == "🌐 Global":
+        if pre_global_fn is not None:
+            pre_global_fn()
+        render_global_overview()
+        render_global_live_prices()
+        if global_fn is not None:
+            global_fn()
+    else:
+        idx = labels.index(selected)
+        render_fn(assets[idx - 1])
 
 
 

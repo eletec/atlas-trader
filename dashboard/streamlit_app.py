@@ -97,7 +97,7 @@ st.set_page_config(
     page_title="Atlas Trader",
     page_icon="images/atlas.ico",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -143,6 +143,20 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
+        /* Sidebar nav — style radio items (light) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            padding: 9px 12px !important;
+            border-radius: 6px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+            background: rgba(0,0,0,0.06) !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="radio"] { display: none !important; }
         [data-testid="stSelectbox"] > div,
         [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
@@ -292,6 +306,21 @@ def _inject_theme_css():
             background-color: #0e1117 !important;
             box-shadow: 0 2px 8px rgba(0,0,0,0.45) !important;
         }
+        /* Sidebar nav — style radio items (dark) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            padding: 9px 12px !important;
+            border-radius: 6px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            color: #FAFAFA !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+            background: rgba(255,255,255,0.07) !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="radio"] { display: none !important; }
         [data-testid="stTabs"] button[role="tab"] {
             color: rgba(255,255,255,0.6) !important;
             background-color: transparent !important;

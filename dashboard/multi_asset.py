@@ -214,19 +214,25 @@ def render_global_live_prices() -> None:
 # Composant 2 : Onglets par actif
 # ---------------------------------------------------------------------------
 
-def _inject_custom_sidenav(items: list, active_key: str) -> None:
-    """Injecte une sidebar fixe dans le document parent (indépendante de st.sidebar)."""
+def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset") -> None:
+    """Injecte une sidebar fixe dans le document parent (indépendante de st.sidebar).
+    items  : liste de dicts {key, icon, text}
+    active_key : clé de l'item actif
+    qparam : nom du query parameter utilisé pour la navigation
+    """
     import json as _json
     import streamlit.components.v1 as _cv1
 
-    items_js = _json.dumps(items)
+    items_js  = _json.dumps(items)
     active_js = _json.dumps(active_key)
+    qparam_js = _json.dumps(qparam)
 
     _cv1.html(f"""<script>
 (function(){{
   var p = window.parent, d = p.document;
   var ACTIVE = {active_js};
   var ITEMS  = {items_js};
+  var QPARAM = {qparam_js};
   var W = 180, MINI = 44;
 
   /* Hauteur du header Streamlit (mesurée dynamiquement) */
@@ -240,7 +246,7 @@ def _inject_custom_sidenav(items: list, active_key: str) -> None:
 
   function navUrl(key) {{
     var u = new URL(p.location.href);
-    u.searchParams.set('_asset', key);
+    u.searchParams.set(QPARAM, key);
     return u.toString();
   }}
 

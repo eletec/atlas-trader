@@ -2051,25 +2051,34 @@ def render_admin_panel():
         st.error(f"{t('cfg_load_error')} — {err}")
         return
 
-    sub_tabs = st.tabs([
-        f"⚙ {t('tab_llm')}",
-        f"⛏ {t('tab_crawler')}",
-        f"◈ {t('tab_news')}",
-        f"⊛ {t('tab_sources')}",
-        f"◇ {t('tab_mirofish')}",
-        f"⚖ {t('tab_risk')}",
-        f"⬡ {t('tab_agents')}",
-        f"≡ {t('tab_logging')}",
-        f"⏱ {t('tab_timesfm')}",
-        "📊 Agents Perf",
-        "🔍 Méta-Analyse",
-        f"⊞ {t('tab_market_regime')}",
-        f"⇄ {t('tab_flux')}",
-        f"👤 {t('tab_users')}",
-        " Par Actif",
-    ])
+    # ── Navigation admin via sidebar custom ─────────────────────────────────
+    from dashboard.multi_asset import _inject_custom_sidenav
 
-    with sub_tabs[0]:  # LLM
+    _ADMIN_SECTIONS = [
+        ("⚙",  "llm",      t("tab_llm")),
+        ("⛏",  "crawler",  t("tab_crawler")),
+        ("◈",  "news",     t("tab_news")),
+        ("⊛",  "sources",  t("tab_sources")),
+        ("◇",  "mirofish", t("tab_mirofish")),
+        ("⚖",  "risk",     t("tab_risk")),
+        ("⬡",  "agents",   t("tab_agents")),
+        ("≡",  "logging",  t("tab_logging")),
+        ("⏱",  "timesfm",  t("tab_timesfm")),
+        ("📊", "agperf",   "Agents Perf"),
+        ("🔍", "meta",     "Méta-Analyse"),
+        ("⊞",  "regime",   t("tab_market_regime")),
+        ("⇄",  "flux",     t("tab_flux")),
+        ("👤", "users",    t("tab_users")),
+        ("🌐", "peractif", "Par Actif"),
+    ]
+    _admin_keys = [s[1] for s in _ADMIN_SECTIONS]
+    _admin_items = [{"key": s[1], "icon": s[0], "text": s[2]} for s in _ADMIN_SECTIONS]
+    _atab = st.query_params.get("_atab", "llm")
+    if _atab not in _admin_keys:
+        _atab = "llm"
+    _inject_custom_sidenav(_admin_items, _atab, qparam="_atab")
+
+    if _atab == "llm":  # LLM
         st.markdown(f'<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_llm_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_llm_info"))
         llm = settings.get("llm", {})
@@ -2216,7 +2225,7 @@ def render_admin_panel():
                 except Exception as _ca7_exc:
                     st.error(f"Erreur : {_ca7_exc}")
 
-    with sub_tabs[1]:  # Crawler
+    elif _atab == "crawler":  # Crawler
         st.markdown(f'<h4><i class="fas fa-spider" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_crawler_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_crawler_info"))
         crawler = settings.get("crawler", {})
@@ -2289,7 +2298,7 @@ def render_admin_panel():
                         st.error(f"❌ Erreur : {_ce}")
         settings["crawler"] = crawler
 
-    with sub_tabs[2]:  # News
+    elif _atab == "news":  # News
         st.markdown(f'<h4><i class="fas fa-newspaper" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_news_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_news_info"))
         news = settings.get("news", {})
@@ -2325,7 +2334,7 @@ def render_admin_panel():
         news["sources_per_asset"] = sources_per_asset
         settings["news"] = news
 
-    with sub_tabs[3]:  # Sources
+    elif _atab == "sources":  # Sources
         st.markdown(f'<h4><i class="fas fa-satellite-dish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_sources_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_sources_info"))
         news = settings.get("news", {})
@@ -2424,7 +2433,7 @@ def render_admin_panel():
 
         settings["news"] = news
 
-    with sub_tabs[4]:  # MiroFish
+    elif _atab == "mirofish":  # MiroFish
         st.markdown(f'<h4><i class="fas fa-fish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_mirofish_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_mirofish_info"))
         mf = settings.get("mirofish", {})
@@ -2444,7 +2453,7 @@ def render_admin_panel():
             st.metric(t("cfg_mf_adt_weight"), f"{mf['air_du_temps_weight']:.0%}")
         settings["mirofish"] = mf
 
-    with sub_tabs[5]:  # Risk
+    elif _atab == "risk":  # Risk
         st.markdown(f'<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_risk_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_risk_info"))
         st.caption("💡 Mode, seuils BUY/EXIT, Kelly, drawdown, position size et filtre MA50 sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
@@ -2474,7 +2483,7 @@ def render_admin_panel():
             st.error(t("cfg_testnet_warn"))
         settings["exchange"] = exch
 
-    with sub_tabs[6]:  # Agents
+    elif _atab == "agents":  # Agents
         st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_agents_info"))
         agents = settings.get("agents", {})
@@ -2543,7 +2552,7 @@ def render_admin_panel():
 
         settings["agents"] = agents
 
-    with sub_tabs[7]:  # Logging
+    elif _atab == "logging":  # Logging
         st.markdown(f'<h4><i class="fas fa-list-check" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_logging_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_logging_info"))
         log_cfg = settings.get("logging", {})
@@ -2561,7 +2570,7 @@ def render_admin_panel():
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
         settings["logging"] = log_cfg
 
-    with sub_tabs[8]:  # TimesFM
+    elif _atab == "timesfm":  # TimesFM
         st.markdown(f'<h4><i class="fas fa-chart-line" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_timesfm_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_timesfm_info"))
         tfm = settings.get("timesfm", {})
@@ -2636,7 +2645,7 @@ def render_admin_panel():
         except Exception as exc:
             st.warning(f"TimesFM stats unavailable: {exc}")
 
-    with sub_tabs[9]:  # Agents Perf
+    elif _atab == "agperf":  # Agents Perf
         st.markdown('<h4>📊 Performance par agent</h4>', unsafe_allow_html=True)
         st.caption(
             "Win rate, Brier score et P&L moyen par agent individuel sur les décisions évaluées. "
@@ -2714,7 +2723,7 @@ def render_admin_panel():
         except Exception as _ap_exc:
             st.warning(f"Stats agents indisponibles : {_ap_exc}")
 
-    with sub_tabs[10]:  # Méta-Analyse
+    elif _atab == "meta":  # Méta-Analyse
         st.markdown('<h4>🔍 Méta-Analyse LLM — Patterns d\'échec</h4>', unsafe_allow_html=True)
         st.caption(
             "Claude analyse les décisions perdantes pour détecter des patterns récurrents, "
@@ -2809,7 +2818,7 @@ def render_admin_panel():
         except Exception as _ma_exc:
             st.warning(f"Méta-analyse indisponible : {_ma_exc}")
 
-    with sub_tabs[11]:  # Market Regime
+    elif _atab == "regime":  # Market Regime
         st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_regime_info"))
 
@@ -2899,18 +2908,18 @@ def render_admin_panel():
 
         st.caption("💡 Les paramètres HMM, ADX, fenêtres vol/trend sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
 
-    with sub_tabs[12]:  # Flux Manager
+    elif _atab == "flux":  # Flux Manager
         st.info(t("cfg_flux_info"))
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
-    with sub_tabs[13]:  # Utilisateurs
+    elif _atab == "users":  # Utilisateurs
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin
 
-    with sub_tabs[14]:  # Par Actif — config/assets/{slug}.yaml
+    elif _atab == "peractif":  # Par Actif — config/assets/{slug}.yaml
         st.markdown(
             '<h4><i class="fas fa-layer-group" style="margin-right:7px;color:#7986cb;"></i>'
             'Configuration par actif</h4>',

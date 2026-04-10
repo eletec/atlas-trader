@@ -234,6 +234,49 @@ def render_asset_tabs(
 
     labels = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
 
+    # ── Force la sidebar ouverte (une seule fois par session) ────────────────
+    # Le localStorage du navigateur peut mémoriser l'état "collapsed" d'une
+    # session précédente et écraser initial_sidebar_state="expanded".
+    # On nettoie ce localStorage et on clique le bouton d'ouverture via JS.
+    if not st.session_state.get("_sidebar_forced_open"):
+        st.session_state["_sidebar_forced_open"] = True
+        import streamlit.components.v1 as _cv1
+        _cv1.html("""<script>
+(function(){
+  try {
+    var p = window.parent;
+    // 1. Effacer les clés sidebar du localStorage pour les prochains rechargements
+    Object.keys(p.localStorage).forEach(function(k){
+      if (/sidebar/i.test(k)) p.localStorage.removeItem(k);
+    });
+    // 2. MutationObserver : dès que le bouton "ouvrir" apparaît, le cliquer
+    function tryExpand(){
+      var d = p.document;
+      // Plusieurs sélecteurs pour couvrir différentes versions de Streamlit
+      var selectors = [
+        '[data-testid="stSidebarCollapsedControl"] button',
+        '[data-testid="stSidebarToggleButton"]',
+        'button[kind="header"][aria-label*="sidebar"]',
+        'button[aria-label*="open sidebar"]',
+        'button[aria-label*="Open sidebar"]',
+      ];
+      for (var i = 0; i < selectors.length; i++){
+        var btn = d.querySelector(selectors[i]);
+        if (btn){ btn.click(); return true; }
+      }
+      return false;
+    }
+    if (!tryExpand()){
+      var obs = new p.MutationObserver(function(){
+        if (tryExpand()) obs.disconnect();
+      });
+      obs.observe(p.document.body, {childList:true, subtree:true});
+      setTimeout(function(){ obs.disconnect(); }, 6000);
+    }
+  } catch(e){ console.warn('sidebar-open:', e); }
+})();
+</script>""", height=0, scrolling=False)
+
     with st.sidebar:
         st.markdown(
             "<p style='font-size:11px;font-weight:700;letter-spacing:1.5px;"

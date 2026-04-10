@@ -214,13 +214,103 @@ def render_global_live_prices() -> None:
 # Composant 2 : Onglets par actif
 # ---------------------------------------------------------------------------
 
+def _inject_custom_sidenav(items: list, active_key: str) -> None:
+    """Injecte une sidebar fixe dans le document parent (indépendante de st.sidebar)."""
+    import json as _json
+    import streamlit.components.v1 as _cv1
+
+    items_js = _json.dumps(items)
+    active_js = _json.dumps(active_key)
+
+    _cv1.html(f"""<script>
+(function(){{
+  var p = window.parent, d = p.document;
+  var ACTIVE = {active_js};
+  var ITEMS  = {items_js};
+  var W = 220, MINI = 52;
+  var collapsed = p.localStorage.getItem('atlas_nav_c') === '1';
+
+  function navUrl(key) {{
+    var u = new URL(p.location.href);
+    u.searchParams.set('_asset', key);
+    return u.toString();
+  }}
+
+  function setPad(c) {{
+    var w = (c ? MINI : W) + 'px';
+    ['[data-testid="stAppViewContainer"]', '[data-testid="stHeader"]'].forEach(function(sel) {{
+      var el = d.querySelector(sel);
+      if (el) {{ el.style.setProperty('padding-left', w, 'important'); }}
+    }});
+  }}
+
+  /* CSS — injecté une seule fois */
+  if (!d.getElementById('atlas-nav-css')) {{
+    var s = d.createElement('style');
+    s.id = 'atlas-nav-css';
+    s.textContent =
+      '#atlas-sidenav{{position:fixed;left:0;top:0;height:100vh;width:' + W + 'px;' +
+      'background:#161b22;z-index:9999;display:flex;flex-direction:column;' +
+      'border-right:1px solid rgba(255,255,255,.12);transition:width .22s ease;overflow:hidden;box-sizing:border-box;}}' +
+      '#atlas-sidenav.c{{width:' + MINI + 'px;}}' +
+      '#ant{{display:flex;align-items:center;justify-content:flex-end;height:54px;' +
+      'padding:0 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.07);' +
+      'color:rgba(255,255,255,.6);font-size:22px;user-select:none;flex-shrink:0;}}' +
+      '#atlas-sidenav.c #ant{{justify-content:center;padding:0;}}' +
+      '.ans{{font-size:10px;font-weight:700;letter-spacing:1.5px;opacity:.4;' +
+      'text-transform:uppercase;padding:12px 14px 4px;color:#fff;white-space:nowrap;flex-shrink:0;}}' +
+      '#atlas-sidenav.c .ans{{visibility:hidden;}}' +
+      '.ani{{display:flex;align-items:center;gap:10px;padding:9px 14px;text-decoration:none;' +
+      'color:rgba(255,255,255,.78);font-size:14px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;' +
+      'border-radius:6px;margin:2px 6px;white-space:nowrap;transition:background .15s;}}' +
+      '.ani:hover{{background:rgba(255,255,255,.08);color:#fff;}}' +
+      '.ani.a{{background:rgba(255,75,75,.22);font-weight:600;color:#fff;}}' +
+      '.ani-ic{{font-size:18px;min-width:28px;text-align:center;flex-shrink:0;line-height:1;}}' +
+      '.ani-tx{{white-space:nowrap;overflow:hidden;transition:opacity .18s;}}' +
+      '#atlas-sidenav.c .ani-tx{{opacity:0;width:0;pointer-events:none;}}';
+    d.head.appendChild(s);
+  }}
+
+  /* Construction du nav */
+  var existing = d.getElementById('atlas-sidenav');
+  var wasC = existing ? existing.classList.contains('c') : collapsed;
+  var nav = d.createElement('div');
+  nav.id = 'atlas-sidenav';
+  if (wasC) nav.classList.add('c');
+
+  nav.innerHTML =
+    '<div id="ant" title="Réduire / Agrandir">&#9776;</div>' +
+    '<div class="ans">Actifs</div>' +
+    ITEMS.map(function(it) {{
+      var cls = 'ani' + (it.key === ACTIVE ? ' a' : '');
+      return '<a class="' + cls + '" href="' + navUrl(it.key) + '">' +
+             '<span class="ani-ic">' + it.icon + '</span>' +
+             '<span class="ani-tx">' + it.text + '</span></a>';
+    }}).join('');
+
+  if (existing) existing.replaceWith(nav);
+  else d.body.appendChild(nav);
+
+  setPad(wasC);
+
+  d.getElementById('ant').addEventListener('click', function() {{
+    var n = d.getElementById('atlas-sidenav');
+    var c = n.classList.toggle('c');
+    p.localStorage.setItem('atlas_nav_c', c ? '1' : '0');
+    setPad(c);
+  }});
+}})();
+</script>""", height=0, scrolling=False)
+
+
 def render_asset_tabs(
     render_fn: Callable[[str], None],
     global_fn: "Callable[[], None] | None" = None,
     pre_global_fn: "Callable[[], None] | None" = None,
 ) -> None:
     """
-    Navigation via la sidebar Streamlit native (sticky, pliable/dépliable).
+    Menu latéral fixe (position:fixed dans le DOM parent) — sticky, pliable/dépliable.
+    Navigation via query param _asset, sans aucune dépendance à st.sidebar.
     Si un seul actif est actif, passe directement à render_fn sans navigation.
     """
     import streamlit as st
@@ -228,69 +318,28 @@ def render_asset_tabs(
     assets = _active_assets()
 
     if len(assets) <= 1:
-        asset = assets[0] if assets else "BTC/USDT"
-        render_fn(asset)
+        render_fn(assets[0] if assets else "BTC/USDT")
         return
 
-    labels = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
+    labels   = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
+    # Clés URL-safe (ex: "BTC_USDT")
+    keys     = ["Global"] + [a.replace("/", "_") for a in assets]
 
-    # ── Force la sidebar ouverte (une seule fois par session) ────────────────
-    # Le localStorage du navigateur peut mémoriser l'état "collapsed" d'une
-    # session précédente et écraser initial_sidebar_state="expanded".
-    # On nettoie ce localStorage et on clique le bouton d'ouverture via JS.
-    if not st.session_state.get("_sidebar_forced_open"):
-        st.session_state["_sidebar_forced_open"] = True
-        import streamlit.components.v1 as _cv1
-        _cv1.html("""<script>
-(function(){
-  try {
-    var p = window.parent;
-    // 1. Effacer les clés sidebar du localStorage pour les prochains rechargements
-    Object.keys(p.localStorage).forEach(function(k){
-      if (/sidebar/i.test(k)) p.localStorage.removeItem(k);
-    });
-    // 2. MutationObserver : dès que le bouton "ouvrir" apparaît, le cliquer
-    function tryExpand(){
-      var d = p.document;
-      // Plusieurs sélecteurs pour couvrir différentes versions de Streamlit
-      var selectors = [
-        '[data-testid="stSidebarCollapsedControl"] button',
-        '[data-testid="stSidebarToggleButton"]',
-        'button[kind="header"][aria-label*="sidebar"]',
-        'button[aria-label*="open sidebar"]',
-        'button[aria-label*="Open sidebar"]',
-      ];
-      for (var i = 0; i < selectors.length; i++){
-        var btn = d.querySelector(selectors[i]);
-        if (btn){ btn.click(); return true; }
-      }
-      return false;
-    }
-    if (!tryExpand()){
-      var obs = new p.MutationObserver(function(){
-        if (tryExpand()) obs.disconnect();
-      });
-      obs.observe(p.document.body, {childList:true, subtree:true});
-      setTimeout(function(){ obs.disconnect(); }, 6000);
-    }
-  } catch(e){ console.warn('sidebar-open:', e); }
-})();
-</script>""", height=0, scrolling=False)
+    # Sélection lue depuis l'URL (persistée, pas de localStorage Streamlit)
+    selected_key = st.query_params.get("_asset", "Global")
+    if selected_key not in keys:
+        selected_key = "Global"
 
-    with st.sidebar:
-        st.markdown(
-            "<p style='font-size:11px;font-weight:700;letter-spacing:1.5px;"
-            "opacity:.5;margin:16px 0 8px;text-transform:uppercase;'>Actifs</p>",
-            unsafe_allow_html=True,
-        )
-        selected = st.radio(
-            "Actif",
-            labels,
-            key="_asset_nav",
-            label_visibility="collapsed",
-        )
+    # Items pour le JS [{key, icon, text}, ...]
+    items = []
+    for k, lbl in zip(keys, labels):
+        parts = lbl.split("  ", 1)
+        items.append({"key": k, "icon": parts[0], "text": parts[1] if len(parts) > 1 else parts[0]})
 
-    if selected == "🌐 Global":
+    _inject_custom_sidenav(items, selected_key)
+
+    # Rendu de la vue sélectionnée
+    if selected_key == "Global":
         if pre_global_fn is not None:
             pre_global_fn()
         render_global_overview()
@@ -298,8 +347,8 @@ def render_asset_tabs(
         if global_fn is not None:
             global_fn()
     else:
-        idx = labels.index(selected)
-        render_fn(assets[idx - 1])
+        idx = keys.index(selected_key) - 1
+        render_fn(assets[idx])
 
 
 

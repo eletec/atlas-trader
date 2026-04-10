@@ -97,7 +97,7 @@ st.set_page_config(
     page_title="Atlas Trader",
     page_icon="images/atlas.ico",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -142,43 +142,6 @@ def _inject_theme_css():
             background-color: #ff4b4b !important;
             color: #ffffff !important;
             border: none !important;
-        }
-        /* Sidebar nav — style radio items (light) */
-        [data-testid="stSidebar"] [data-testid="stRadio"] label {
-            padding: 9px 12px !important;
-            border-radius: 6px !important;
-            cursor: pointer !important;
-            font-size: 14px !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 8px !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
-            background: rgba(0,0,0,0.06) !important;
-        }
-        [data-testid="stSidebar"] [data-baseweb="radio"] { display: none !important; }
-        /* Bouton rouvrir sidebar (quand pliée) — light */
-        [data-testid="stSidebarCollapsedControl"] {
-            background: #e9ecef !important;
-            border-radius: 0 10px 10px 0 !important;
-            box-shadow: 3px 0 12px rgba(0,0,0,0.2) !important;
-            width: 36px !important;
-            height: 48px !important;
-            top: 50% !important;
-            transform: translateY(-50%) !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            position: fixed !important;
-            left: 0 !important;
-            z-index: 999 !important;
-            border: 2px solid rgba(0,0,0,0.1) !important;
-        }
-        [data-testid="stSidebarCollapsedControl"] button {
-            color: #ff4b4b !important;
-            font-size: 20px !important;
-            width: 36px !important;
-            height: 48px !important;
         }
         [data-testid="stSelectbox"] > div,
         [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
@@ -328,44 +291,6 @@ def _inject_theme_css():
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background-color: #0e1117 !important;
             box-shadow: 0 2px 8px rgba(0,0,0,0.45) !important;
-        }
-        /* Sidebar nav — style radio items (dark) */
-        [data-testid="stSidebar"] [data-testid="stRadio"] label {
-            padding: 9px 12px !important;
-            border-radius: 6px !important;
-            cursor: pointer !important;
-            font-size: 14px !important;
-            color: #FAFAFA !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 8px !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
-            background: rgba(255,255,255,0.07) !important;
-        }
-        [data-testid="stSidebar"] [data-baseweb="radio"] { display: none !important; }
-        /* Bouton rouvrir sidebar (quand pliée) — dark */
-        [data-testid="stSidebarCollapsedControl"] {
-            background: #21262d !important;
-            border-radius: 0 10px 10px 0 !important;
-            box-shadow: 3px 0 12px rgba(0,0,0,0.6) !important;
-            width: 36px !important;
-            height: 48px !important;
-            top: 50% !important;
-            transform: translateY(-50%) !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            position: fixed !important;
-            left: 0 !important;
-            z-index: 999 !important;
-            border: 1px solid rgba(255,255,255,0.15) !important;
-        }
-        [data-testid="stSidebarCollapsedControl"] button {
-            color: #ff4b4b !important;
-            font-size: 20px !important;
-            width: 36px !important;
-            height: 48px !important;
         }
         [data-testid="stTabs"] button[role="tab"] {
             color: rgba(255,255,255,0.6) !important;

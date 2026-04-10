@@ -234,6 +234,25 @@ def render_asset_tabs(
         render_fn(asset)
         return
 
+    # Force la sidebar ouverte si elle est réduite (état localStorage du navigateur)
+    import streamlit.components.v1 as _cv1
+    _cv1.html("""<script>
+(function(){
+  function forceOpen(){
+    try {
+      var d = window.parent.document;
+      var ctrl = d.querySelector('[data-testid="stSidebarCollapsedControl"]');
+      if(ctrl){
+        var btn = ctrl.querySelector('button');
+        if(btn) btn.click();
+      }
+    } catch(e){}
+  }
+  setTimeout(forceOpen, 150);
+  setTimeout(forceOpen, 600);
+})();
+</script>""", height=0, scrolling=False)
+
     # Sidebar : sélecteur d'actif
     labels = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
     with st.sidebar:

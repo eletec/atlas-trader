@@ -143,9 +143,9 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
-        /* Sidebar — toujours visible, pas de repli (c'est la nav principale) */
+        /* Sidebar — boutons repli invisibles mais cliquables par JS */
         [data-testid="stSidebarToggleButton"],
-        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        [data-testid="stSidebarCollapsedControl"] { opacity: 0 !important; pointer-events: none !important; }
         [data-testid="stSidebar"] { min-width: 190px !important; max-width: 210px !important; }
         /* Sidebar nav — radio styled as menu items (light) */
         [data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 2px !important; }
@@ -220,9 +220,9 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #1c2128 !important; }
         hr { border-color: rgba(255,255,255,0.1) !important; }
         code, pre { background-color: #161b22 !important; color: #FAFAFA !important; }
-        /* Sidebar — toujours visible, pas de repli (c'est la nav principale) */
+        /* Sidebar — boutons repli invisibles mais cliquables par JS */
         [data-testid="stSidebarToggleButton"],
-        [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+        [data-testid="stSidebarCollapsedControl"] { opacity: 0 !important; pointer-events: none !important; }
         [data-testid="stSidebar"] { min-width: 190px !important; max-width: 210px !important; }
         /* Sidebar nav — radio styled as menu items (dark) */
         [data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 2px !important; }

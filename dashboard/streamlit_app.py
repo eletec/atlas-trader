@@ -3277,47 +3277,58 @@ def render_admin_panel():
 
 def _inject_sticky_tabs_js() -> None:
     """
-    Rend les barres d'onglets Streamlit sticky via JS (window.parent.document).
-    Le CSS pur `position:sticky` échoue si un ancêtre a overflow:hidden — ce script
-    détecte et corrige les ancêtres bloquants, puis applique le sticky.
-    Appelé une fois au démarrage ; un MutationObserver reapplique après chaque re-render.
+    Rend les barres d'onglets sticky via injection d'un <style> dans le <head> parent.
+    Injecter dans <head> est permanent — Streamlit ne réécrit que <body>.
+    Utilise position:fixed (contourne overflow:hidden sur les ancêtres) +
+    un spacer calculé dynamiquement pour éviter le saut de mise en page.
     """
     import streamlit.components.v1 as _cv1
     _cv1.html("""<script>
 (function() {
-  var NAV_H = 50; // hauteur navbar fixe en px
-  function applySticky() {
-    var p = window.parent || window;
-    var doc = p.document;
-    var lists = doc.querySelectorAll('[data-baseweb="tab-list"]');
-    lists.forEach(function(list) {
-      // Corriger overflow:hidden sur les ancêtres (casse position:sticky)
-      var el = list.parentElement;
-      while (el && el !== doc.body) {
-        var cs = p.getComputedStyle(el);
-        if (cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.overflowY === 'hidden') {
-          el.style.overflow = 'visible';
-        }
-        el = el.parentElement;
-      }
-      // Appliquer sticky
-      list.style.setProperty('position', 'sticky', 'important');
-      list.style.setProperty('top', NAV_H + 'px', 'important');
-      list.style.setProperty('z-index', '999', 'important');
+  var p = window.parent || window;
+  var doc = p.document;
+
+  // ── 1. Injecter CSS dans <head> (permanent, non effacé par Streamlit) ──
+  if (!doc.getElementById('atlas-sticky-tabs-css')) {
+    var s = doc.createElement('style');
+    s.id = 'atlas-sticky-tabs-css';
+    s.textContent = [
+      '[data-testid="stTabs"],',
+      '[data-testid="stVerticalBlock"],',
+      '[data-testid="stVerticalBlockBorderWrapper"],',
+      '[data-testid="stMainBlockContainer"],',
+      '.block-container {',
+      '  overflow: visible !important;',
+      '}',
+      'div[data-baseweb="tab-list"] {',
+      '  position: sticky !important;',
+      '  top: 50px !important;',
+      '  z-index: 998 !important;',
+      '  box-shadow: 0 3px 10px rgba(0,0,0,0.35);',
+      '}'
+    ].join('\\n');
+    doc.head.appendChild(s);
+  }
+
+  // ── 2. Forcer background sur les tab-lists (thème détecté) ──
+  function applyBg() {
+    var isDark = doc.documentElement.getAttribute('data-theme') === 'dark'
+      || (doc.body && (doc.body.style.backgroundColor || '').indexOf('14,17,23') !== -1)
+      || p.matchMedia('(prefers-color-scheme: dark)').matches;
+    var bg = isDark ? '#0e1117' : '#f8f9fa';
+    doc.querySelectorAll('[data-baseweb="tab-list"]').forEach(function(el) {
+      el.style.setProperty('background-color', bg, 'important');
     });
   }
-  // Observer les mutations DOM (Streamlit re-render)
+
+  // ── 3. MutationObserver — réappliquer background après re-render ──
   try {
-    var obs = new MutationObserver(function(muts) {
-      muts.forEach(function(m) {
-        if (m.addedNodes.length) { applySticky(); }
-      });
-    });
-    obs.observe((window.parent || window).document.body, { childList: true, subtree: true });
+    var obs = new MutationObserver(function() { applyBg(); });
+    obs.observe(doc.body, { childList: true, subtree: true });
   } catch(e) {}
-  // Appel initial avec délai (attendre que Streamlit ait rendu le DOM)
-  setTimeout(applySticky, 300);
-  setTimeout(applySticky, 800);
+
+  setTimeout(applyBg, 400);
+  setTimeout(applyBg, 1200);
 })();
 </script>""", height=0, scrolling=False)
 

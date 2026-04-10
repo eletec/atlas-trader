@@ -59,6 +59,7 @@ def evaluate_shadow_profiles(
             decision = _evaluate_single(
                 profile_name=name,
                 profile_cfg=cfg,
+                asset=asset,
                 mirofish_score=mirofish_score,
                 market_score=market_score,
                 agent_scores=agent_scores,
@@ -105,6 +106,7 @@ def evaluate_shadow_profiles(
 def _evaluate_single(
     profile_name: str,
     profile_cfg: dict,
+    asset: str,
     mirofish_score: float,
     market_score: float,
     agent_scores: dict[str, float],
@@ -158,12 +160,12 @@ def _evaluate_single(
     kelly_max = 0.25 * mode_mult
     pos_size_pct *= mode_mult
 
-    # ── Positions shadow ouvertes ──
+    # ── Positions shadow ouvertes (pour cet actif uniquement !) ──
     from storage.database import get_shadow_open_positions_for_profile
 
     open_buys = [
         p for p in get_shadow_open_positions_for_profile(profile_name)
-        if p["action"] == "BUY"
+        if p["action"] == "BUY" and p.get("asset", "") == asset
     ]
     has_long = len(open_buys) > 0
 
@@ -249,42 +251,57 @@ def evaluate_shadow_postmortems() -> int:
         if not pending:
             return 0
 
-        # Récupérer le prix actuel une seule fois
         from agents.market_data_agent import MarketDataAgent
+        from collections import defaultdict
 
         agent = MarketDataAgent()
-        price = agent.get_indicators("BTC/USDT").get("price", 0)
-        if not price:
-            return 0
+        # Récupérer le prix une seule fois par actif (évite les appels redondants)
+        price_cache: dict[str, float] = {}
+
+        # Grouper par actif pour évaluer avec le bon prix
+        by_asset: dict[str, list] = defaultdict(list)
+        for p in pending:
+            by_asset[p.get("asset", "BTC/USDT")].append(p)
 
         evaluated = 0
-        for shadow in pending:
-            shadow_action = shadow["action"]
-            entry = float(shadow.get("entry_price") or 0)
-            size = float(shadow.get("position_size") or 0)
-
-            if shadow_action == "HOLD" or entry <= 0 or size <= 0:
-                update_shadow_result(shadow["id"], 0.0)
-                evaluated += 1
+        for asset_sym, positions in by_asset.items():
+            if asset_sym not in price_cache:
+                try:
+                    price_cache[asset_sym] = agent.get_indicators(asset_sym).get("price", 0)
+                except Exception:
+                    price_cache[asset_sym] = 0
+            price = price_cache[asset_sym]
+            if not price:
+                logger.warning(f"Shadow post-mortem : prix introuvable pour {asset_sym} — skip")
                 continue
 
-            qty = size / entry
-            sl = float(shadow.get("sl_price") or 0)
-            tp = float(shadow.get("tp_price") or 0)
+            for shadow in positions:
+                shadow_action = shadow["action"]
+                entry = float(shadow.get("entry_price") or 0)
+                size = float(shadow.get("position_size") or 0)
 
-            # Vérifier SL/TP
-            if shadow_action == "BUY":
-                if sl and price <= sl:
-                    pnl = (sl - entry) * qty
-                elif tp and price >= tp:
-                    pnl = (tp - entry) * qty
+                if shadow_action == "HOLD" or entry <= 0 or size <= 0:
+                    update_shadow_result(shadow["id"], 0.0)
+                    evaluated += 1
+                    continue
+
+                qty = size / entry
+                sl = float(shadow.get("sl_price") or 0)
+                tp = float(shadow.get("tp_price") or 0)
+
+                # Vérifier SL/TP
+                if shadow_action == "BUY":
+                    if sl and price <= sl:
+                        pnl = (sl - entry) * qty
+                    elif tp and price >= tp:
+                        pnl = (tp - entry) * qty
+                    else:
+                        pnl = (price - entry) * qty
                 else:
-                    pnl = (price - entry) * qty
-            else:
-                pnl = (entry - price) * qty
+                    pnl = (entry - price) * qty
 
-            update_shadow_result(shadow["id"], round(pnl, 2))
-            evaluated += 1
+                update_shadow_result(shadow["id"], round(pnl, 2))
+                evaluated += 1
 
         if evaluated:
             logger.info(f"Shadow post-mortem : {evaluated} positions évaluées")

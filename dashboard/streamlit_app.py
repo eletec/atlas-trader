@@ -363,7 +363,11 @@ def _inject_theme_css():
        les gaps Streamlit. On restaure explicitement l'espacement attendu.     */
 
     /* Gap entre blocs verticaux Streamlit */
-    [data-testid="stVerticalBlock"] { gap: 1rem; }
+    [data-testid="stVerticalBlock"] { gap: 1rem !important; }
+
+    /* Marge basse sur chaque enfant direct (double protection si gap ne s'applique pas) */
+    [data-testid="stVerticalBlock"] > div { margin-bottom: 0.5rem; }
+    [data-testid="stVerticalBlock"] > div:last-child { margin-bottom: 0; }
 
     /* Padding haut du conteneur de contenu principal */
     [data-testid="stMainBlockContainer"] {
@@ -381,8 +385,8 @@ def _inject_theme_css():
         margin-bottom: 0.5rem !important;
     }
     [data-testid="stMarkdownContainer"] h5 {
-        margin-top: 1rem !important;
-        margin-bottom: 0.4rem !important;
+        margin-top: 2rem !important;
+        margin-bottom: 0.5rem !important;
     }
 
     /* Blocs info / warning / error */
@@ -2413,7 +2417,8 @@ def render_admin_panel():
         _all_assets = list(settings.get("project", {}).get("active_assets",
                       ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
         _kw_icons = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
-        st.markdown("##### 🔑 Mots-clés de surveillance par actif")
+        st.markdown('<div style="margin-top:2rem;"></div>', unsafe_allow_html=True)
+        st.markdown('<h5 style="margin-top:0;margin-bottom:0.5rem;">🔑 Mots-clés de surveillance par actif</h5>', unsafe_allow_html=True)
         _kw_tabs = st.tabs([f"{_kw_icons.get(a,'◆')} {a.split('/')[0]}" for a in _all_assets])
         for _ki, _ka in enumerate(_all_assets):
             with _kw_tabs[_ki]:

@@ -157,6 +157,29 @@ def _inject_theme_css():
             background: rgba(0,0,0,0.06) !important;
         }
         [data-testid="stSidebar"] [data-baseweb="radio"] { display: none !important; }
+        /* Bouton rouvrir sidebar (quand pliée) — light */
+        [data-testid="stSidebarCollapsedControl"] {
+            background: #e9ecef !important;
+            border-radius: 0 10px 10px 0 !important;
+            box-shadow: 3px 0 12px rgba(0,0,0,0.2) !important;
+            width: 36px !important;
+            height: 48px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: fixed !important;
+            left: 0 !important;
+            z-index: 999 !important;
+            border: 2px solid rgba(0,0,0,0.1) !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button {
+            color: #ff4b4b !important;
+            font-size: 20px !important;
+            width: 36px !important;
+            height: 48px !important;
+        }
         [data-testid="stSelectbox"] > div,
         [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
@@ -321,6 +344,29 @@ def _inject_theme_css():
             background: rgba(255,255,255,0.07) !important;
         }
         [data-testid="stSidebar"] [data-baseweb="radio"] { display: none !important; }
+        /* Bouton rouvrir sidebar (quand pliée) — dark */
+        [data-testid="stSidebarCollapsedControl"] {
+            background: #21262d !important;
+            border-radius: 0 10px 10px 0 !important;
+            box-shadow: 3px 0 12px rgba(0,0,0,0.6) !important;
+            width: 36px !important;
+            height: 48px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: fixed !important;
+            left: 0 !important;
+            z-index: 999 !important;
+            border: 1px solid rgba(255,255,255,0.15) !important;
+        }
+        [data-testid="stSidebarCollapsedControl"] button {
+            color: #ff4b4b !important;
+            font-size: 20px !important;
+            width: 36px !important;
+            height: 48px !important;
+        }
         [data-testid="stTabs"] button[role="tab"] {
             color: rgba(255,255,255,0.6) !important;
             background-color: transparent !important;

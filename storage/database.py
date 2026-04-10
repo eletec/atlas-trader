@@ -323,12 +323,18 @@ def get_open_positions() -> list[dict]:
         return [dict(row) for row in rows]
 
 
-def count_open_positions() -> int:
-    """Compte les positions BUY actuellement ouvertes (long-only spot)."""
+def count_open_positions(asset: str | None = None) -> int:
+    """Compte les positions BUY actuellement ouvertes. Filtré par actif si précisé."""
     with get_connection() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) as n FROM decisions WHERE result_24h IS NULL AND action = 'BUY'"
-        ).fetchone()
+        if asset:
+            row = conn.execute(
+                "SELECT COUNT(*) as n FROM decisions WHERE result_24h IS NULL AND action = 'BUY' AND asset = ?",
+                (asset,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) as n FROM decisions WHERE result_24h IS NULL AND action = 'BUY'"
+            ).fetchone()
         return int(row["n"]) if row else 0
 
 

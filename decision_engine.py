@@ -401,7 +401,7 @@ class DecisionEngine:
         if action == "BUY" and self.max_open_positions > 0:
             try:
                 from storage.database import count_open_positions
-                n_open = count_open_positions()
+                n_open = count_open_positions(asset=self._asset)
                 if n_open >= self.max_open_positions:
                     logger.info(
                         f"Max positions atteint ({n_open}/{self.max_open_positions}) — BUY converti en HOLD"

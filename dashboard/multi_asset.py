@@ -252,8 +252,11 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
 
   function setPad(c) {{
     var w = (c ? MINI : W) + 'px';
-    var el = d.querySelector('[data-testid="stAppViewContainer"]');
-    if (el) el.style.setProperty('padding-left', w, 'important');
+    /* Style tag persistant dans <head> — immune aux rerenders React de Streamlit,
+       contrairement aux inline styles qui sont réinitialisés à chaque widget interaction. */
+    var padS = d.getElementById('atlas-pad-css');
+    if (!padS) {{ padS = d.createElement('style'); padS.id = 'atlas-pad-css'; d.head.appendChild(padS); }}
+    padS.textContent = '[data-testid="stAppViewContainer"]{{padding-left:' + w + '!important;}}';
   }}
 
   function positionNav(nav) {{

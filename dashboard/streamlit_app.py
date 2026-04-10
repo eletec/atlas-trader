@@ -1486,7 +1486,7 @@ def render_trades_list(trades: list[dict]):
 
     html = f"""
 <div style="overflow-y:auto;max-height:520px;border:1px solid {border};
-            border-radius:10px;background:{tbl_bg};">
+            border-radius:10px;background:{tbl_bg};margin-bottom:24px;">
   <table style="border-collapse:collapse;width:100%;min-width:700px;">
     <thead><tr>{header_cells}</tr></thead>
     <tbody>{rows_html}</tbody>
@@ -1571,7 +1571,7 @@ def render_trades_list_sortable(trades: list[dict]):
 
     html = f"""
 <div style="overflow-y:auto;max-height:520px;border:1px solid {border};
-            border-radius:10px;background:{tbl_bg};">
+            border-radius:10px;background:{tbl_bg};margin-bottom:24px;">
   <table id="{tid}" style="border-collapse:collapse;width:100%;min-width:800px;">
     <thead><tr>{header_cells}</tr></thead>
     <tbody>{rows_html}</tbody>

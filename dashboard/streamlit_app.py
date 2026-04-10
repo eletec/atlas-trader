@@ -97,7 +97,7 @@ st.set_page_config(
     page_title="Atlas Trader",
     page_icon="images/atlas.ico",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -143,11 +143,27 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
-        /* Tabs navigation — sticky sous la navbar (light) */
-        [data-testid="stTabs"] [data-baseweb="tab-list"] {
-            background-color: #f8f9fa !important;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.12) !important;
+        /* Sidebar nav — radio styled as menu items (light) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 2px !important; }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            padding: 8px 14px !important;
+            border-radius: 6px !important;
+            width: 100% !important;
+            cursor: pointer !important;
+            transition: background .15s !important;
+            font-size: 14px !important;
         }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+            background: rgba(0,0,0,0.07) !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
+        [data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="true"] {
+            background: rgba(255,75,75,0.12) !important;
+            font-weight: 600 !important;
+        }
+        /* Hide radio circle, keep text only */
+        [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] { display:none !important; }
+        [data-testid="stSidebar"] [data-testid="stRadio"] svg { display:none !important; }
         [data-testid="stSelectbox"] > div,
         [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
@@ -200,6 +216,28 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #1c2128 !important; }
         hr { border-color: rgba(255,255,255,0.1) !important; }
         code, pre { background-color: #161b22 !important; color: #FAFAFA !important; }
+        /* Sidebar nav — radio styled as menu items (dark) */
+        [data-testid="stSidebar"] [data-testid="stRadio"] > div { gap: 2px !important; }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            padding: 8px 14px !important;
+            border-radius: 6px !important;
+            width: 100% !important;
+            cursor: pointer !important;
+            transition: background .15s !important;
+            font-size: 14px !important;
+            color: #FAFAFA !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+            background: rgba(255,255,255,0.07) !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
+        [data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="true"] {
+            background: rgba(255,75,75,0.18) !important;
+            font-weight: 600 !important;
+        }
+        /* Hide radio circle and widget label, keep text only */
+        [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] { display:none !important; }
+        [data-testid="stSidebar"] [data-testid="stRadio"] svg { display:none !important; }
         /* Textarea (listes RSS, Nitter, Reddit…) */
         textarea, [data-baseweb="textarea"] textarea {
             background-color: #161b22 !important;

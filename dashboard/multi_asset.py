@@ -220,9 +220,8 @@ def render_asset_tabs(
     pre_global_fn: "Callable[[], None] | None" = None,
 ) -> None:
     """
-    Crée les onglets [🌐 Global | ₿ BTC/USDT | ⟠ ETH/USDT | …]
-    et appelle render_fn(asset) pour chaque onglet actif.
-    Si un seul actif est actif, passe directement à render_fn sans onglets.
+    Navigation latérale (sidebar) pour sélectionner l'actif affiché.
+    Si un seul actif est actif, passe directement à render_fn sans sidebar.
     pre_global_fn : si fourni, appelé AVANT le tableau de synthèse (ex: Portefeuille).
     global_fn    : si fourni, appelé après le tableau de synthèse + live prices.
     """
@@ -235,21 +234,35 @@ def render_asset_tabs(
         render_fn(asset)
         return
 
-    # Construction des labels
-    tab_labels = ["🌐 Global"] + [f"{_asset_icon(a)} {a}" for a in assets]
-    tabs = st.tabs(tab_labels)
+    # Sidebar : sélecteur d'actif
+    labels = ["🌐 Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
+    with st.sidebar:
+        st.markdown(
+            "<div style='text-align:center;padding:18px 0 10px;'>"
+            "<span style='font-size:20px;font-weight:700;letter-spacing:.5px;'>📊 Atlas Trader</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<hr style='margin:0 0 10px;opacity:.3;'>", unsafe_allow_html=True)
+        selected = st.radio(
+            "Actif",
+            labels,
+            key="_asset_nav",
+            label_visibility="collapsed",
+        )
 
-    with tabs[0]:
+    # Main : render uniquement la vue sélectionnée
+    if selected == "🌐 Global":
         if pre_global_fn is not None:
             pre_global_fn()
         render_global_overview()
         render_global_live_prices()
         if global_fn is not None:
             global_fn()
-
-    for i, asset in enumerate(assets, start=1):
-        with tabs[i]:
-            render_fn(asset)
+    else:
+        idx = labels.index(selected)
+        asset = assets[idx - 1]
+        render_fn(asset)
 
 
 # ---------------------------------------------------------------------------

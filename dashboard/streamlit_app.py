@@ -3288,10 +3288,9 @@ def render_admin_panel():
 
 def _inject_sticky_tabs_js() -> None:
     """
-    Rend les barres d'onglets sticky via injection d'un <style> dans le <head> parent.
-    Injecter dans <head> est permanent — Streamlit ne réécrit que <body>.
-    Utilise position:fixed (contourne overflow:hidden sur les ancêtres) +
-    un spacer calculé dynamiquement pour éviter le saut de mise en page.
+    Sticky tabs — injecte CSS dans <head> (permanent) + JS MutationObserver
+    pour corriger l'overflow:hidden inline sur le parent direct du tab-list
+    (généré par Streamlit React, inaccessible via CSS pur).
     """
     import streamlit.components.v1 as _cv1
     _cv1.html("""<script>
@@ -3299,47 +3298,44 @@ def _inject_sticky_tabs_js() -> None:
   var p = window.parent || window;
   var doc = p.document;
 
-  // ── 1. Injecter CSS dans <head> (permanent, non effacé par Streamlit) ──
+  // 1. CSS dans <head> — permanent, survit aux re-renders Streamlit
   if (!doc.getElementById('atlas-sticky-tabs-css')) {
     var s = doc.createElement('style');
     s.id = 'atlas-sticky-tabs-css';
-    s.textContent = [
-      '[data-testid="stTabs"],',
-      '[data-testid="stVerticalBlock"],',
-      '[data-testid="stVerticalBlockBorderWrapper"],',
-      '[data-testid="stMainBlockContainer"],',
-      '.block-container {',
-      '  overflow: visible !important;',
-      '}',
-      'div[data-baseweb="tab-list"] {',
-      '  position: sticky !important;',
-      '  top: 50px !important;',
-      '  z-index: 998 !important;',
-      '  box-shadow: 0 3px 10px rgba(0,0,0,0.35);',
-      '}'
-    ].join('\\n');
+    s.textContent =
+      'div[data-baseweb="tab-list"] {' +
+      '  position: sticky !important;' +
+      '  top: 48px !important;' +
+      '  z-index: 998 !important;' +
+      '}';
     doc.head.appendChild(s);
   }
 
-  // ── 2. Forcer background sur les tab-lists (thème détecté) ──
-  function applyBg() {
-    var isDark = doc.documentElement.getAttribute('data-theme') === 'dark'
-      || (doc.body && (doc.body.style.backgroundColor || '').indexOf('14,17,23') !== -1)
-      || p.matchMedia('(prefers-color-scheme: dark)').matches;
-    var bg = isDark ? '#0e1117' : '#f8f9fa';
-    doc.querySelectorAll('[data-baseweb="tab-list"]').forEach(function(el) {
-      el.style.setProperty('background-color', bg, 'important');
+  // 2. Correction des overflow:hidden inline sur les ancêtres du tab-list
+  //    (le parent direct génère overflow:hidden via style inline React)
+  function fixOverflows() {
+    doc.querySelectorAll('[data-baseweb="tab-list"]').forEach(function(tabList) {
+      var el = tabList.parentElement;
+      var depth = 0;
+      while (el && depth < 8) {
+        el.style.setProperty('overflow', 'visible', 'important');
+        var tid = el.getAttribute('data-testid') || '';
+        if (tid === 'stMain') break;
+        el = el.parentElement;
+        depth++;
+      }
     });
   }
 
-  // ── 3. MutationObserver — réappliquer background après re-render ──
-  try {
-    var obs = new MutationObserver(function() { applyBg(); });
-    obs.observe(doc.body, { childList: true, subtree: true });
-  } catch(e) {}
-
-  setTimeout(applyBg, 400);
-  setTimeout(applyBg, 1200);
+  // 3. MutationObserver — réappliquer après chaque re-render Streamlit
+  function start() {
+    if (!doc.body) { setTimeout(start, 100); return; }
+    new MutationObserver(fixOverflows).observe(doc.body, { childList: true, subtree: true });
+    fixOverflows();
+  }
+  start();
+  setTimeout(fixOverflows, 600);
+  setTimeout(fixOverflows, 1500);
 })();
 </script>""", height=0, scrolling=False)
 
@@ -3413,6 +3409,7 @@ def main():
     _inject_session_persistence_js(bool(session))
 
     _inject_theme_css()
+    _inject_sticky_tabs_js()
     render_header()
 
     show_admin = st.query_params.get("admin", "0") == "1"

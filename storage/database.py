@@ -977,7 +977,7 @@ def log_shadow_decision(
 
 
 def get_shadow_open_positions_for_profile(profile_name: str) -> list[dict]:
-    """Retourne les positions shadow ouvertes pour un profil."""
+    """Retourne les positions BUY shadow ouvertes pour un profil."""
     try:
         with get_connection() as conn:
             rows = conn.execute(
@@ -985,7 +985,7 @@ def get_shadow_open_positions_for_profile(profile_name: str) -> list[dict]:
                 SELECT * FROM shadow_decisions
                 WHERE profile_name = ?
                   AND result_24h IS NULL
-                  AND action IN ('BUY', 'SELL')
+                  AND action = 'BUY'
                 ORDER BY timestamp ASC
                 """,
                 (profile_name,),

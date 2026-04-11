@@ -17,11 +17,14 @@
 name: atlas-trader
 
 # ---- Volumes partagés ----
+# External = épinglés aux volumes historiques GX10 — survivent aux rebuilds/renommages
 volumes:
   atlas_storage:
-    driver: local
+    external: true
+    name: atlas-trader-gx10_atlas_storage_gx10
   atlas_logs:
-    driver: local
+    external: true
+    name: atlas-trader-gx10_atlas_logs_gx10
   atlas_config:
     driver: local
 

@@ -912,10 +912,12 @@ def render_header():
 
     if _action == "force_run":
         st.query_params.pop("_action", None)
-        cfg   = _get_settings()
-        st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
+        if st.session_state.get("admin_authenticated"):
+            cfg   = _get_settings()
+            st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
+        # else: silently ignore — unauthenticated users cannot trigger a cycle
 
-    if st.session_state.get("_force_run_asset"):
+    if st.session_state.get("admin_authenticated") and st.session_state.get("_force_run_asset"):
         _force_run_dialog(st.session_state["_force_run_asset"])
 
     # ─ URLs ─────────────────────────────────────────────────────────────────
@@ -999,6 +1001,12 @@ def render_header():
     admin_label = f"{admin_icon}&nbsp; {t('hbg_admin')}"
     admin_bg    = f"background:rgba(255,75,75,0.18);" if show_admin else ""
 
+    # Bouton Force Run : visible seulement pour les admins authentifiés
+    _bolt_cls  = 'atlas-bolt-active' if _cycle_locked else ('atlas-bolt-alive' if _daemon_alive else '')
+    bolt_html  = (f'<a href="{u_force}" style="{S_BTN}" title="Force Run" target="_self"'
+                  f' class="{_bolt_cls}"><i class="fas fa-bolt"></i></a>'
+                  if st.session_state.get('admin_authenticated') else '')
+
     # ─ Dropdown HTML (rendu seulement si menu_open) ─────────────────────────
     dropdown_html = ""
     if menu_open:
@@ -1081,8 +1089,7 @@ header[data-testid="stHeader"]{{display:none!important;}}
   </span>
   <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{_fmt_utc_local(datetime.utcnow())}</span>
   <a href="{u_refresh}" style="{S_BTN}" title="{t('hbg_refresh')}" target="_self"><i class="fas fa-rotate-right"></i></a>
-  <a href="{u_force}" style="{S_BTN}" title="Force Run" target="_self"
-     class="{'atlas-bolt-active' if _cycle_locked else ('atlas-bolt-alive' if _daemon_alive else '')}"><i class="fas fa-bolt"></i></a>
+  {bolt_html}
   <a href="{u_hamburger}" style="{S_HBG}" title="Menu" target="_self"><i class="fas fa-bars"></i></a>
 </nav>
 {dropdown_html}

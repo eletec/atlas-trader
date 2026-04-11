@@ -180,6 +180,7 @@ class RiskEngine:
         self.atr_sl_mult: float = risk.get("atr_multiplier_sl", 2.0)
         self.atr_tp_mult: float = risk.get("atr_multiplier_tp", 3.0)
         self.capital: float = exchange.get("paper_capital_usd", 10000.0)
+        self.min_pos_pct: float = risk.get("min_position_size_pct", 2.0)
 
         # Ajustements selon le mode
         mode_multipliers = {"conservative": 0.5, "balanced": 1.0, "aggressive": 1.5}
@@ -339,11 +340,15 @@ class RiskEngine:
         # Formule : 0.3 + 0.7 * (|score - 50| / 50), clampé entre 0.3 et 1.0
         conviction = abs(score - 50.0) / 50.0          # 0.0 (neutre) → 1.0 (extrême)
         conviction_mult = max(0.3, min(1.0, 0.3 + 0.7 * conviction))
-        final_size = round(base_size * conviction_mult, 2)
+        final_size = base_size * conviction_mult
+
+        # Plancher absolu : évite des positions trop faibles pour générer du P&L
+        min_usd = self.capital * (self.min_pos_pct / 100)
+        final_size = round(max(final_size, min_usd), 2)
 
         logger.debug(
             f"Position size: base=${base_size:.0f} × conviction_mult={conviction_mult:.2f}"
-            f" (score={score:.0f}) → ${final_size:.0f}"
+            f" (score={score:.0f}) → ${final_size:.0f} (floor=${min_usd:.0f})"
         )
         return final_size
 

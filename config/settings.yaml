@@ -327,6 +327,7 @@ risk:
   kelly_max_fraction: 0.25
   max_drawdown_pct: 15.0
   position_size_pct: 5.0
+  min_position_size_pct: 2.0      # plancher absolu même en Kelly négatif (2% = $200)
   atr_multiplier_sl: 2.0
   atr_multiplier_tp: 3.0
   atr_period: 14

@@ -42,7 +42,7 @@ services:
       dockerfile: Dockerfile
       target: runtime
     image: atlas-trader:latest
-    container_name: atlas-trader-app
+    container_name: atlas-trader-gx10
     command: all
     restart: unless-stopped
     env_file:

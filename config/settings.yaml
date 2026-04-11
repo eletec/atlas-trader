@@ -336,7 +336,7 @@ risk:
   ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
   ma50_gradual_size_factor: 0.5
-  max_open_positions: 3
+  max_open_positions: 5
   sell_threshold: 30
   buy_cooldown_minutes: 20    # min entre deux BUY consécutifs pour le même actif (anti-duplicate)
   sell_cooldown_minutes: 60   # min d'attente après un SELL avant de re-rentrer (anti-churning)

@@ -331,13 +331,15 @@ risk:
   atr_multiplier_tp: 3.0
   atr_period: 14
   buy_threshold: 62
-  exit_threshold: 52
+  exit_threshold: 45          # zone hold élargie [45-61] pour réduire le churning
   human_in_the_loop: false
   ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
   ma50_gradual_size_factor: 0.5
   max_open_positions: 3
   sell_threshold: 30
+  buy_cooldown_minutes: 20    # min entre deux BUY consécutifs pour le même actif (anti-duplicate)
+  sell_cooldown_minutes: 60   # min d'attente après un SELL avant de re-rentrer (anti-churning)
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045

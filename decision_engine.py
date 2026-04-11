@@ -287,24 +287,53 @@ class RiskEngine:
         return blocked, reason, size_mult
 
     def calculate_position_size(
-        self, price: float, win_rate: float = 0.55, rr_ratio: float = 1.5,
-        score: float = 50.0
+        self, price: float, score: float = 50.0
     ) -> float:
         """Calcule la taille de position en USD via Kelly Criterion.
 
-        La taille est minorée par un multiplicateur de conviction basé sur le score :
-        - score au seuil (60 BUY / 40 SELL)  → ~30% de la taille max
-        - score à 80                           → ~72% de la taille max
-        - score à 100 ou 0                     → 100% de la taille max
-        """
-        # Kelly fraction = (win_rate * rr - (1 - win_rate)) / rr
-        kelly = (win_rate * rr_ratio - (1 - win_rate)) / rr_ratio
-        kelly = max(0.0, min(kelly, self.kelly_max))
+        Utilise les stats réelles (win_rate, rr_ratio) depuis la DB si >= 5 trades fermés,
+        sinon les valeurs par défaut conservatives.
+        Quand Kelly est négatif (stats défavorables), utilise 20% de la taille max.
 
-        # Taille maximale selon pos_size_pct
+        La taille est ensuite pondérée par un multiplicateur de conviction basé sur le score :
+        - score au seuil (62 BUY)  → ~47% de la taille max
+        - score à 80               → ~72% de la taille max
+        - score à 100              → 100% de la taille max
+        """
         max_size = self.capital * (self.pos_size_pct / 100)
-        size = self.capital * kelly
-        base_size = min(size, max_size)
+
+        # Charger les stats réelles pour Kelly adaptatif
+        try:
+            from storage.database import get_closed_trade_stats
+            stats = get_closed_trade_stats(asset=self._asset, min_trades=5)
+        except Exception:
+            stats = {}
+
+        if stats:
+            win_rate = max(0.1, min(0.9, stats["win_rate"]))
+            rr_ratio = max(0.1, stats["rr_ratio"])
+            kelly = (win_rate * rr_ratio - (1 - win_rate)) / rr_ratio
+            if kelly <= 0:
+                # Stats défavorables → position minimale de sauvegarde (20% du max)
+                base_size = max_size * 0.2
+                logger.debug(
+                    f"Kelly négatif ({kelly:.3f}) — stats réelles win={win_rate:.0%} RR={rr_ratio:.2f}"
+                    f" — position minimale ${base_size:.0f}"
+                )
+            else:
+                kelly = min(kelly, self.kelly_max)
+                base_size = min(self.capital * kelly, max_size)
+                logger.debug(
+                    f"Kelly adaptatif: win={win_rate:.0%} RR={rr_ratio:.2f} → k={kelly:.3f}"
+                    f" → base=${base_size:.0f} (n={stats['n_trades']})"
+                )
+        else:
+            # Pas assez d'historique → Kelly par défaut conservateur
+            win_rate, rr_ratio = 0.55, 1.5
+            kelly = (win_rate * rr_ratio - (1 - win_rate)) / rr_ratio
+            kelly = max(0.0, min(kelly, self.kelly_max))
+            base_size = min(self.capital * kelly, max_size)
+            logger.debug(f"Kelly défaut (pas d'historique suffisant) → base=${base_size:.0f}")
 
         # Multiplicateur de conviction : conviction faible → petite position
         # Formule : 0.3 + 0.7 * (|score - 50| / 50), clampé entre 0.3 et 1.0
@@ -355,6 +384,9 @@ class DecisionEngine:
         self.ma50_strong_threshold: float = risk.get("ma50_strong_signal_threshold", 80)
         self.ma50_size_factor: float = risk.get("ma50_gradual_size_factor", 0.5)
         self.max_open_positions: int = int(risk.get("max_open_positions", 0))
+        # Cooldowns anti-churning
+        self.buy_cooldown_min: float  = float(risk.get("buy_cooldown_minutes", 20))
+        self.sell_cooldown_min: float = float(risk.get("sell_cooldown_minutes", 60))
         self.risk_engine = RiskEngine(asset=asset)
 
     def decide(
@@ -396,6 +428,30 @@ class DecisionEngine:
                 action = "BUY"
             else:
                 action = "HOLD"
+
+        # ── Cooldowns anti-churning (Fix A+E) ────────────────────────────────
+        if action == "BUY" and self._asset:
+            try:
+                from storage.database import get_last_action_minutes_ago
+                # Cooldown post-SELL : ne pas ré-entrer trop vite après une fermeture
+                sell_ago = get_last_action_minutes_ago(self._asset, "SELL")
+                if sell_ago is not None and sell_ago < self.sell_cooldown_min:
+                    logger.info(
+                        f"Cooldown post-SELL: dernier SELL il y a {sell_ago:.1f} min"
+                        f" < {self.sell_cooldown_min} min — BUY → HOLD"
+                    )
+                    action = "HOLD"
+                else:
+                    # Anti-duplicate : empêche deux BUY sur le même actif en < N min
+                    buy_ago = get_last_action_minutes_ago(self._asset, "BUY")
+                    if buy_ago is not None and buy_ago < self.buy_cooldown_min:
+                        logger.info(
+                            f"Cooldown anti-dupliqué: dernier BUY il y a {buy_ago:.1f} min"
+                            f" < {self.buy_cooldown_min} min — BUY → HOLD"
+                        )
+                        action = "HOLD"
+            except Exception:
+                pass
 
         # Cap max_open_positions (garde-fou supplémentaire sur BUY)
         if action == "BUY" and self.max_open_positions > 0:

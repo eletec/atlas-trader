@@ -338,6 +338,52 @@ def count_open_positions(asset: str | None = None) -> int:
         return int(row["n"]) if row else 0
 
 
+def get_last_action_minutes_ago(asset: str, action: str) -> float | None:
+    """Retourne le nombre de minutes depuis la dernière action pour cet actif, ou None si aucune."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT timestamp FROM decisions WHERE asset = ? AND action = ? ORDER BY timestamp DESC LIMIT 1",
+            (asset, action),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        ts = datetime.fromisoformat(row["timestamp"])
+        return (datetime.utcnow() - ts).total_seconds() / 60.0
+    except Exception:
+        return None
+
+
+def get_closed_trade_stats(asset: str | None = None, min_trades: int = 5) -> dict:
+    """Retourne win_rate et rr_ratio réels depuis les trades BUY fermés.
+
+    Retourne {} si pas assez de données (< min_trades).
+    """
+    with get_connection() as conn:
+        if asset:
+            rows = conn.execute(
+                "SELECT result_24h FROM decisions WHERE action = 'BUY' AND result_24h IS NOT NULL "
+                "AND asset = ? ORDER BY timestamp DESC LIMIT 50",
+                (asset,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT result_24h FROM decisions WHERE action = 'BUY' AND result_24h IS NOT NULL "
+                "ORDER BY timestamp DESC LIMIT 50"
+            ).fetchall()
+    pnls = [float(r["result_24h"]) for r in rows if r["result_24h"] is not None]
+    if len(pnls) < min_trades:
+        return {}
+    wins   = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p <= 0]
+    win_rate = len(wins) / len(pnls)
+    avg_win  = sum(wins)   / len(wins)   if wins   else 0.01
+    avg_loss = abs(sum(losses) / len(losses)) if losses else 0.01
+    rr_ratio = avg_win / avg_loss
+    return {"win_rate": win_rate, "avg_win": avg_win, "avg_loss": avg_loss,
+            "rr_ratio": rr_ratio, "n_trades": len(pnls)}
+
+
 def get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
     """Retourne les N dernières décisions, filtré par actif si précisé."""
     with get_connection() as conn:

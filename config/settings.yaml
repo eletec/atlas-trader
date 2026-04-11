@@ -277,25 +277,25 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.40  # Brier 0.21 (quasi-random), P&L -0.38$ — réduit
+    weight_in_scoring: 0.30  # Brier 0.303 (pire qu'aléatoire) → réduit
   x_sentiment:
     enabled: true
-    weight_in_scoring: 0.10  # Brier 0.53 = toxique (inverse les prédictions)
+    weight_in_scoring: 0.10  # Brier 0.359 — maintenu bas
   contrarian:
     enabled: true
     weight_in_scoring: 0.9
   fear_greed:
     enabled: true
-    weight_in_scoring: 0.10  # Brier 0.62 = toxique (signal systématiquement inversé)
+    weight_in_scoring: 0.05  # Brier 0.476 = très toxique (signal systématiquement inversé)
   polymarket:
     enabled: true
-    weight_in_scoring: 0.85  # Meilleur WR (14.3%), Brier 0.24 — conservé
+    weight_in_scoring: 0.55  # Brier 0.244 — bon calibrage mais dominait trop → réduit
   timesfm:
-    enabled: false           # WR=0%, 82% timeout — désactivé (gain ~25s/cycle)
-    weight_in_scoring: 0.0
+    enabled: true            # Brier 0.239 = meilleur agent, WR 20% → réactivé
+    weight_in_scoring: 0.25
   market_regime:
     enabled: true
-    weight_in_scoring: 0.40  # Brier 0.21, réactivé (était 0.00 mais score fiable)
+    weight_in_scoring: 0.50  # Brier 0.249 — meilleur agent hors timesfm → augmenté
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0
@@ -316,8 +316,8 @@ market_regime:
 scoring:
   weights:
     mirofish: 0.12
-    market: 0.4
-    agents: 0.3
+    market: 0.50   # technique plus fiable que les agents IA → augmenté
+    agents: 0.20   # agents IA sous-performent → réduit
     contrarian: 0.18
   min_weight: 0.05
   max_weight: 0.6

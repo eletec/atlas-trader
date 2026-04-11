@@ -32,6 +32,10 @@ volumes:
 networks:
   atlas_net:
     driver: bridge
+  # Réseau nginx GX10 — external pour survivre aux rebuilds
+  nginx_net:
+    external: true
+    name: atlas-trader-gx10_atlas_net
 
 # ============================================================
 # PROFIL "all-in-one" (défaut) : un seul container
@@ -87,6 +91,7 @@ services:
       - ./docker/watchdog.sh:/app/docker/watchdog.sh:ro
     networks:
       - atlas_net
+      - nginx_net
     healthcheck:
       test: ["CMD", "/app/docker/healthcheck.sh"]
       interval: 30s

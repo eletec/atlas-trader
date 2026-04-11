@@ -522,8 +522,30 @@ class DecisionEngine:
             elif funding_size_mult < 1.0:
                 logger.info(f"Funding CB: taille BUY ×{funding_size_mult:.2f} — {funding_reason}")
 
+        # ── Filtres HIGH_VOLATILITY (issus de l'analyse post-mortem) ─────────────
+        # Filtre 1 : MiroFish < 50 + HIGH_VOLATILITY → veto BUY
+        # (5/6 trades perdants présentent ce pattern)
+        _regime_hv = (agent_analyses or {}).get("market_regime", {}).get("regime", "")
+        _mf_score_raw = (mirofish_result or {}).get("score", 50.0)
+        hv_mf_blocked = False
+        if action == "BUY" and _regime_hv == "HIGH_VOLATILITY" and _mf_score_raw < 50:
+            logger.info(
+                f"HIGH_VOLATILITY veto: MiroFish={_mf_score_raw:.0f} < 50 — BUY → HOLD"
+            )
+            action = "HOLD"
+            hv_mf_blocked = True
+
+        # Filtre 2 : timesfm < 50 + HIGH_VOLATILITY → taille ×0.5
+        _timesfm_score = (agent_analyses or {}).get("timesfm", {}).get("score", 50.0)
+        hv_timesfm_mult = 1.0
+        if action == "BUY" and _regime_hv == "HIGH_VOLATILITY" and _timesfm_score < 50:
+            hv_timesfm_mult = 0.5
+            logger.info(
+                f"HIGH_VOLATILITY + timesfm={_timesfm_score:.0f} < 50 — taille BUY ×{hv_timesfm_mult}"
+            )
+
         if action in ("BUY", "SELL"):
-            _regime = (agent_analyses or {}).get("market_regime", {}).get("regime", "")
+            _regime = _regime_hv
             # En HIGH_VOLATILITY : réduire la taille de 35% indépendamment du funding
             high_vol_mult = 0.65 if _regime == "HIGH_VOLATILITY" else 1.0
             if high_vol_mult < 1.0:
@@ -533,7 +555,8 @@ class DecisionEngine:
                 self.risk_engine.calculate_position_size(price, score=score)
                 * ma50_size_penalty
                 * funding_size_mult
-                * high_vol_mult,
+                * high_vol_mult
+                * hv_timesfm_mult,
                 2,
             )
             sl, tp = self.risk_engine.calculate_sl_tp(price, action, atr)
@@ -541,6 +564,7 @@ class DecisionEngine:
             position_size = 0.0
             sl = tp = price
             high_vol_mult = 1.0
+            hv_timesfm_mult = 1.0
 
         # Génération de l'explication
         explanation = self._build_explanation(
@@ -570,6 +594,8 @@ class DecisionEngine:
             "funding_size_mult": funding_size_mult,
             "funding_reason": funding_reason,
             "high_vol_size_mult": high_vol_mult,
+            "hv_mf_blocked": hv_mf_blocked,
+            "hv_timesfm_mult": hv_timesfm_mult,
         }
 
     def _build_explanation(

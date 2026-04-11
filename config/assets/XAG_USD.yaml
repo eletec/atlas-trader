@@ -67,6 +67,16 @@ agents:
     enabled: false
   central_bank:
     enabled: true
+crawler:
+  templates:
+  - '{asset} silver price outlook {year}'
+  - silver industrial demand solar panels {year}
+  - gold silver ratio precious metals {year}
+  - silver ETF flows investment demand {year}
+  - real interest rates silver inflation {year}
+  - silver mining supply deficit {year}
+  - green energy transition silver demand {year}
+  - USD strength precious metals {year}
 mirofish:
   seed_news_weight: 0.55
   air_du_temps_weight: 0.45

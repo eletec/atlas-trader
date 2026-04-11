@@ -78,3 +78,13 @@ dashboard:
     gas_price: false
     staking_yield: false
     defi_tvl: false
+crawler:
+  templates:
+  - '{asset} solana price outlook {year}'
+  - solana ecosystem growth DeFi {year}
+  - SOL network activity validators {year}
+  - Firedancer upgrade solana performance {year}
+  - solana meme coins pump.fun sentiment {year}
+  - layer1 competition solana vs ethereum {year}
+  - solana institutional adoption {year}
+  - crypto altcoin season rotation {year}

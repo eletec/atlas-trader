@@ -68,6 +68,16 @@ agents:
     enabled: false
   central_bank:
     enabled: false
+crawler:
+  templates:
+  - '{asset} crude oil price outlook {year}'
+  - OPEC production cuts oil supply {year}
+  - US oil inventory EIA report {year}
+  - geopolitics Middle East oil risk {year}
+  - global energy demand recession {year}
+  - WTI Brent spread analysis {year}
+  - shale oil production US {year}
+  - oil dollar correlation {year}
 mirofish:
   seed_news_weight: 0.60
   air_du_temps_weight: 0.40

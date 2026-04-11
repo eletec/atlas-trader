@@ -976,13 +976,16 @@ def render_header():
 
     # ─ Styles helper ────────────────────────────────────────────────────────
     S_BTN = (f"text-decoration:none;border-radius:5px;padding:5px 11px;"
-             f"font-size:14px;color:{nav_fg};white-space:nowrap;"
+             f"font-size:16px;color:{nav_fg};white-space:nowrap;"
+             f"display:inline-flex;align-items:center;height:32px;"
              f"background:rgba(128,128,128,0.13);")
     S_HBG_ON  = (f"text-decoration:none;border-radius:5px;padding:5px 10px;"
-                 f"font-size:18px;line-height:1;color:{nav_fg};"
+                 f"font-size:16px;color:{nav_fg};"
+                 f"display:inline-flex;align-items:center;height:32px;"
                  f"background:rgba(255,75,75,0.25);")
     S_HBG_OFF = (f"text-decoration:none;border-radius:5px;padding:5px 10px;"
-                 f"font-size:18px;line-height:1;color:{nav_fg};"
+                 f"font-size:16px;color:{nav_fg};"
+                 f"display:inline-flex;align-items:center;height:32px;"
                  f"background:rgba(128,128,128,0.13);")
     S_HBG = S_HBG_ON if menu_open else S_HBG_OFF
     S_SEP = f"height:1px;background:{dd_sep};margin:5px 0;"

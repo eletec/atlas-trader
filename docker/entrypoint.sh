@@ -50,10 +50,12 @@ print('Base de données initialisée.')
 }
 
 # ============================================================
-# 3. Création des répertoires persistants
+# 3. Création des répertoires persistants + fix permissions
 # ============================================================
 init_dirs() {
     mkdir -p /app/logs /app/storage /app/config
+    # Fix permissions sur config/assets (bind-mount host peut être owned par un autre UID)
+    chmod -R a+rw /app/config/assets 2>/dev/null || true
 }
 
 # ============================================================

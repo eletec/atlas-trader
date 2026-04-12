@@ -277,7 +277,7 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.40
+    weight_in_scoring: 0.25   # WR 42% — légèrement réduit
   x_sentiment:
     enabled: true
     weight_in_scoring: 0.10
@@ -286,16 +286,16 @@ agents:
     weight_in_scoring: 0.9
   fear_greed:
     enabled: true
-    weight_in_scoring: 0.10
+    weight_in_scoring: 0.05   # Brier 0.387 = signal contrariant, pas directionnel
   polymarket:
     enabled: true
-    weight_in_scoring: 0.85
+    weight_in_scoring: 0.15   # WR 42% + P&L -0.55$ — fortement réduit
   timesfm:
-    enabled: true            # ← ACTIVÉ sur GX10
-    weight_in_scoring: 0.30  # À recalibrer après 500+ signaux
+    enabled: true
+    weight_in_scoring: 0.40   # Meilleur Brier (0.239) — renforcé
   market_regime:
     enabled: true
-    weight_in_scoring: 0.40
+    weight_in_scoring: 0.20   # WR 47% < 50% — réduit
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0

@@ -72,6 +72,7 @@ services:
       - ./storage/__init__.py:/app/storage/__init__.py:ro
       # Montage optionnel des fichiers de config locaux (override)
       - ./config/settings.yaml:/app/config/settings.yaml:rw
+      - ./config/settings.gx10.yaml:/app/config/settings.gx10.yaml:rw
       - ./config/prompts.yaml:/app/config/prompts.yaml:ro
       - ./config/profiles.yaml:/app/config/profiles.yaml:ro
       - ./config/users.yaml:/app/config/users.yaml:rw

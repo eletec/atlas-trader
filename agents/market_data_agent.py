@@ -16,6 +16,29 @@ logger = logging.getLogger("zeitgeist.market_data")
 # Permet au circuit breaker de détecter un funding élevé soutenu vs un pic isolé
 _FUNDING_HISTORY: deque = deque(maxlen=8)
 
+# Prix de référence pour la simulation (mock) — ordre de grandeur attendu par actif
+_MOCK_PRICES: dict[str, float] = {
+    "BTC/USDT": 70_000.0,
+    "ETH/USDT":  2_200.0,
+    "SOL/USDT":    85.0,
+    "BNB/USDT":   600.0,
+    "XAU/USD":  3_000.0,
+    "XAG/USD":     30.0,
+    "WTI/USD":     80.0,
+    "EUR/USD":      1.09,
+    "GBP/USD":      1.27,
+    "USD/JPY":    150.0,
+    "AUD/USD":      0.64,
+}
+
+# Plages de prix valides par actif — sert à détecter les données testnet aberrantes
+_PRICE_SANITY: dict[str, tuple[float, float]] = {
+    "BTC/USDT": (10_000, 250_000),
+    "ETH/USDT":   (200,   20_000),
+    "SOL/USDT":     (2,    2_000),
+    "BNB/USDT":    (50,   10_000),
+}
+
 # Actifs non supportés par Binance CCXT → Yahoo Finance (clé API non requise)
 _YAHOO_SYMBOLS: dict[str, str] = {
     "XAU/USD": "GC=F",       # Gold Futures
@@ -44,8 +67,9 @@ class MarketDataAgent:
                 "enableRateLimit": True,
                 "timeout": 30000,  # 30s hard timeout on all API calls
             })
-            if cfg.get("testnet", True):
-                exchange.set_sandbox_mode(True)
+            # Ne PAS utiliser le sandbox pour lire les données de marché :
+            # le testnet Binance génère des prix synthétiques incohérents (ETH à ~65000).
+            # Le sandbox est réservé à PaperTrader pour les ordres simulés.
             return exchange
         except Exception as exc:
             logger.warning(f"CCXT non disponible: {exc}")
@@ -89,10 +113,20 @@ class MarketDataAgent:
                 pass
 
             price = float(ticker["last"])
+
+            # Sanity check : le prix est-il cohérent avec l'actif ?
+            _range = _PRICE_SANITY.get(symbol)
+            if _range and not (_range[0] <= price <= _range[1]):
+                logger.warning(
+                    f"Prix CCXT incohérent pour {symbol}: {price:.2f} "
+                    f"(attendu {_range[0]}-{_range[1]}) — fallback mock"
+                )
+                return self._generate_mock(symbol)
+
             rsi_raw = round(float(self._rsi(closes, 14)), 2)
             # Valeur aberrante = données testnet synthétiques → fallback mock
             if rsi_raw < 10 or rsi_raw > 95:
-                logger.warning(f"RSI testnet aberrant ({rsi_raw}) — fallback mock")
+                logger.warning(f"RSI aberrant ({rsi_raw}) pour {symbol} — fallback mock")
                 return self._generate_mock(symbol)
 
             # --- Multi-timeframe : 1h et 4h ---
@@ -269,8 +303,9 @@ class MarketDataAgent:
     def _generate_mock(symbol: str) -> dict:
         """Données de marché simulées pour les tests."""
         import random
-        price = 65000 + random.uniform(-2000, 2000)
-        ma_50 = price * 1.08  # simulation : prix sous la MA50 (contexte baissier)
+        base = _MOCK_PRICES.get(symbol, 65_000.0)
+        price = base * (1 + random.uniform(-0.03, 0.03))
+        ma_50 = price * 1.02  # simulation : prix légèrement sous la MA50
         return {
             "symbol": symbol,
             "price": round(price, 2),

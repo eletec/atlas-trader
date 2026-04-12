@@ -299,6 +299,12 @@ agents:
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0
+  alpha_combination:
+    enabled: true            # poids dynamiques IC-based (Fundamental Law of Active Management)
+    min_history: 20          # min trades évalués (result_24h non NULL) pour activer
+    lookback_days: 90        # fenêtre glissante en jours
+    correlation_threshold: 0.70  # dédouble les agents trop corrélés
+    ic_floor: 0.05           # silence les agents avec IC < 5% (quasi-aléatoires)
 timesfm:
   forecast_horizon: 24
   backend: cpu   # passer à gpu après validation CUDA

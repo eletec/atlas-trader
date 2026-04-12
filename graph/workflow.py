@@ -662,9 +662,19 @@ def node_execute(state: ZeitgeistState) -> dict:
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("paper_trader", "ok", latency_ms, 1)
         log_decision(state["cycle_id"], state, result)
+
+        # ── Audit log complet de l'ouverture de position ──────────────────
+        fill  = result.get("fill_price", decision.get("entry_price", 0))
+        size  = decision.get("position_size_usd", 0)
+        sl    = decision.get("sl_price", 0)
+        tp    = decision.get("tp_price", 0)
+        score = state.get("global_score", 0)
+        qty   = round(size / fill, 6) if fill > 0 else 0
         logger.info(
-            f"[{state['cycle_id']}] Trade exécuté — "
-            f"{decision['action']} fill={result.get('fill_price', 0):.2f}"
+            f"TRADE OPEN  │ {state.get('asset','?')} │ {state['cycle_id'][:8]} │ "
+            f"BUY fill={fill:.2f} │ "
+            f"size=${size:.0f} qty={qty:.6f} │ "
+            f"SL={sl:.2f} TP={tp:.2f} │ score={score:.0f}"
         )
         return {"trade_executed": True, "trade_result": result}
     except Exception as exc:

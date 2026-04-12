@@ -286,7 +286,7 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
     """
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT action, entry_price, position_size FROM decisions WHERE cycle_id = ?",
+            "SELECT action, entry_price, position_size, sl_price, tp_price, timestamp, asset, score FROM decisions WHERE cycle_id = ?",
             (cycle_id,)
         ).fetchone()
         if not row:
@@ -306,7 +306,29 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
             (round(pnl, 4), f"\n\n[Clôturé automatiquement — {reason} @ {close_price:.2f}]", cycle_id)
         )
         conn.commit()
-    logger.info(f"Position {cycle_id} clôturée ({reason}) @ {close_price:.2f} → P&L={pnl:+.2f}$")
+
+    # ── Audit log complet de la transaction ───────────────────────────────
+    pnl_pct = (close_price - entry) / entry * 100 if entry > 0 else 0
+    # Durée de la position
+    try:
+        from datetime import datetime as _dt
+        open_ts = _dt.fromisoformat(row["timestamp"].replace("Z", "+00:00").replace("+00:00", ""))
+        hold_min = int((_dt.utcnow() - open_ts).total_seconds() / 60)
+        hold_str = f"{hold_min // 60}h{hold_min % 60:02d}m" if hold_min >= 60 else f"{hold_min}m"
+    except Exception:
+        hold_str = "?"
+    sl = row["sl_price"] or 0
+    tp = row["tp_price"] or 0
+    asset = row["asset"] or "?"
+    score = row["score"] or 0
+    logger.info(
+        f"TRADE CLOSE │ {asset} │ {cycle_id[:8]} │ "
+        f"entry={entry:.2f} close={close_price:.2f} │ "
+        f"size=${size_usd:.0f} qty={qty:.6f} │ "
+        f"SL={sl:.2f} TP={tp:.2f} │ "
+        f"P&L={pnl:+.2f}$ ({pnl_pct:+.2f}%) │ "
+        f"durée={hold_str} │ raison={reason} │ score={score:.0f}"
+    )
 
 
 def get_open_positions() -> list[dict]:

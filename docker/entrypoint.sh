@@ -56,8 +56,13 @@ init_dirs() {
     mkdir -p /app/logs /app/storage /app/config
     # Fix permissions sur config/assets et users.yaml (bind-mount host peut être owned par un autre UID)
     chmod -R a+rw /app/config/assets 2>/dev/null || true
+    # Touch avant chmod : si le fichier n'existe pas encore, chmod échouerait silencieusement
+    touch /app/config/users.yaml 2>/dev/null || true
     chmod a+rw /app/config/users.yaml 2>/dev/null || true
+    touch /app/config/settings.yaml 2>/dev/null || true
     chmod a+rw /app/config/settings.yaml 2>/dev/null || true
+    touch /app/config/settings.gx10.yaml 2>/dev/null || true
+    chmod a+rw /app/config/settings.gx10.yaml 2>/dev/null || true
     chmod a+rw /app/config/settings.gx10.yaml 2>/dev/null || true
 }
 

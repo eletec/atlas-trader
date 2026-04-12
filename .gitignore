@@ -7,6 +7,9 @@
 .env.local
 .env.*.local
 
+# Comptes utilisateurs (contient mots de passe hashés — ne pas versionner)
+config/users.yaml
+
 # Base de données locale
 storage/*.db
 storage/*.db-shm

@@ -285,15 +285,22 @@ def evaluate_shadow_postmortems() -> int:
                     evaluated += 1
                     continue
 
-                    # Sanity check : si le prix fetché s'écarte de plus de 80% de l'entry,
-                    # c'est une donnée aberrante (testnet, erreur API). On skip.
-                    if entry > 0 and abs(price / entry - 1) > 0.80:
-                        logger.warning(
-                            f"Shadow post-mortem [{asset_sym}]: prix aberrant {price:.2f}"
-                            f" vs entry {entry:.2f} (écart {abs(price/entry-1)*100:.0f}%) — skip"
-                        )
-                        continue
-            logger.info(f"Shadow post-mortem : {evaluated} positions évaluées")
+                # Sanity check : si le prix fetché s'écarte de plus de 80% de l'entry,
+                # c'est une donnée aberrante (testnet, erreur API). On skip.
+                if entry > 0 and abs(price / entry - 1) > 0.80:
+                    logger.warning(
+                        f"Shadow post-mortem [{asset_sym}]: prix aberrant {price:.2f}"
+                        f" vs entry {entry:.2f} (écart {abs(price/entry-1)*100:.0f}%) — skip"
+                    )
+                    continue
+
+                # BUY : calcul P&L basé sur le prix actuel
+                qty = size / entry
+                pnl = (price - entry) * qty
+                update_shadow_result(shadow["id"], round(pnl, 4))
+                evaluated += 1
+
+        logger.info(f"Shadow post-mortem : {evaluated} positions évaluées")
         return evaluated
 
     except Exception as exc:

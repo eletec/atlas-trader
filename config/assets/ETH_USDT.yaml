@@ -9,7 +9,7 @@ monitor:
 risk:
   mode: balanced
   buy_threshold: 63
-  exit_threshold: 55
+  exit_threshold: 48          # zone de maintien [48-63] — ne sort que sur signal vraiment baissier
   kelly_max_fraction: 0.2
   position_size_pct: 4.0
   max_open_positions: 3

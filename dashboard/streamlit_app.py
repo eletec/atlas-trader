@@ -638,7 +638,10 @@ def _save_settings(settings: dict) -> bool:
         _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
         save_settings(settings, _cfg_path)
         return True
-    except Exception:
+    except Exception as _exc:
+        import logging
+        logging.getLogger("zeitgeist.dashboard").error(f"save_settings failed: {_exc}", exc_info=True)
+        st.session_state["_save_error"] = str(_exc)
         return False
 
 
@@ -3378,7 +3381,8 @@ def render_admin_panel():
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")
         else:
-            st.error(f"❌ {t('config_error')}")
+            _err = st.session_state.pop("_save_error", "inconnue")
+            st.error(f"❌ {t('config_error')} — {_err}")
 
 
 # ===========================================================

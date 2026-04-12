@@ -534,7 +534,9 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
                 SELECT action, weights_snapshot, result_24h
                 FROM decisions
                 WHERE asset = ?
+                  AND action = 'BUY'
                   AND result_24h IS NOT NULL
+                  AND result_24h != 0.0
                   AND weights_snapshot IS NOT NULL
                   AND datetime(timestamp) >= datetime(?, ?)
                 ORDER BY timestamp ASC
@@ -546,7 +548,9 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
                 """
                 SELECT action, weights_snapshot, result_24h
                 FROM decisions
-                WHERE result_24h IS NOT NULL
+                WHERE action = 'BUY'
+                  AND result_24h IS NOT NULL
+                  AND result_24h != 0.0
                   AND weights_snapshot IS NOT NULL
                   AND datetime(timestamp) >= datetime(?, ?)
                 ORDER BY timestamp ASC

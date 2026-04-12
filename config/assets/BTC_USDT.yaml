@@ -9,10 +9,10 @@ monitor:
 risk:
   mode: balanced
   buy_threshold: 62
-  exit_threshold: 55
+  exit_threshold: 48          # zone de maintien [48-62] — anti-churning
   kelly_max_fraction: 0.25
   position_size_pct: 5.0
-  max_open_positions: 3
+  max_open_positions: 1       # une seule position longue à la fois par actif
   atr_multiplier_sl: 1.8
   atr_multiplier_tp: 3.0
   atr_period: 14

@@ -12,7 +12,7 @@ risk:
   exit_threshold: 48          # zone de maintien [48-63] — ne sort que sur signal vraiment baissier
   kelly_max_fraction: 0.2
   position_size_pct: 4.0
-  max_open_positions: 3
+  max_open_positions: 1       # une seule position longue à la fois par actif
   atr_multiplier_sl: 1.8
   atr_multiplier_tp: 3.0
   atr_period: 14

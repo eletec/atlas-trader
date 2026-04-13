@@ -1542,6 +1542,8 @@ def _show_trade_detail_dialog(trade: dict) -> None:
             st.caption("Pas d'explication IA pour ce trade.")
 
 
+
+@st.fragment
 def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
     """Graphique de performance cumulée."""
     st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-chart-area" style="margin-right:8px;color:#7986cb;"></i>{t("perf_chart_title")}</h3>', unsafe_allow_html=True)

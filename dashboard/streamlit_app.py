@@ -1582,24 +1582,21 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
         yaxis2=dict(overlaying="y", side="right", showgrid=False,
                     tickprefix="$", title="BTC", tickfont=dict(color="#f39c12")),
         legend=dict(bgcolor="rgba(0,0,0,0)"),
-        clickmode="event",
+        clickmode="event+select",
     )
     event = st.plotly_chart(
         fig, use_container_width=True, key=key,
-        on_select="rerun", selection_mode="points",
+        on_select="rerun", selection_mode=["points"],
     )
     # Ouvrir le dialog si un marqueur BUY/SELL est cliqué
-    pts = []
     try:
-        sel = event.selection if event else None
-        if sel:
-            pts = sel.points if hasattr(sel, "points") else sel.get("points", [])
+        pts = (event.selection or {}).get("points") or []
     except Exception:
         pts = []
     if pts:
-        pt = pts[0]
-        cd = pt.customdata if hasattr(pt, "customdata") else (pt.get("customdata") if hasattr(pt, "get") else [])
-        if cd is not None and len(cd) > 9:
+        pt = pts[0] if isinstance(pts[0], dict) else vars(pts[0])
+        cd = pt.get("customdata") or []
+        if len(cd) > 9:
             try:
                 hist_idx = int(cd[9])
                 if 0 <= hist_idx < len(history):
@@ -1809,7 +1806,7 @@ def render_trades_list(trades: list[dict]):
 
 
 def render_trades_list_sortable(trades: list[dict]):
-    """Historique global des trades — triable par clic sur entête (HTML+JS)."""
+    """Historique global des trades — triable et cliquable pour voir le détail."""
     st.markdown(
         '<h3 style="margin:16px 0 12px;font-size:18px;">'
         '<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
@@ -1820,100 +1817,51 @@ def render_trades_list_sortable(trades: list[dict]):
         st.info(t("no_trades"))
         return
 
-    import json as _json
-
-    theme = _get_theme()
-    if theme == "light":
-        tbl_bg  = "#ffffff"; tbl_fg  = "#212529"
-        head_bg = "#f1f3f5"; row_alt = "#f8f9fa"
-        border  = "#dee2e6"; sep     = "#e9ecef"
-        hov     = "#e9ecef"
-    else:
-        tbl_bg  = "#161b22"; tbl_fg  = "#e6edf3"
-        head_bg = "#0d1117"; row_alt = "#1b2129"
-        border  = "rgba(255,255,255,0.08)"; sep = "rgba(255,255,255,0.05)"
-        hov     = "#21262d"
-
-    # Unique ID to avoid JS collision if called multiple times
-    tid = "gtrades"
-
-    cols = ["Date", "Actif", "Action", "Entrée", "Taille", "SL", "TP", "P&L", "Score"]
-
-    header_cells = "".join(
-        f'<th onclick="sortTable(\'{tid}\',{i})" '
-        f'style="padding:9px 12px;font-size:12px;font-weight:600;'
-        f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
-        f'opacity:.8;background:{head_bg};white-space:nowrap;'
-        f'border-bottom:2px solid {border};cursor:pointer;user-select:none;" '
-        f'title="Cliquer pour trier">{c} <span style="opacity:.4;">⇅</span></th>'
-        for i, c in enumerate(cols)
-    )
-
-    rows_html = ""
-    for i, trade in enumerate(trades):
+    rows = []
+    for trade in trades:
         pnl    = trade.get("result_24h")
         action = trade.get("action", "")
-        bg     = row_alt if i % 2 == 1 else tbl_bg
+        rows.append({
+            "Date":      trade.get("timestamp", "")[:16].replace("T", " "),
+            "Actif":     trade.get("asset", "—"),
+            "Action":    action,
+            "Entrée":    trade.get("entry_price"),
+            "Taille":    trade.get("position_size"),
+            "SL":        trade.get("sl_price"),
+            "TP":        trade.get("tp_price"),
+            "P&L":       pnl,
+            "Score":     trade.get("score"),
+        })
 
-        action_color = "#2ecc71" if action == "BUY" else ("#e74c3c" if action == "SELL" else tbl_fg)
-        if action == "SELL":
-            pnl_str = f'<span style="opacity:.6;font-style:italic;">✓ Clôture</span>'
-        elif pnl is None:
-            pnl_str = f'<span style="opacity:.45;">{t("pending")}</span>'
-        elif pnl >= 0:
-            pnl_str = f'<span style="color:#2ecc71;font-weight:600;">${pnl:+,.2f}</span>'
-        else:
-            pnl_str = f'<span style="color:#e74c3c;font-weight:600;">${pnl:+,.2f}</span>'
+    df = pd.DataFrame(rows)
 
-        asset = trade.get("asset", "—")
-        cells = [
-            trade.get("timestamp", "")[:16].replace("T", " "),
-            f'<span style="font-weight:600;color:#7986cb;">{asset}</span>',
-            f'<span style="color:{action_color};font-weight:600;">{action}</span>',
-            f'${trade.get("entry_price", 0):,.2f}'    if trade.get("entry_price")    else "—",
-            f'${trade.get("position_size", 0):,.0f}'  if trade.get("position_size")  else "—",
-            f'${trade.get("sl_price", 0):,.2f}'       if trade.get("sl_price")       else "—",
-            f'${trade.get("tp_price", 0):,.2f}'       if trade.get("tp_price")       else "—",
-            pnl_str,
-            f'{trade.get("score", 0):.0f}/100',
-        ]
-        td_style = (f'padding:8px 12px;font-size:13px;color:{tbl_fg};'
-                    f'white-space:nowrap;border-bottom:1px solid {sep};')
-        tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
-        rows_html += f'<tr style="background:{bg};">{tds}</tr>'
+    st.caption("💡 Cliquez sur une ligne pour voir toute la logique de la décision.")
+    event = st.dataframe(
+        df,
+        use_container_width=True,
+        height=min(480, 36 * (len(trades) + 2)),
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        column_config={
+            "Entrée":  st.column_config.NumberColumn(format="$%.2f"),
+            "Taille":  st.column_config.NumberColumn(format="$%.0f"),
+            "SL":      st.column_config.NumberColumn(format="$%.2f"),
+            "TP":      st.column_config.NumberColumn(format="$%.2f"),
+            "P&L":     st.column_config.NumberColumn(format="$%.2f"),
+            "Score":   st.column_config.NumberColumn(format="%.0f /100"),
+        },
+    )
 
-    html = f"""
-<div style="overflow-y:auto;max-height:520px;border:1px solid {border};
-            border-radius:10px;background:{tbl_bg};margin-bottom:24px;">
-  <table id="{tid}" style="border-collapse:collapse;width:100%;min-width:800px;">
-    <thead><tr>{header_cells}</tr></thead>
-    <tbody>{rows_html}</tbody>
-  </table>
-</div>
-<script>
-(function(){{
-  var _dirs = {{}};
-  function sortTable(id, col) {{
-    var tbl = document.getElementById(id);
-    if (!tbl) return;
-    var tbody = tbl.tBodies[0];
-    var rows  = Array.from(tbody.rows);
-    _dirs[id] = _dirs[id] || {{}};
-    var asc   = !_dirs[id][col];
-    _dirs[id][col] = asc;
-    rows.sort(function(a, b) {{
-      var av = a.cells[col] ? a.cells[col].innerText.replace(/[^0-9.+\-]/g,'') : '';
-      var bv = b.cells[col] ? b.cells[col].innerText.replace(/[^0-9.+\-]/g,'') : '';
-      var an = parseFloat(av), bn = parseFloat(bv);
-      if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
-      return asc ? av.localeCompare(bv) : bv.localeCompare(av);
-    }});
-    rows.forEach(function(r){{ tbody.appendChild(r); }});
-  }}
-  window.sortTable = sortTable;
-}})();
-</script>"""
-    st.markdown(html, unsafe_allow_html=True)
+    selected_rows = []
+    try:
+        selected_rows = event.selection.rows or []
+    except Exception:
+        pass
+    if selected_rows:
+        idx = selected_rows[0]
+        if 0 <= idx < len(trades):
+            _show_trade_detail_dialog(trades[idx])
 
 
 def render_last_decision(last_cycle: dict | None):

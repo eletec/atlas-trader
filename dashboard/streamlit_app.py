@@ -1352,6 +1352,10 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
             asset_name = row.get("asset", "—") or "—"
             ctx_raw = row.get("decision_context")
             rsi, macd, regime, score, reasoning, agents_txt = "—", "—", "—", "—", "—", "—"
+            # score fallback: always available as top-level column
+            score_fallback = row.get("score")
+            if score_fallback is not None:
+                score = f"{float(score_fallback):.1f}"
             if ctx_raw:
                 try:
                     ctx = _json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
@@ -1363,10 +1367,10 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
                     agt = ctx.get("agents", {}) or {}
                     rsi_v = mkt.get("rsi")
                     macd_v = mkt.get("macd_signal", mkt.get("macd"))
-                    score_v = dec.get("score")
+                    score_v = dec.get("score") if dec.get("score") is not None else score_fallback
                     rsi = f"{float(rsi_v):.1f}" if rsi_v is not None else "—"
                     macd = f"{float(macd_v):.4f}" if macd_v is not None else "—"
-                    score = f"{float(score_v):.1f}" if score_v is not None else "—"
+                    score = f"{float(score_v):.1f}" if score_v is not None else score
                     reasoning = str(dec.get("reasoning", "—"))[:160]
                     regime = str(rgm.get("regime", rgm.get("hmm_regime", "—")))
                     parts = [
@@ -1749,93 +1753,6 @@ def render_trades_list_sortable(trades: list[dict]):
 }})();
 </script>"""
     st.markdown(html, unsafe_allow_html=True)
-
-    # ── Expanders de détail par trade ──────────────────────────────────
-    import json as _json
-    st.markdown("#### Détail des décisions")
-    for trade in trades[:30]:  # limiter à 30 pour la performance
-        action = trade.get("action", "HOLD")
-        ts = (trade.get("timestamp") or "")[:16].replace("T", " ")
-        asset = trade.get("asset", "?")
-        score = trade.get("score", 0)
-        pnl = trade.get("result_24h")
-        pnl_str = f" | P&L ${pnl:+.2f}" if pnl is not None and action != "SELL" else ""
-        label = f"{ts} · {asset} · **{action}** · score {score:.0f}/100{pnl_str}"
-
-        raw_ctx = trade.get("decision_context") or trade.get("weights_snapshot")
-        if not raw_ctx:
-            continue
-        try:
-            ctx = _json.loads(raw_ctx) if isinstance(raw_ctx, str) else raw_ctx
-        except Exception:
-            continue
-
-        with st.expander(label, expanded=False):
-            col1, col2 = st.columns(2)
-
-            # Marché
-            with col1:
-                mkt = ctx.get("market") or {}
-                if mkt:
-                    st.markdown("**Indicateurs de marché**")
-                    mkt_rows = []
-                    for k, v in mkt.items():
-                        if v is not None:
-                            mkt_rows.append({"Indicateur": k, "Valeur": f"{v:.4f}" if isinstance(v, float) else str(v)})
-                    if mkt_rows:
-                        import pandas as pd
-                        st.dataframe(pd.DataFrame(mkt_rows), hide_index=True, use_container_width=True)
-
-                # Décision reasoning
-                dec = ctx.get("decision") or {}
-                if dec:
-                    st.markdown("**Reasoning**")
-                    st.code(dec.get("reasoning", "—"))
-                    st.caption(f"buy_threshold={dec.get('buy_threshold')} | exit_threshold={dec.get('exit_threshold')}")
-
-            # Agents
-            with col2:
-                agents_ctx = ctx.get("agents") or ctx.get("agent_scores") or {}
-                if agents_ctx:
-                    st.markdown("**Scores agents**")
-                    agent_rows = []
-                    for name, info in agents_ctx.items():
-                        if isinstance(info, dict):
-                            agent_rows.append({
-                                "Agent": name,
-                                "Score": info.get("score", "—"),
-                                "Signal": info.get("signal", "—"),
-                                "Résumé": (info.get("summary") or "")[:120],
-                            })
-                        elif isinstance(info, (int, float)):
-                            agent_rows.append({"Agent": name, "Score": info, "Signal": "—", "Résumé": ""})
-                    if agent_rows:
-                        import pandas as pd
-                        st.dataframe(pd.DataFrame(agent_rows), hide_index=True, use_container_width=True)
-
-                scores = ctx.get("scores") or {}
-                if scores:
-                    st.markdown("**Scores composants**")
-                    st.json({k: round(v, 2) if isinstance(v, float) else v for k, v in scores.items() if v is not None})
-
-            # Régime marché
-            regime = ctx.get("regime") or {}
-            if not isinstance(regime, dict):
-                regime = {"state": str(regime)}
-            if regime:
-                hmm_prob = regime.get('hmm_prob', 0)
-                hmm_str = f"{float(hmm_prob):.1%}" if hmm_prob is not None else "—"
-                st.caption(
-                    f"Régime: **{regime.get('state', regime.get('hmm_regime', '?'))}** | "
-                    f"HMM prob: {hmm_str} | "
-                    f"Direction: {regime.get('direction_pressure', '?')}"
-                )
-
-            # Explication narrative
-            expl = trade.get("explanation", "")
-            if expl:
-                st.markdown("**Explication IA**")
-                st.markdown(expl)
 
 
 def render_last_decision(last_cycle: dict | None):

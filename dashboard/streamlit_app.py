@@ -634,8 +634,14 @@ def _get_settings() -> dict:
 def _save_settings(settings: dict) -> bool:
     try:
         from utils.config import save_settings
+        import os
         from pathlib import Path
-        _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
+        # Respecte SETTINGS_FILE si défini (ex: settings.gx10.yaml sur GX10)
+        settings_file = os.environ.get("SETTINGS_FILE")
+        if settings_file:
+            _cfg_path = Path(settings_file)
+        else:
+            _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
         save_settings(settings, _cfg_path)
         return True
     except Exception as _exc:

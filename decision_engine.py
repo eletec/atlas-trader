@@ -596,6 +596,14 @@ class DecisionEngine:
             "high_vol_size_mult": high_vol_mult,
             "hv_mf_blocked": hv_mf_blocked,
             "hv_timesfm_mult": hv_timesfm_mult,
+            # Seuils effectifs — pour audit trail
+            "buy_threshold": self.buy_threshold,
+            "exit_threshold": self.exit_threshold,
+            "reasoning": (
+                f"score={score:.1f} vs buy_threshold={self.buy_threshold} / exit_threshold={self.exit_threshold} | "
+                f"has_long={has_long} | ma50_blocked={ma50_blocked} | "
+                f"funding_blocked={funding_blocked}"
+            ),
         }
 
     def _build_explanation(

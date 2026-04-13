@@ -40,6 +40,7 @@ DDL_STATEMENTS = [
         position_size   REAL,
         result_24h      REAL,                  -- P&L après 24h (NULL jusqu'au post-mortem)
         weights_snapshot TEXT,                 -- JSON des poids au moment de la décision
+        decision_context TEXT,                  -- JSON complet : market_indicators + agent_summaries + effective_weights + reasoning
         llm_tokens      INTEGER DEFAULT 0,
         cycle_duration_ms INTEGER DEFAULT 0,
         errors          TEXT                   -- JSON array
@@ -174,6 +175,7 @@ def _migrate_v2(conn) -> None:
     migrations = [
         ("asset",             "ALTER TABLE decisions ADD COLUMN asset TEXT NOT NULL DEFAULT 'BTC/USDT'"),
         ("weights_snapshot",  "ALTER TABLE decisions ADD COLUMN weights_snapshot TEXT"),
+        ("decision_context",  "ALTER TABLE decisions ADD COLUMN decision_context TEXT"),
         ("llm_tokens",        "ALTER TABLE decisions ADD COLUMN llm_tokens INTEGER DEFAULT 0"),
         ("cycle_duration_ms", "ALTER TABLE decisions ADD COLUMN cycle_duration_ms INTEGER DEFAULT 0"),
         ("errors",            "ALTER TABLE decisions ADD COLUMN errors TEXT"),
@@ -220,14 +222,68 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
     decision = state.get("decision") or {}
     mirofish = state.get("mirofish_result") or {}
 
+    # Construire le contexte de décision complet pour audit/replay
+    market_ind = state.get("market_indicators") or {}
+    agent_analyses = state.get("agent_analyses") or {}
+    score_breakdown = state.get("score_breakdown") or {}
+    decision_context = {
+        # Prix et indicateurs techniques au moment de la décision
+        "market": {
+            "price":        market_ind.get("price"),
+            "rsi_14":       market_ind.get("rsi_14"),
+            "macd":         market_ind.get("macd"),
+            "macd_signal":  market_ind.get("macd_signal"),
+            "bb_upper":     market_ind.get("bb_upper"),
+            "bb_lower":     market_ind.get("bb_lower"),
+            "atr_14":       market_ind.get("atr_14"),
+            "volume_24h":   market_ind.get("volume_24h"),
+            "funding_rate": market_ind.get("funding_rate"),
+            "ma_50":        market_ind.get("ma_50"),
+            "above_ma50":   market_ind.get("above_ma50"),
+        },
+        # Score et signal de chaque agent
+        "agents": {
+            name: {
+                "score":   a.get("score"),
+                "signal":  a.get("signal"),
+                "summary": a.get("summary", "")[:500],  # tronqué à 500 chars
+            }
+            for name, a in agent_analyses.items()
+            if isinstance(a, dict)
+        },
+        # Poids effectifs utilisés (après alpha_combination éventuel)
+        "effective_weights": score_breakdown.get("breakdown", {}),
+        # Scores composants
+        "scores": {
+            "mirofish":   score_breakdown.get("mirofish_score"),
+            "market":     score_breakdown.get("market_score"),
+            "contrarian": score_breakdown.get("contrarian_score"),
+            "agents_raw": score_breakdown.get("agent_scores"),
+        },
+        # Régime de marché
+        "regime": {
+            "state":              score_breakdown.get("regime"),
+            "hmm_prob":           score_breakdown.get("hmm_prob"),
+            "direction_pressure": score_breakdown.get("direction_pressure"),
+        },
+        # Reasoning de la décision
+        "decision": {
+            "action":         decision.get("action"),
+            "score":          state.get("global_score"),
+            "buy_threshold":  decision.get("buy_threshold"),
+            "exit_threshold": decision.get("exit_threshold"),
+            "reasoning":      decision.get("reasoning", ""),
+        },
+    }
+
     with get_connection() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO decisions
             (cycle_id, timestamp, asset, action, score, explanation,
              entry_price, sl_price, tp_price, position_size,
-             weights_snapshot, llm_tokens, cycle_duration_ms, errors)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             weights_snapshot, decision_context, llm_tokens, cycle_duration_ms, errors)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 cycle_id,
@@ -240,7 +296,8 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
                 decision.get("sl_price"),
                 decision.get("tp_price"),
                 decision.get("position_size_usd"),
-                json.dumps(state.get("score_breakdown") or {}),  # scores bruts pour replay
+                json.dumps(score_breakdown),  # scores bruts pour replay
+                json.dumps(decision_context),  # contexte complet pour audit
                 state.get("llm_tokens_used", 0),
                 state.get("cycle_duration_ms", 0),
                 json.dumps(state.get("errors", [])),

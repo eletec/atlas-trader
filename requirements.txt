@@ -13,7 +13,7 @@ anthropic>=0.40.0
 openai>=1.50.0
 
 # ---- Interface Streamlit ----
-streamlit>=1.35.0
+streamlit>=1.37.0
 streamlit-autorefresh>=1.0.1   # F12 : auto-refresh dashboard (30s)
 extra-streamlit-components>=0.1.71
 plotly>=5.20.0

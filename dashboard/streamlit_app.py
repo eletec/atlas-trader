@@ -1178,11 +1178,11 @@ def render_climate_metrics(last_cycle: dict | None):
     _asset_hb = f"/tmp/atlas_heartbeat_{asset}" if asset else None
     _asset_slash = asset.replace("_", "/") if asset else None
     if _is_cycle_locked(_asset_slash):
-        time_ago += ' <span style="color:#22c55e;font-size:11px;">⟳ en cours</span>'
+        time_ago += f' <span style="color:#22c55e;font-size:11px;">{t("status_running")}</span>'
     elif _asset_hb and _cm_os.path.exists(_asset_hb):
         _hb_age = _cm_time.time() - _cm_os.path.getmtime(_asset_hb)
         if _hb_age < 1800:
-            time_ago += ' <span style="color:#22c55e;font-size:11px;">✓ actif</span>'
+            time_ago += f' <span style="color:#22c55e;font-size:11px;">{t("status_active")}</span>'
         else:
             # Calcul heure de reprise via MarketSession
             _next_label = ""
@@ -1194,17 +1194,17 @@ def render_climate_metrics(last_cycle: dict | None):
                 _wait_min = int((_nxt - __import__('datetime').datetime.now(
                     __import__('datetime').timezone.utc)).total_seconds() / 60)
                 if _wait_min < 60:
-                    _next_label = f" — reprise dans {_wait_min} min ({_nxt_utc})"
+                    _next_label = t("status_resumes_in_min").format(n=_wait_min, time=_nxt_utc)
                 elif _wait_min < 1440:
-                    _next_label = f" — reprise à {_nxt_utc}"
+                    _next_label = t("status_resumes_at").format(time=_nxt_utc)
                 else:
                     _nxt_day = _nxt.strftime("%a %H:%M UTC")
-                    _next_label = f" — reprise {_nxt_day}"
+                    _next_label = t("status_resumes_day").format(day=_nxt_day)
             except Exception:
                 pass
             time_ago += (
                 f' <span style="color:#888;font-size:11px;">'
-                f'🌙 hors session{_next_label}</span>'
+                f'{t("status_off_session")}{_next_label}</span>'
             )
 
     act_map = {
@@ -1906,29 +1906,37 @@ def render_trades_list(trades: list[dict]):
 def render_trades_list_sortable(trades: list[dict]):
     """Historique global des trades — triable et cliquable pour voir le détail."""
     st.markdown(
-        '<h3 style="margin:16px 0 12px;font-size:18px;">'
-        '<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
-        'Historique des trades — tous actifs</h3>',
+        f'<h3 style="margin:16px 0 12px;font-size:18px;">'
+        f'<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
+        f'{t("trades_all_title")}</h3>',
         unsafe_allow_html=True,
     )
     if not trades:
         st.info(t("no_trades"))
         return
 
+    col_date   = t("col_date")
+    col_asset  = t("col_asset")
+    col_action = t("col_action")
+    col_entry  = t("col_entry")
+    col_size   = t("col_size_usd")
+    col_pnl    = t("col_pnl")
+    col_score  = t("col_score")
+
     rows = []
     for trade in trades:
         pnl    = trade.get("result_24h")
         action = trade.get("action", "")
         rows.append({
-            "Date":      trade.get("timestamp", "")[:16].replace("T", " "),
-            "Actif":     trade.get("asset", "—"),
-            "Action":    action,
-            "Entrée":    trade.get("entry_price"),
-            "Taille":    trade.get("position_size"),
-            "SL":        trade.get("sl_price"),
-            "TP":        trade.get("tp_price"),
-            "P&L":       pnl,
-            "Score":     trade.get("score"),
+            col_date:   trade.get("timestamp", "")[:16].replace("T", " "),
+            col_asset:  trade.get("asset", "—"),
+            col_action: action,
+            col_entry:  trade.get("entry_price"),
+            col_size:   trade.get("position_size"),
+            "SL":       trade.get("sl_price"),
+            "TP":       trade.get("tp_price"),
+            col_pnl:    pnl,
+            col_score:  trade.get("score"),
         })
 
     df = pd.DataFrame(rows)
@@ -1946,11 +1954,11 @@ def render_trades_list_sortable(trades: list[dict]):
 
     styled = (
         df.style
-        .map(_action_color, subset=["Action"])
-        .map(_pnl_color, subset=["P&L"])
+        .map(_action_color, subset=[col_action])
+        .map(_pnl_color, subset=[col_pnl])
     )
 
-    st.caption("💡 Cliquez sur une ligne pour voir toute la logique de la décision.")
+    st.caption(t("click_row_detail"))
     event = st.dataframe(
         styled,
         use_container_width=True,
@@ -1959,12 +1967,12 @@ def render_trades_list_sortable(trades: list[dict]):
         on_select="rerun",
         selection_mode="single-row",
         column_config={
-            "Entrée":  st.column_config.NumberColumn(format="$%.2f"),
-            "Taille":  st.column_config.NumberColumn(format="$%.0f"),
+            col_entry: st.column_config.NumberColumn(format="$%.2f"),
+            col_size:  st.column_config.NumberColumn(format="$%.0f"),
             "SL":      st.column_config.NumberColumn(format="$%.2f"),
             "TP":      st.column_config.NumberColumn(format="$%.2f"),
-            "P&L":     st.column_config.NumberColumn(format="$%.2f"),
-            "Score":   st.column_config.NumberColumn(format="%.0f /100"),
+            col_pnl:   st.column_config.NumberColumn(format="$%.2f"),
+            col_score: st.column_config.NumberColumn(format="%.0f /100"),
         },
     )
 
@@ -2256,7 +2264,7 @@ def render_live_logs(key: str = "global"):
     # ── Barre de navigation ──────────────────────────────────────────────────
     col_info, col_nav = st.columns([3, 2])
     with col_info:
-        st.caption(f"{total_rows} lignes · {total_pages} page{'s' if total_pages > 1 else ''}")
+        st.caption(t("logs_lines_pages").format(n=total_rows, p=total_pages, ps="s" if total_pages > 1 else ""))
     with col_nav:
         page = st.number_input(
             "Page", min_value=1, max_value=total_pages,
@@ -2347,15 +2355,13 @@ def render_profile_comparison():
 
         # Note méthodologique
         st.markdown(
-            '<p style="font-size:11px;color:#888;margin:0 0 10px;">'
-            '⚠️ Les profils shadow utilisent un capital virtuel de $10 000 qui évolue avec les P&L '
-            '(sizing proportionnel au capital restant). Seul <strong>Baseline</strong> reflète '
-            'le capital réel. Le rendement <strong>%</strong> est la métrique fiable pour comparer.</p>',
+            f'<p style="font-size:11px;color:#888;margin:0 0 10px;">'
+            f'{t("profiles_shadow_note")}</p>',
             unsafe_allow_html=True,
         )
 
-        cols = ["Profil", t("profiles_trades"), t("profiles_winrate"),
-                "Rendement %", "Capital virtuel", t("profiles_avg_pnl"), "Best", "Worst"]
+        cols = [t("col_profile"), t("profiles_trades"), t("profiles_winrate"),
+                t("col_return_pct"), t("col_virtual_capital"), t("profiles_avg_pnl"), "Best", "Worst"]
         header = "".join(
             f'<th style="padding:8px 12px;text-align:{"left" if i == 0 else "right"};'
             f'background:{head_bg};font-weight:600;font-size:12px;'
@@ -2390,7 +2396,7 @@ def render_profile_comparison():
                 f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
                 f'background:{color};margin-right:6px;"></span>{label}</td>'
                 f'<td style="padding:6px 12px;text-align:right;">{s["total_trades"]}'
-                f' <span style="color:#888;font-size:11px;">({s["evaluated"]} éval.)</span>{sample_warn}</td>'
+                f' <span style="color:#888;font-size:11px;">{t("profiles_evals").format(n=s["evaluated"])}</span>{sample_warn}</td>'
                 f'<td style="padding:6px 12px;text-align:right;color:{wr_color};font-weight:600;">'
                 f'{s["win_rate"]:.0f}%</td>'
                 f'<td style="padding:6px 12px;text-align:right;color:{ret_color};font-weight:700;">'

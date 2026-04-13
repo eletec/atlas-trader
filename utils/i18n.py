@@ -2995,6 +2995,179 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "it": "✓ Chiudi", "pt": "✓ Fechar",
         "nl": "✓ Sluiten", "zh": "✓ 平仓",
     },
+    # ── Global overview table ───────────────────────────────────────────────
+    "global_overview_title": {
+        "fr": "🌐 Vue globale des actifs",
+        "en": "🌐 Global Asset Overview",
+        "de": "🌐 Globale Vermögensübersicht",
+        "es": "🌐 Vista global de activos",
+        "it": "🌐 Panoramica globale degli asset",
+        "pt": "🌐 Visão global dos ativos",
+        "nl": "🌐 Globaal activaoverzicht",
+        "zh": "🌐 全球资产概览",
+    },
+    "live_prices_title": {
+        "fr": "📡 Prix temps réel",
+        "en": "📡 Live Prices",
+        "de": "📡 Echtzeitpreise",
+        "es": "📡 Precios en tiempo real",
+        "it": "📡 Prezzi in tempo reale",
+        "pt": "📡 Preços em tempo real",
+        "nl": "📡 Live prijzen",
+        "zh": "📡 实时价格",
+    },
+    "col_signal": {
+        "fr": "Signal", "en": "Signal",
+        "de": "Signal", "es": "Señal",
+        "it": "Segnale", "pt": "Sinal",
+        "nl": "Signaal", "zh": "信号",
+    },
+    "col_timestamp": {
+        "fr": "Horodatage", "en": "Timestamp",
+        "de": "Zeitstempel", "es": "Marca de tiempo",
+        "it": "Timestamp", "pt": "Timestamp",
+        "nl": "Tijdstempel", "zh": "时间戳",
+    },
+    "col_session": {
+        "fr": "Session", "en": "Session",
+        "de": "Session", "es": "Sesión",
+        "it": "Sessione", "pt": "Sessão",
+        "nl": "Sessie", "zh": "会话",
+    },
+    "col_profile": {
+        "fr": "Profil", "en": "Profile",
+        "de": "Profil", "es": "Perfil",
+        "it": "Profilo", "pt": "Perfil",
+        "nl": "Profiel", "zh": "配置",
+    },
+    "col_return_pct": {
+        "fr": "Rendement %", "en": "Return %",
+        "de": "Rendite %", "es": "Rendimiento %",
+        "it": "Rendimento %", "pt": "Rendimento %",
+        "nl": "Rendement %", "zh": "收益率 %",
+    },
+    "col_virtual_capital": {
+        "fr": "Capital virtuel", "en": "Virtual Capital",
+        "de": "Virtuelles Kapital", "es": "Capital virtual",
+        "it": "Capitale virtuale", "pt": "Capital virtual",
+        "nl": "Virtueel kapitaal", "zh": "虚拟资本",
+    },
+    "global_data_unavailable": {
+        "fr": "Données globales indisponibles",
+        "en": "Global data unavailable",
+        "de": "Globale Daten nicht verfügbar",
+        "es": "Datos globales no disponibles",
+        "it": "Dati globali non disponibili",
+        "pt": "Dados globais indisponíveis",
+        "nl": "Globale data niet beschikbaar",
+        "zh": "全局数据不可用",
+    },
+    "logs_lines_pages": {
+        "fr": "{n} lignes · {p} page{ps}",
+        "en": "{n} rows · {p} page{ps}",
+        "de": "{n} Zeilen · {p} Seite{ps}",
+        "es": "{n} líneas · {p} página{ps}",
+        "it": "{n} righe · {p} pagina{ps}",
+        "pt": "{n} linhas · {p} página{ps}",
+        "nl": "{n} rijen · {p} pagina{ps}",
+        "zh": "{n} 行 · {p} 页",
+    },
+    "profiles_shadow_note": {
+        "fr": (
+            "⚠️ Les profils shadow utilisent un capital virtuel de $10 000 qui évolue avec les P&L "
+            "(sizing proportionnel au capital restant). Seul <strong>Baseline</strong> reflète "
+            "le capital réel. Le rendement <strong>%</strong> est la métrique fiable pour comparer."
+        ),
+        "en": (
+            "⚠️ Shadow profiles use a virtual capital of $10,000 that evolves with P&L "
+            "(sizing proportional to remaining capital). Only <strong>Baseline</strong> reflects "
+            "real capital. <strong>Return %</strong> is the reliable metric for comparison."
+        ),
+        "de": (
+            "⚠️ Schattenprofile verwenden ein virtuelles Kapital von 10.000 $, das sich mit dem P&L entwickelt "
+            "(Sizing proportional zum verbleibenden Kapital). Nur <strong>Baseline</strong> spiegelt "
+            "das echte Kapital wider. <strong>Rendite %</strong> ist die zuverlässige Vergleichsmetrik."
+        ),
+        "es": (
+            "⚠️ Los perfiles shadow usan un capital virtual de $10 000 que evoluciona con el P&L "
+            "(sizing proporcional al capital restante). Solo <strong>Baseline</strong> refleja "
+            "el capital real. El <strong>rendimiento %</strong> es la métrica fiable para comparar."
+        ),
+        "it": (
+            "⚠️ I profili shadow usano un capitale virtuale di $10.000 che evolve con il P&L "
+            "(sizing proporzionale al capitale restante). Solo <strong>Baseline</strong> riflette "
+            "il capitale reale. Il <strong>rendimento %</strong> è la metrica affidabile per confrontare."
+        ),
+        "pt": (
+            "⚠️ Os perfis shadow usam um capital virtual de $10.000 que evolui com o P&L "
+            "(sizing proporcional ao capital restante). Apenas <strong>Baseline</strong> reflete "
+            "o capital real. O <strong>rendimento %</strong> é a métrica fiável para comparar."
+        ),
+        "nl": (
+            "⚠️ Schaduwprofielen gebruiken virtueel kapitaal van $10.000 dat meebeweegt met P&L "
+            "(sizing proportioneel aan resterend kapitaal). Alleen <strong>Baseline</strong> weerspiegelt "
+            "echt kapitaal. <strong>Rendement %</strong> is de betrouwbare vergelijkingsmetriek."
+        ),
+        "zh": (
+            "⚠️ 影子配置使用 $10,000 的虚拟资本，随 P&L 变化（仓位大小与剩余资本成比例）。"
+            "只有 <strong>Baseline</strong> 反映真实资本。<strong>收益率 %</strong> 是可靠的比较指标。"
+        ),
+    },
+    "profiles_evals": {
+        "fr": "({n} éval.)", "en": "({n} evals)",
+        "de": "({n} Auswert.)", "es": "({n} eval.)",
+        "it": "({n} val.)", "pt": "({n} aval.)",
+        "nl": "({n} eval.)", "zh": "({n} 次评估)",
+    },
+    # ── Asset status badges ─────────────────────────────────────────────────
+    "status_running": {
+        "fr": "⟳ en cours", "en": "⟳ running",
+        "de": "⟳ läuft", "es": "⟳ en curso",
+        "it": "⟳ in corso", "pt": "⟳ a decorrer",
+        "nl": "⟳ loopt", "zh": "⟳ 运行中",
+    },
+    "status_active": {
+        "fr": "✓ actif", "en": "✓ active",
+        "de": "✓ aktiv", "es": "✓ activo",
+        "it": "✓ attivo", "pt": "✓ ativo",
+        "nl": "✓ actief", "zh": "✓ 活跃",
+    },
+    "status_off_session": {
+        "fr": "🌙 hors session", "en": "🌙 off session",
+        "de": "🌙 außerhalb der Sitzung", "es": "🌙 fuera de sesión",
+        "it": "🌙 fuori sessione", "pt": "🌙 fora de sessão",
+        "nl": "🌙 buiten sessie", "zh": "🌙 非交易时段",
+    },
+    "status_resumes_in_min": {
+        "fr": " — reprise dans {n} min ({time})",
+        "en": " — resumes in {n} min ({time})",
+        "de": " — Fortsetzung in {n} Min ({time})",
+        "es": " — reanuda en {n} min ({time})",
+        "it": " — riprende in {n} min ({time})",
+        "pt": " — retoma em {n} min ({time})",
+        "nl": " — hervat in {n} min ({time})",
+        "zh": " — {n} 分钟后恢复 ({time})",
+    },
+    "status_resumes_at": {
+        "fr": " — reprise à {time}",
+        "en": " — resumes at {time}",
+        "de": " — Fortsetzung um {time}",
+        "es": " — reanuda a las {time}",
+        "it": " — riprende alle {time}",
+        "pt": " — retoma às {time}",
+        "nl": " — hervat om {time}",
+        "zh": " — {time} 恢复",
+    },
+    "status_resumes_day": {
+        "fr": " — reprise {day}",
+        "en": " — resumes {day}",
+        "de": " — Fortsetzung {day}",
+        "es": " — reanuda {day}",
+        "it": " — riprende {day}",
+        "pt": " — retoma {day}",
+        "nl": " — hervat {day}",
+        "zh": " — {day} 恢复",
+    },
 }
 
 _current_lang: str = "en"

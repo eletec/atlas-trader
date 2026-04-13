@@ -11,6 +11,8 @@ from __future__ import annotations
 import time
 from typing import Callable
 
+from utils.i18n import t
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,7 +78,7 @@ def render_global_overview() -> None:
         from utils.session import MarketSession
         db_rows = get_assets_summary()
     except Exception as exc:
-        st.warning(f"Données globales indisponibles : {exc}")
+        st.warning(f'{t("global_data_unavailable")} : {exc}')
         return
 
     # Fusionner avec tous les actifs actifs (afficher même sans décision en base)
@@ -89,7 +91,7 @@ def render_global_overview() -> None:
         else:
             rows.append({"asset": asset, "action": "–", "score": None, "timestamp": None, "result_24h": None})
 
-    st.markdown("### 🌐 Vue globale des actifs")
+    st.markdown(f"### {t('global_overview_title')}")
 
     # Enrichir avec le statut de session
     html_rows = ""
@@ -129,12 +131,12 @@ def render_global_overview() -> None:
     st.markdown(
         f"""<table style="width:100%;border-collapse:collapse;">
         <thead><tr style="border-bottom:1px solid #444;font-size:12px;opacity:.6;">
-          <th style="padding:4px 10px;text-align:left;">Actif</th>
-          <th style="padding:4px 10px;text-align:left;">Signal</th>
-          <th style="padding:4px 10px;text-align:left;">Score</th>
-          <th style="padding:4px 10px;text-align:left;">Horodatage</th>
-          <th style="padding:4px 10px;text-align:left;">P&L 24h</th>
-          <th style="padding:4px 10px;text-align:left;">Session</th>
+          <th style="padding:4px 10px;text-align:left;">{t('col_asset')}</th>
+          <th style="padding:4px 10px;text-align:left;">{t('col_signal')}</th>
+          <th style="padding:4px 10px;text-align:left;">{t('col_score')}</th>
+          <th style="padding:4px 10px;text-align:left;">{t('col_timestamp')}</th>
+          <th style="padding:4px 10px;text-align:left;">{t('col_pnl')}</th>
+          <th style="padding:4px 10px;text-align:left;">{t('col_session')}</th>
         </tr></thead>
         <tbody>{html_rows}</tbody>
         </table>""",
@@ -155,7 +157,7 @@ def render_global_live_prices() -> None:
     if not assets:
         return
 
-    st.markdown("### 📡 Prix temps réel")
+    st.markdown(f"### {t('live_prices_title')}")
 
     try:
         from agents.market_data_agent import MarketDataAgent

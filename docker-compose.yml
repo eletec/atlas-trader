@@ -60,6 +60,7 @@ services:
       - ENVIRONMENT=production
       - DAEMON_INTERVAL=${DAEMON_INTERVAL:-900}   # 15 minutes
       - TZ=Europe/Paris
+      - SETTINGS_FILE=/app/config/settings.gx10.yaml
     ports:
       - "${DASHBOARD_PORT:-8501}:8501"
     volumes:

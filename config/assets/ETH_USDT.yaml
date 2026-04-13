@@ -8,8 +8,8 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: balanced
-  buy_threshold: 63
-  exit_threshold: 48          # zone de maintien [48-63] — ne sort que sur signal vraiment baissier
+  buy_threshold: 68
+  exit_threshold: 38          # zone neutre large [38-68] — sort uniquement sur signal vraiment baissier
   kelly_max_fraction: 0.2
   position_size_pct: 4.0
   max_open_positions: 1       # une seule position longue à la fois par actif

@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_SETTINGS_PATH = Path("config/settings.yaml")
+# Permet de surcharger le fichier settings via variable d'environnement
+# Ex: SETTINGS_FILE=/app/config/settings.gx10.yaml dans docker-compose.yml
+_SETTINGS_PATH = Path(os.environ.get("SETTINGS_FILE", "config/settings.yaml"))
 _ASSETS_DIR = Path("config/assets")
 
 

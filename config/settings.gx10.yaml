@@ -277,25 +277,25 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.25   # WR 42% — légèrement réduit
+    weight_in_scoring: 0.15   # WR 38.1% — en dessous du hasard, réduit
   x_sentiment:
     enabled: true
-    weight_in_scoring: 0.10
+    weight_in_scoring: 0.10   # WR 42.9% — signal faible
   contrarian:
     enabled: true
     weight_in_scoring: 0.9
   fear_greed:
     enabled: true
-    weight_in_scoring: 0.05   # Brier 0.387 = signal contrariant, pas directionnel
+    weight_in_scoring: 0.05   # score moy=85 = perpétuellement bullish — signal contrariant
   polymarket:
     enabled: true
-    weight_in_scoring: 0.15   # WR 42% + P&L -0.55$ — fortement réduit
+    weight_in_scoring: 0.20   # WR 47.6%, Brier 0.2566 — corregé à la hausse
   timesfm:
     enabled: true
-    weight_in_scoring: 0.40   # Meilleur Brier (0.239) — renforcé
+    weight_in_scoring: 0.15   # WR 36.8% : bon Brier mais régression vers la moyenne, pas directionnel
   market_regime:
     enabled: true
-    weight_in_scoring: 0.20   # WR 47% < 50% — réduit
+    weight_in_scoring: 0.40   # WR 52.4% meilleur signal directionnel — monté en priorité
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0
@@ -330,13 +330,13 @@ risk:
   atr_multiplier_sl: 2.0
   atr_multiplier_tp: 3.0
   atr_period: 14
-  buy_threshold: 62
-  exit_threshold: 52
+  buy_threshold: 68         # zone neutre large [38-68] — entrée uniquement sur conviction forte
+  exit_threshold: 38        # sort uniquement sur signal vraiment baissier
   human_in_the_loop: false
   ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
   ma50_gradual_size_factor: 0.5
-  max_open_positions: 3
+  max_open_positions: 1
   sell_threshold: 30
 circuit_breaker:
   funding_warning: 0.00018

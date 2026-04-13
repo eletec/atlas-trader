@@ -1837,6 +1837,7 @@ def render_trades_list(trades: list[dict]):
     st.markdown(html, unsafe_allow_html=True)
 
 
+@st.fragment
 def render_trades_list_sortable(trades: list[dict]):
     """Historique global des trades — triable et cliquable pour voir le détail."""
     st.markdown(
@@ -1867,9 +1868,26 @@ def render_trades_list_sortable(trades: list[dict]):
 
     df = pd.DataFrame(rows)
 
+    def _action_color(v):
+        if v == "BUY":  return "color: #2ecc71; font-weight: bold"
+        if v == "SELL": return "color: #e74c3c; font-weight: bold"
+        return ""
+
+    def _pnl_color(v):
+        try:
+            return "color: #2ecc71; font-weight: 600" if float(v) >= 0 else "color: #e74c3c; font-weight: 600"
+        except Exception:
+            return ""
+
+    styled = (
+        df.style
+        .map(_action_color, subset=["Action"])
+        .map(_pnl_color, subset=["P&L"])
+    )
+
     st.caption("💡 Cliquez sur une ligne pour voir toute la logique de la décision.")
     event = st.dataframe(
-        df,
+        styled,
         use_container_width=True,
         height=min(480, 36 * (len(trades) + 2)),
         hide_index=True,

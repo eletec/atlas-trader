@@ -1309,7 +1309,7 @@ def render_portfolio(portfolio: dict):
 
 @st.dialog("Analyse de la décision", width="large")
 def _show_trade_detail_dialog(trade: dict) -> None:
-    """Modal compact : logique complète de la décision pour un trade."""
+    """Modal : logique complète + traçabilité des poids pour un trade."""
     import json as _json
 
     action = trade.get("action", "?")
@@ -1323,9 +1323,9 @@ def _show_trade_detail_dialog(trade: dict) -> None:
     color = "#2ecc71" if action == "BUY" else "#e74c3c"
     icon  = "▲" if action == "BUY" else "▼"
 
-    # ── Header compact ─────────────────────────────────────────────────────────
+    # ── Header compact ──────────────────────────────────────────────────────────
     parts = [f"<b style='color:{color}'>{icon} {action}</b>", asset, ts + " UTC"]
-    if entry:  parts.append(f"Entry <b>${float(entry):,.2f}</b>")
+    if entry:         parts.append(f"Entry <b>${float(entry):,.2f}</b>")
     if pnl is not None: parts.append(f"P&L <b style='color:{color}'>${float(pnl):+.2f}</b>")
     if score is not None: parts.append(f"Score <b>{float(score):.0f}/100</b>")
     st.markdown(
@@ -1335,7 +1335,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Récupération du contexte ───────────────────────────────────────────────
+    # ── Récupération du contexte ────────────────────────────────────────────────
     ctx: dict = {}
     raw_ctx = trade.get("decision_context")
     if raw_ctx:
@@ -1344,7 +1344,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         except Exception:
             ctx = {}
 
-    # ── Trades anciens : afficher explication parsée ───────────────────────────
+    # ── Trades anciens ──────────────────────────────────────────────────────────
     if not ctx:
         st.caption("⚠️ Trade antérieur à l'audit trail (13/04/2026) — seule l'explication IA est disponible.")
         if expl:
@@ -1352,17 +1352,92 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                         unsafe_allow_html=True)
         return
 
-    tab_agents, tab_mkt, tab_dec, tab_ia = st.tabs(
-        ["🤖 Agents", "📈 Marché", "⚖️ Décision", "🧠 IA"]
+    tab_formula, tab_agents, tab_mkt, tab_dec, tab_ia = st.tabs(
+        ["🧮 Formule", "🤖 Agents", "📈 Marché", "⚖️ Décision", "🧠 IA"]
     )
 
-    # ── Tab Agents ─────────────────────────────────────────────────────────────
+    # ── Tab Formule ─────────────────────────────────────────────────────────────
+    # Montre la décomposition exacte : score = Σ composante × poids
+    with tab_formula:
+        eff_w = ctx.get("effective_weights") or {}
+        dec   = ctx.get("decision") or {}
+        s_val = dec.get("score") if dec.get("score") is not None else score
+
+        def _comp_row(comp: dict, name: str, label: str) -> str:
+            if not isinstance(comp, dict):
+                return ""
+            sc = comp.get("score")
+            w  = comp.get("weight")
+            ct = comp.get("contribution")
+            if sc is None or w is None:
+                return ""
+            bar_pct = min(100, max(0, float(sc)))
+            bar_col = "#2ecc71" if float(sc) >= 60 else ("#e74c3c" if float(sc) < 40 else "#f39c12")
+            fb = " <span style='opacity:.5;font-size:10px'>(fallback)</span>" if comp.get("fallback_mode") else ""
+            return (
+                f"<tr><td style='padding:5px 8px;font-size:12px;font-weight:600'>{label}{fb}</td>"
+                f"<td style='padding:5px 8px;font-size:12px;text-align:right'>{float(sc):.1f}</td>"
+                f"<td style='padding:5px 8px'>"
+                f"<div style='width:100px;height:8px;background:rgba(128,128,128,.2);border-radius:4px;display:inline-block'>"
+                f"<div style='width:{bar_pct:.0f}%;height:100%;background:{bar_col};border-radius:4px'></div></div></td>"
+                f"<td style='padding:5px 8px;font-size:12px;text-align:right;opacity:.8'>× {float(w):.2f}</td>"
+                f"<td style='padding:5px 8px;font-size:12px;text-align:right;font-weight:600;color:{bar_col}'>"
+                f"= {float(ct):.2f} pts</td></tr>"
+            )
+
+        if eff_w:
+            rows_html = ""
+            rows_html += _comp_row(eff_w.get("mirofish", {}),   "mirofish",   "MiroFish (simulation)")
+            rows_html += _comp_row(eff_w.get("market", {}),     "market",     "Market (technique)")
+            rows_html += _comp_row(eff_w.get("agents", {}),     "agents",     "Agents (IA)")
+            rows_html += _comp_row(eff_w.get("contrarian", {}), "contrarian", "Contrarian")
+            final = f"{float(s_val):.1f}" if s_val is not None else "?"
+            rows_html += (
+                f"<tr style='border-top:2px solid rgba(128,128,128,.3)'>"
+                f"<td colspan='4' style='padding:6px 8px;font-size:13px;font-weight:700'>Score final</td>"
+                f"<td style='padding:6px 8px;font-size:16px;font-weight:700;color:{color}'>{final} / 100</td></tr>"
+            )
+            st.markdown(
+                f"<table style='width:100%;border-collapse:collapse'>{rows_html}</table>",
+                unsafe_allow_html=True,
+            )
+
+            # Détail des agents dans la composante "agents"
+            agents_comp = eff_w.get("agents", {})
+            agent_weights_in_comp = agents_comp.get("agent_weights", {})
+            agent_detail_scores   = agents_comp.get("detail", {})
+            if agent_weights_in_comp or agent_detail_scores:
+                st.markdown("---")
+                st.caption("**Poids individuels des agents dans la composante IA**")
+                agt_ctx = ctx.get("agents") or {}
+                all_names = set(agent_weights_in_comp) | set(agent_detail_scores)
+                rows_agt = []
+                for name in sorted(all_names):
+                    w_ind  = agent_weights_in_comp.get(name)
+                    sc_ind = agent_detail_scores.get(name)
+                    sig    = (agt_ctx.get(name) or {}).get("signal", "—") if isinstance(agt_ctx.get(name), dict) else "—"
+                    contrib = float(sc_ind) * float(w_ind) if sc_ind is not None and w_ind is not None else None
+                    rows_agt.append({
+                        "Agent":          name,
+                        "Score":          f"{float(sc_ind):.0f}" if sc_ind is not None else "—",
+                        "Signal":         sig,
+                        "Poids (w_in_scoring)": f"{float(w_ind):.3f}" if w_ind is not None else "—",
+                        "Contribution":   f"{contrib:.2f} pts" if contrib is not None else "—",
+                    })
+                st.dataframe(pd.DataFrame(rows_agt), hide_index=True, use_container_width=True)
+        else:
+            st.caption("Données de formule non disponibles pour ce trade.")
+            if s_val is not None:
+                st.metric("Score", f"{float(s_val):.1f}/100")
+
+    # ── Tab Agents ──────────────────────────────────────────────────────────────
     with tab_agents:
         agt   = ctx.get("agents") or {}
         eff_w = ctx.get("effective_weights") or {}
+        agents_comp = eff_w.get("agents", {})
+        agent_weights_in_comp = agents_comp.get("agent_weights", {}) if isinstance(agents_comp, dict) else {}
 
         if agt:
-            # Tri par score décroissant
             sorted_agents = sorted(
                 agt.items(),
                 key=lambda x: float(x[1].get("score", 0)) if isinstance(x[1], dict) and x[1].get("score") is not None else 0,
@@ -1371,31 +1446,29 @@ def _show_trade_detail_dialog(trade: dict) -> None:
             for name, info in sorted_agents:
                 if not isinstance(info, dict):
                     continue
-                sc     = info.get("score")
-                sig    = info.get("signal", "—")
-                w      = eff_w.get(name)
+                sc      = info.get("score")
+                sig     = info.get("signal", "—")
+                w       = agent_weights_in_comp.get(name)
                 summary = info.get("summary") or ""
 
-                sc_float = float(sc) if sc is not None else 0.0
+                sc_float  = float(sc) if sc is not None else 0.0
                 bar_color = "#2ecc71" if sc_float >= 60 else ("#e74c3c" if sc_float < 40 else "#f39c12")
-                w_str = f" · poids {float(w):.3f}" if isinstance(w, (int, float)) else ""
-                label = (
-                    f"**{name}** — "
-                    f"<span style='color:{bar_color}'>{sc_float:.0f}/100</span>"
-                    f" · {sig}{w_str}"
-                ) if sc is not None else f"**{name}** — {sig}{w_str}"
+                contrib   = sc_float * float(w) if w is not None else None
+                w_str     = f" · w={float(w):.3f}" + (f" → {contrib:.1f}pts" if contrib is not None else "") if w is not None else ""
+                label     = f"{name}  {sc_float:.0f}/100 · {sig}{w_str}"
 
-                with st.expander(f"{name}  {sc_float:.0f}/100 · {sig}{w_str}", expanded=False):
+                with st.expander(label, expanded=False):
                     col_sc, col_txt = st.columns([1, 3])
                     with col_sc:
-                        # Barre de score visuelle
+                        contrib_str = f"<div style='font-size:11px;opacity:.7'>Contrib : <b>{contrib:.2f} pts</b></div>" if contrib is not None else ""
                         st.markdown(
                             f"<div style='font-size:22px;font-weight:700;color:{bar_color}'>"
                             f"{sc_float:.0f}<span style='font-size:12px;opacity:.6'>/100</span></div>"
                             f"<div style='width:100%;height:5px;background:rgba(128,128,128,.2);border-radius:3px;margin:4px 0'>"
                             f"<div style='width:{sc_float:.0f}%;height:100%;background:{bar_color};border-radius:3px'></div></div>"
                             f"<div style='font-size:11px;opacity:.7'>Signal : <b>{sig}</b></div>"
-                            + (f"<div style='font-size:11px;opacity:.7'>Poids : <b>{float(w):.3f}</b></div>" if isinstance(w, (int, float)) else ""),
+                            + (f"<div style='font-size:11px;opacity:.7'>Poids : <b>{float(w):.3f}</b></div>" if w is not None else "")
+                            + contrib_str,
                             unsafe_allow_html=True,
                         )
                     with col_txt:
@@ -1409,15 +1482,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         else:
             st.caption("Scores agents non disponibles.")
 
-        scores = ctx.get("scores") or {}
-        if scores:
-            st.markdown("---")
-            st.caption("**Scores composants synthétisés**")
-            cols = st.columns(len(scores))
-            for i, (k, v) in enumerate(scores.items()):
-                cols[i].metric(k, f"{float(v):.1f}" if isinstance(v, (int, float)) else str(v))
-
-    # ── Tab Marché ─────────────────────────────────────────────────────────────
+    # ── Tab Marché ──────────────────────────────────────────────────────────────
     with tab_mkt:
         mkt = ctx.get("market") or {}
         rgm = ctx.get("regime") or {}
@@ -1436,13 +1501,13 @@ def _show_trade_detail_dialog(trade: dict) -> None:
             mkt_items = [(k, v) for k, v in mkt.items() if v is not None]
             for chunk_start in range(0, len(mkt_items), 4):
                 chunk = mkt_items[chunk_start:chunk_start + 4]
-                cols = st.columns(4)
+                cols = st.columns(len(chunk))
                 for i, (k, v) in enumerate(chunk):
                     cols[i].metric(k, f"{float(v):.4f}" if isinstance(v, float) else str(v))
         else:
             st.caption("Indicateurs de marché non disponibles.")
 
-    # ── Tab Décision ───────────────────────────────────────────────────────────
+    # ── Tab Décision ────────────────────────────────────────────────────────────
     with tab_dec:
         dec   = ctx.get("decision") or {}
         s_val = dec.get("score") if dec.get("score") is not None else score
@@ -1466,7 +1531,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         if blockers:
             st.warning("Bloqué : " + "  |  ".join(blockers))
 
-    # ── Tab IA ─────────────────────────────────────────────────────────────────
+    # ── Tab IA ──────────────────────────────────────────────────────────────────
     with tab_ia:
         if expl:
             st.markdown(

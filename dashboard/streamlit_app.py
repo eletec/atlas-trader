@@ -621,8 +621,13 @@ def _get_last_cycle() -> dict | None:
 def _get_settings() -> dict:
     try:
         from utils.config import load_settings
+        import os
         from pathlib import Path
-        _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
+        settings_file = os.environ.get("SETTINGS_FILE")
+        if settings_file:
+            _cfg_path = Path(settings_file)
+        else:
+            _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
         return load_settings(_cfg_path)
     except Exception as _e:
         import logging

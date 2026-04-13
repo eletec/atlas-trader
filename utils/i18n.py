@@ -2957,6 +2957,44 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "24u-feedbacklus",
         "zh": "24小时反馈循环",
     },
+    "trades_all_title": {
+        "fr": "Historique des trades — tous actifs",
+        "en": "Trade History — all assets",
+        "de": "Handelshistorie — alle Vermögenswerte",
+        "es": "Historial de operaciones — todos los activos",
+        "it": "Storico operazioni — tutti gli asset",
+        "pt": "Histórico de operações — todos os ativos",
+        "nl": "Handelsgeschiedenis — alle activa",
+        "zh": "交易历史 — 所有资产",
+    },
+    "click_row_detail": {
+        "fr": "💡 Cliquez sur une ligne pour voir toute la logique de la décision.",
+        "en": "💡 Click a row to see the full decision logic.",
+        "de": "💡 Klicken Sie auf eine Zeile, um die vollständige Entscheidungslogik zu sehen.",
+        "es": "💡 Haga clic en una fila para ver la lógica de decisión completa.",
+        "it": "💡 Fare clic su una riga per vedere la logica decisionale completa.",
+        "pt": "💡 Clique numa linha para ver a lógica de decisão completa.",
+        "nl": "💡 Klik op een rij om de volledige beslissingslogica te zien.",
+        "zh": "💡 点击行查看完整决策逻辑。",
+    },
+    "col_asset": {
+        "fr": "Actif", "en": "Asset",
+        "de": "Vermögenswert", "es": "Activo",
+        "it": "Asset", "pt": "Ativo",
+        "nl": "Actief", "zh": "资产",
+    },
+    "col_size_usd": {
+        "fr": "Taille", "en": "Size",
+        "de": "Größe", "es": "Tamaño",
+        "it": "Dimensione", "pt": "Tamanho",
+        "nl": "Grootte", "zh": "规模",
+    },
+    "trade_close_label": {
+        "fr": "✓ Clôture", "en": "✓ Close",
+        "de": "✓ Schließen", "es": "✓ Cerrar",
+        "it": "✓ Chiudi", "pt": "✓ Fechar",
+        "nl": "✓ Sluiten", "zh": "✓ 平仓",
+    },
 }
 
 _current_lang: str = "en"

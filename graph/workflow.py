@@ -159,7 +159,7 @@ def node_fetch_news(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    logger.info(f"[{state['cycle_id']}] Démarrage collecte news")
+    logger.info(f"[{state['cycle_id']}] Starting news collection")
 
     try:
         from agents.fast_news_listener import FastNewsListener
@@ -167,12 +167,12 @@ def node_fetch_news(state: ZeitgeistState) -> dict:
         news = listener.fetch_all(asset=state["asset"])
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("fast_news", "ok", latency_ms, len(news))
-        logger.info(f"[{state['cycle_id']}] {len(news)} news collectées en {latency_ms}ms")
+        logger.info(f"[{state['cycle_id']}] {len(news)} news collected in {latency_ms}ms")
         return {"news_items": news}
     except Exception as exc:
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("fast_news", "error", latency_ms, 0, str(exc))
-        logger.error(f"[{state['cycle_id']}] Erreur news: {exc}")
+        logger.error(f"[{state['cycle_id']}] News error: {exc}")
         return {"news_items": [], "errors": state.get("errors", []) + [f"news: {exc}"]}
 
 
@@ -182,7 +182,7 @@ def node_crawl_web(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    logger.info(f"[{state['cycle_id']}] Démarrage crawl web")
+    logger.info(f"[{state['cycle_id']}] Starting web crawl")
 
     try:
         from agents.broad_web_crawler import BroadWebCrawler
@@ -193,12 +193,12 @@ def node_crawl_web(state: ZeitgeistState) -> dict:
         air_du_temps = builder.build(raw_docs, state["news_items"])
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("crawler", "ok", latency_ms, len(raw_docs))
-        logger.info(f"[{state['cycle_id']}] AirDuTemps généré en {latency_ms}ms")
+        logger.info(f"[{state['cycle_id']}] AirDuTemps generated in {latency_ms}ms")
         return {"air_du_temps": air_du_temps, "crawler_status": "ok"}
     except Exception as exc:
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("crawler", "error", latency_ms, 0, str(exc))
-        logger.warning(f"[{state['cycle_id']}] Crawl échoué (mode dégradé): {exc}")
+        logger.warning(f"[{state['cycle_id']}] Crawl failed (degraded mode): {exc}")
         # Mode dégradé : AirDuTemps construit uniquement depuis les news
         from agents.air_du_temps_builder import AirDuTempsBuilder
         builder = AirDuTempsBuilder()
@@ -216,7 +216,7 @@ def node_run_mirofish(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    logger.info(f"[{state['cycle_id']}] Démarrage simulation MiroFish")
+    logger.info(f"[{state['cycle_id']}] Starting MiroFish simulation")
 
     try:
         from agents.mirofish_wrapper import MiroFishWrapper
@@ -233,7 +233,7 @@ def node_run_mirofish(state: ZeitgeistState) -> dict:
     except Exception as exc:
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("mirofish", "error", latency_ms, 0, str(exc))
-        logger.error(f"[{state['cycle_id']}] Erreur MiroFish: {exc}")
+        logger.error(f"[{state['cycle_id']}] MiroFish error: {exc}")
         # Score neutre en cas d'erreur
         fallback: MiroFishResult = {
             "score": 50.0, "probas": {"bull": 0.33, "bear": 0.33, "neutral": 0.34},
@@ -252,7 +252,7 @@ def node_fetch_market_data(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    logger.info(f"[{state['cycle_id']}] Récupération market data {state['asset']}")
+    logger.info(f"[{state['cycle_id']}] Fetching market data {state['asset']}")
 
     try:
         from agents.market_data_agent import MarketDataAgent
@@ -268,7 +268,7 @@ def node_fetch_market_data(state: ZeitgeistState) -> dict:
     except Exception as exc:
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("market_data", "error", latency_ms, 0, str(exc))
-        logger.error(f"[{state['cycle_id']}] Erreur market data: {exc}")
+        logger.error(f"[{state['cycle_id']}] Market data error: {exc}")
         return {
             "market_indicators": None,
             "errors": state.get("errors", []) + [f"market_data: {exc}"]
@@ -345,7 +345,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     }
     disabled = [name for name, (_, enabled) in agents_map.items() if not enabled]
     for name in disabled:
-        logger.info(f"[{state['cycle_id']}] Agent {name} désactivé")
+        logger.info(f"[{state['cycle_id']}] Agent {name} disabled")
 
     def _run_agent(name: str, AgentClass) -> tuple[str, dict]:
         _t = time.time()
@@ -373,11 +373,11 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
                 result = agent.analyze(state)
             _lat = int((time.time() - _t) * 1000)
             log_flux_metric(f"agent_{name}", "ok", _lat, 1)
-            logger.info(f"[{state['cycle_id']}] Agent {name} terminé en {_lat}ms — {result.get('signal', '?') if isinstance(result, dict) else '?'}")
+            logger.info(f"[{state['cycle_id']}] Agent {name} completed in {_lat}ms — {result.get('signal', '?') if isinstance(result, dict) else '?'}")
             return name, result
         except Exception as exc:
             _lat = int((time.time() - _t) * 1000)
-            logger.warning(f"[{state['cycle_id']}] Agent {name} échoué en {_lat}ms: {exc}")
+            logger.warning(f"[{state['cycle_id']}] Agent {name} failed in {_lat}ms: {exc}")
             log_flux_metric(f"agent_{name}", "error", _lat, 0, str(exc))
             return name, AgentAnalysis(
                 agent_name=name, score=50.0,
@@ -395,7 +395,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
             analyses[name] = result
             tokens_used += result.get("tokens_used", 0) if isinstance(result, dict) else 0
     except TimeoutError:
-        logger.error(f"[{state['cycle_id']}] Agents timeout global (180s) — certains agents ignorés")
+        logger.error(f"[{state['cycle_id']}] Global agents timeout (180s) — some agents skipped")
         # Collecter les résultats déjà terminés
         for fut, fname in futures.items():
             if fut.done() and fname not in analyses:
@@ -408,7 +408,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         pool.shutdown(wait=False)  # abandon les threads figés, ne jamais bloquer
 
     latency_ms = int((time.time() - t0) * 1000)
-    logger.info(f"[{state['cycle_id']}] Agents terminés en {latency_ms}ms (parallèle) — {len(analyses)} actifs")
+    logger.info(f"[{state['cycle_id']}] Agents completed in {latency_ms}ms (parallel) — {len(analyses)} active")
 
     # Persister la prédiction TimesFM pour suivi de performance
     tfm = analyses.get("timesfm")
@@ -460,7 +460,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         if coord_meta:
             analyses["coordinator_meta"] = coord_meta
     except Exception as _coord_exc:
-        logger.debug("Coordinator ignoré : %s", _coord_exc)
+        logger.debug("Coordinator skipped: %s", _coord_exc)
 
     return {
         "agent_analyses": analyses,
@@ -483,7 +483,7 @@ def node_debate(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    logger.info(f"[{state['cycle_id']}] Débat Bull vs Bear")
+    logger.info(f"[{state['cycle_id']}] Bull vs Bear debate")
     agent  = BullBearDebateAgent()
     result = agent.analyze(state)
 
@@ -491,7 +491,7 @@ def node_debate(state: ZeitgeistState) -> dict:
     analyses["debate"] = result
 
     elapsed = time.time() - t0
-    logger.info(f"[{state['cycle_id']}] Débat terminé en {elapsed:.1f}s")
+    logger.info(f"[{state['cycle_id']}] Debate completed in {elapsed:.1f}s")
     return {"agent_analyses": analyses}
 
 
@@ -506,7 +506,7 @@ def node_synthesize(state: ZeitgeistState) -> dict:
     import time
 
     t0 = time.time()
-    logger.info(f"[{state['cycle_id']}] Synthèse LLM")
+    logger.info(f"[{state['cycle_id']}] LLM synthesis")
 
     cfg = load_settings()
     llm_cfg = cfg.get("llm", {})
@@ -517,7 +517,7 @@ def node_synthesize(state: ZeitgeistState) -> dict:
 
     try:
         if use_agentic:
-            logger.info(f"[{state['cycle_id']}] Mode agentique CA4 (WebSearch activé)")
+            logger.info(f"[{state['cycle_id']}] Agentic mode CA4 (WebSearch enabled)")
             agent = SynthesisAgentAgentic()
         else:
             agent = SynthesisAgent()
@@ -531,7 +531,7 @@ def node_synthesize(state: ZeitgeistState) -> dict:
     except Exception as exc:
         latency_ms = int((time.time() - t0) * 1000)
         log_flux_metric("synthesis", "error", latency_ms, 0, str(exc))
-        logger.error(f"[{state['cycle_id']}] Erreur synthèse: {exc}")
+        logger.error(f"[{state['cycle_id']}] Synthesis error: {exc}")
         return {"errors": state.get("errors", []) + [f"synthesis: {exc}"]}
 
 
@@ -618,7 +618,7 @@ def node_execute(state: ZeitgeistState) -> dict:
         latency_ms = int((time.time() - t0) * 1000)
         score = state.get("global_score", 50)
         log_flux_metric("paper_trader", "hold", latency_ms, 0)
-        logger.info(f"[{state['cycle_id']}] HOLD — pas d'exécution (score={score:.1f})")
+        logger.info(f"[{state['cycle_id']}] HOLD — no execution (score={score:.1f})")
         log_decision(state["cycle_id"], state)
         return {"trade_executed": False}
 
@@ -679,7 +679,7 @@ def node_execute(state: ZeitgeistState) -> dict:
         return {"trade_executed": True, "trade_result": result}
     except Exception as exc:
         log_flux_metric("paper_trader", "error", 0, 0, str(exc))
-        logger.error(f"[{state['cycle_id']}] Erreur exécution: {exc}")
+        logger.error(f"[{state['cycle_id']}] Execution error: {exc}")
         log_decision(state["cycle_id"], state)
         return {
             "trade_executed": False,
@@ -713,7 +713,7 @@ def should_continue_after_news(state: ZeitgeistState) -> str:
             return "continue"
     except Exception:
         pass
-    logger.warning(f"[{state['cycle_id']}] Aucune donnée — cycle annulé")
+    logger.warning(f"[{state['cycle_id']}] No data — cycle aborted")
     return "abort"
 
 
@@ -853,7 +853,7 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> ZeitgeistS
         t0 = time.time()
         start_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        logger.info(f"=== CYCLE {initial_state['cycle_id']} DÉBUT à {start_ts} — type: {trigger} ({asset}) ===")
+        logger.info(f"=== CYCLE {initial_state['cycle_id']} START at {start_ts} — type: {trigger} ({asset}) ===")
         final_state = workflow.invoke(initial_state)
         if not final_state:
             logger.warning(

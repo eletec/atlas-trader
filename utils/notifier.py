@@ -176,7 +176,7 @@ def get_notifier() -> CompositeNotifier | None:
 
         _notifier_instance = CompositeNotifier(notifiers) if notifiers else None
     except Exception as exc:
-        logger.error(f"Erreur initialisation notifier: {exc}")
+        logger.error(f"Notifier initialization error: {exc}")
         _notifier_instance = None
 
     _notifier_loaded = True

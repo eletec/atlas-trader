@@ -165,7 +165,7 @@ class MarketDataAgent:
                 "timestamp": datetime.utcnow().isoformat(),
             }
         except Exception as exc:
-            logger.error(f"Erreur récupération market data: {exc}")
+            logger.error(f"Market data fetch error: {exc}")
             return self._generate_mock(symbol)
 
     # ---- Indicateurs TA ----

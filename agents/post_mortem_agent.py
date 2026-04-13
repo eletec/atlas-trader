@@ -114,7 +114,7 @@ class PostMortemAgent:
                 f"current={current_price:.2f} P&L={pnl:.2f}$"
             )
         except Exception as exc:
-            logger.error(f"Erreur post-mortem decision {decision.get('cycle_id')}: {exc}")
+            logger.error(f"Post-mortem error for decision {decision.get('cycle_id')}: {exc}")
 
     def _get_current_price(self, asset: str) -> float:
         """Recupere le prix actuel via CCXT."""
@@ -666,7 +666,7 @@ class PostMortemAgent:
             )
 
         except Exception as exc:
-            logger.warning(f"[MetaAnalysis] Erreur : {exc}")
+            logger.warning(f"[MetaAnalysis] Error: {exc}")
 
     @staticmethod
     def _build_llm_for_meta(cfg: dict):

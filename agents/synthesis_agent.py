@@ -154,7 +154,7 @@ class SynthesisAgent:
                 "tokens_used": tokens,
             }
         except Exception as exc:
-            logger.error(f"Erreur SynthesisAgent LLM: {exc}")
+            logger.error(f"SynthesisAgent LLM error: {exc}")
             return self._fallback_synthesis(state)
 
     def _build_prompt(self, state: dict) -> str:

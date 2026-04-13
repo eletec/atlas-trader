@@ -3168,6 +3168,94 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": " — hervat {day}",
         "zh": " — {day} 恢复",
     },
+    # ── Decision dialog ─────────────────────────────────────────────────────
+    "dialog_decision_title": {
+        "fr": "Analyse de la décision",
+        "en": "Decision Analysis",
+        "de": "Entscheidungsanalyse",
+        "es": "Análisis de decisión",
+        "it": "Analisi della decisione",
+        "pt": "Análise de decisão",
+        "nl": "Beslissingsanalyse",
+        "zh": "决策分析",
+    },
+    "dialog_old_trade": {
+        "fr": "⚠️ Trade antérieur à l'audit trail (13/04/2026) — seule l'explication IA est disponible.",
+        "en": "⚠️ Trade predates audit trail (13/04/2026) — only the AI explanation is available.",
+        "de": "⚠️ Trade vor dem Audit-Trail (13.04.2026) — nur die KI-Erklärung verfügbar.",
+        "es": "⚠️ Trade anterior al audit trail (13/04/2026) — solo está disponible la explicación IA.",
+        "it": "⚠️ Trade precedente all'audit trail (13/04/2026) — disponibile solo la spiegazione AI.",
+        "pt": "⚠️ Trade anterior ao audit trail (13/04/2026) — apenas a explicação IA está disponível.",
+        "nl": "⚠️ Trade voorafgaand aan audit trail (13/04/2026) — alleen de AI-uitleg beschikbaar.",
+        "zh": "⚠️ 该交易在审计追踪(2026/04/13)之前 — 仅 AI 解释可用。",
+    },
+    "tab_formula": {
+        "fr": "🧮 Formule", "en": "🧮 Formula",
+        "de": "🧮 Formel", "es": "🧮 Fórmula",
+        "it": "🧮 Formula", "pt": "🧮 Fórmula",
+        "nl": "🧮 Formule", "zh": "🧮 公式",
+    },
+    "tab_agents_dialog": {
+        "fr": "🤖 Agents", "en": "🤖 Agents",
+        "de": "🤖 Agenten", "es": "🤖 Agentes",
+        "it": "🤖 Agenti", "pt": "🤖 Agentes",
+        "nl": "🤖 Agenten", "zh": "🤖 代理人",
+    },
+    "tab_market_dialog": {
+        "fr": "📈 Marché", "en": "📈 Market",
+        "de": "📈 Markt", "es": "📈 Mercado",
+        "it": "📈 Mercato", "pt": "📈 Mercado",
+        "nl": "📈 Markt", "zh": "📈 市场",
+    },
+    "tab_decision": {
+        "fr": "⚖️ Décision", "en": "⚖️ Decision",
+        "de": "⚖️ Entscheidung", "es": "⚖️ Decisión",
+        "it": "⚖️ Decisione", "pt": "⚖️ Decisão",
+        "nl": "⚖️ Beslissing", "zh": "⚖️ 决策",
+    },
+    "tab_ai": {
+        "fr": "🧠 IA", "en": "🧠 AI",
+        "de": "🧠 KI", "es": "🧠 IA",
+        "it": "🧠 IA", "pt": "🧠 IA",
+        "nl": "🧠 AI", "zh": "🧠 AI",
+    },
+    # ── Profile labels ──────────────────────────────────────────────────────
+    "profile_label_baseline": {
+        "fr": "Baseline (actuel)", "en": "Baseline (current)",
+        "de": "Baseline (aktuell)", "es": "Baseline (actual)",
+        "it": "Baseline (attuale)", "pt": "Baseline (atual)",
+        "nl": "Baseline (huidig)", "zh": "基准 (当前)",
+    },
+    "profile_label_aggressive": {
+        "fr": "Agressif", "en": "Aggressive",
+        "de": "Aggressiv", "es": "Agresivo",
+        "it": "Aggressivo", "pt": "Agressivo",
+        "nl": "Agressief", "zh": "激进",
+    },
+    "profile_label_conservative": {
+        "fr": "Conservateur", "en": "Conservative",
+        "de": "Konservativ", "es": "Conservador",
+        "it": "Conservativo", "pt": "Conservador",
+        "nl": "Conservatief", "zh": "保守",
+    },
+    "profile_label_tight_stops": {
+        "fr": "Stops Serrés", "en": "Tight Stops",
+        "de": "Enge Stops", "es": "Stops Ajustados",
+        "it": "Stop Stretti", "pt": "Stops Apertados",
+        "nl": "Nauwe Stops", "zh": "紧止损",
+    },
+    "profile_label_market_heavy": {
+        "fr": "Orienté Marché", "en": "Market-Focused",
+        "de": "Marktorientiert", "es": "Orientado al Mercado",
+        "it": "Focalizzato sul Mercato", "pt": "Focado no Mercado",
+        "nl": "Marktgericht", "zh": "市场导向",
+    },
+    "chart_return_pct": {
+        "fr": "Rendement %", "en": "Return %",
+        "de": "Rendite %", "es": "Rendimiento %",
+        "it": "Rendimento %", "pt": "Rendimento %",
+        "nl": "Rendement %", "zh": "收益率 %",
+    },
 }
 
 _current_lang: str = "en"

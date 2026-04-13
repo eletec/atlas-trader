@@ -34,13 +34,13 @@ def run_claude_analysis(prompt: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
     try:
         return _run_via_cli(prompt, timeout)
     except FileNotFoundError:
-        logger.info("CLI `claude` non trouvé — fallback API Python")
+        logger.info("`claude` CLI not found — falling back to Python API")
         return _run_via_api(prompt, timeout)
     except subprocess.TimeoutExpired:
         logger.warning("Claude CLI timeout (%ds)", timeout)
         return f"[Erreur] Timeout après {timeout}s. Essayez un prompt plus court."
     except Exception as exc:
-        logger.error("Claude CLI erreur inattendue : %s", exc)
+        logger.error("Claude CLI unexpected error: %s", exc)
         return _run_via_api(prompt, timeout)
 
 

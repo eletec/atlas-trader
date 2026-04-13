@@ -97,7 +97,7 @@ class MiroFishWrapper:
             )
             return self._parse_official_result(result)
         except Exception as exc:
-            logger.error(f"Erreur MiroFish officiel: {exc}")
+            logger.error(f"MiroFish official error: {exc}")
             return self._run_fallback(seed)
 
     def _parse_official_result(self, raw: Any) -> dict:

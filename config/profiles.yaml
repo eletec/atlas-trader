@@ -19,7 +19,7 @@ profiles:
 
   # ── Profil actif (référence) ─────────────────────────────
   baseline:
-    label: "Baseline (actuel)"
+    label: "Baseline (current)"
     active: true
     color: "#2196F3"
     scoring:
@@ -41,7 +41,7 @@ profiles:
 
   # ── Shadow : seuils abaissés, positions plus grosses ─────
   aggressive:
-    label: "Agressif"
+    label: "Aggressive"
     active: false
     color: "#F44336"
     scoring:
@@ -63,7 +63,7 @@ profiles:
 
   # ── Shadow : seuils élevés, petites positions ────────────
   conservative:
-    label: "Conservateur"
+    label: "Conservative"
     active: false
     color: "#4CAF50"
     scoring:
@@ -107,7 +107,7 @@ profiles:
 
   # ── Shadow : mêmes poids, stops plus serrés ─────────────
   tight_stops:
-    label: "Stops Serrés"
+    label: "Tight Stops"
     active: false
     color: "#9C27B0"
     scoring:

@@ -237,7 +237,7 @@ class FastNewsListener:
         filtered.sort(key=lambda x: x["relevance_score"], reverse=True)
 
         result = filtered[:self.max_items]
-        logger.info(f"{len(result)} news pertinentes collectées (/{len(unique)} totales)")
+        logger.info(f"{len(result)} relevant news collected (/{len(unique)} total)")
         return result
 
     def _fetch_cryptopanic(self, currency: str = "BTC") -> list[dict]:

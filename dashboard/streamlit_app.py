@@ -720,7 +720,7 @@ def _force_run_background(asset: str, log_q) -> None:
     ]
 
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
-    _logger.info(f"=== CYCLE DASHBOARD DÉBUT à {start_ts} — type: dashboard-force ({asset}) ===")
+    _logger.info(f"=== DASHBOARD CYCLE START at {start_ts} — type: dashboard-force ({asset}) ===")
 
     state = create_initial_state(asset)
     t_total = _time.time()
@@ -1307,7 +1307,7 @@ def render_portfolio(portfolio: dict):
     )
 
 
-@st.dialog("Analyse de la décision", width="large")
+@st.dialog("Decision Analysis", width="large")
 def _show_trade_detail_dialog(trade: dict) -> None:
     """Modal : logique complète + traçabilité des poids pour un trade."""
     import json as _json
@@ -1346,14 +1346,14 @@ def _show_trade_detail_dialog(trade: dict) -> None:
 
     # ── Trades anciens ──────────────────────────────────────────────────────────
     if not ctx:
-        st.caption("⚠️ Trade antérieur à l'audit trail (13/04/2026) — seule l'explication IA est disponible.")
+        st.caption(t("dialog_old_trade"))
         if expl:
             st.markdown(f"<div style='font-size:12px;line-height:1.6'>{expl}</div>",
                         unsafe_allow_html=True)
         return
 
     tab_formula, tab_agents, tab_mkt, tab_dec, tab_ia = st.tabs(
-        ["🧮 Formule", "🤖 Agents", "📈 Marché", "⚖️ Décision", "🧠 IA"]
+        [t("tab_formula"), t("tab_agents_dialog"), t("tab_market_dialog"), t("tab_decision"), t("tab_ai")]
     )
 
     # ── Tab Formule ─────────────────────────────────────────────────────────────
@@ -2376,7 +2376,9 @@ def render_profile_comparison():
             label = s["profile"]
             for name, cfg in profiles_cfg.items():
                 if name == s["profile"]:
-                    label = cfg.get("label", name)
+                    _lk = f"profile_label_{name}"
+                    _lt = t(_lk)
+                    label = _lt if _lt != _lk else cfg.get("label", name)
                     break
 
             ret_pct = s.get("return_pct", 0)
@@ -2434,7 +2436,9 @@ def render_profile_comparison():
                 label = name
                 for pname, cfg in profiles_cfg.items():
                     if pname == name:
-                        label = cfg.get("label", name)
+                        _lk = f"profile_label_{pname}"
+                        _lt = t(_lk)
+                        label = _lt if _lt != _lk else cfg.get("label", pname)
                         break
                 fig.add_trace(go.Scatter(
                     x=[p["timestamp"] for p in points],
@@ -2449,7 +2453,7 @@ def render_profile_comparison():
             fig.update_layout(
                 height=300,
                 margin=dict(l=0, r=0, t=20, b=0),
-                yaxis_title="Rendement %",
+                yaxis_title=t("chart_return_pct"),
                 yaxis_tickformat="+.1f",
                 legend=dict(orientation="h", y=-0.15),
                 xaxis_title="",

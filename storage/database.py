@@ -360,7 +360,7 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
             pnl = (entry - close_price) * qty
         conn.execute(
             "UPDATE decisions SET result_24h = ?, explanation = explanation || ? WHERE cycle_id = ?",
-            (round(pnl, 4), f"\n\n[Clôturé automatiquement — {reason} @ {close_price:.2f}]", cycle_id)
+            (round(pnl, 4), f"\n\n[Auto-closed — {reason} @ {close_price:.2f}]", cycle_id)
         )
         conn.commit()
 
@@ -1056,7 +1056,7 @@ def log_shadow_decision(
             )
             conn.commit()
     except Exception as exc:
-        logger.warning(f"Shadow log [{profile_name}] erreur : {exc}")
+        logger.warning(f"Shadow log [{profile_name}] error: {exc}")
 
 
 def get_shadow_open_positions_for_profile(profile_name: str) -> list[dict]:
@@ -1103,7 +1103,7 @@ def close_shadow_position(shadow_id: int, close_price: float) -> None:
             )
             conn.commit()
     except Exception as exc:
-        logger.warning(f"Shadow close position erreur : {exc}")
+        logger.warning(f"Shadow close position error: {exc}")
 
 
 def get_shadow_pending_postmortems(delay_hours: int = 24) -> list[dict]:
@@ -1135,7 +1135,7 @@ def update_shadow_result(shadow_id: int, result_24h: float) -> None:
             )
             conn.commit()
     except Exception as exc:
-        logger.warning(f"Shadow update result erreur : {exc}")
+        logger.warning(f"Shadow update result error: {exc}")
 
 
 def get_shadow_comparison_stats() -> list[dict]:
@@ -1243,7 +1243,7 @@ def get_shadow_comparison_stats() -> list[dict]:
                 })
 
     except Exception as exc:
-        logger.warning(f"Shadow stats erreur : {exc}")
+        logger.warning(f"Shadow stats error: {exc}")
 
     # Ajouter les profils sans trades pour qu'ils apparaissent dans le tableau
     try:
@@ -1373,7 +1373,7 @@ def get_shadow_pnl_series() -> dict[str, list[dict]]:
                         "cumulative_pnl": round(prev_cum + row["result_24h"], 2),
                     })
     except Exception as exc:
-        logger.warning(f"Shadow PnL series erreur : {exc}")
+        logger.warning(f"Shadow PnL series error: {exc}")
 
     return series
 
@@ -1480,7 +1480,7 @@ def save_meta_analysis(
             )
             conn.commit()
     except Exception as exc:
-        logger.warning(f"save_meta_analysis erreur : {exc}")
+        logger.warning(f"save_meta_analysis error: {exc}")
 
 
 def get_last_meta_analysis(asset: str | None = None, limit: int = 3) -> list[dict]:

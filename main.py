@@ -35,7 +35,7 @@ def _websocket_price_loop(symbol: str) -> None:
     """
     ws_symbol = symbol.replace("/", "").lower()  # BTC/USDT → btcusdt
     url = f"wss://stream.binance.com:9443/ws/{ws_symbol}@miniTicker"
-    logger.info(f"WebSocket prix démarré : {url}")
+    logger.info(f"WebSocket price started: {url}")
 
     # Initialiser l'entrée pour cet actif
     with _live_prices_lock:
@@ -58,7 +58,7 @@ def _websocket_price_loop(symbol: str) -> None:
                 logger.debug(f"WebSocket prix erreur : {err}")
 
             def on_close(ws, *args):
-                logger.debug("WebSocket prix fermé — reconnexion dans 5s")
+                logger.debug("WebSocket price closed — reconnecting in 5s")
 
             conn = ws_lib.WebSocketApp(
                 url,
@@ -87,11 +87,11 @@ def _websocket_price_loop(symbol: str) -> None:
         if not _shutdown_event.is_set():
             _shutdown_event.wait(5)  # reconnexion dans 5s
 
-    logger.info("WebSocket prix arrêté.")
+    logger.info("WebSocket price stopped.")
 
 
 def _signal_handler(sig, frame):
-    logger.info("Signal d'arrêt reçu — arrêt propre en cours...")
+    logger.info("Stop signal received — clean shutdown in progress...")
     _shutdown_event.set()
 
 
@@ -173,11 +173,11 @@ def bootstrap() -> dict:
     try:
         from utils.cycle_lock import release as _release_stale
         _release_stale()
-        logger.debug("Cycle lock libéré au démarrage (nettoyage préventif)")
+        logger.debug("Cycle lock released at startup (preventive cleanup)")
     except Exception:
         pass
 
-    logger.info("=== Atlas Trader démarré ===")
+    logger.info("=== Atlas Trader started ===")
     logger.info(
         f"Asset: {cfg.get('project', {}).get('asset', 'BTC/USDT')} | "
         f"Mode: {cfg.get('risk', {}).get('mode', 'balanced')} | "
@@ -207,7 +207,7 @@ def fast_monitor_loop(
     slug = asset.replace("/", "_")
     if force_event is None:
         force_event = _force_cycle_events.setdefault(asset, threading.Event())
-    logger.info(f"[{slug}] Monitor rapide démarré — intervalle {monitor_interval}s | seuil breaking={breaking_threshold}")
+    logger.info(f"[{slug}] Fast monitor started — interval={monitor_interval}s | breaking_threshold={breaking_threshold}")
     from collections import deque
     last_news_titles: deque[str] = deque(maxlen=500)  # borné — évite la fuite mémoire sur durée longue
     _last_news_titles_set: set[str] = set()  # lookup O(1) — rebuildé depuis le deque
@@ -303,7 +303,7 @@ def fast_monitor_loop(
                                     )
                                     close_position(cid, price, reason="TAKE-PROFIT")
             except Exception as exc:
-                logger.debug(f"Monitor SL/TP ignoré : {exc}")
+                logger.debug(f"Monitor SL/TP skipped: {exc}")
 
             # --- 3. Score marché continu — signal technique extrême ---
             # Déclenche un cycle immédiat si RSI/MACD très extrêmes SANS attendre 15min
@@ -323,11 +323,11 @@ def fast_monitor_loop(
                         _last_market_score_trigger = now
                         force_event.set()
                     else:
-                        logger.debug(f"[{slug}] Signal extrême score={mkt_score:.0f} — cycle actif, ignoré")
+                        logger.debug(f"[{slug}] Extreme score={mkt_score:.0f} — cycle active, skipped")
                 else:
                     logger.debug(f"[{slug}] Market score={mkt_score:.0f} (RSI={mkt.get('rsi_14', 0):.0f})")
             except Exception as exc:
-                logger.debug(f"Monitor market score ignoré : {exc}")
+                logger.debug(f"Monitor market score skipped: {exc}")
 
         except Exception as exc:
             logger.warning(f"[{slug}] Monitor erreur non bloquante : {exc}")
@@ -338,7 +338,7 @@ def fast_monitor_loop(
         sleep_time = max(30, monitor_interval - elapsed)
         _shutdown_event.wait(sleep_time)
 
-    logger.info("Monitor rapide arrêté.")
+    logger.info("Fast monitor stopped.")
 
 
 def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
@@ -382,7 +382,7 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
         name=f"monitor-{slug}",
     )
     monitor_thread.start()
-    asset_logger.info(f"[{slug}] Daemon démarré — session={session.profile}")
+    asset_logger.info(f"[{slug}] Daemon started — session={session.profile}")
 
     cycle_count = 0
     consecutive_errors = 0
@@ -418,9 +418,9 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
 
         _trigger = "monitor" if forced else "scheduled"
         if forced:
-            asset_logger.info(f"[{slug}] Cycle #{cycle_count} FORCÉ par le monitor")
+            asset_logger.info(f"[{slug}] Cycle #{cycle_count} FORCED by monitor")
         else:
-            asset_logger.info(f"[{slug}] Cycle #{cycle_count} démarré (planifié, intervalle={interval}s)")
+            asset_logger.info(f"[{slug}] Cycle #{cycle_count} started (scheduled, interval={interval}s)")
 
         try:
             _result_box: list = [None, None]  # [result, exception]
@@ -523,7 +523,7 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
             asset_logger.debug(f"[{slug}] Prochain cycle dans {wait:.0f}s")
             force_event.wait(timeout=wait)
 
-    asset_logger.info(f"[{slug}] Daemon arrêté proprement.")
+    asset_logger.info(f"[{slug}] Daemon stopped cleanly.")
 
 
 def run_daemon(assets: list[str] | str, interval: int | None = None) -> None:
@@ -547,7 +547,7 @@ def run_daemon(assets: list[str] | str, interval: int | None = None) -> None:
         try:
             import os as _os2
             _os2.unlink(_lf)
-            logger.info(f"Verrou résiduel supprimé au démarrage : {_lf}")
+            logger.info(f"Stale lock removed at startup: {_lf}")
         except Exception:
             pass
 
@@ -563,13 +563,13 @@ def run_daemon(assets: list[str] | str, interval: int | None = None) -> None:
         t.start()
         asset_threads.append(t)
 
-    logger.info(f"Multi-daemon démarré — {len(assets)} actif(s) : {', '.join(assets)}")
+    logger.info(f"Multi-daemon started — {len(assets)} asset(s): {', '.join(assets)}")
 
     # Attendre que tous les threads finissent (ils s'arrêtent via _shutdown_event)
     for t in asset_threads:
         t.join()
 
-    logger.info("=== Atlas Trader arrêté proprement ===")
+    logger.info("=== Atlas Trader stopped cleanly ===")
 
 
 def _run_post_mortem_if_needed() -> None:
@@ -588,7 +588,7 @@ def _run_post_mortem_if_needed() -> None:
             return
         pending = get_pending_postmortems(pm_cfg.get("delay_hours", 24))
         if pending:
-            logger.info(f"Post-mortem : {len(pending)} décisions à analyser")
+            logger.info(f"Post-mortem: {len(pending)} decisions to analyze")
             from agents.post_mortem_agent import PostMortemAgent
             agent = PostMortemAgent()
             agent.run(pending)
@@ -616,7 +616,7 @@ def _run_post_mortem_if_needed() -> None:
     except concurrent.futures.TimeoutError:
         logger.warning("Post-mortem timeout (120s) — skipped, daemon continues")
     except Exception as exc:
-        logger.warning(f"Post-mortem ignoré : {exc}")
+        logger.warning(f"Post-mortem skipped: {exc}")
     finally:
         _pool.shutdown(wait=False)  # toujours libérer — évite la fuite de threads
 
@@ -680,7 +680,7 @@ def main() -> None:
         from storage.database import get_pending_postmortems
         from utils.config import load_settings
         pending = get_pending_postmortems()
-        logger.info(f"Post-mortem standalone — {len(pending)} décisions en attente")
+        logger.info(f"Standalone post-mortem — {len(pending)} pending decisions")
         if pending:
             from agents.post_mortem_agent import PostMortemAgent
             PostMortemAgent().run(pending)

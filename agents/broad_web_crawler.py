@@ -55,9 +55,9 @@ class BroadWebCrawler:
                 if results:
                     docs.append({"theme": query, "results": results})
             except Exception as exc:
-                logger.warning(f"Thème '{query}' échoué: {exc}")
+                logger.warning(f"Theme '{query}' failed: {exc}")
 
-        logger.info(f"Crawler: {len(docs)} thèmes récupérés ({len(self._templates_macro)} macro + {len(asset_templates)} spécifiques {asset})")
+        logger.info(f"Crawler: {len(docs)} themes retrieved ({len(self._templates_macro)} macro + {len(asset_templates)} {asset}-specific)")
         return docs
 
     def _search(self, query: str) -> list[dict]:
@@ -123,7 +123,7 @@ class BroadWebCrawler:
                 for r in results
             ]
         except Exception as exc:
-            logger.warning(f"DuckDuckGo échoué: {exc}")
+            logger.warning(f"DuckDuckGo failed: {exc}")
             return []
 
     def _search_tavily(self, query: str) -> list[dict]:
@@ -168,5 +168,5 @@ class BroadWebCrawler:
                 for r in results
             ]
         except Exception as exc:
-            logger.error(f"Fallback search échoué: {exc}")
+            logger.error(f"Fallback search failed: {exc}")
             return []

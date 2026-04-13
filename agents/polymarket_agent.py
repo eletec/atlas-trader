@@ -211,7 +211,7 @@ class PolymarketAgent:
             }
 
         except Exception as exc:
-            logger.warning(f"PolymarketAgent erreur: {exc}")
+            logger.warning(f"PolymarketAgent error: {exc}")
             return self._fallback(str(exc))
 
     @staticmethod

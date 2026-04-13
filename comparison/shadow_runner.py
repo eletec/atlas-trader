@@ -94,7 +94,7 @@ def evaluate_shadow_profiles(
             )
 
         except Exception as exc:
-            logger.warning(f"Shadow [{name}] erreur : {exc}")
+            logger.warning(f"Shadow [{name}] error: {exc}")
 
     return results
 
@@ -304,5 +304,5 @@ def evaluate_shadow_postmortems() -> int:
         return evaluated
 
     except Exception as exc:
-        logger.warning(f"Shadow post-mortem erreur : {exc}")
+        logger.warning(f"Shadow post-mortem error: {exc}")
         return 0

@@ -1339,21 +1339,97 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
             name=t("chart_btc_price"),
             yaxis="y2", opacity=0.6
         ))
-    # Marqueurs BUY/SELL
+    # Marqueurs BUY/SELL avec contexte de décision en tooltip
     if "action" in df.columns:
         buys = df[df["action"] == "BUY"]
         sells = df[df["action"] == "SELL"]
+
+        def _build_ctx(row: dict) -> list:
+            """Extrait les champs clés de decision_context pour customdata Plotly."""
+            import json as _json
+            pnl = row.get("result_24h")
+            entry = row.get("entry_price")
+            asset_name = row.get("asset", "—") or "—"
+            ctx_raw = row.get("decision_context")
+            rsi, macd, regime, score, reasoning, agents_txt = "—", "—", "—", "—", "—", "—"
+            if ctx_raw:
+                try:
+                    ctx = _json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
+                    mkt = ctx.get("market", {}) or {}
+                    rgm = ctx.get("regime", {}) or {}
+                    if not isinstance(rgm, dict):
+                        rgm = {"state": str(rgm)}
+                    dec = ctx.get("decision", {}) or {}
+                    agt = ctx.get("agents", {}) or {}
+                    rsi_v = mkt.get("rsi")
+                    macd_v = mkt.get("macd_signal", mkt.get("macd"))
+                    score_v = dec.get("score")
+                    rsi = f"{float(rsi_v):.1f}" if rsi_v is not None else "—"
+                    macd = f"{float(macd_v):.4f}" if macd_v is not None else "—"
+                    score = f"{float(score_v):.1f}" if score_v is not None else "—"
+                    reasoning = str(dec.get("reasoning", "—"))[:160]
+                    regime = str(rgm.get("regime", rgm.get("hmm_regime", "—")))
+                    parts = [
+                        f"{n}: {float(i.get('score', 0)):.0f}"
+                        for n, i in agt.items()
+                        if isinstance(i, dict) and i.get("score") is not None
+                    ]
+                    agents_txt = " | ".join(parts[:4]) if parts else "—"
+                except Exception:
+                    pass
+            return [
+                asset_name,
+                f"${float(pnl):+.2f}" if pnl is not None else "—",
+                f"${float(entry):,.2f}" if entry is not None else "—",
+                score,
+                regime,
+                rsi,
+                macd,
+                agents_txt,
+                reasoning,
+            ]
+
+        _hover_buy = (
+            "<b>▲ BUY — %{customdata[0]}</b><br>"
+            "Date : %{x|%Y-%m-%d %H:%M}<br>"
+            "P&L cumulé : %{y:+.2f}$<br>"
+            "Entry : %{customdata[2]}<br>"
+            "Score : %{customdata[3]} | Régime : %{customdata[4]}<br>"
+            "RSI : %{customdata[5]} | MACD : %{customdata[6]}<br>"
+            "Agents : %{customdata[7]}<br>"
+            "<i>%{customdata[8]}</i>"
+            "<extra></extra>"
+        )
+        _hover_sell = (
+            "<b>▼ SELL — %{customdata[0]}</b><br>"
+            "Date : %{x|%Y-%m-%d %H:%M}<br>"
+            "P&L cumulé : %{y:+.2f}$<br>"
+            "P&L position : %{customdata[1]}<br>"
+            "Entry : %{customdata[2]}<br>"
+            "Score : %{customdata[3]} | Régime : %{customdata[4]}<br>"
+            "RSI : %{customdata[5]} | MACD : %{customdata[6]}<br>"
+            "Agents : %{customdata[7]}<br>"
+            "<i>%{customdata[8]}</i>"
+            "<extra></extra>"
+        )
+
         if not buys.empty:
+            buy_ctx = [_build_ctx(r) for r in buys.to_dict("records")]
             fig.add_trace(go.Scatter(
                 x=buys["timestamp"], y=buys["cumulative_pnl"],
                 mode="markers", marker=dict(symbol="triangle-up", size=10, color="#2ecc71"),
-                name="BUY", yaxis="y1"
+                name="BUY", yaxis="y1",
+                customdata=buy_ctx,
+                hovertemplate=_hover_buy,
             ))
         if not sells.empty:
+            sell_ctx = [_build_ctx(r) for r in sells.to_dict("records")]
             fig.add_trace(go.Scatter(
                 x=sells["timestamp"], y=sells["cumulative_pnl"],
                 mode="markers", marker=dict(symbol="triangle-down", size=10, color="#e74c3c"),
-                name="SELL", yaxis="y1"
+                name="SELL", yaxis="y1",
+                customdata=sell_ctx,
+                hovertemplate=_hover_sell,
             ))
     fig.update_layout(
         height=320, margin=dict(l=0, r=0, t=20, b=0),
@@ -1744,10 +1820,14 @@ def render_trades_list_sortable(trades: list[dict]):
 
             # Régime marché
             regime = ctx.get("regime") or {}
+            if not isinstance(regime, dict):
+                regime = {"state": str(regime)}
             if regime:
+                hmm_prob = regime.get('hmm_prob', 0)
+                hmm_str = f"{float(hmm_prob):.1%}" if hmm_prob is not None else "—"
                 st.caption(
-                    f"Régime: **{regime.get('state', '?')}** | "
-                    f"HMM prob: {regime.get('hmm_prob', 0):.1%} | "
+                    f"Régime: **{regime.get('state', regime.get('hmm_regime', '?'))}** | "
+                    f"HMM prob: {hmm_str} | "
                     f"Direction: {regime.get('direction_pressure', '?')}"
                 )
 

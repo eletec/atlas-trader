@@ -1309,31 +1309,33 @@ def render_portfolio(portfolio: dict):
 
 @st.dialog("Analyse de la décision", width="large")
 def _show_trade_detail_dialog(trade: dict) -> None:
-    """Modal plein-écran : toute la logique de la décision pour un trade."""
+    """Modal compact : logique complète de la décision pour un trade."""
     import json as _json
 
-    action  = trade.get("action", "?")
-    asset   = trade.get("asset", "?")
-    ts      = (trade.get("timestamp") or "")[:16].replace("T", " ")
-    pnl     = trade.get("result_24h")
-    score   = trade.get("score")
-    entry   = trade.get("entry_price")
-    expl    = trade.get("explanation", "")
+    action = trade.get("action", "?")
+    asset  = trade.get("asset", "?")
+    ts     = (trade.get("timestamp") or "")[:16].replace("T", " ")
+    pnl    = trade.get("result_24h")
+    score  = trade.get("score")
+    entry  = trade.get("entry_price")
+    expl   = trade.get("explanation", "")
 
     color = "#2ecc71" if action == "BUY" else "#e74c3c"
     icon  = "▲" if action == "BUY" else "▼"
-    entry_str = f"  ·  Entry : <b>${float(entry):,.2f}</b>" if entry else ""
-    pnl_str   = f"  ·  P&L : <b style='color:{color}'>${float(pnl):+.2f}</b>" if pnl is not None else ""
+
+    # ── Header compact ─────────────────────────────────────────────────────────
+    parts = [f"<b style='color:{color}'>{icon} {action}</b>", asset, ts + " UTC"]
+    if entry:  parts.append(f"Entry <b>${float(entry):,.2f}</b>")
+    if pnl is not None: parts.append(f"P&L <b style='color:{color}'>${float(pnl):+.2f}</b>")
+    if score is not None: parts.append(f"Score <b>{float(score):.0f}/100</b>")
     st.markdown(
-        f"<div style='border-left:4px solid {color};padding:10px 16px;"
-        f"border-radius:4px;margin-bottom:14px;'>"
-        f"<span style='font-size:18px;font-weight:700;color:{color}'>{icon} {action} — {asset}</span><br>"
-        f"<span style='opacity:0.7'>{ts} UTC{entry_str}{pnl_str}</span>"
-        f"</div>",
+        "<div style='border-left:3px solid " + color + ";padding:5px 10px;"
+        "border-radius:3px;font-size:13px;margin-bottom:8px'>"
+        + "  ·  ".join(parts) + "</div>",
         unsafe_allow_html=True,
     )
 
-    # Récupération du contexte de décision
+    # ── Récupération du contexte ───────────────────────────────────────────────
     ctx: dict = {}
     raw_ctx = trade.get("decision_context")
     if raw_ctx:
@@ -1342,107 +1344,137 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         except Exception:
             ctx = {}
 
+    # ── Trades anciens : afficher explication parsée ───────────────────────────
     if not ctx:
-        st.warning("Pas de contexte enregistré pour ce trade (antérieur à l'audit trail du 13/04/2026).")
-        if score is not None:
-            st.metric("Score de décision", f"{float(score):.0f}/100")
+        st.caption("⚠️ Trade antérieur à l'audit trail (13/04/2026) — seule l'explication IA est disponible.")
         if expl:
-            st.markdown("---")
-            st.markdown("**Explication IA**")
-            st.markdown(expl)
+            st.markdown(f"<div style='font-size:12px;line-height:1.6'>{expl}</div>",
+                        unsafe_allow_html=True)
         return
 
-    tab_mkt, tab_agents, tab_dec, tab_ia = st.tabs(
-        ["📈 Marché & Régime", "🤖 Agents & Poids", "⚖️ Décision", "🧠 Explication IA"]
+    tab_agents, tab_mkt, tab_dec, tab_ia = st.tabs(
+        ["🤖 Agents", "📈 Marché", "⚖️ Décision", "🧠 IA"]
     )
-
-    # ── Tab Marché ─────────────────────────────────────────────────────────────
-    with tab_mkt:
-        mkt = ctx.get("market") or {}
-        if mkt:
-            mkt_rows = [
-                {"Indicateur": k, "Valeur": f"{v:.4f}" if isinstance(v, float) else str(v)}
-                for k, v in mkt.items() if v is not None
-            ]
-            st.dataframe(pd.DataFrame(mkt_rows), hide_index=True, use_container_width=True)
-        else:
-            st.info("Indicateurs de marché non disponibles.")
-
-        rgm = ctx.get("regime") or {}
-        if not isinstance(rgm, dict):
-            rgm = {"state": str(rgm)}
-        if rgm:
-            st.markdown("---")
-            st.markdown("**Régime de marché**")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("État", str(rgm.get("state", rgm.get("hmm_regime", "—"))))
-            hmm_p = rgm.get("hmm_prob")
-            c2.metric("Probabilité HMM", f"{float(hmm_p):.1%}" if hmm_p is not None else "—")
-            c3.metric("Pression directionnelle", str(rgm.get("direction_pressure", "—")))
 
     # ── Tab Agents ─────────────────────────────────────────────────────────────
     with tab_agents:
-        agt     = ctx.get("agents") or {}
-        eff_w   = ctx.get("effective_weights") or {}
+        agt   = ctx.get("agents") or {}
+        eff_w = ctx.get("effective_weights") or {}
+
         if agt:
-            agent_rows = []
-            for name, info in agt.items():
-                if isinstance(info, dict):
-                    w = eff_w.get(name)
-                    agent_rows.append({
-                        "Agent":          name,
-                        "Score":          f"{float(info['score']):.0f}" if info.get("score") is not None else "—",
-                        "Signal":         info.get("signal", "—"),
-                        "Poids effectif": f"{float(w):.3f}" if isinstance(w, (int, float)) else "—",
-                        "Résumé":         (info.get("summary") or "")[:220],
-                    })
-                elif isinstance(info, (int, float)):
-                    agent_rows.append({"Agent": name, "Score": f"{info:.0f}", "Signal": "—",
-                                       "Poids effectif": "—", "Résumé": ""})
-            if agent_rows:
-                st.dataframe(pd.DataFrame(agent_rows), hide_index=True, use_container_width=True)
+            # Tri par score décroissant
+            sorted_agents = sorted(
+                agt.items(),
+                key=lambda x: float(x[1].get("score", 0)) if isinstance(x[1], dict) and x[1].get("score") is not None else 0,
+                reverse=True,
+            )
+            for name, info in sorted_agents:
+                if not isinstance(info, dict):
+                    continue
+                sc     = info.get("score")
+                sig    = info.get("signal", "—")
+                w      = eff_w.get(name)
+                summary = info.get("summary") or ""
+
+                sc_float = float(sc) if sc is not None else 0.0
+                bar_color = "#2ecc71" if sc_float >= 60 else ("#e74c3c" if sc_float < 40 else "#f39c12")
+                w_str = f" · poids {float(w):.3f}" if isinstance(w, (int, float)) else ""
+                label = (
+                    f"**{name}** — "
+                    f"<span style='color:{bar_color}'>{sc_float:.0f}/100</span>"
+                    f" · {sig}{w_str}"
+                ) if sc is not None else f"**{name}** — {sig}{w_str}"
+
+                with st.expander(f"{name}  {sc_float:.0f}/100 · {sig}{w_str}", expanded=False):
+                    col_sc, col_txt = st.columns([1, 3])
+                    with col_sc:
+                        # Barre de score visuelle
+                        st.markdown(
+                            f"<div style='font-size:22px;font-weight:700;color:{bar_color}'>"
+                            f"{sc_float:.0f}<span style='font-size:12px;opacity:.6'>/100</span></div>"
+                            f"<div style='width:100%;height:5px;background:rgba(128,128,128,.2);border-radius:3px;margin:4px 0'>"
+                            f"<div style='width:{sc_float:.0f}%;height:100%;background:{bar_color};border-radius:3px'></div></div>"
+                            f"<div style='font-size:11px;opacity:.7'>Signal : <b>{sig}</b></div>"
+                            + (f"<div style='font-size:11px;opacity:.7'>Poids : <b>{float(w):.3f}</b></div>" if isinstance(w, (int, float)) else ""),
+                            unsafe_allow_html=True,
+                        )
+                    with col_txt:
+                        if summary:
+                            st.markdown(
+                                f"<div style='font-size:12px;line-height:1.5'>{summary}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.caption("Pas de résumé disponible pour cet agent.")
         else:
-            st.info("Scores agents non disponibles.")
+            st.caption("Scores agents non disponibles.")
 
         scores = ctx.get("scores") or {}
         if scores:
             st.markdown("---")
-            st.markdown("**Scores composants (pipeline)**")
+            st.caption("**Scores composants synthétisés**")
             cols = st.columns(len(scores))
             for i, (k, v) in enumerate(scores.items()):
-                cols[i].metric(k, f"{float(v):.2f}" if isinstance(v, (int, float)) else str(v))
+                cols[i].metric(k, f"{float(v):.1f}" if isinstance(v, (int, float)) else str(v))
+
+    # ── Tab Marché ─────────────────────────────────────────────────────────────
+    with tab_mkt:
+        mkt = ctx.get("market") or {}
+        rgm = ctx.get("regime") or {}
+        if not isinstance(rgm, dict):
+            rgm = {"state": str(rgm)}
+
+        if rgm:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Régime", str(rgm.get("state", rgm.get("hmm_regime", "—"))))
+            hmm_p = rgm.get("hmm_prob")
+            c2.metric("Prob. HMM", f"{float(hmm_p):.1%}" if hmm_p is not None else "—")
+            c3.metric("Direction", str(rgm.get("direction_pressure", "—")))
+
+        if mkt:
+            st.markdown("---")
+            mkt_items = [(k, v) for k, v in mkt.items() if v is not None]
+            for chunk_start in range(0, len(mkt_items), 4):
+                chunk = mkt_items[chunk_start:chunk_start + 4]
+                cols = st.columns(4)
+                for i, (k, v) in enumerate(chunk):
+                    cols[i].metric(k, f"{float(v):.4f}" if isinstance(v, float) else str(v))
+        else:
+            st.caption("Indicateurs de marché non disponibles.")
 
     # ── Tab Décision ───────────────────────────────────────────────────────────
     with tab_dec:
-        dec = ctx.get("decision") or {}
+        dec   = ctx.get("decision") or {}
         s_val = dec.get("score") if dec.get("score") is not None else score
-        buy_thr = dec.get("buy_threshold", "—")
+        buy_thr  = dec.get("buy_threshold", "—")
         exit_thr = dec.get("exit_threshold", "—")
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Score final", f"{float(s_val):.1f}/100" if s_val is not None else "—")
         c2.metric("Seuil BUY", str(buy_thr))
-        c3.metric("Seuil EXIT (SELL)", str(exit_thr))
+        c3.metric("Seuil SELL", str(exit_thr))
 
         reasoning = dec.get("reasoning", "")
         if reasoning:
-            st.markdown("**Reasoning**")
+            st.markdown("---")
             st.code(reasoning, language=None)
 
-        # Éventuels blocages
         blockers = []
-        if dec.get("ma50_blocked"):   blockers.append("🚫 Bloqué par MA50")
-        if dec.get("funding_blocked"): blockers.append("🚫 Bloqué par Funding rate")
-        if dec.get("cooldown"):        blockers.append("⏸ Cooldown actif")
+        if dec.get("ma50_blocked"):    blockers.append("🚫 MA50")
+        if dec.get("funding_blocked"): blockers.append("🚫 Funding rate")
+        if dec.get("cooldown"):        blockers.append("⏸ Cooldown")
         if blockers:
-            st.warning("  |  ".join(blockers))
+            st.warning("Bloqué : " + "  |  ".join(blockers))
 
     # ── Tab IA ─────────────────────────────────────────────────────────────────
     with tab_ia:
         if expl:
-            st.markdown(expl)
+            st.markdown(
+                f"<div style='font-size:12px;line-height:1.6'>{expl}</div>",
+                unsafe_allow_html=True,
+            )
         else:
-            st.info("Pas d'explication IA pour ce trade.")
+            st.caption("Pas d'explication IA pour ce trade.")
 
 
 def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):

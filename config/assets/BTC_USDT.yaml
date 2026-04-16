@@ -57,8 +57,9 @@ agents:
     enabled: true
   fear_greed:
     enabled: true
+    weight_in_scoring: 0.0  # méta-analyse 2026-04-16 : scores 77-86 systématiquement optimistes pendant les pertes
   polymarket:
-    enabled: true
+    enabled: false  # méta-analyse 2026-04-16 : valeur constante sur 28/28 trades — aucune info différentielle
   timesfm:
     enabled: true
   market_regime:

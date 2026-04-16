@@ -535,6 +535,24 @@ class DecisionEngine:
             action = "HOLD"
             hv_mf_blocked = True
 
+        # Filtre 3 : TRENDING_DOWN — BUY uniquement si MF > 65 ET contrarian > 70
+        # Méta-analyse 2026-04-16 : 4/4 trades perdants en TRENDING_DOWN
+        td_blocked = False
+        if action == "BUY" and _regime_hv == "TRENDING_DOWN":
+            _ctr_score = (agent_analyses or {}).get("contrarian", {}).get("score", 50.0)
+            if _mf_score_raw <= 65 or _ctr_score <= 70:
+                logger.info(
+                    f"TRENDING_DOWN veto: MiroFish={_mf_score_raw:.0f}≤65 ou "
+                    f"CTR={_ctr_score:.0f}≤70 — BUY → HOLD"
+                )
+                action = "HOLD"
+                td_blocked = True
+            else:
+                logger.info(
+                    f"TRENDING_DOWN: BUY autorisé — MiroFish={_mf_score_raw:.0f}>65 "
+                    f"ET CTR={_ctr_score:.0f}>70"
+                )
+
         # Filtre 2 : timesfm < 50 + HIGH_VOLATILITY → taille ×0.5
         _timesfm_score = (agent_analyses or {}).get("timesfm", {}).get("score", 50.0)
         hv_timesfm_mult = 1.0
@@ -596,13 +614,14 @@ class DecisionEngine:
             "high_vol_size_mult": high_vol_mult,
             "hv_mf_blocked": hv_mf_blocked,
             "hv_timesfm_mult": hv_timesfm_mult,
+            "td_blocked": td_blocked,
             # Seuils effectifs — pour audit trail
             "buy_threshold": self.buy_threshold,
             "exit_threshold": self.exit_threshold,
             "reasoning": (
                 f"score={score:.1f} vs buy_threshold={self.buy_threshold} / exit_threshold={self.exit_threshold} | "
                 f"has_long={has_long} | ma50_blocked={ma50_blocked} | "
-                f"funding_blocked={funding_blocked}"
+                f"funding_blocked={funding_blocked} | td_blocked={td_blocked}"
             ),
         }
 

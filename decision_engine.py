@@ -522,36 +522,33 @@ class DecisionEngine:
             elif funding_size_mult < 1.0:
                 logger.info(f"Funding CB: taille BUY ×{funding_size_mult:.2f} — {funding_reason}")
 
-        # ── Filtres HIGH_VOLATILITY (issus de l'analyse post-mortem) ─────────────
-        # Filtre 1 : MiroFish < 50 + HIGH_VOLATILITY → veto BUY
-        # (5/6 trades perdants présentent ce pattern)
+        # ── Filtres régime de marché (issus des méta-analyses post-mortem) ──────
         _regime_hv = (agent_analyses or {}).get("market_regime", {}).get("regime", "")
         _mf_score_raw = (mirofish_result or {}).get("score", 50.0)
         hv_mf_blocked = False
-        if action == "BUY" and _regime_hv == "HIGH_VOLATILITY" and _mf_score_raw < 50:
+        td_blocked = False
+
+        # Filtre 1 : TRENDING_DOWN → hard block total
+        # Méta-analyse 2026-04-16 : 4/4 pertes | 2026-04-19 : 11/22 pertes
+        # Aucune exception — le trend baissier domine tous les autres signaux
+        if action == "BUY" and _regime_hv == "TRENDING_DOWN":
             logger.info(
-                f"HIGH_VOLATILITY veto: MiroFish={_mf_score_raw:.0f} < 50 — BUY → HOLD"
+                f"TRENDING_DOWN hard block: BUY → HOLD "
+                f"(MiroFish={_mf_score_raw:.0f}, score={score:.0f})"
+            )
+            action = "HOLD"
+            td_blocked = True
+
+        # Filtre 2 : MiroFish < 50 → veto BUY dans TOUS les régimes
+        # Méta-analyse 2026-04-19 : 9/22 trades score≥68 mais MF<50 → perte
+        # Étendu de HIGH_VOLATILITY uniquement → tous régimes
+        if action == "BUY" and _mf_score_raw < 50:
+            logger.info(
+                f"MiroFish global veto: MiroFish={_mf_score_raw:.0f} < 50 "
+                f"(régime={_regime_hv or 'UNKNOWN'}) — BUY → HOLD"
             )
             action = "HOLD"
             hv_mf_blocked = True
-
-        # Filtre 3 : TRENDING_DOWN — BUY uniquement si MF > 65 ET contrarian > 70
-        # Méta-analyse 2026-04-16 : 4/4 trades perdants en TRENDING_DOWN
-        td_blocked = False
-        if action == "BUY" and _regime_hv == "TRENDING_DOWN":
-            _ctr_score = (agent_analyses or {}).get("contrarian", {}).get("score", 50.0)
-            if _mf_score_raw <= 65 or _ctr_score <= 70:
-                logger.info(
-                    f"TRENDING_DOWN veto: MiroFish={_mf_score_raw:.0f}≤65 ou "
-                    f"CTR={_ctr_score:.0f}≤70 — BUY → HOLD"
-                )
-                action = "HOLD"
-                td_blocked = True
-            else:
-                logger.info(
-                    f"TRENDING_DOWN: BUY autorisé — MiroFish={_mf_score_raw:.0f}>65 "
-                    f"ET CTR={_ctr_score:.0f}>70"
-                )
 
         # Filtre 2 : timesfm < 50 + HIGH_VOLATILITY → taille ×0.5
         _timesfm_score = (agent_analyses or {}).get("timesfm", {}).get("score", 50.0)

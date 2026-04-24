@@ -34,9 +34,9 @@ scoring:
     contrarian: 0.18
 market_regime:
   n_hmm_states: 2
-  vol_window: 30
-  trend_window: 50
-  adx_period: 18
+  vol_window: 48      # 30 → 48 candles 15m = 12h
+  trend_window: 100   # 50 → 100 candles 15m = 25h
+  adx_period: 21      # 18 → 21 (standard institutionnel)
 agents:
   market_data:
     enabled: true

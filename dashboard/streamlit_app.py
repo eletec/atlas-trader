@@ -3156,31 +3156,32 @@ def render_admin_panel():
         kr = settings.get("kronos", {})
         kr_agents = settings.get("agents", {}).get("kronos", {})
 
+        # Toggle + Modèle en pleine largeur (évite la troncature du selectbox dans une colonne étroite)
+        kr_enabled = st.toggle(
+            "Kronos activé", value=bool(kr.get("enabled", True)),
+            key="kronos_enabled",
+        )
+        kr["enabled"] = kr_enabled
+        kr_agents["enabled"] = kr_enabled
+
+        _model_options = [
+            "NeoQuasar/Kronos-mini",
+            "NeoQuasar/Kronos-small",
+            "NeoQuasar/Kronos-base",
+        ]
+        _model_current = kr.get("model_name", "NeoQuasar/Kronos-mini")
+        if _model_current not in _model_options:
+            _model_options.append(_model_current)
+        kr["model_name"] = st.selectbox(
+            t("cfg_kronos_model"),
+            _model_options,
+            index=_model_options.index(_model_current),
+            help=t("cfg_kronos_model_help"),
+            key="kronos_model",
+        )
+
         col1, col2 = st.columns(2)
         with col1:
-            kr_enabled = st.toggle(
-                "Kronos activé", value=bool(kr.get("enabled", True)),
-                key="kronos_enabled",
-            )
-            kr["enabled"] = kr_enabled
-            kr_agents["enabled"] = kr_enabled
-
-            _model_options = [
-                "NeoQuasar/Kronos-mini",
-                "NeoQuasar/Kronos-small",
-                "NeoQuasar/Kronos-base",
-            ]
-            _model_current = kr.get("model_name", "NeoQuasar/Kronos-mini")
-            if _model_current not in _model_options:
-                _model_options.append(_model_current)
-            kr["model_name"] = st.selectbox(
-                t("cfg_kronos_model"),
-                _model_options,
-                index=_model_options.index(_model_current),
-                help=t("cfg_kronos_model_help"),
-                key="kronos_model",
-            )
-
             kr["forecast_horizon"] = st.number_input(
                 t("cfg_kronos_horizon"), min_value=1, max_value=512,
                 value=int(kr.get("forecast_horizon", 96)), step=8,

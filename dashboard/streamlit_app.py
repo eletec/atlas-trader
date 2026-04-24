@@ -151,6 +151,14 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
+        /* Selectbox : options du menu déroulant — ne pas tronquer */
+        ul[data-baseweb="menu"] { min-width: 280px !important; }
+        ul[data-baseweb="menu"] li,
+        [data-baseweb="option"] {
+            white-space: nowrap !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
     """
 
     _DARK_CSS = """
@@ -222,11 +230,15 @@ def _inject_theme_css():
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
+            min-width: 280px !important;
         }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"] {
             background-color: #21262d !important;
             color: #FAFAFA !important;
+            white-space: nowrap !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
         }
         ul[data-baseweb="menu"] li:hover,
         [data-baseweb="option"]:hover {

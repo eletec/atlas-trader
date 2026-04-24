@@ -455,6 +455,13 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
                     break
             if _timed_out:
                 asset_logger.error(f"[{slug}] Cycle #{cycle_count} TIMEOUT ({_CYCLE_TIMEOUT}s) — abandon")
+                # Attendre que le thread de cycle termine avant de libérer le lock
+                # (évite le bug de double-BUY : ghost thread écrit en DB après le lock release)
+                _cycle_thread.join(timeout=60)
+                if _cycle_thread.is_alive():
+                    asset_logger.warning(
+                        f"[{slug}] Cycle #{cycle_count} ghost thread toujours actif après 60s supplémentaires"
+                    )
                 from utils.cycle_lock import release as _force_release
                 _force_release(asset=asset)
                 consecutive_errors += 1

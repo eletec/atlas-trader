@@ -277,41 +277,54 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.15   # WR 38.1% — en dessous du hasard, réduit
+    weight_in_scoring: 0.0   # Brier 0.303, WR 40.4% — neutralisé (input contrarian uniquement)
   x_sentiment:
     enabled: true
-    weight_in_scoring: 0.10   # WR 42.9% — signal faible
+    weight_in_scoring: 0.0   # Brier 0.413, WR 36.2%, avg_score 77 (perma-haussier) — neutralisé
   contrarian:
     enabled: true
     weight_in_scoring: 0.9
   fear_greed:
     enabled: true
-    weight_in_scoring: 0.05   # score moy=85 = perpétuellement bullish — signal contrariant
+    weight_in_scoring: 0.0   # Brier 0.476, WR 29.8%, avg_score 73 (perma-haussier) — neutralisé
   polymarket:
     enabled: true
-    weight_in_scoring: 0.20   # WR 47.6%, Brier 0.2566 — corregé à la hausse
+    weight_in_scoring: 0.55  # Brier 0.244 — bon calibrage
   timesfm:
+    enabled: false           # remplacé par Kronos
+    weight_in_scoring: 0.0
+  kronos:
     enabled: true
-    weight_in_scoring: 0.15   # WR 36.8% : bon Brier mais régression vers la moyenne, pas directionnel
+    weight_in_scoring: 0.20  # nouveau — phase d'observation
   market_regime:
     enabled: true
-    weight_in_scoring: 0.40   # WR 52.4% meilleur signal directionnel — monté en priorité
+    weight_in_scoring: 0.70  # Brier 0.225, WR 66% — meilleur agent
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0
   alpha_combination:
-    enabled: true            # poids dynamiques IC-based (Fundamental Law of Active Management)
-    min_history: 20          # min trades évalués (result_24h non NULL) pour activer
-    lookback_days: 90        # fenêtre glissante en jours
-    correlation_threshold: 0.70  # dédouble les agents trop corrélés
-    ic_floor: 0.05           # silence les agents avec IC < 5% (quasi-aléatoires)
+    enabled: false           # désactivé — poids statiques utilisés
+    min_history: 20
+    lookback_days: 90
+    correlation_threshold: 0.70
+    ic_floor: 0.0
 timesfm:
   forecast_horizon: 24
-  backend: cpu   # passer à gpu après validation CUDA
+  backend: cpu
+kronos:
+  enabled: true
+  model_name: "NeoQuasar/Kronos-mini"
+  forecast_horizon: 96
+  lookback: 400
+  temperature: 1.0
+  top_p: 0.9
+  sample_count: 1
+  timeout_seconds: 120
+  backend: cpu
 market_regime:
   n_hmm_states: 2
   vol_window: 30
-  trend_window: 50
+  trend_window: 100
   adx_period: 18
 scoring:
   weights:

@@ -564,13 +564,17 @@ class DecisionEngine:
                 action = "HOLD"
                 conflict_blocked = True
 
-        # Filtre 2 : timesfm < 50 + HIGH_VOLATILITY → taille ×0.5
+        # Filtre 2 : kronos < 50 + HIGH_VOLATILITY → taille ×0.5
+        # (utilise Kronos si disponible, fallback sur TimesFM si actif)
+        _kronos_score = (agent_analyses or {}).get("kronos", {}).get("score", None)
         _timesfm_score = (agent_analyses or {}).get("timesfm", {}).get("score", 50.0)
+        _forecast_score = _kronos_score if _kronos_score is not None else _timesfm_score
         hv_timesfm_mult = 1.0
-        if action == "BUY" and _regime_hv == "HIGH_VOLATILITY" and _timesfm_score < 50:
+        if action == "BUY" and _regime_hv == "HIGH_VOLATILITY" and _forecast_score < 50:
             hv_timesfm_mult = 0.5
+            _fc_src = "kronos" if _kronos_score is not None else "timesfm"
             logger.info(
-                f"HIGH_VOLATILITY + timesfm={_timesfm_score:.0f} < 50 — taille BUY ×{hv_timesfm_mult}"
+                f"HIGH_VOLATILITY + {_fc_src}={_forecast_score:.0f} < 50 — taille BUY ×{hv_timesfm_mult}"
             )
 
         if action in ("BUY", "SELL"):

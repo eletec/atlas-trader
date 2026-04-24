@@ -282,6 +282,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     from agents.fear_greed_agent import FearGreedAgent
     from agents.polymarket_agent import PolymarketAgent
     from agents.timesfm_agent import TimesFMAgent
+    from agents.kronos_agent import KronosAgent
     from agents.market_regime_agent import MarketRegimeAgent
     from utils.logger import log_flux_metric
     from utils.config import load_asset_config
@@ -333,7 +334,8 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         "contrarian":         (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
         "fear_greed":         (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
         "polymarket":         (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
-        "timesfm":            (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", True)),
+        "timesfm":            (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", False)),
+        "kronos":             (KronosAgent,       agent_cfg.get("kronos",       {}).get("enabled", True)),
         "economic_calendar":  (_EcoAgent,         _eco_enabled),
         "central_bank":       (_CbAgent,          _cb_enabled),
     }
@@ -351,19 +353,20 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         _t = time.time()
         try:
             agent = AgentClass()
-            # TimesFM gets its own hard timeout (model load + forecast can hang)
+            # TimesFM / Kronos : hard timeout sur le thread (modèle lourd, peut figer)
             # IMPORTANT: ne PAS utiliser 'with ThreadPoolExecutor' — __exit__ bloque
             # sur shutdown(wait=True) si agent.analyze() est lui-même figé.
-            if name == "timesfm":
+            if name in ("timesfm", "kronos"):
                 import concurrent.futures as _cf
-                _p = _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix="tfm")
+                _prefix = "tfm" if name == "timesfm" else "kronos"
+                _p = _cf.ThreadPoolExecutor(max_workers=1, thread_name_prefix=_prefix)
                 _f = _p.submit(agent.analyze, state)
                 try:
                     result = _f.result(timeout=180)
                 except (_cf.TimeoutError, TimeoutError):
-                    logger.warning(f"[{state['cycle_id']}] Agent timesfm TIMEOUT 180s")
-                    log_flux_metric("agent_timesfm", "error", 180000, 0, "timeout 180s")
-                    _p.shutdown(wait=False)  # abandon le thread bloqué
+                    logger.warning(f"[{state['cycle_id']}] Agent {name} TIMEOUT 180s")
+                    log_flux_metric(f"agent_{name}", "error", 180000, 0, "timeout 180s")
+                    _p.shutdown(wait=False)
                     return name, AgentAnalysis(
                         agent_name=name, score=50.0,
                         signal="NEUTRAL", summary="timeout 180s", confidence=0.0
@@ -425,6 +428,22 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
             )
         except Exception as exc:
             logger.warning(f"Cannot log TimesFM forecast: {exc}")
+
+    # Persister la prédiction Kronos pour suivi de performance
+    kronos_res = analyses.get("kronos")
+    if isinstance(kronos_res, dict) and kronos_res.get("forecast_details"):
+        try:
+            from storage.database import log_kronos_forecast
+            log_kronos_forecast(
+                cycle_id=state["cycle_id"],
+                asset=state.get("asset", "BTC/USDT"),
+                forecast_details=kronos_res["forecast_details"],
+                score=kronos_res.get("score", 50),
+                signal=kronos_res.get("signal", "NEUTRAL"),
+                confidence=kronos_res.get("confidence", 0),
+            )
+        except Exception as exc:
+            logger.warning(f"Cannot log Kronos forecast: {exc}")
 
     # CA6: CoordinatorAgent — pondération dynamique LLM après collecte des analyses
     # Cache 2 cycles : si le régime n'a pas changé, réutiliser le dernier résultat

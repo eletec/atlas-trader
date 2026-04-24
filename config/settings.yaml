@@ -291,8 +291,11 @@ agents:
     enabled: true
     weight_in_scoring: 0.55  # Brier 0.244 — bon calibrage mais dominait trop → réduit
   timesfm:
-    enabled: true            # Brier 0.243, WR 48.9% (~aléatoire) → neutralisé
+    enabled: false           # Brier 0.243, WR 48.9% (~aléatoire) → remplacé par Kronos
     weight_in_scoring: 0.0
+  kronos:
+    enabled: true
+    weight_in_scoring: 0.20  # nouveau — à calibrer (démarre à 0.20 pour phase d'observation)
   market_regime:
     enabled: true
     weight_in_scoring: 0.70  # Brier 0.225, WR 66% — meilleur agent → poids maximal
@@ -308,6 +311,16 @@ agents:
 timesfm:
   forecast_horizon: 24
   backend: cpu
+kronos:
+  enabled: true
+  model_name: "NeoQuasar/Kronos-mini"   # mini (4.1M) | small (24.7M) | base (102.3M)
+  forecast_horizon: 96                  # candles à prédire (96 × 15min = 24h)
+  lookback: 400                         # candles de contexte (max 2048 pour mini)
+  temperature: 1.0                      # sampling temperature (0.1 = déterministe, 2.0 = créatif)
+  top_p: 0.9                            # nucleus sampling (0.0 = greedy, 1.0 = full)
+  sample_count: 1                       # trajectoires probabilistes (1 = rapide, ≥3 = distribution)
+  timeout_seconds: 120                  # timeout worker subprocess
+  backend: cpu                          # cpu | cuda (GX10 = CPU uniquement)
 market_regime:
   n_hmm_states: 2
   vol_window: 30

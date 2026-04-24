@@ -134,10 +134,33 @@ DDL_STATEMENTS = [
         run_trigger     TEXT    DEFAULT 'auto'  -- 'auto' | 'manual'
     )
     """,
+    # ── Kronos Forecasts (AAAI 2026 foundation model) ──
+    """
+    CREATE TABLE IF NOT EXISTS kronos_forecasts (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        cycle_id        TEXT    NOT NULL,
+        timestamp       TEXT    NOT NULL,
+        asset           TEXT    NOT NULL,
+        model_name      TEXT    NOT NULL DEFAULT 'NeoQuasar/Kronos-mini',
+        horizon_candles INTEGER NOT NULL,
+        current_price   REAL    NOT NULL,
+        predicted_price REAL    NOT NULL,
+        pct_change      REAL    NOT NULL,
+        confidence      REAL,
+        score           REAL,
+        signal          TEXT,
+        actual_price    REAL,                  -- rempli par post-mortem
+        actual_change   REAL,                  -- rempli par post-mortem
+        direction_hit   INTEGER,               -- 1 = correct, 0 = faux (post-mortem)
+        evaluated_at    TEXT,                  -- timestamp du post-mortem
+        latency_ms      INTEGER DEFAULT 0
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_flux_name_ts ON flux_metrics(flux_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_logs_ts ON logs(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_tfm_ts ON timesfm_forecasts(timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_kronos_ts ON kronos_forecasts(timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_profile ON shadow_decisions(profile_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_cycle ON shadow_decisions(cycle_id)",
     "CREATE INDEX IF NOT EXISTS idx_meta_ts ON meta_analyses(timestamp DESC)",
@@ -1015,6 +1038,212 @@ def get_timesfm_stats() -> dict:
 
     except Exception as exc:
         logger.warning(f"Cannot get TimesFM stats: {exc}")
+        return {"total": 0, "evaluated": 0, "recent": [], "pending": []}
+
+
+# ===========================================================
+# KRONOS FORECASTS — Foundation model OHLCV (AAAI 2026)
+# ===========================================================
+
+def log_kronos_forecast(
+    cycle_id: str,
+    asset: str,
+    forecast_details: dict,
+    score: float,
+    signal: str,
+    confidence: float,
+) -> None:
+    """Persiste une prédiction Kronos pour évaluation post-mortem."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO kronos_forecasts
+                (cycle_id, timestamp, asset, model_name, horizon_candles,
+                 current_price, predicted_price, pct_change,
+                 confidence, score, signal, latency_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    cycle_id,
+                    datetime.utcnow().isoformat(),
+                    asset,
+                    forecast_details.get("model_name", "NeoQuasar/Kronos-mini"),
+                    forecast_details.get("horizon_candles", 96),
+                    forecast_details.get("current_price", 0),
+                    forecast_details.get("predicted_price", 0),
+                    forecast_details.get("pct_change", 0),
+                    confidence,
+                    score,
+                    signal,
+                    forecast_details.get("latency_ms", 0),
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"Cannot log Kronos forecast: {exc}")
+
+
+def evaluate_kronos_forecasts() -> int:
+    """
+    Post-mortem : évalue les prédictions Kronos arrivées à échéance.
+    Compare predicted_price vs prix réel après horizon_candles × 15min.
+    Retourne le nombre de forecasts évalués.
+    """
+    import ccxt
+
+    try:
+        exchange = ccxt.binance({"enableRateLimit": True})
+    except Exception as exc:
+        logger.warning(f"Cannot init exchange for Kronos eval: {exc}")
+        return 0
+
+    evaluated = 0
+    now = datetime.utcnow()
+
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, timestamp, asset, horizon_candles, current_price,
+                       predicted_price, pct_change, signal
+                FROM kronos_forecasts
+                WHERE actual_price IS NULL
+                ORDER BY timestamp ASC
+                LIMIT 50
+                """
+            ).fetchall()
+
+            for row in rows:
+                fc_time = datetime.fromisoformat(row["timestamp"])
+                horizon_minutes = row["horizon_candles"] * 15
+                target_time = fc_time + __import__("datetime").timedelta(minutes=horizon_minutes)
+
+                if now < target_time:
+                    continue  # pas encore arrivé à échéance
+
+                # Récupérer le prix réel à l'échéance (fallback Yahoo pour non-crypto)
+                try:
+                    asset_sym = row["asset"]
+                    _YF_MAP = {
+                        "XAU/USD": "GC=F", "XAG/USD": "SI=F", "WTI/USD": "CL=F",
+                        "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "JPY=X",
+                    }
+                    if asset_sym in _YF_MAP:
+                        import json, urllib.request as _ur
+                        yf_ticker = _YF_MAP[asset_sym]
+                        req = _ur.Request(
+                            f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_ticker}"
+                            f"?interval=15m&range=2d&includePrePost=false",
+                            headers={"User-Agent": "atlas-trader/2.0"},
+                        )
+                        with _ur.urlopen(req, timeout=20) as r:
+                            data = json.loads(r.read())
+                        timestamps = data["chart"]["result"][0]["timestamp"]
+                        closes = data["chart"]["result"][0]["indicators"]["quote"][0].get("close", [])
+                        target_ts = int(target_time.timestamp())
+                        best_idx = min(range(len(timestamps)), key=lambda i: abs(timestamps[i] - target_ts))
+                        actual_price = float(closes[best_idx])
+                    else:
+                        ohlcv = exchange.fetch_ohlcv(
+                            asset_sym, "15m",
+                            since=int(target_time.timestamp() * 1000),
+                            limit=1,
+                        )
+                        if not ohlcv:
+                            continue
+                        actual_price = float(ohlcv[0][4])
+                except Exception:
+                    continue
+
+                actual_change = ((actual_price - row["current_price"]) / row["current_price"]) * 100
+                predicted_dir = 1 if row["pct_change"] >= 0 else -1
+                actual_dir = 1 if actual_change >= 0 else -1
+                direction_hit = 1 if predicted_dir == actual_dir else 0
+
+                conn.execute(
+                    """
+                    UPDATE kronos_forecasts
+                    SET actual_price = ?, actual_change = ?,
+                        direction_hit = ?, evaluated_at = ?
+                    WHERE id = ?
+                    """,
+                    (actual_price, round(actual_change, 4), direction_hit,
+                     now.isoformat(), row["id"]),
+                )
+                evaluated += 1
+
+            if evaluated:
+                conn.commit()
+                logger.info(f"Kronos post-mortem: {evaluated} forecasts evaluated")
+
+    except Exception as exc:
+        logger.warning(f"Kronos evaluation error: {exc}")
+
+    return evaluated
+
+
+def get_kronos_stats() -> dict:
+    """
+    Retourne les statistiques de performance Kronos.
+    - total, evaluated, direction_accuracy, mae, avg_confidence, avg_latency_ms
+    - recent: 10 dernières prédictions évaluées
+    - pending: 5 dernières en attente
+    """
+    try:
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN actual_price IS NOT NULL THEN 1 ELSE 0 END) as evaluated,
+                    AVG(CASE WHEN direction_hit IS NOT NULL THEN direction_hit END) as direction_accuracy,
+                    AVG(CASE WHEN actual_change IS NOT NULL
+                        THEN ABS(pct_change - actual_change) END) as mae,
+                    AVG(confidence) as avg_confidence,
+                    AVG(latency_ms) as avg_latency_ms
+                FROM kronos_forecasts
+                """
+            ).fetchone()
+
+            stats = {
+                "total": row["total"] or 0,
+                "evaluated": row["evaluated"] or 0,
+                "direction_accuracy": round(row["direction_accuracy"] * 100, 1) if row["direction_accuracy"] is not None else None,
+                "mae": round(row["mae"], 3) if row["mae"] is not None else None,
+                "avg_confidence": round(row["avg_confidence"], 2) if row["avg_confidence"] is not None else None,
+                "avg_latency_ms": int(row["avg_latency_ms"]) if row["avg_latency_ms"] is not None else None,
+            }
+
+            recent = conn.execute(
+                """
+                SELECT timestamp, asset, model_name, current_price, predicted_price,
+                       pct_change, actual_price, actual_change, direction_hit,
+                       confidence, signal, horizon_candles
+                FROM kronos_forecasts
+                WHERE actual_price IS NOT NULL
+                ORDER BY timestamp DESC
+                LIMIT 10
+                """
+            ).fetchall()
+            stats["recent"] = [dict(r) for r in recent]
+
+            pending = conn.execute(
+                """
+                SELECT timestamp, asset, model_name, current_price, predicted_price,
+                       pct_change, confidence, signal, horizon_candles
+                FROM kronos_forecasts
+                WHERE actual_price IS NULL
+                ORDER BY timestamp DESC
+                LIMIT 5
+                """
+            ).fetchall()
+            stats["pending"] = [dict(r) for r in pending]
+
+            return stats
+
+    except Exception as exc:
+        logger.warning(f"Cannot get Kronos stats: {exc}")
         return {"total": 0, "evaluated": 0, "recent": [], "pending": []}
 
 

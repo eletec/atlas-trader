@@ -33,6 +33,14 @@ polyterm>=0.6.2           # Polymarket whale tracking + smart money signals
 # ---- TimesFM Price Forecasting (requires ~2GB disk + Python <3.12) ----
 timesfm[torch]>=1.3.0
 
+# ---- Kronos OHLCV Foundation Model (AAAI 2026) ----
+# Decoder-only Transformer entraîné sur 45+ exchanges mondiaux
+# HuggingFace: NeoQuasar/Kronos-mini (4.1M) | Kronos-small (24.7M) | Kronos-base (102.3M)
+torch>=2.1.0
+transformers>=4.40.0
+huggingface_hub>=0.22.0
+git+https://github.com/shiyu-coder/Kronos.git
+
 # ---- Web Crawling ----
 tavily-python>=0.5.0
 firecrawl-py>=1.0.0

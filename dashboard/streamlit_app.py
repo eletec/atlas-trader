@@ -2502,7 +2502,8 @@ def render_admin_panel():
         ("⬡",  "agents",   t("tab_agents")),
         ("≡",  "logging",  t("tab_logging")),
         ("⏱",  "timesfm",  t("tab_timesfm")),
-        ("📊", "agperf",   "Agents Perf"),
+        ("�", "kronos",   t("tab_kronos")),
+        ("�📊", "agperf",   "Agents Perf"),
         ("🔍", "meta",     "Méta-Analyse"),
         ("⊞",  "regime",   t("tab_market_regime")),
         ("⇄",  "flux",     t("tab_flux")),
@@ -3083,6 +3084,154 @@ def render_admin_panel():
                         )
         except Exception as exc:
             st.warning(f"TimesFM stats unavailable: {exc}")
+
+    elif _atab == "kronos":  # Kronos
+        st.markdown(f'<h4><i class="fas fa-robot" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_kronos_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("cfg_kronos_info"))
+
+        kr = settings.get("kronos", {})
+        kr_agents = settings.get("agents", {}).get("kronos", {})
+
+        col1, col2 = st.columns(2)
+        with col1:
+            kr_enabled = st.toggle(
+                "Kronos activé", value=bool(kr.get("enabled", True)),
+                key="kronos_enabled",
+            )
+            kr["enabled"] = kr_enabled
+            kr_agents["enabled"] = kr_enabled
+
+            _model_options = [
+                "NeoQuasar/Kronos-mini",
+                "NeoQuasar/Kronos-small",
+                "NeoQuasar/Kronos-base",
+            ]
+            _model_current = kr.get("model_name", "NeoQuasar/Kronos-mini")
+            if _model_current not in _model_options:
+                _model_options.append(_model_current)
+            kr["model_name"] = st.selectbox(
+                t("cfg_kronos_model"),
+                _model_options,
+                index=_model_options.index(_model_current),
+                help=t("cfg_kronos_model_help"),
+                key="kronos_model",
+            )
+
+            kr["forecast_horizon"] = st.number_input(
+                t("cfg_kronos_horizon"), min_value=1, max_value=512,
+                value=int(kr.get("forecast_horizon", 96)), step=8,
+                help=t("cfg_kronos_horizon_help"), key="kronos_horizon",
+            )
+            kr["lookback"] = st.number_input(
+                t("cfg_kronos_lookback"), min_value=20, max_value=2048,
+                value=int(kr.get("lookback", 400)), step=50,
+                help=t("cfg_kronos_lookback_help"), key="kronos_lookback",
+            )
+
+        with col2:
+            kr["temperature"] = st.slider(
+                t("cfg_kronos_temperature"), 0.1, 2.0,
+                float(kr.get("temperature", 1.0)), 0.05,
+                help=t("cfg_kronos_temperature_help"), key="kronos_temp",
+            )
+            kr["top_p"] = st.slider(
+                t("cfg_kronos_top_p"), 0.0, 1.0,
+                float(kr.get("top_p", 0.9)), 0.05,
+                help=t("cfg_kronos_top_p_help"), key="kronos_top_p",
+            )
+            kr["sample_count"] = st.number_input(
+                t("cfg_kronos_sample_count"), min_value=1, max_value=20,
+                value=int(kr.get("sample_count", 1)), step=1,
+                help=t("cfg_kronos_sample_count_help"), key="kronos_sample_count",
+            )
+            kr["timeout_seconds"] = st.number_input(
+                t("cfg_kronos_timeout"), min_value=30, max_value=600,
+                value=int(kr.get("timeout_seconds", 120)), step=10,
+                help=t("cfg_kronos_timeout_help"), key="kronos_timeout",
+            )
+            kr_agents["weight_in_scoring"] = st.slider(
+                t("cfg_kronos_weight"), 0.0, 1.0,
+                float(kr_agents.get("weight_in_scoring", 0.20)), 0.05,
+                key="kronos_weight",
+            )
+
+        settings["kronos"] = kr
+        if "agents" not in settings:
+            settings["agents"] = {}
+        settings["agents"]["kronos"] = kr_agents
+
+        # Horizon info
+        _horizon_h = int(kr.get("forecast_horizon", 96)) * 15 / 60
+        _lookback_h = int(kr.get("lookback", 400)) * 15 / 60
+        st.caption(
+            f"Horizon : {kr.get('forecast_horizon', 96)} × 15min = **{_horizon_h:.1f}h** | "
+            f"Contexte : {kr.get('lookback', 400)} × 15min = **{_lookback_h:.1f}h**"
+        )
+
+        # ── Performance Kronos ──
+        st.markdown("---")
+        st.markdown(f'<h4><i class="fas fa-bullseye" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_kronos_perf_title")}</h4>', unsafe_allow_html=True)
+        try:
+            from storage.database import get_kronos_stats, evaluate_kronos_forecasts
+            n_eval = evaluate_kronos_forecasts()
+            if n_eval:
+                st.toast(f"{n_eval} forecast(s) Kronos evaluated", icon="🎯")
+
+            kstats = get_kronos_stats()
+
+            if kstats["total"] == 0:
+                st.info(t("cfg_kronos_no_data"))
+            else:
+                theme = _get_theme()
+                bg, bdr, txt, muted, ic = _card_colors(theme)
+                kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
+
+                dir_acc = f"{kstats['direction_accuracy']:.0f}%" if kstats["direction_accuracy"] is not None else "—"
+                mae_val = f"{kstats['mae']:.2f}%" if kstats["mae"] is not None else "—"
+                lat_val = f"{kstats['avg_latency_ms']}ms" if kstats["avg_latency_ms"] else "—"
+                conf_val = f"{kstats['avg_confidence']:.0%}" if kstats["avg_confidence"] is not None else "—"
+
+                grid = (
+                    _html_card("fas fa-chart-simple", t("cfg_tfm_total"), str(kstats["total"]), **kw) +
+                    _html_card("fas fa-check-double", t("cfg_tfm_evaluated"), str(kstats["evaluated"]), **kw) +
+                    _html_card("fas fa-bullseye", t("cfg_tfm_dir_acc"), dir_acc, **kw) +
+                    _html_card("fas fa-ruler", t("cfg_tfm_mae"), mae_val, **kw) +
+                    _html_card("fas fa-gauge", t("cfg_tfm_confidence"), conf_val, **kw) +
+                    _html_card("fas fa-bolt", t("cfg_tfm_latency"), lat_val, **kw)
+                )
+                st.markdown(
+                    f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));'
+                    f'gap:10px;margin-bottom:16px;">{grid}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                if kstats.get("recent"):
+                    st.markdown(f"**{t('cfg_tfm_recent')}**")
+                    for r in kstats["recent"]:
+                        hit = "✅" if r["direction_hit"] else "❌"
+                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(r.get("signal", ""), "⚪")
+                        _mdl_short = str(r.get("model_name", "")).split("/")[-1]
+                        _asset_lbl = r.get("asset", "")
+                        st.markdown(
+                            f"{hit} {sig_icon} `{r['timestamp'][:16]}` [{_asset_lbl}] `{_mdl_short}` — "
+                            f"Pred: **{r['pct_change']:+.2f}%** → Real: **{r['actual_change']:+.2f}%** "
+                            f"(${r['current_price']:,.2f} → ${r['actual_price']:,.2f})"
+                        )
+
+                if kstats.get("pending"):
+                    st.markdown(f"**{t('cfg_tfm_pending')}**")
+                    for p in kstats["pending"]:
+                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(p.get("signal", ""), "⚪")
+                        _mdl_short = str(p.get("model_name", "")).split("/")[-1]
+                        _asset_lbl = p.get("asset", "")
+                        st.markdown(
+                            f"⏳ {sig_icon} `{p['timestamp'][:16]}` [{_asset_lbl}] `{_mdl_short}` — "
+                            f"Pred: **{p['pct_change']:+.2f}%** "
+                            f"(${p['current_price']:,.2f} → ${p['predicted_price']:,.2f}) "
+                            f"horizon: {p['horizon_candles']}×15min"
+                        )
+        except Exception as exc:
+            st.warning(f"Kronos stats unavailable: {exc}")
 
     elif _atab == "agperf":  # Agents Perf
         st.markdown('<h4>📊 Performance par agent</h4>', unsafe_allow_html=True)

@@ -61,7 +61,7 @@ agents:
   polymarket:
     enabled: false  # méta-analyse 2026-04-16 : valeur constante sur 28/28 trades — aucune info différentielle
   timesfm:
-    enabled: true
+    enabled: false
   market_regime:
     enabled: true
   bull_bear_debate:

@@ -2927,7 +2927,7 @@ def render_admin_panel():
         st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_agents_info"))
         agents = settings.get("agents", {})
-        for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket", "timesfm"]:
+        for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket", "timesfm", "kronos"]:
             cfg = agents.get(agent_name, {})
             col1, col2 = st.columns([2, 1])
             with col1:
@@ -3752,7 +3752,7 @@ def render_admin_panel():
                     _pags = dict(_pacfg.get("agents", {}))
                     _ag_list = [
                         "market_data", "fundamental", "x_sentiment", "contrarian",
-                        "fear_greed", "polymarket", "timesfm", "market_regime",
+                        "fear_greed", "polymarket", "timesfm", "kronos", "market_regime",
                     ]
                     if _is_forex_pa or _is_commodity_pa:
                         _ag_list.append("economic_calendar")

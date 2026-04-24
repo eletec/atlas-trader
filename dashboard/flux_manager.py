@@ -85,6 +85,27 @@ FLUX_DEFINITIONS = {
         "sla_latency_ms": 10000,
         "config_key": "agents.polymarket",
     },
+    "agent_market_regime": {
+        "label": "⊞ Agent Market Regime",
+        "description": "HMM gaussien + ADX — filtre de régime",
+        "category": "analysis",
+        "sla_latency_ms": 5000,
+        "config_key": "agents.market_regime",
+    },
+    "agent_timesfm": {
+        "label": "⏱ Agent TimesFM",
+        "description": "Google TimesFM — prévision OHLCV (désactivé, remplacé par Kronos)",
+        "category": "analysis",
+        "sla_latency_ms": 180000,
+        "config_key": "agents.timesfm",
+    },
+    "agent_kronos": {
+        "label": "🔮 Agent Kronos",
+        "description": "Modèle fondation OHLCV — prévision 24h (AAAI 2026)",
+        "category": "analysis",
+        "sla_latency_ms": 120000,
+        "config_key": "agents.kronos",
+    },
     "synthesis": {
         "label": "🧠 Synthesis Agent",
         "description": "Synthèse LLM finale",
@@ -328,7 +349,10 @@ digraph pipeline {{
         AC [label="{_lbl('agent_contrarian', 'Contrarian')}",    fillcolor="{_color('agent_contrarian')}"]
         FG [label="{_lbl('agent_fear_greed', 'Fear & Greed')}",  fillcolor="{_color('agent_fear_greed')}"]
         PO [label="{_lbl('agent_polymarket', 'Polymarket')}",    fillcolor="{_color('agent_polymarket')}"]
-        SY [label="{_lbl('synthesis', 'Synthesis')}",           fillcolor="{_color('synthesis')}"]
+        MR [label="{_lbl('agent_market_regime', 'Régime')}",     fillcolor="{_color('agent_market_regime')}"]
+        KR [label="{_lbl('agent_kronos', 'Kronos')}",            fillcolor="{_color('agent_kronos')}"]
+        TF [label="{_lbl('agent_timesfm', 'TimesFM')}",          fillcolor="{_color('agent_timesfm')}"]
+        SY [label="{_lbl('synthesis', 'Synthesis')}",            fillcolor="{_color('synthesis')}"]
     }}
 
     subgraph cluster_EXE {{
@@ -345,6 +369,9 @@ digraph pipeline {{
     FN -> MF
     CR -> MF
     MD -> AF
+    MD -> MR
+    MD -> KR
+    MD -> TF
     MF -> AF
     MF -> AS
     MF -> AC
@@ -355,6 +382,9 @@ digraph pipeline {{
     AC -> SY
     FG -> SY
     PO -> SY
+    KR -> SY
+    TF -> SY [style=dashed, color="#444", label="off"]
+    MR -> SY [style=dashed, color="#7986cb", label="filtre"]
     SY -> PT
     PT -> PM
     PM -> MF [style=dashed, color="#555"]

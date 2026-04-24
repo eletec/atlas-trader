@@ -1796,6 +1796,16 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "Score {score} bevindt zich in de neutrale zone [{lo}–{hi}]. Monitoring voortgezet.",
         "zh": "评分 {score} 在中性区间 [{lo}–{hi}]。持续监控中。",
     },
+    "dec_hold_filtered": {
+        "fr": "⚠️ Score {score} ≥ seuil BUY ({threshold}) mais un filtre actif a bloqué l'entrée (régime de marché, cooldown ou veto). HOLD maintenu.",
+        "en": "⚠️ Score {score} ≥ BUY threshold ({threshold}) but an active filter blocked the entry (market regime, cooldown or veto). HOLD maintained.",
+        "de": "⚠️ Score {score} ≥ BUY-Schwelle ({threshold}), aber ein aktiver Filter hat den Einstieg blockiert (Marktregime, Cooldown oder Veto). HOLD beibehalten.",
+        "es": "⚠️ Puntuación {score} ≥ umbral BUY ({threshold}) pero un filtro activo bloqueó la entrada (régimen de mercado, cooldown o veto). HOLD mantenido.",
+        "it": "⚠️ Punteggio {score} ≥ soglia BUY ({threshold}) ma un filtro attivo ha bloccato l'entrata (regime di mercato, cooldown o veto). HOLD mantenuto.",
+        "pt": "⚠️ Pontuação {score} ≥ limiar BUY ({threshold}) mas um filtro ativo bloqueou a entrada (regime de mercado, cooldown ou veto). HOLD mantido.",
+        "nl": "⚠️ Score {score} ≥ BUY-drempel ({threshold}) maar een actief filter blokkeerde de ingang (marktregime, cooldown of veto). HOLD gehandhaafd.",
+        "zh": "⚠️ 评分 {score} ≥ 买入阈值 ({threshold})，但活跃过滤器阻止了入场（市场状态、冷却期或否决）。维持HOLD。",
+    },
     "dec_ma50_blocked": {
         "fr": "⚠️ **Filtre MA50 actif** : score={score} haussier mais le prix ({price}) est sous la MA50 journalière ({ma50}). BUY bloqué — tendance macro baissière.",
         "en": "⚠️ **MA50 Filter active**: score={score} bullish but price ({price}) is below daily MA50 ({ma50}). BUY blocked — bearish macro trend.",

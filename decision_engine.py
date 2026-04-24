@@ -699,10 +699,15 @@ class DecisionEngine:
                 score=f"{score:.0f}", factor=f"{ma50_size_penalty:.1f}",
                 price=f"{price:.0f}", ma50=f"{ma_50:.0f}"
             )
+        elif action == "HOLD" and score >= self.buy_threshold:
+            # Score suffisant pour BUY mais bloqué par un filtre (régime, cooldown, veto…)
+            explanation += t("dec_hold_filtered").format(
+                score=f"{score:.0f}", threshold=f"{self.buy_threshold:.0f}"
+            )
         elif action == "HOLD":
             explanation += t("dec_neutral_zone").format(
                 score=f"{score:.0f}", lo=f"{self.exit_threshold:.0f}",
-                hi=f"{self.buy_threshold:.0f}"
+                hi=f"{self.buy_threshold - 1:.0f}"
             )
         elif action == "BUY":
             explanation += t("dec_buy_signal").format(

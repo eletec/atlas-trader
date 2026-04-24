@@ -266,6 +266,9 @@ def _save_settings(settings: dict) -> bool:
     except ImportError:
         st.warning(t("flux_demo_save"))
         return False
+    except PermissionError as exc:
+        st.error(f"Permission refusée — {exc}\n\n**Sur GX10 :** `chmod 666 /app/config/settings.gx10.yaml`")
+        return False
 
 
 def is_flux_enabled(flux_name: str, settings: dict) -> bool:

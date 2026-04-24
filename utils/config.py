@@ -106,8 +106,20 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
     """Sauvegarde settings.yaml en préservant les commentaires existants."""
+    import stat
     p = Path(path) if path else _SETTINGS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
+    # Auto-correction des permissions si le fichier existe mais n'est pas writable
+    if p.exists() and not os.access(p, os.W_OK):
+        try:
+            current_mode = p.stat().st_mode
+            p.chmod(current_mode | stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH)
+        except PermissionError:
+            raise PermissionError(
+                f"Impossible d'écrire dans {p} (permission refusée).\n"
+                f"Sur GX10, corrigez avec :\n"
+                f"  chmod 666 {p}"
+            )
     with open(p, "w", encoding="utf-8") as f:
         yaml.dump(settings, f, allow_unicode=True, default_flow_style=False,
                   sort_keys=False)

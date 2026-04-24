@@ -151,14 +151,19 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Selectbox : options du menu déroulant — ne pas tronquer */
-        ul[data-baseweb="menu"] { min-width: 280px !important; }
+        /* Selectbox : menu déroulant — éviter troncature (override inline width Baseweb) */
+        [data-baseweb="popover"] { width: max-content !important; overflow: visible !important; }
+        [data-baseweb="popover"] > div { width: max-content !important; overflow: visible !important; }
+        ul[data-baseweb="menu"] { min-width: 300px !important; width: max-content !important; }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"] {
             white-space: nowrap !important;
             overflow: visible !important;
             text-overflow: clip !important;
+            max-width: none !important;
         }
+        [data-baseweb="option"] > div,
+        [data-baseweb="option"] > div > span { white-space: nowrap !important; overflow: visible !important; max-width: none !important; }
     """
 
     _DARK_CSS = """
@@ -225,12 +230,20 @@ def _inject_theme_css():
         }
         [data-baseweb="select"] span,
         [data-baseweb="select"] div { color: #FAFAFA !important; }
-        /* Selectbox : menu déroulant */
-        [data-baseweb="popover"],
+        /* Selectbox : menu déroulant — override inline width Baseweb */
+        [data-baseweb="popover"] {
+            width: max-content !important;
+            overflow: visible !important;
+        }
+        [data-baseweb="popover"] > div {
+            width: max-content !important;
+            overflow: visible !important;
+        }
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
-            min-width: 280px !important;
+            min-width: 300px !important;
+            width: max-content !important;
         }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"] {
@@ -239,6 +252,13 @@ def _inject_theme_css():
             white-space: nowrap !important;
             overflow: visible !important;
             text-overflow: clip !important;
+            max-width: none !important;
+        }
+        [data-baseweb="option"] > div,
+        [data-baseweb="option"] > div > span {
+            white-space: nowrap !important;
+            overflow: visible !important;
+            max-width: none !important;
         }
         ul[data-baseweb="menu"] li:hover,
         [data-baseweb="option"]:hover {

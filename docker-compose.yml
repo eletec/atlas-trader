@@ -52,6 +52,9 @@ services:
     container_name: atlas-trader-gx10
     command: all
     restart: unless-stopped
+    # Forcer root pour que entrypoint.sh puisse chmod les bind-mounts host
+    # (évite [Errno 13] Permission denied sur settings.gx10.yaml)
+    user: root
     env_file:
       - .env
     environment:

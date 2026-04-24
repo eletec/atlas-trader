@@ -56,6 +56,7 @@ _ASSET_PROFILE: dict[str, str] = {
     "SOL/USDT": "crypto",
     "XAU/USD":  "xau",
     "XAG/USD":  "xau",
+    "WTI/USD":  "xau",   # commodity hours similaires à l'or (Globex Mon-Fri)
     "EUR/USD":  "forex",
     "GBP/USD":  "forex",
     "USD/JPY":  "forex",

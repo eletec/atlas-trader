@@ -163,6 +163,8 @@ class MarketDataAgent:
                 "ma_50": round(ma_50, 2),
                 "above_ma50": bool(ma_50 > 0 and price > ma_50),
                 "timestamp": datetime.utcnow().isoformat(),
+                # Transmis à MarketRegimeAgent pour éviter le double-fetch CCXT
+                "ohlcv_raw": ohlcv,
             }
         except Exception as exc:
             logger.error(f"Market data fetch error: {exc}")
@@ -185,22 +187,42 @@ class MarketDataAgent:
                 return json.loads(r.read())
 
         try:
+            # range=5d donne ~300-460 candles 15m (vs 64-92 pour range=1d)
+            # nécessaire pour MarketRegimeAgent (MIN_CANDLES=60, trend_window=50-100)
             data = _yget(
                 f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
-                f"?interval=15m&range=1d&includePrePost=false"
+                f"?interval=15m&range=5d&includePrePost=false"
             )
             res   = data["chart"]["result"][0]
             meta  = res["meta"]
             quote = res["indicators"]["quote"][0]
+            timestamps_raw = res.get("timestamp", [])
 
-            raw_c = quote.get("close", [])
-            raw_h = quote.get("high",  [])
-            raw_l = quote.get("low",   [])
+            raw_o = quote.get("open",   [])
+            raw_c = quote.get("close",  [])
+            raw_h = quote.get("high",   [])
+            raw_l = quote.get("low",    [])
             raw_v = quote.get("volume", [])
-            closes  = np.array([c for c in raw_c if c is not None], dtype=float)
-            highs   = np.array([c for c in raw_h if c is not None], dtype=float)
-            lows    = np.array([c for c in raw_l if c is not None], dtype=float)
-            volumes = np.array([c for c in raw_v if c is not None], dtype=float)
+
+            # Construire ohlcv_raw au format CCXT [ts, open, high, low, close, volume]
+            # pour que MarketRegimeAgent puisse calculer ADX + HMM sans fallback Binance
+            ohlcv_raw = [
+                [
+                    timestamps_raw[i] * 1000 if i < len(timestamps_raw) else 0,
+                    float(raw_o[i]) if i < len(raw_o) and raw_o[i] is not None else float(raw_c[i] or 0),
+                    float(raw_h[i]) if raw_h[i] is not None else 0.0,
+                    float(raw_l[i]) if raw_l[i] is not None else 0.0,
+                    float(raw_c[i]),
+                    float(raw_v[i]) if i < len(raw_v) and raw_v[i] is not None else 0.0,
+                ]
+                for i, c in enumerate(raw_c)
+                if c is not None
+            ]
+
+            closes  = np.array([c[4] for c in ohlcv_raw], dtype=float)
+            highs   = np.array([c[2] for c in ohlcv_raw], dtype=float)
+            lows    = np.array([c[3] for c in ohlcv_raw], dtype=float)
+            volumes = np.array([c[5] for c in ohlcv_raw], dtype=float)
 
             price = float(meta.get("regularMarketPrice") or meta.get("previousClose") or 0)
 
@@ -250,6 +272,8 @@ class MarketDataAgent:
                 "above_ma50":           bool(ma_50 > 0 and price > ma_50),
                 "timestamp":            datetime.utcnow().isoformat(),
                 "_source":              "yahoo",
+                # Transmis à MarketRegimeAgent — évite le fallback CCXT Binance (échoue pour non-crypto)
+                "ohlcv_raw":            ohlcv_raw,
             }
         except Exception as exc:
             logger.warning(f"Yahoo Finance fallback failed for {symbol} ({ticker}): {exc}")

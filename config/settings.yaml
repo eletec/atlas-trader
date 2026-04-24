@@ -277,7 +277,7 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.15  # Brier 0.303, WR 40.4%, avg_score 62 (trop optimiste) → réduit
+    weight_in_scoring: 0.0   # Brier 0.303, WR 40.4%, avg_score 62 (perma-optimiste) → neutralisé
   x_sentiment:
     enabled: true
     weight_in_scoring: 0.0   # Brier 0.413, WR 36.2%, avg_score 77 (perma-haussier) → neutralisé
@@ -291,8 +291,8 @@ agents:
     enabled: true
     weight_in_scoring: 0.55  # Brier 0.244 — bon calibrage mais dominait trop → réduit
   timesfm:
-    enabled: true            # Brier 0.243, WR 48.9% (~aléatoire) → réduit
-    weight_in_scoring: 0.10
+    enabled: true            # Brier 0.243, WR 48.9% (~aléatoire) → neutralisé
+    weight_in_scoring: 0.0
   market_regime:
     enabled: true
     weight_in_scoring: 0.70  # Brier 0.225, WR 66% — meilleur agent → poids maximal

@@ -3557,32 +3557,31 @@ def render_admin_panel():
                             _e2 = _regime_emojis.get(_r2, "·")
                             _dots += f'<span style="color:{_c2};margin-right:3px;font-size:0.85rem">{_e2}</span>'
 
-                        st.markdown(
+                        _card = (
                             f'<div style="border:1px solid {_rcolor};border-radius:8px;padding:12px 14px;background:rgba(0,0,0,0.15);margin-bottom:4px">'
-                            # Titre actif
                             f'<div style="font-size:1rem;font-weight:700;margin-bottom:6px;">{_icon} {_sym}</div>'
-                            # Badge régime
                             f'<div style="display:inline-block;background:{_rcolor}22;border:1px solid {_rcolor};'
                             f'border-radius:5px;padding:3px 10px;font-size:0.95rem;font-weight:700;color:{_rcolor}">'
                             f'{_rem} {_rlabel}</div>'
-                            # Direction
-                            + (f'<div style="font-size:0.80rem;color:#b0bec5;margin-top:4px;font-style:italic">{_rdir}</div>' if _rdir else "")
-                            # Impact trading
+                        )
+                        if _rdir:
+                            _card += f'<div style="font-size:0.80rem;color:#b0bec5;margin-top:4px;font-style:italic">{_rdir}</div>'
+                        _card += (
                             f'<div style="font-size:0.82rem;margin-top:6px;">{_impact}</div>'
-                            # Métriques clés
                             f'<div style="font-size:0.78rem;color:#90a4ae;margin-top:8px;border-top:1px solid #333;padding-top:6px">'
                             f'HMM confiance : <b style="color:#ccc">{_rp:.0%}</b> &nbsp;·&nbsp; '
                             f'ADX : <b style="color:#ccc">{_adx:.0f}</b> &nbsp;·&nbsp; '
                             f'Vol relative : <b style="color:#ccc">{_vol:.2f}×</b>'
-                            + (f' ({_vol_ann:.0f}%/an)' if _vol_ann else "")
-                            + f'</div>'
-                            # Historique 5 cycles
-                            f'<div style="margin-top:5px;font-size:0.75rem;color:#607d8b">5 derniers cycles : {_dots}</div>'
-                            # Timestamp
-                            f'<div style="color:#546e7a;font-size:0.70rem;margin-top:3px">{_rts}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True
                         )
+                        if _vol_ann:
+                            _card += f' ({_vol_ann:.0f}%/an)'
+                        _card += (
+                            f'</div>'
+                            f'<div style="margin-top:5px;font-size:0.75rem;color:#607d8b">5 derniers cycles : {_dots}</div>'
+                            f'<div style="color:#546e7a;font-size:0.70rem;margin-top:3px">{_rts}</div>'
+                            f'</div>'
+                        )
+                        st.markdown(_card, unsafe_allow_html=True)
 
         except Exception as _re:
             st.warning(f"Données régime indisponibles : {_re}")

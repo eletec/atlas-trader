@@ -294,8 +294,8 @@ agents:
     enabled: false           # remplacé par Kronos
     weight_in_scoring: 0.0
   kronos:
-    enabled: true
-    weight_in_scoring: 0.20  # nouveau — phase d'observation
+    enabled: false           # désactivé — source /app/Kronos-master non installé sur GX10
+    weight_in_scoring: 0.20  # sera réactivé après: curl .../Kronos/master.tar.gz | tar -xz -C /app
   market_regime:
     enabled: true
     weight_in_scoring: 0.70  # Brier 0.225, WR 66% — meilleur agent

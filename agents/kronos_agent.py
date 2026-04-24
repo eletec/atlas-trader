@@ -279,9 +279,11 @@ class KronosAgent:
                 f"lookback={self._lookback}, T={self._T}, top_p={self._top_p}"
             )
 
-            acquired = _KRONOS_SEMAPHORE.acquire(timeout=360)
+            # Timeout court : si source absent, le spawn échoue en <30s
+            # → évite d'accumuler des zombie threads sur multi-actifs
+            acquired = _KRONOS_SEMAPHORE.acquire(timeout=90)
             if not acquired:
-                return self._fallback("semaphore timeout")
+                return self._fallback("semaphore timeout (autre actif Kronos en cours)")
 
             try:
                 pool = _get_pool()

@@ -527,9 +527,10 @@ class DecisionEngine:
         _mf_score_raw = (mirofish_result or {}).get("score", 50.0)
         hv_mf_blocked = False
         td_blocked = False
+        conflict_blocked = False
 
         # Filtre 1 : TRENDING_DOWN → hard block total
-        # Méta-analyse 2026-04-16 : 4/4 pertes | 2026-04-19 : 11/22 pertes
+        # Méta-analyse 2026-04-16 : 4/4 pertes | 2026-04-19 : 11/22 | 2026-04-24 : 16/29
         # Aucune exception — le trend baissier domine tous les autres signaux
         if action == "BUY" and _regime_hv == "TRENDING_DOWN":
             logger.info(
@@ -541,7 +542,6 @@ class DecisionEngine:
 
         # Filtre 2 : MiroFish < 50 → veto BUY dans TOUS les régimes
         # Méta-analyse 2026-04-19 : 9/22 trades score≥68 mais MF<50 → perte
-        # Étendu de HIGH_VOLATILITY uniquement → tous régimes
         if action == "BUY" and _mf_score_raw < 50:
             logger.info(
                 f"MiroFish global veto: MiroFish={_mf_score_raw:.0f} < 50 "
@@ -549,6 +549,20 @@ class DecisionEngine:
             )
             action = "HOLD"
             hv_mf_blocked = True
+
+        # Filtre 3 : Conflit market_regime < 40 ET x_sentiment > 80 → veto
+        # Méta-analyse 2026-04-24 : signal baissier fort du régime masqué par sentiment euphorique
+        # Applicable à tous les régimes — détecte les entrées à contre-tendance excessive
+        if action == "BUY":
+            _mr_score = (agent_analyses or {}).get("market_regime", {}).get("score", 50.0)
+            _xs_score = (agent_analyses or {}).get("x_sentiment", {}).get("score", 50.0)
+            if _mr_score < 40 and _xs_score > 80:
+                logger.info(
+                    f"Conflict veto: market_regime={_mr_score:.0f} < 40 ET "
+                    f"x_sentiment={_xs_score:.0f} > 80 — signal contradictoire — BUY → HOLD"
+                )
+                action = "HOLD"
+                conflict_blocked = True
 
         # Filtre 2 : timesfm < 50 + HIGH_VOLATILITY → taille ×0.5
         _timesfm_score = (agent_analyses or {}).get("timesfm", {}).get("score", 50.0)
@@ -612,13 +626,15 @@ class DecisionEngine:
             "hv_mf_blocked": hv_mf_blocked,
             "hv_timesfm_mult": hv_timesfm_mult,
             "td_blocked": td_blocked,
+            "conflict_blocked": conflict_blocked,
             # Seuils effectifs — pour audit trail
             "buy_threshold": self.buy_threshold,
             "exit_threshold": self.exit_threshold,
             "reasoning": (
                 f"score={score:.1f} vs buy_threshold={self.buy_threshold} / exit_threshold={self.exit_threshold} | "
                 f"has_long={has_long} | ma50_blocked={ma50_blocked} | "
-                f"funding_blocked={funding_blocked} | td_blocked={td_blocked}"
+                f"funding_blocked={funding_blocked} | td_blocked={td_blocked} | "
+                f"hv_mf_blocked={hv_mf_blocked} | conflict_blocked={conflict_blocked}"
             ),
         }
 

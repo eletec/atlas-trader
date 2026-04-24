@@ -3825,11 +3825,22 @@ def render_admin_panel():
                         _ag_list.append("central_bank")
                     for _agn in _ag_list:
                         _agc = dict(_pags.get(_agn, {}))
-                        _agc["enabled"] = st.toggle(
-                            _agn.replace("_", " ").title(),
-                            _agc.get("enabled", True),
-                            key=f"pa_agen_{_paslug}_{_agn}"
-                        )
+                        _col_a, _col_b = st.columns([2, 1])
+                        with _col_a:
+                            _agc["enabled"] = st.toggle(
+                                _agn.replace("_", " ").title(),
+                                _agc.get("enabled", True),
+                                key=f"pa_agen_{_paslug}_{_agn}"
+                            )
+                        with _col_b:
+                            _agc["weight_in_scoring"] = st.number_input(
+                                "Poids", 0.0, 2.0,
+                                float(_agc.get("weight_in_scoring",
+                                      settings.get("agents", {}).get(_agn, {}).get("weight_in_scoring", 1.0))),
+                                0.05,
+                                key=f"pa_agw_{_paslug}_{_agn}",
+                                help="Surcharge le poids global pour cet actif uniquement"
+                            )
                         if _agn == "x_sentiment":
                             _xkw = ", ".join(_agc.get("keywords", []))
                             _nkw = st.text_input(
@@ -3863,6 +3874,48 @@ def render_admin_panel():
                             key=f"pa_tw_{_paslug}"
                         )
                     _pacfg["market_regime"] = _pmr
+
+                # ── Kronos (par actif) ────────────────────────────────────────
+                with st.expander("🔮 Kronos — Config par actif", expanded=False):
+                    _pkr = dict(_pacfg.get("kronos", {}))
+                    _kr_global = settings.get("kronos", {})
+                    _c1, _c2 = st.columns(2)
+                    with _c1:
+                        _pkr["forecast_horizon"] = st.number_input(
+                            "Horizon (candles)", 1, 512,
+                            int(_pkr.get("forecast_horizon", _kr_global.get("forecast_horizon", 96))), 8,
+                            key=f"pa_kr_hor_{_paslug}",
+                            help="Nombre de candles à prédire. Ex: 96 × 15min = 24h"
+                        )
+                        _pkr["lookback"] = st.number_input(
+                            "Lookback (candles contexte)", 20, 2048,
+                            int(_pkr.get("lookback", _kr_global.get("lookback", 400))), 50,
+                            key=f"pa_kr_lb_{_paslug}",
+                            help="Candles de contexte fournis au modèle"
+                        )
+                        _pkr["timeout_seconds"] = st.number_input(
+                            "Timeout (s)", 30, 600,
+                            int(_pkr.get("timeout_seconds", _kr_global.get("timeout_seconds", 120))), 10,
+                            key=f"pa_kr_to_{_paslug}",
+                        )
+                    with _c2:
+                        _pkr["temperature"] = st.slider(
+                            "Température", 0.1, 2.0,
+                            float(_pkr.get("temperature", _kr_global.get("temperature", 1.0))), 0.05,
+                            key=f"pa_kr_temp_{_paslug}",
+                            help="0.1 = déterministe, 2.0 = créatif"
+                        )
+                        _pkr["top_p"] = st.slider(
+                            "Top-p", 0.0, 1.0,
+                            float(_pkr.get("top_p", _kr_global.get("top_p", 0.9))), 0.05,
+                            key=f"pa_kr_topp_{_paslug}",
+                        )
+                        _pkr["sample_count"] = st.number_input(
+                            "Trajectoires", 1, 10,
+                            int(_pkr.get("sample_count", _kr_global.get("sample_count", 1))), 1,
+                            key=f"pa_kr_sc_{_paslug}",
+                        )
+                    _pacfg["kronos"] = _pkr
 
                 # ── MiroFish poids ────────────────────────────────────────────
                 with st.expander("🐟 MiroFish — Poids par actif", expanded=False):

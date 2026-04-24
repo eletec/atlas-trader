@@ -73,9 +73,27 @@ def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
 
 def save_asset_config(asset: str, cfg: dict) -> None:
     """Sauvegarde la config d'un actif dans config/assets/{slug}.yaml."""
-    _ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    import stat
+    # Utiliser le chemin absolu basé sur le fichier settings pour rester cohérent
+    assets_dir = _SETTINGS_PATH.parent / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    # Fix permissions du dossier si nécessaire
+    try:
+        if not os.access(assets_dir, os.W_OK):
+            assets_dir.chmod(assets_dir.stat().st_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+    except PermissionError:
+        pass
     slug = _asset_slug(asset)
-    path = _ASSETS_DIR / f"{slug}.yaml"
+    path = assets_dir / f"{slug}.yaml"
+    # Fix permissions du fichier si nécessaire
+    if path.exists() and not os.access(path, os.W_OK):
+        try:
+            path.chmod(path.stat().st_mode | stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH)
+        except PermissionError:
+            raise PermissionError(
+                f"Permission refusée : {path}\n"
+                f"Sur GX10 : chmod -R 666 /app/config/assets/"
+            )
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 

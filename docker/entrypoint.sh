@@ -53,17 +53,24 @@ print('Base de données initialisée.')
 # 3. Création des répertoires persistants + fix permissions
 # ============================================================
 init_dirs() {
-    mkdir -p /app/logs /app/storage /app/config
-    # Fix permissions sur config/assets et users.yaml (bind-mount host peut être owned par un autre UID)
-    chmod -R a+rw /app/config/assets 2>/dev/null || true
-    # Touch avant chmod : si le fichier n'existe pas encore, chmod échouerait silencieusement
-    touch /app/config/users.yaml 2>/dev/null || true
-    chmod a+rw /app/config/users.yaml 2>/dev/null || true
-    touch /app/config/settings.yaml 2>/dev/null || true
-    chmod a+rw /app/config/settings.yaml 2>/dev/null || true
-    touch /app/config/settings.gx10.yaml 2>/dev/null || true
-    chmod a+rw /app/config/settings.gx10.yaml 2>/dev/null || true
-    chmod a+rw /app/config/settings.gx10.yaml 2>/dev/null || true
+    mkdir -p /app/logs /app/storage /app/config /app/config/assets
+
+    CURRENT_USER=$(id -u)
+    log_info "Utilisateur container : UID=${CURRENT_USER} ($(id -un 2>/dev/null || echo unknown))"
+
+    if [ "${CURRENT_USER}" = "0" ]; then
+        # On tourne en root → chmod garanti sur tous les bind-mounts
+        log_info "Fix permissions config (root) — chmod 666 *.yaml, chmod 777 assets/"
+        find /app/config -maxdepth 1 -name "*.yaml" -exec chmod 666 {} + 2>/dev/null || true
+        chmod -R 777 /app/config/assets 2>/dev/null || true
+        chown -R atlas:atlas /app/logs /app/storage 2>/dev/null || true
+    else
+        # On tourne en utilisateur non-root (atlas) — tentative best-effort
+        log_warn "Démarrage en non-root (UID=${CURRENT_USER}) — tentative chmod best-effort"
+        find /app/config -maxdepth 1 -name "*.yaml" -exec chmod a+rw {} + 2>/dev/null || true
+        chmod -R a+rwx /app/config/assets 2>/dev/null || true
+        log_warn "Si la sauvegarde échoue : docker exec -u root atlas-trader-gx10 chmod -R 666 /app/config/"
+    fi
 }
 
 # ============================================================

@@ -2973,10 +2973,10 @@ def render_admin_panel():
         st.markdown(
             "<div style='background:#1a2332;border-left:3px solid #7986cb;padding:8px 14px;"
             "border-radius:4px;font-size:13px;margin-bottom:12px;'>"
-            "⚠️ Ces agents <b>tournent toujours</b> même avec un poids 0.0 — "
-            "leur score est lu par le <b>Contrarian</b> pour détecter les extrêmes de marché. "
-            "Le <em>weight_in_scoring</em> contrôle uniquement leur contribution <b>directe</b> au score final "
-            "(généralement 0.0 pour éviter la double comptabilisation)."
+            "ℹ️ Ces agents <b>tournent toujours</b> (même si leur poids est mis à 0.0) "
+            "car leur score est lu par le <b>Contrarian</b> pour détecter les extrêmes de marché. "
+            "Le <em>weight_in_scoring</em> ne contrôle que leur contribution <b>directe</b> au score final — "
+            "mettre ce poids à 0.0 évite la double comptabilisation si le Contrarian les agrège déjà."
             "</div>",
             unsafe_allow_html=True,
         )

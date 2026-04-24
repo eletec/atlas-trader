@@ -1218,9 +1218,11 @@ def render_climate_metrics(last_cycle: dict | None):
         else:
             # Calcul heure de reprise via MarketSession
             _next_label = ""
+            _is_crypto = False
             try:
-                from utils.session import MarketSession as _MarketSession
+                from utils.session import MarketSession as _MarketSession, _get_profile as _sess_prof
                 _sess = _MarketSession(_asset_slash or "BTC/USDT")
+                _is_crypto = (_sess_prof(_asset_slash or "BTC/USDT") == "crypto")
                 _nxt = _sess.next_open()
                 _nxt_utc = _nxt.strftime("%H:%M UTC")
                 _wait_min = int((_nxt - __import__('datetime').datetime.now(
@@ -1234,10 +1236,20 @@ def render_climate_metrics(last_cycle: dict | None):
                     _next_label = t("status_resumes_day").format(day=_nxt_day)
             except Exception:
                 pass
-            time_ago += (
-                f' <span style="color:#888;font-size:11px;">'
-                f'{t("status_off_session")}{_next_label}</span>'
-            )
+            # Pour crypto (24/7), "hors session" n'a pas de sens → "daemon inactif"
+            if _is_crypto:
+                _hb_age_h = int(_hb_age / 3600)
+                _hb_age_m = int((_hb_age % 3600) / 60)
+                _age_str = f"{_hb_age_h}h{_hb_age_m:02d}" if _hb_age_h else f"{_hb_age_m}min"
+                time_ago += (
+                    f' <span style="color:#f39c12;font-size:11px;">'
+                    f'⚠️ daemon inactif depuis {_age_str}</span>'
+                )
+            else:
+                time_ago += (
+                    f' <span style="color:#888;font-size:11px;">'
+                    f'{t("status_off_session")}{_next_label}</span>'
+                )
 
     act_map = {
         "BUY":  ("#2ecc71", "fas fa-arrow-trend-up"),

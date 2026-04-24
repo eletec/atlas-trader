@@ -443,7 +443,9 @@ def run_asset_daemon(asset: str, interval_override: int | None = None) -> None:
 
             # Attente interruptible : vérifie _shutdown_event toutes les 2s
             # → réagit au SIGTERM en < 2s au lieu de bloquer 300s
-            _CYCLE_TIMEOUT = 120  # secondes — cycles normaux durent 30-90s
+            # NOTE: 300s car le node agents a un timeout de 180s (Kronos/TimesFM lourds)
+            # + synthèse LLM + décision = cycle peut atteindre 250s légitimement
+            _CYCLE_TIMEOUT = 300  # secondes — augmenté de 120→300 pour Kronos subprocess
             _deadline = time.time() + _CYCLE_TIMEOUT
             _timed_out = True
             while time.time() < _deadline:

@@ -268,6 +268,14 @@ class KronosAgent:
         asset = state.get("asset", "BTC/USDT")
         self._load_config(asset)
 
+        # Vérification immédiate du source — fail-fast SANS spawner de process
+        # Évite l'accumulation de threads zombies sur multi-actifs si source absent
+        try:
+            _get_kronos_root()
+        except ImportError as _no_src:
+            logger.warning(f"Kronos [{asset}]: source absent — {_no_src}")
+            return self._fallback("source Kronos absent (voir INSTALLATION dans kronos_agent.py)")
+
         try:
             ohlcv_raw = self._get_ohlcv_raw(state)
             if ohlcv_raw is None or len(ohlcv_raw) < 20:

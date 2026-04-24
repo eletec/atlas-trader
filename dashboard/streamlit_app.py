@@ -2925,13 +2925,29 @@ def render_admin_panel():
 
     elif _atab == "agents":  # Agents
         st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_agents_info"))
         agents = settings.get("agents", {})
-        for agent_name in ["market_data", "fundamental", "x_sentiment", "contrarian", "fear_greed", "polymarket", "timesfm", "kronos"]:
+
+        # ── Groupe 1 : Agents de scoring direct ──────────────────────────────
+        st.markdown("#### 🎯 Agents de scoring direct")
+        st.caption(
+            "Ces agents contribuent **directement** au score final de la décision. "
+            "Poids 0.0 = désactivé du score (mais l'agent continue de tourner si enabled=True)."
+        )
+        _direct_agents = [
+            ("market_data",  "Données OHLCV + momentum technique"),
+            ("contrarian",   "Signal contra-tendance composite (agrège fundamental, sentiment, fear&greed, timesfm/kronos)"),
+            ("polymarket",   "Marchés prédictifs décentralisés"),
+            ("kronos",       "Modèle de fondation OHLCV (prévision 24h)"),
+        ]
+        for agent_name, _role in _direct_agents:
             cfg = agents.get(agent_name, {})
             col1, col2 = st.columns([2, 1])
             with col1:
-                cfg["enabled"] = st.toggle(t("cfg_agent_toggle").format(name=agent_name), cfg.get("enabled", True))
+                cfg["enabled"] = st.toggle(
+                    f"**{agent_name}** — *{_role}*",
+                    cfg.get("enabled", True),
+                    key=f"toggle_{agent_name}"
+                )
             with col2:
                 cfg["weight_in_scoring"] = st.number_input(
                     t("cfg_agent_weight").format(name=agent_name), 0.0, 2.0,
@@ -2940,16 +2956,52 @@ def render_admin_panel():
                 )
             agents[agent_name] = cfg
 
-        # market_regime — info-only (weight toujours 0.0, configure via onglet dédié)
+        # market_regime — info-only (configure via onglet dédié)
         st.markdown("---")
         mr_cfg = agents.get("market_regime", {})
         mr_cfg["enabled"] = st.toggle(
-            t("cfg_agent_toggle").format(name="market_regime"),
+            "**market_regime** — *Filtre HMM + ADX (bloque les trades en tendance baissière)*",
             mr_cfg.get("enabled", True),
             key="toggle_market_regime"
         )
         st.caption(t("cfg_regime_agent_note"))
         agents["market_regime"] = mr_cfg
+
+        # ── Groupe 2 : Inputs du contrarian ──────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 🔄 Inputs du Contrarian")
+        st.markdown(
+            "<div style='background:#1a2332;border-left:3px solid #7986cb;padding:8px 14px;"
+            "border-radius:4px;font-size:13px;margin-bottom:12px;'>"
+            "⚠️ Ces agents <b>tournent toujours</b> même avec un poids 0.0 — "
+            "leur score est lu par le <b>Contrarian</b> pour détecter les extrêmes de marché. "
+            "Le <em>weight_in_scoring</em> contrôle uniquement leur contribution <b>directe</b> au score final "
+            "(généralement 0.0 pour éviter la double comptabilisation)."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        _contrarian_inputs = [
+            ("fundamental",   "Données on-chain + macro (score bas = signal contrarian HAUSSIER)"),
+            ("x_sentiment",   "Sentiment X/Twitter (score haut = euphorique = signal contrarian BAISSIER)"),
+            ("fear_greed",    "Indice Fear & Greed (score haut = greed = signal contrarian BAISSIER)"),
+            ("timesfm",       "Prévision Google TimesFM (désactivé, remplacé par Kronos)"),
+        ]
+        for agent_name, _role in _contrarian_inputs:
+            cfg = agents.get(agent_name, {})
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                cfg["enabled"] = st.toggle(
+                    f"**{agent_name}** — *{_role}*",
+                    cfg.get("enabled", True),
+                    key=f"toggle_{agent_name}"
+                )
+            with col2:
+                cfg["weight_in_scoring"] = st.number_input(
+                    t("cfg_agent_weight").format(name=agent_name), 0.0, 2.0,
+                    float(cfg.get("weight_in_scoring", 0.0)), 0.1,
+                    key=f"weight_{agent_name}"
+                )
+            agents[agent_name] = cfg
 
         # AlphaCombination — pondération dynamique IC-based
         st.markdown("---")

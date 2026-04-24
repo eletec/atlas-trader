@@ -281,7 +281,6 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     from agents.contrarian_agent import ContrarianAgent
     from agents.fear_greed_agent import FearGreedAgent
     from agents.polymarket_agent import PolymarketAgent
-    from agents.timesfm_agent import TimesFMAgent
     from agents.kronos_agent import KronosAgent
     from agents.market_regime_agent import MarketRegimeAgent
     from utils.logger import log_flux_metric
@@ -295,6 +294,13 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
     agent_cfg = settings.get("agents", {})
     analyses: dict = {}
     tokens_used = 0
+
+    # --- TimesFM : import conditionnel — lourd (PyTorch), ne charger que si activé ---
+    _timesfm_enabled = agent_cfg.get("timesfm", {}).get("enabled", False)
+    if _timesfm_enabled:
+        from agents.timesfm_agent import TimesFMAgent as _TimesFMAgent
+    else:
+        _TimesFMAgent = None  # type: ignore[assignment]
 
     # --- Sélection de l'agent fondamental selon le provider configuré ---
     fund_cfg = agent_cfg.get("fundamental", {})
@@ -334,7 +340,7 @@ def node_analyze_agents(state: ZeitgeistState) -> dict:
         "contrarian":         (ContrarianAgent,   agent_cfg.get("contrarian",   {}).get("enabled", True)),
         "fear_greed":         (FearGreedAgent,    agent_cfg.get("fear_greed",   {}).get("enabled", True)),
         "polymarket":         (PolymarketAgent,   agent_cfg.get("polymarket",   {}).get("enabled", True)),
-        "timesfm":            (TimesFMAgent,      agent_cfg.get("timesfm",      {}).get("enabled", False)),
+        "timesfm":            (_TimesFMAgent,    _timesfm_enabled),
         "kronos":             (KronosAgent,       agent_cfg.get("kronos",       {}).get("enabled", True)),
         "economic_calendar":  (_EcoAgent,         _eco_enabled),
         "central_bank":       (_CbAgent,          _cb_enabled),

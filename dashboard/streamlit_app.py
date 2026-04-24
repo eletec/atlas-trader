@@ -3473,93 +3473,121 @@ def render_admin_panel():
 
     elif _atab == "regime":  # Market Regime
         st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_regime_info"))
+        st.markdown(
+            "<div style='background:#1a2332;border-left:3px solid #7986cb;padding:8px 14px;"
+            "border-radius:4px;font-size:13px;margin-bottom:16px;'>"
+            "Détecte le régime de marché de chaque actif via <b>HMM gaussien + ADX</b>. "
+            "Ce résultat <b>module les décisions</b> : "
+            "<span style='color:#e53935'>TRENDING_DOWN → BUY bloqué</span> · "
+            "<span style='color:#e65100'>HIGH_VOLATILITY → taille ×0.65</span> · "
+            "<span style='color:#43a047'>TRENDING_UP → favorable</span> · "
+            "<span style='color:#fb8c00'>SIDEWAYS → neutre</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
-        # --- Régime par actif (lecture DB) ---
         try:
             from storage.database import get_recent_decisions
             import json as _json
 
             _regime_assets = list(settings.get("project", {}).get("active_assets",
                                   ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
-            _regime_icons  = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
+            _regime_icons  = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "XAG/USD": "◈",
+                               "WTI/USD": "⬡", "EUR/USD": "€", "GBP/USD": "£", "SOL/USDT": "◎"}
             _badge_colors  = {"TRENDING_UP": "#43a047", "TRENDING_DOWN": "#e53935",
                                "SIDEWAYS": "#fb8c00", "HIGH_VOLATILITY": "#e65100"}
             _regime_emojis = {"TRENDING_UP": "▲", "TRENDING_DOWN": "▼",
                                "SIDEWAYS": "↔", "HIGH_VOLATILITY": "⚡"}
+            _regime_fr     = {
+                "TRENDING_UP":    "Tendance haussière",
+                "TRENDING_DOWN":  "Tendance baissière",
+                "SIDEWAYS":       "Range / sans tendance",
+                "HIGH_VOLATILITY":"Haute volatilité",
+                "UNKNOWN":        "Données insuffisantes",
+            }
+            _impact_fr = {
+                "TRENDING_UP":    "✅ Trading normal",
+                "TRENDING_DOWN":  "🚫 BUY bloqué",
+                "SIDEWAYS":       "✅ Trading normal",
+                "HIGH_VOLATILITY":"⚠️ Taille position ×0.65",
+                "UNKNOWN":        "⏳ En attente",
+            }
 
-            _rcols = st.columns(len(_regime_assets))
-            for _ri, _ra in enumerate(_regime_assets):
-                with _rcols[_ri]:
-                    _rdecs = get_recent_decisions(6, asset=_ra)
-                    if not _rdecs:
-                        st.caption(f"{_regime_icons.get(_ra,'◆')} **{_ra.split('/')[0]}**\n\n_Aucune donnée_")
-                        continue
-                    _rws   = _json.loads(_rdecs[0].get("weights_snapshot") or "{}")
-                    _rn    = _rws.get("regime", "UNKNOWN")
-                    _rp    = float(_rws.get("hmm_prob", 0.5))
-                    _rfeat = _rws.get("regime_features", {})
-                    _rdir  = _rws.get("direction_pressure", "")
-                    _rpost = _rws.get("hmm_posteriors", {})
-                    _rts   = _rdecs[0].get("timestamp", "?")
-                    _rcolor = _badge_colors.get(_rn, "#757575")
-                    _rem   = _regime_emojis.get(_rn, "?")
-                    # ADX + DI
-                    _adx = _rfeat.get("adx", 0)
-                    _adx_str = f'ADX {_adx:.1f}'
-                    if "di_plus" in _rfeat:
-                        _adx_str += f' (DI+{_rfeat["di_plus"]:.1f}/DI−{_rfeat["di_minus"]:.1f})'
-                    # Vol
-                    _vol = _rfeat.get("rel_volatility", 0)
-                    _vol_str = f'Vol {_vol:.2f}×'
-                    if "vol_abs_annualized" in _rfeat:
-                        _vol_str += f' ({_rfeat["vol_abs_annualized"]:.0f}%)'
-                    # HMM posteriors
-                    _post_str = ""
-                    if _rpost:
-                        _plabels = {0: "Low-vol", 1: "High-vol"}
-                        _pparts = [f'{_plabels.get(int(k.split("_")[-1]), k)}: {v:.0%}'
-                                   for k, v in sorted(_rpost.items())]
-                        _post_str = " | ".join(_pparts)
-                    # Historique 5 cycles
-                    _rhist = []
-                    for _rd in _rdecs[1:6]:
-                        _rws2 = _json.loads(_rd.get("weights_snapshot") or "{}")
-                        _r2 = _rws2.get("regime", "")
-                        _p2 = float(_rws2.get("hmm_prob", 0.5))
-                        if _r2:
-                            _c2 = _badge_colors.get(_r2, "#757575")
-                            _e2 = _regime_emojis.get(_r2, "?")
-                            _rhist.append(f'<span style="color:{_c2};font-size:0.72rem">{_e2} {_r2} ({_p2:.0%})</span>')
-                    _rhist_str = " ← ".join(_rhist) if _rhist else ""
-                    # Timestamp court
-                    _rts_short = str(_rts)[:16] if _rts else ""
-                    st.markdown(
-                        f'<div style="border:1px solid {_rcolor};border-radius:7px;'
-                        f'padding:8px 10px;background:rgba(0,0,0,0.18);margin-bottom:4px">'
-                        f'<div style="font-size:0.82rem;color:#aaa">'
-                        f'{_regime_icons.get(_ra,"◆")} <b>{_ra.split("/")[0]}</b></div>'
-                        f'<div style="font-size:1.05rem;font-weight:700;color:{_rcolor}">'
-                        f'{_rem} {_rn}'
-                        + (f' <span style="font-size:0.78rem;font-weight:400;color:#b0bec5">{_rdir}</span>'
-                           if _rdir else "")
-                        + f'</div>'
-                        f'<div style="font-size:0.75rem;color:#ccc;margin-top:2px">HMM {_rp:.0%} · {_adx_str}</div>'
-                        f'<div style="font-size:0.75rem;color:#ccc">{_vol_str}</div>'
-                        + (f'<div style="font-size:0.72rem;color:#90a4ae;margin-top:2px">{_post_str}</div>'
-                           if _post_str else "")
-                        + (f'<div style="margin-top:3px">{_rhist_str}</div>' if _rhist_str else "")
-                        + (f'<div style="color:#ef9a9a;font-size:0.72rem;margin-top:2px">'
-                           f'⚠ HIGH VOL : pos ×0.65 · CB 0.035%</div>'
-                           if _rn == "HIGH_VOLATILITY" else "")
-                        + f'<div style="color:#546e7a;font-size:0.70rem;margin-top:2px">{_rts_short}</div>'
-                        + '</div>',
-                        unsafe_allow_html=True
-                    )
-        except Exception:
-            st.caption(t("cfg_regime_no_data"))
+            # Grille 4 colonnes max
+            _n = len(_regime_assets)
+            _ncols = min(_n, 4)
+            for _chunk_start in range(0, _n, _ncols):
+                _chunk = _regime_assets[_chunk_start:_chunk_start + _ncols]
+                _rcols = st.columns(len(_chunk))
+                for _ri, _ra in enumerate(_chunk):
+                    with _rcols[_ri]:
+                        _rdecs = get_recent_decisions(6, asset=_ra)
+                        _sym = _ra.split("/")[0]
+                        _icon = _regime_icons.get(_ra, "◆")
+                        if not _rdecs:
+                            st.markdown(
+                                f'<div style="border:1px solid #333;border-radius:8px;padding:12px;">'
+                                f'<div style="font-size:1rem;font-weight:700;">{_icon} {_sym}</div>'
+                                f'<div style="color:#888;font-size:0.85rem;margin-top:6px;">Aucune donnée</div>'
+                                f'</div>', unsafe_allow_html=True
+                            )
+                            continue
 
-        st.caption("💡 Les paramètres HMM, ADX, fenêtres vol/trend sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
+                        _rws   = _json.loads(_rdecs[0].get("weights_snapshot") or "{}")
+                        _rn    = _rws.get("regime", "UNKNOWN")
+                        _rp    = float(_rws.get("hmm_prob", 0.5))
+                        _rfeat = _rws.get("regime_features", {})
+                        _rdir  = _rws.get("direction_pressure", "")
+                        _rts   = str(_rdecs[0].get("timestamp", ""))[:16]
+                        _rcolor = _badge_colors.get(_rn, "#757575")
+                        _rem   = _regime_emojis.get(_rn, "?")
+                        _rlabel = _regime_fr.get(_rn, _rn)
+                        _impact = _impact_fr.get(_rn, "")
+
+                        _adx = _rfeat.get("adx", 0)
+                        _vol = _rfeat.get("rel_volatility", 1.0)
+                        _vol_ann = _rfeat.get("vol_abs_annualized", 0)
+
+                        # Historique 5 cycles compact (pastilles couleur)
+                        _dots = ""
+                        for _rd in _rdecs[1:6]:
+                            _rws2 = _json.loads(_rd.get("weights_snapshot") or "{}")
+                            _r2 = _rws2.get("regime", "")
+                            _c2 = _badge_colors.get(_r2, "#555")
+                            _e2 = _regime_emojis.get(_r2, "·")
+                            _dots += f'<span style="color:{_c2};margin-right:3px;font-size:0.85rem">{_e2}</span>'
+
+                        st.markdown(
+                            f'<div style="border:1px solid {_rcolor};border-radius:8px;padding:12px 14px;background:rgba(0,0,0,0.15);margin-bottom:4px">'
+                            # Titre actif
+                            f'<div style="font-size:1rem;font-weight:700;margin-bottom:6px;">{_icon} {_sym}</div>'
+                            # Badge régime
+                            f'<div style="display:inline-block;background:{_rcolor}22;border:1px solid {_rcolor};'
+                            f'border-radius:5px;padding:3px 10px;font-size:0.95rem;font-weight:700;color:{_rcolor}">'
+                            f'{_rem} {_rlabel}</div>'
+                            # Direction
+                            + (f'<div style="font-size:0.80rem;color:#b0bec5;margin-top:4px;font-style:italic">{_rdir}</div>' if _rdir else "")
+                            # Impact trading
+                            f'<div style="font-size:0.82rem;margin-top:6px;">{_impact}</div>'
+                            # Métriques clés
+                            f'<div style="font-size:0.78rem;color:#90a4ae;margin-top:8px;border-top:1px solid #333;padding-top:6px">'
+                            f'HMM confiance : <b style="color:#ccc">{_rp:.0%}</b> &nbsp;·&nbsp; '
+                            f'ADX : <b style="color:#ccc">{_adx:.0f}</b> &nbsp;·&nbsp; '
+                            f'Vol relative : <b style="color:#ccc">{_vol:.2f}×</b>'
+                            + (f' ({_vol_ann:.0f}%/an)' if _vol_ann else "")
+                            + f'</div>'
+                            # Historique 5 cycles
+                            f'<div style="margin-top:5px;font-size:0.75rem;color:#607d8b">5 derniers cycles : {_dots}</div>'
+                            # Timestamp
+                            f'<div style="color:#546e7a;font-size:0.70rem;margin-top:3px">{_rts}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+
+        except Exception as _re:
+            st.warning(f"Données régime indisponibles : {_re}")
+
+        st.caption("⚙️ Les paramètres HMM, ADX et fenêtres sont configurables **par actif** dans l'onglet **🌐 Par Actif**.")
 
     elif _atab == "flux":  # Flux Manager
         st.info(t("cfg_flux_info"))

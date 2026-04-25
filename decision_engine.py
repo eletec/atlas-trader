@@ -458,6 +458,19 @@ class DecisionEngine:
             except Exception:
                 pass
 
+        # ── Filtre tendance 24h (Règle 2 — méta-analyse 2026-04-22/25) ─────────
+        # ETH : 5 pertes sur 5 trades où change_24h < -0.5%
+        # Blocage si repli journalier ≥ 0.5% — évite d'acheter en tendance baissière
+        if action == "BUY":
+            _chg_24h = (market_indicators or {}).get("change_pct_24h", None)
+            _trend_threshold_24h: float = -0.5  # configurable à terme
+            if _chg_24h is not None and _chg_24h < _trend_threshold_24h:
+                logger.info(
+                    f"Filtre tendance 24h: change_24h={_chg_24h:.2f}% < {_trend_threshold_24h}%"
+                    f" — tendance journalière négative — BUY → HOLD"
+                )
+                action = "HOLD"
+
         # Cap max_open_positions (garde-fou supplémentaire sur BUY)
         if action == "BUY" and self.max_open_positions > 0:
             try:

@@ -103,12 +103,19 @@ class MarketDataAgent:
             # Accumuler l'historique funding pour le circuit breaker soutenu
             _FUNDING_HISTORY.append(funding)
 
-            # MA50 journalière (filtre de tendance macro)
+            # MA50 journalière + variation 24h (filtre de tendance macro)
             ma_50 = 0.0
+            change_pct_24h = 0.0
             try:
                 ohlcv_daily = self._exchange.fetch_ohlcv(symbol, "1d", limit=50)
                 daily_closes = np.array([c[4] for c in ohlcv_daily])
                 ma_50 = float(np.mean(daily_closes[-50:]))
+                # Variation vs clôture J-1 (proxy robuste du "prix il y a 24h")
+                if len(daily_closes) >= 2 and daily_closes[-2] > 0:
+                    change_pct_24h = round(
+                        (float(daily_closes[-1]) - float(daily_closes[-2]))
+                        / float(daily_closes[-2]) * 100, 2
+                    )
             except Exception:
                 pass
 
@@ -162,6 +169,7 @@ class MarketDataAgent:
                 "recent_funding_rates": list(_FUNDING_HISTORY),
                 "ma_50": round(ma_50, 2),
                 "above_ma50": bool(ma_50 > 0 and price > ma_50),
+                "change_pct_24h": change_pct_24h,
                 "timestamp": datetime.utcnow().isoformat(),
                 # Transmis à MarketRegimeAgent pour éviter le double-fetch CCXT
                 "ohlcv_raw": ohlcv,
@@ -245,6 +253,16 @@ class MarketDataAgent:
             except Exception:
                 pass
 
+            # Variation 24h depuis clôtures journalières Yahoo
+            change_pct_24h = 0.0
+            try:
+                if len(daily) >= 2 and daily[-2] > 0:
+                    change_pct_24h = round(
+                        (float(daily[-1]) - float(daily[-2])) / float(daily[-2]) * 100, 2
+                    )
+            except Exception:
+                pass
+
             rsi  = round(float(self._rsi(closes, 14)), 2) if len(closes) >= 15 else 50.0
             macd, macd_sig = (self._macd(closes) if len(closes) >= 26
                               else (0.0, 0.0))
@@ -270,6 +288,7 @@ class MarketDataAgent:
                 "recent_funding_rates": [],
                 "ma_50":                round(ma_50, 6),
                 "above_ma50":           bool(ma_50 > 0 and price > ma_50),
+                "change_pct_24h":       change_pct_24h,
                 "timestamp":            datetime.utcnow().isoformat(),
                 "_source":              "yahoo",
                 # Transmis à MarketRegimeAgent — évite le fallback CCXT Binance (échoue pour non-crypto)
@@ -347,6 +366,7 @@ class MarketDataAgent:
             "recent_funding_rates": [round(random.uniform(-0.01, 0.03), 6) for _ in range(4)],
             "ma_50": round(ma_50, 2),
             "above_ma50": bool(price > ma_50),
+            "change_pct_24h": round(random.uniform(-2.0, 2.0), 2),
             "timestamp": datetime.utcnow().isoformat(),
         }
     

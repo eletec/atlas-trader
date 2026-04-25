@@ -8,8 +8,9 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: balanced
-  buy_threshold: 68
-  exit_threshold: 38          # zone neutre large [38-68] — sort uniquement sur signal vraiment baissier
+  buy_threshold: 70           # relevé 68→70 (méta-analyse 2026-04-22/25 : trades 68-69.9 = no edge)
+  exit_threshold: 38          # zone neutre large [38-70] — sort uniquement sur signal vraiment baissier
+  buy_cooldown_minutes: 120   # cooldown 2h anti-doublon
   kelly_max_fraction: 0.2
   position_size_pct: 4.0
   max_open_positions: 1       # une seule position longue à la fois par actif

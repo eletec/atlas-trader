@@ -1548,6 +1548,56 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         else:
             st.caption("Pas d'explication IA pour ce trade.")
 
+        # ── Débat Bull/Bear (si disponible dans decision_context) ──────────────
+        _synth_ctx = (ctx.get("agents") or {}).get("synthesis") or {}
+        _dlg_sig_detail  = _synth_ctx.get("signal_detail")
+        _dlg_debate_win  = _synth_ctx.get("debate_winner")
+        _dlg_bull        = _synth_ctx.get("bull_argument")
+        _dlg_bear        = _synth_ctx.get("bear_argument")
+
+        if _dlg_sig_detail:
+            _dsig_colors = {
+                "STRONG_BUY":  ("rgba(27,94,32,0.25)",  "#69f0ae"),
+                "BUY":         ("rgba(27,94,32,0.15)",  "#a5d6a7"),
+                "HOLD":        ("rgba(255,152,0,0.15)", "#ffb74d"),
+                "SELL":        ("rgba(183,28,28,0.15)", "#ef9a9a"),
+                "STRONG_SELL": ("rgba(183,28,28,0.25)", "#e53935"),
+            }
+            _dbg, _dfg = _dsig_colors.get(_dlg_sig_detail, ("rgba(80,80,80,0.2)", "#ccc"))
+            st.markdown(
+                f"<div style='margin-top:10px;'>"
+                f"<span style='background:{_dbg};color:{_dfg};"
+                f"padding:3px 12px;border-radius:4px;font-size:12px;font-weight:700;"
+                f"border:1px solid {_dfg}40;'>📊 Signal LLM : {_dlg_sig_detail}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+        if _dlg_bull and _dlg_bear and _dlg_bull not in ("[debate skipped]", "[debate unavailable]"):
+            st.markdown("---")
+            st.markdown("**🥊 Débat Bull/Bear**")
+            if _dlg_debate_win:
+                _dw_clr = "#69f0ae" if "BULL" in str(_dlg_debate_win).upper() else ("#e53935" if "BEAR" in str(_dlg_debate_win).upper() else "#ffb74d")
+                st.markdown(
+                    f"<div style='margin-bottom:8px;font-size:12px;'>"
+                    f"Vainqueur : <span style='color:{_dw_clr};font-weight:700;'>{_dlg_debate_win}</span></div>",
+                    unsafe_allow_html=True,
+                )
+            _db_col1, _db_col2 = st.columns(2)
+            with _db_col1:
+                st.markdown("<div style='font-size:11px;font-weight:700;color:#69f0ae;'>🟢 Bull</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='font-size:11px;line-height:1.5;background:rgba(27,94,32,0.1);"
+                    f"padding:6px;border-radius:4px;border-left:3px solid #69f0ae40;'>{_dlg_bull}</div>",
+                    unsafe_allow_html=True,
+                )
+            with _db_col2:
+                st.markdown("<div style='font-size:11px;font-weight:700;color:#e53935;'>🔴 Bear</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='font-size:11px;line-height:1.5;background:rgba(183,28,28,0.1);"
+                    f"padding:6px;border-radius:4px;border-left:3px solid #e5393540;'>{_dlg_bear}</div>",
+                    unsafe_allow_html=True,
+                )
+
 
 
 @st.fragment
@@ -1932,14 +1982,25 @@ def render_trades_list_sortable(trades: list[dict]):
     col_pnl    = t("col_pnl")
     col_score  = t("col_score")
 
+    import json as _json_tr
     rows = []
     for trade in trades:
         pnl    = trade.get("result_24h")
         action = trade.get("action", "")
+        # Extraire signal_detail depuis decision_context
+        _sig_detail = ""
+        _raw_dc = trade.get("decision_context")
+        if _raw_dc:
+            try:
+                _dc = _json_tr.loads(_raw_dc) if isinstance(_raw_dc, str) else _raw_dc
+                _sig_detail = ((_dc.get("agents") or {}).get("synthesis") or {}).get("signal_detail") or ""
+            except Exception:
+                pass
         rows.append({
             col_date:   trade.get("timestamp", "")[:16].replace("T", " "),
             col_asset:  trade.get("asset", "—"),
             col_action: action,
+            "Signal":   _sig_detail,
             col_entry:  trade.get("entry_price"),
             col_size:   trade.get("position_size"),
             "SL":       trade.get("sl_price"),
@@ -1955,6 +2016,14 @@ def render_trades_list_sortable(trades: list[dict]):
         if v == "SELL": return "color: #e74c3c; font-weight: bold"
         return ""
 
+    def _signal_color(v):
+        if v in ("STRONG_BUY",):  return "color: #00e676; font-weight: 700"
+        if v in ("BUY",):         return "color: #69f0ae"
+        if v in ("HOLD",):        return "color: #ffb74d"
+        if v in ("SELL",):        return "color: #ef9a9a"
+        if v in ("STRONG_SELL",): return "color: #e53935; font-weight: 700"
+        return "opacity: 0.4"
+
     def _pnl_color(v):
         try:
             return "color: #2ecc71; font-weight: 600" if float(v) >= 0 else "color: #e74c3c; font-weight: 600"
@@ -1964,6 +2033,7 @@ def render_trades_list_sortable(trades: list[dict]):
     styled = (
         df.style
         .map(_action_color, subset=[col_action])
+        .map(_signal_color, subset=["Signal"])
         .map(_pnl_color, subset=[col_pnl])
     )
 
@@ -2109,6 +2179,76 @@ def render_last_decision(last_cycle: dict | None):
                 f'{"".join(parts)}</div>',
                 unsafe_allow_html=True,
             )
+
+    # ── Débat Bull/Bear + Signal 5-niveaux (si disponibles) ─────────────────
+    import json as _json_ld
+    _ctx_ld: dict = {}
+    _raw_ctx_ld = last_cycle.get("decision_context")
+    if _raw_ctx_ld:
+        try:
+            _ctx_ld = _json_ld.loads(_raw_ctx_ld) if isinstance(_raw_ctx_ld, str) else _raw_ctx_ld
+        except Exception:
+            pass
+    _synth_ld = (_ctx_ld.get("agents") or {}).get("synthesis") or {}
+    _signal_detail_ld = _synth_ld.get("signal_detail")
+    _debate_winner_ld = _synth_ld.get("debate_winner")
+    _bull_arg_ld      = _synth_ld.get("bull_argument")
+    _bear_arg_ld      = _synth_ld.get("bear_argument")
+
+    # Badge signal 5-niveaux
+    if _signal_detail_ld:
+        _sig_colors = {
+            "STRONG_BUY":  ("rgba(27,94,32,0.25)",  "#69f0ae"),
+            "BUY":         ("rgba(27,94,32,0.15)",  "#a5d6a7"),
+            "HOLD":        ("rgba(255,152,0,0.15)", "#ffb74d"),
+            "SELL":        ("rgba(183,28,28,0.15)", "#ef9a9a"),
+            "STRONG_SELL": ("rgba(183,28,28,0.25)", "#e53935"),
+        }
+        _sig_bg, _sig_fg = _sig_colors.get(_signal_detail_ld, ("rgba(80,80,80,0.2)", "#ccc"))
+        st.markdown(
+            f"<div style='margin-top:10px;'>"
+            f"<span style='background:{_sig_bg};color:{_sig_fg};"
+            f"padding:3px 12px;border-radius:4px;font-size:12px;font-weight:700;"
+            f"border:1px solid {_sig_fg}40;'>"
+            f"📊 Signal LLM : {_signal_detail_ld}</span></div>",
+            unsafe_allow_html=True,
+        )
+
+    # Expander débat Bull/Bear
+    if _bull_arg_ld and _bear_arg_ld and _bull_arg_ld not in ("[debate skipped]", "[debate unavailable]"):
+        with st.expander("🥊 Débat Bull/Bear", expanded=False):
+            if _debate_winner_ld:
+                _w_upper = _debate_winner_ld.upper()
+                _w_color = "#69f0ae" if "BULL" in _w_upper else ("#e53935" if "BEAR" in _w_upper else "#ffb74d")
+                st.markdown(
+                    f"<div style='margin-bottom:10px;font-size:13px;'>"
+                    f"<strong>Vainqueur :</strong> "
+                    f"<span style='color:{_w_color};font-weight:700;'>{_debate_winner_ld}</span></div>",
+                    unsafe_allow_html=True,
+                )
+            c_bull_ld, c_bear_ld = st.columns(2)
+            with c_bull_ld:
+                st.markdown(
+                    "<div style='font-size:12px;font-weight:700;color:#69f0ae;margin-bottom:6px;'>🟢 Bull Researcher</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"<div style='font-size:12px;line-height:1.6;background:rgba(27,94,32,0.1);"
+                    f"padding:8px;border-radius:4px;border-left:3px solid #69f0ae40;'>"
+                    f"{_bull_arg_ld}</div>",
+                    unsafe_allow_html=True,
+                )
+            with c_bear_ld:
+                st.markdown(
+                    "<div style='font-size:12px;font-weight:700;color:#e53935;margin-bottom:6px;'>🔴 Bear Researcher</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"<div style='font-size:12px;line-height:1.6;background:rgba(183,28,28,0.1);"
+                    f"padding:8px;border-radius:4px;border-left:3px solid #e5393540;'>"
+                    f"{_bear_arg_ld}</div>",
+                    unsafe_allow_html=True,
+                )
 
 
 _LOGS_PAGE_SIZE = 100
@@ -2520,6 +2660,7 @@ def render_admin_panel():
         (None, None,      "Performance"),
         ('<i class="fas fa-chart-bar"></i>',       "agperf",   "Agents Perf"),
         ('<i class="fas fa-magnifying-glass-chart"></i>', "meta", "Méta-Analyse"),
+        ('<i class="fas fa-brain"></i>',           "memory",   "Mémoire"),
         # ── Système ───────────────────────────────────────────────────────────
         (None, None,      "Système"),
         ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
@@ -3479,6 +3620,112 @@ def render_admin_panel():
 
         except Exception as _ma_exc:
             st.warning(f"Méta-analyse indisponible : {_ma_exc}")
+
+    elif _atab == "memory":  # Mémoire post-trade
+        st.markdown(
+            '<h4><i class="fas fa-brain" style="margin-right:7px;color:#7986cb;"></i>'
+            'Mémoire Post-Trade</h4>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Leçons générées par le LLM après chaque clôture de position "
+            "(pattern détecté, agent à privilégier, etc.)."
+        )
+        try:
+            import json as _mem_json
+            from pathlib import Path as _MemPath
+
+            _mem_file = _MemPath(__file__).parent.parent / "storage" / "trading_memory.json"
+            if not _mem_file.exists():
+                st.info("Aucune leçon enregistrée pour l'instant (le fichier sera créé après le premier trade clôturé).")
+            else:
+                with open(_mem_file, "r", encoding="utf-8") as _mf:
+                    _lessons: list[dict] = _mem_json.load(_mf)
+
+                if not _lessons:
+                    st.info("Le fichier existe mais ne contient aucune leçon.")
+                else:
+                    # Métriques globales
+                    _n_total = len(_lessons)
+                    _winners = [l for l in _lessons if str(l.get("debate_winner", "")).upper() == "BULL"]
+                    _losers  = [l for l in _lessons if str(l.get("pnl", 0) or 0) < "0" or (isinstance(l.get("pnl"), (int, float)) and l.get("pnl", 0) < 0)]
+
+                    c1_m, c2_m, c3_m = st.columns(3)
+                    c1_m.metric("📚 Leçons totales", _n_total)
+                    # Collecte des agents fréquemment cités
+                    _agent_trust_more: dict[str, int] = {}
+                    _agent_trust_less: dict[str, int] = {}
+                    for _l in _lessons:
+                        _atm = _l.get("agent_to_trust_more")
+                        _atl = _l.get("agent_to_trust_less")
+                        if _atm: _agent_trust_more[_atm] = _agent_trust_more.get(_atm, 0) + 1
+                        if _atl: _agent_trust_less[_atl] = _agent_trust_less.get(_atl, 0) + 1
+                    if _agent_trust_more:
+                        _best_agent = max(_agent_trust_more, key=_agent_trust_more.get)
+                        c2_m.metric("🏆 Agent le + fiable", _best_agent, f"+{_agent_trust_more[_best_agent]}×")
+                    if _agent_trust_less:
+                        _worst_agent = max(_agent_trust_less, key=_agent_trust_less.get)
+                        c3_m.metric("⚠️ Agent le - fiable", _worst_agent, f"−{_agent_trust_less[_worst_agent]}×", delta_color="inverse")
+
+                    st.markdown("---")
+
+                    # Filtre
+                    _mem_filter = st.text_input("🔍 Filtrer les leçons", placeholder="ex: BTC, funding, trend…", key="mem_filter")
+
+                    # Affichage des leçons (plus récentes en premier)
+                    _filtered = list(reversed(_lessons))
+                    if _mem_filter:
+                        _mem_filter_lo = _mem_filter.lower()
+                        _filtered = [
+                            l for l in _filtered
+                            if _mem_filter_lo in str(l).lower()
+                        ]
+
+                    st.caption(f"{len(_filtered)} leçon(s) affichée(s)")
+
+                    for _idx_l, _lesson in enumerate(_filtered[:50]):  # max 50 affichées
+                        _ts_l     = (_lesson.get("timestamp") or "")[:16].replace("T", " ")
+                        _asset_l  = _lesson.get("asset", "?")
+                        _pnl_l    = _lesson.get("pnl")
+                        _pnl_str  = f"P&L ${float(_pnl_l):+.2f}" if _pnl_l is not None else ""
+                        _pnl_clr  = "#69f0ae" if _pnl_l and float(_pnl_l) >= 0 else "#e53935"
+                        _pattern  = _lesson.get("pattern_detected", "")
+                        _text_l   = _lesson.get("lesson", "—")
+
+                        _exp_label = f"{_ts_l}  ·  {_asset_l}"
+                        if _pnl_str:
+                            _exp_label += f"  ·  {_pnl_str}"
+                        if _pattern:
+                            _exp_label += f"  ·  🔍 {_pattern[:40]}"
+
+                        with st.expander(_exp_label, expanded=(_idx_l == 0)):
+                            st.markdown(
+                                f"<div style='font-size:13px;line-height:1.6;'>{_text_l}</div>",
+                                unsafe_allow_html=True,
+                            )
+                            _detail_cols = st.columns(3)
+                            _atm_l = _lesson.get("agent_to_trust_more")
+                            _atl_l = _lesson.get("agent_to_trust_less")
+                            _dw_l  = _lesson.get("debate_winner")
+                            if _atm_l:
+                                _detail_cols[0].markdown(
+                                    f"<span style='color:#69f0ae;font-size:11px;'>✅ Faire confiance à : <b>{_atm_l}</b></span>",
+                                    unsafe_allow_html=True,
+                                )
+                            if _atl_l:
+                                _detail_cols[1].markdown(
+                                    f"<span style='color:#e53935;font-size:11px;'>⚠️ Méfiance : <b>{_atl_l}</b></span>",
+                                    unsafe_allow_html=True,
+                                )
+                            if _dw_l:
+                                _dw_clr = "#69f0ae" if "BULL" in str(_dw_l).upper() else ("#e53935" if "BEAR" in str(_dw_l).upper() else "#ffb74d")
+                                _detail_cols[2].markdown(
+                                    f"<span style='color:{_dw_clr};font-size:11px;'>🥊 Débat: <b>{_dw_l}</b></span>",
+                                    unsafe_allow_html=True,
+                                )
+
+        except Exception as _mem_exc:
+            st.warning(f"Mémoire indisponible : {_mem_exc}")
 
     elif _atab == "regime":  # Market Regime
         st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)

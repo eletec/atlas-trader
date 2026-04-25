@@ -270,6 +270,17 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
                 "score":   a.get("score"),
                 "signal":  a.get("signal"),
                 "summary": a.get("summary", "")[:500],  # tronqué à 500 chars
+                # Champs supplémentaires pour la synthèse (débat + signal 5-niveaux)
+                **(
+                    {
+                        "signal_detail": a.get("signal_detail"),
+                        "debate_winner": a.get("debate_winner"),
+                        "bull_argument": (a.get("bull_argument") or "")[:600],
+                        "bear_argument": (a.get("bear_argument") or "")[:600],
+                    }
+                    if name == "synthesis"
+                    else {}
+                ),
             }
             for name, a in agent_analyses.items()
             if isinstance(a, dict)

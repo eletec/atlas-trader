@@ -152,18 +152,20 @@ def _inject_theme_css():
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
         /* Selectbox : menu déroulant — éviter troncature (override inline width Baseweb) */
-        [data-baseweb="popover"] { width: max-content !important; overflow: visible !important; }
-        [data-baseweb="popover"] > div { width: max-content !important; overflow: visible !important; }
-        ul[data-baseweb="menu"] { min-width: 300px !important; width: max-content !important; }
+        [data-baseweb="popover"],
+        [data-baseweb="popover"] > div { min-width: max-content !important; overflow: visible !important; }
+        ul[data-baseweb="menu"] { min-width: max-content !important; overflow: visible !important; }
         ul[data-baseweb="menu"] li,
-        [data-baseweb="option"] {
+        [data-baseweb="option"],
+        [role="option"] {
             white-space: nowrap !important;
             overflow: visible !important;
-            text-overflow: clip !important;
+            text-overflow: unset !important;
             max-width: none !important;
+            width: auto !important;
         }
-        [data-baseweb="option"] > div,
-        [data-baseweb="option"] > div > span { white-space: nowrap !important; overflow: visible !important; max-width: none !important; }
+        [data-baseweb="option"] *,
+        [role="option"] * { white-space: nowrap !important; overflow: visible !important; max-width: none !important; }
     """
 
     _DARK_CSS = """
@@ -231,37 +233,37 @@ def _inject_theme_css():
         [data-baseweb="select"] span,
         [data-baseweb="select"] div { color: #FAFAFA !important; }
         /* Selectbox : menu déroulant — override inline width Baseweb */
-        [data-baseweb="popover"] {
-            width: max-content !important;
-            overflow: visible !important;
-        }
+        [data-baseweb="popover"],
         [data-baseweb="popover"] > div {
-            width: max-content !important;
+            min-width: max-content !important;
             overflow: visible !important;
         }
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
-            min-width: 300px !important;
-            width: max-content !important;
+            min-width: max-content !important;
+            overflow: visible !important;
         }
         ul[data-baseweb="menu"] li,
-        [data-baseweb="option"] {
+        [data-baseweb="option"],
+        [role="option"] {
             background-color: #21262d !important;
             color: #FAFAFA !important;
             white-space: nowrap !important;
             overflow: visible !important;
-            text-overflow: clip !important;
+            text-overflow: unset !important;
             max-width: none !important;
+            width: auto !important;
         }
-        [data-baseweb="option"] > div,
-        [data-baseweb="option"] > div > span {
+        [data-baseweb="option"] *,
+        [role="option"] * {
             white-space: nowrap !important;
             overflow: visible !important;
             max-width: none !important;
         }
         ul[data-baseweb="menu"] li:hover,
-        [data-baseweb="option"]:hover {
+        [data-baseweb="option"]:hover,
+        [role="option"]:hover {
             background-color: #30363d !important;
         }
         /* Slider labels */

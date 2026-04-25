@@ -339,28 +339,42 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
     setPad(c);
   }});
 
-  /* ── Fix BaseWeb dropdown width — supprime le width inline injecte par JS ── */
+  /* ── Fix BaseWeb dropdown width — supprime le width inline injecte par useEffect ── */
   if (!p._atlasDropMo) {{
+    /* Fixe un popover : supprime width + observe les reecritures ulterieures */
     function _atlasFixPop(el) {{
-      /* Seulement les popovers qui contiennent un menu select */
-      if (!el.querySelector('ul[data-baseweb="menu"]')) return;
       el.style.removeProperty('width');
       el.style.minWidth = 'max-content';
-      /* Observer les reeecritures ulterieures de l\'attribut style */
-      new p.MutationObserver(function() {{
-        if (el.style.width && el.style.width !== 'auto') {{
-          el.style.removeProperty('width');
-          el.style.minWidth = 'max-content';
-        }}
-      }}).observe(el, {{ attributes: true, attributeFilter: ['style'] }});
+      if (!el._atlasWatched) {{
+        el._atlasWatched = true;
+        new p.MutationObserver(function() {{
+          if (el.style.width) {{
+            el.style.removeProperty('width');
+            el.style.minWidth = 'max-content';
+          }}
+        }}).observe(el, {{ attributes: true, attributeFilter: ['style'] }});
+      }}
     }}
     p._atlasDropMo = new p.MutationObserver(function(muts) {{
       muts.forEach(function(m) {{
-        m.addedNodes.forEach(function(n) {{
-          if (!n.querySelectorAll) return;
-          var pops = (n.getAttribute && n.getAttribute('data-baseweb') === 'popover')
-            ? [n] : Array.prototype.slice.call(n.querySelectorAll('[data-baseweb="popover"]'));
-          pops.forEach(_atlasFixPop);
+        m.addedNodes.forEach(function(node) {{
+          if (!node.querySelectorAll) return;
+          /* Cas 1 : le popover lui-meme est ajoute */
+          if (node.getAttribute && node.getAttribute('data-baseweb') === 'popover') {{
+            _atlasFixPop(node);
+          }}
+          /* Cas 1b : popover comme descendant */
+          Array.prototype.slice.call(
+            node.querySelectorAll('[data-baseweb="popover"]')
+          ).forEach(_atlasFixPop);
+          /* Cas 2 : le menu est ajoute dans un popover deja existant (rendu differe) */
+          var menus = node.getAttribute && node.getAttribute('data-baseweb') === 'menu'
+            ? [node]
+            : Array.prototype.slice.call(node.querySelectorAll('ul[data-baseweb="menu"]'));
+          menus.forEach(function(menu) {{
+            var pop = menu.closest ? menu.closest('[data-baseweb="popover"]') : null;
+            if (pop) _atlasFixPop(pop);
+          }});
         }});
       }});
     }});

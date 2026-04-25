@@ -458,9 +458,7 @@ div[data-radix-popper-content-wrapper] *,
 
 /* ── Bouton icône ? — sélecteurs Streamlit connus ── */
 button[data-testid="stTooltipHoverTarget"],
-button[data-testid="stTooltipIcon"],
-[data-testid="stTooltipHoverTarget"],
-[data-testid="stTooltipIcon"] {{
+button[data-testid="stTooltipIcon"] {{
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -479,18 +477,14 @@ button[data-testid="stTooltipIcon"],
     opacity: 1 !important;
 }}
 button[data-testid="stTooltipHoverTarget"]:hover,
-button[data-testid="stTooltipIcon"]:hover,
-[data-testid="stTooltipHoverTarget"]:hover,
-[data-testid="stTooltipIcon"]:hover {{
+button[data-testid="stTooltipIcon"]:hover {{
     background: {_t_icon_bg_h} !important;
     border-color: {_t_icon_fg_h} !important;
     color: {_t_icon_fg_h} !important;
 }}
 /* SVG — taille 16px, couleur héritée du bouton */
 button[data-testid="stTooltipHoverTarget"] svg,
-button[data-testid="stTooltipIcon"] svg,
-[data-testid="stTooltipHoverTarget"] svg,
-[data-testid="stTooltipIcon"] svg {{
+button[data-testid="stTooltipIcon"] svg {{
     width: 16px !important;
     height: 16px !important;
     overflow: visible !important;
@@ -499,20 +493,14 @@ button[data-testid="stTooltipIcon"] svg,
 /* Masquer le <circle> intégré au SVG — le bouton joue déjà le rôle du cercle.
    Sans cela, le SVG stroke-based dessine un 2e cercle par-dessus le rond CSS. */
 button[data-testid="stTooltipHoverTarget"] svg circle,
-button[data-testid="stTooltipIcon"] svg circle,
-[data-testid="stTooltipHoverTarget"] svg circle,
-[data-testid="stTooltipIcon"] svg circle {{
+button[data-testid="stTooltipIcon"] svg circle {{
     display: none !important;
 }}
 /* Forcer la couleur du glyphe ? (path + point) — stroke ET fill pour les 2 variantes */
 button[data-testid="stTooltipHoverTarget"] svg path,
 button[data-testid="stTooltipIcon"] svg path,
-[data-testid="stTooltipHoverTarget"] svg path,
-[data-testid="stTooltipIcon"] svg path,
 button[data-testid="stTooltipHoverTarget"] svg line,
-button[data-testid="stTooltipIcon"] svg line,
-[data-testid="stTooltipHoverTarget"] svg line,
-[data-testid="stTooltipIcon"] svg line {{
+button[data-testid="stTooltipIcon"] svg line {{
     stroke: currentColor !important;
     fill: none !important;
 }}

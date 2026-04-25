@@ -2537,25 +2537,39 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
+        # ── Sources & Données ────────────────────────────────────────────────
+        (None, None,      "Sources & Données"),
         ("⚙",  "llm",      t("tab_llm")),
         ("⛏",  "crawler",  t("tab_crawler")),
         ("◈",  "news",     t("tab_news")),
         ("⊛",  "sources",  t("tab_sources")),
+        # ── Modèles & Agents ─────────────────────────────────────────────────
+        (None, None,      "Modèles & Agents"),
         ("◇",  "mirofish", t("tab_mirofish")),
-        ("⚖",  "risk",     t("tab_risk")),
         ("⬡",  "agents",   t("tab_agents")),
-        ("≡",  "logging",  t("tab_logging")),
-        ("⏱",  "timesfm",  t("tab_timesfm")),
         ("🔮", "kronos",   t("tab_kronos")),
+        ("⏱",  "timesfm",  t("tab_timesfm")),
+        # ── Marché & Risque ───────────────────────────────────────────────────
+        (None, None,      "Marché & Risque"),
+        ("⚖",  "risk",     t("tab_risk")),
+        ("⊞",  "regime",   t("tab_market_regime")),
+        # ── Performance & Analyse ─────────────────────────────────────────────
+        (None, None,      "Performance"),
         ("📊", "agperf",   "Agents Perf"),
         ("🔍", "meta",     "Méta-Analyse"),
-        ("⊞",  "regime",   t("tab_market_regime")),
+        # ── Système ───────────────────────────────────────────────────────────
+        (None, None,      "Système"),
         ("⇄",  "flux",     t("tab_flux")),
+        ("≡",  "logging",  t("tab_logging")),
         ("👤", "users",    t("tab_users")),
         ("🌐", "peractif", "Par Actif"),
     ]
-    _admin_keys = [s[1] for s in _ADMIN_SECTIONS]
-    _admin_items = [{"key": s[1], "icon": s[0], "text": s[2]} for s in _ADMIN_SECTIONS]
+    _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
+    _admin_items = [
+        {"section": s[2]} if s[1] is None
+        else {"key": s[1], "icon": s[0], "text": s[2]}
+        for s in _ADMIN_SECTIONS
+    ]
     _atab = st.query_params.get("_atab", "llm")
     if _atab not in _admin_keys:
         _atab = "llm"

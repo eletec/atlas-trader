@@ -309,8 +309,10 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
 
   nav.innerHTML =
     '<div id="ant" title="Réduire / Agrandir">&#9776;</div>' +
-    '<div class="ans">Actifs</div>' +
     ITEMS.map(function(it) {{
+      if (it.section) {{
+        return '<div class="ans">' + it.section + '</div>';
+      }}
       var cls = 'ani' + (it.key === ACTIVE ? ' a' : '');
       return '<a class="' + cls + '" href="' + navUrl(it.key) + '" title="' + it.text + '">' +
              '<span class="ani-ic">' + it.icon + '</span>' +

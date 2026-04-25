@@ -151,10 +151,11 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Selectbox : menu déroulant — éviter troncature (override inline width Baseweb) */
-        [data-baseweb="popover"],
-        [data-baseweb="popover"] > div { min-width: max-content !important; }
-        ul[data-baseweb="menu"] { min-width: max-content !important; }
+        /* Selectbox dropdown — casse le width inline injecté par BaseWeb JS */
+        [data-baseweb="popover"] { width: auto !important; max-width: 95vw !important; }
+        [data-baseweb="popover"] > div,
+        [data-baseweb="popover"] > div > div { width: auto !important; min-width: max-content !important; }
+        ul[data-baseweb="menu"] { width: max-content !important; min-width: 100% !important; }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"],
         [role="option"] {
@@ -229,15 +230,15 @@ def _inject_theme_css():
         }
         [data-baseweb="select"] span,
         [data-baseweb="select"] div { color: #FAFAFA !important; }
-        /* Selectbox : menu déroulant — override inline width Baseweb */
-        [data-baseweb="popover"],
-        [data-baseweb="popover"] > div {
-            min-width: max-content !important;
-        }
+        /* Selectbox dropdown — casse le width inline injecté par BaseWeb JS */
+        [data-baseweb="popover"] { width: auto !important; max-width: 95vw !important; }
+        [data-baseweb="popover"] > div,
+        [data-baseweb="popover"] > div > div { width: auto !important; min-width: max-content !important; }
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
-            min-width: max-content !important;
+            width: max-content !important;
+            min-width: 100% !important;
         }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"],

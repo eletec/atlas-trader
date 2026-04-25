@@ -88,12 +88,19 @@ class SynthesisAgent:
             return None
 
     def synthesize(self, state: dict) -> dict:
-        """Génère la synthèse complète depuis l'état LangGraph."""
+        """Génère la synthèse complète depuis l'état LangGraph.
+        Utilise un débat Bull/Bear avant la synthèse finale (inspiré TradingAgents).
+        """
         if self._llm is None:
             return self._fallback_synthesis(state)
 
-        prompt = self._build_prompt(state)
         try:
+            # ── 1. Débat Bull/Bear en parallèle ─────────────────────────────────
+            bull_arg, bear_arg = self._run_debate(state)
+
+            # ── 2. Synthèse finale avec les arguments du débat ───────────────────
+            prompt = self._build_prompt(state, bull_arg, bear_arg)
+
             from langchain_core.messages import HumanMessage, SystemMessage
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
             import yaml
@@ -106,20 +113,14 @@ class SynthesisAgent:
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=prompt),
             ]
-            # Timeout global sur l'appel LLM (en plus du timeout réseau du client)
-            # IMPORTANT: ne PAS utiliser "with ThreadPoolExecutor" — son __exit__ appelle
-            # shutdown(wait=True) même après un return/exception, ce qui bloque indéfiniment
-            # si le thread LLM est encore en attente réseau.
-            _hard_timeout = 90  # secondes
-            from utils.config import load_settings as _ls2
-            _hard_timeout = int(_ls2().get("llm", {}).get("request_timeout_seconds", 60)) + 30
+            _hard_timeout = int(self._get_settings().get("llm", {}).get("request_timeout_seconds", 60)) + 30
             _pool = ThreadPoolExecutor(max_workers=1)
             _fut = _pool.submit(self._llm.invoke, messages)
             try:
                 response = _fut.result(timeout=_hard_timeout)
             except FuturesTimeout:
                 logger.error(f"SynthesisAgent LLM timeout ({_hard_timeout}s) — fallback")
-                _pool.shutdown(wait=False)  # abandon le thread, ne pas bloquer
+                _pool.shutdown(wait=False)
                 return self._fallback_synthesis(state)
             except Exception:
                 _pool.shutdown(wait=False)
@@ -130,9 +131,7 @@ class SynthesisAgent:
                      response.usage_metadata.get("output_tokens", 0) \
                      if hasattr(response, "usage_metadata") else 0
 
-            # Parse JSON de la réponse
             try:
-                # Extraire le JSON s'il est dans des balises ```
                 if "```json" in content:
                     content = content.split("```json")[1].split("```")[0].strip()
                 elif "```" in content:
@@ -142,25 +141,100 @@ class SynthesisAgent:
                 logger.warning("Impossible de parser le JSON de la synthèse")
                 parsed = {"score_global": 50, "resume_court": content[:200]}
 
+            # Mapper le signal 5-niveaux vers la décision moteur
+            signal_raw = parsed.get("signal", "HOLD")
+            signal_mapped = self._map_signal(signal_raw)
+
             return {
                 "agent_name": "synthesis",
                 "score": float(parsed.get("score_global", 50)),
-                "signal": parsed.get("signal", "NEUTRAL"),
+                "signal": signal_mapped,
+                "signal_detail": signal_raw,
                 "summary": parsed.get("resume_court", ""),
                 "explanation_complete": parsed.get("explication_complete", ""),
                 "risks": parsed.get("risques_identifies", []),
                 "catalysts": parsed.get("catalyseurs_potentiels", []),
                 "confidence": 0.8,
                 "tokens_used": tokens,
+                "debate_winner": parsed.get("debate_winner", "NEUTRAL"),
+                "bull_argument": bull_arg,
+                "bear_argument": bear_arg,
             }
         except Exception as exc:
             logger.error(f"SynthesisAgent LLM error: {exc}")
             return self._fallback_synthesis(state)
 
-    def _build_prompt(self, state: dict) -> str:
-        """Construit le prompt de synthèse depuis l'état."""
+    @staticmethod
+    def _map_signal(signal_raw: str) -> str:
+        """Convertit le signal 5-niveaux vers BUY/SELL/HOLD pour le moteur."""
+        mapping = {
+            "STRONG_BUY": "BUY", "BUY": "BUY",
+            "STRONG_SELL": "SELL", "SELL": "SELL",
+            "HOLD": "NEUTRAL",
+            # rétrocompat
+            "BULLISH": "BUY", "BEARISH": "SELL", "NEUTRAL": "NEUTRAL",
+        }
+        return mapping.get(signal_raw.upper(), "NEUTRAL")
+
+    def _run_debate(self, state: dict) -> tuple[str, str]:
+        """Lance Bull et Bear en parallèle, retourne (bull_arg, bear_arg)."""
+        import yaml
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        try:
+            with open("config/prompts.yaml", "r", encoding="utf-8") as f:
+                prompts = yaml.safe_load(f)
+        except Exception:
+            prompts = {}
+
+        base_prompt = self._build_base_prompt(state)
+        timeout = int(self._get_settings().get("llm", {}).get("request_timeout_seconds", 60))
+
+        def _call(role_key: str) -> str:
+            sys_p = prompts.get(role_key, f"You are a {role_key}.")
+            try:
+                resp = self._llm.invoke([
+                    SystemMessage(content=sys_p),
+                    HumanMessage(content=base_prompt),
+                ])
+                return resp.content[:600]  # limiter la taille
+            except Exception as e:
+                return f"[{role_key} unavailable: {e}]"
+
+        bull_arg = bear_arg = "[debate skipped]"
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                f_bull = pool.submit(_call, "bull_researcher")
+                f_bear = pool.submit(_call, "bear_researcher")
+                bull_arg = f_bull.result(timeout=timeout)
+                bear_arg = f_bear.result(timeout=timeout)
+        except Exception as e:
+            logger.warning(f"Debate skipped: {e}")
+
+        logger.debug(f"Bull: {bull_arg[:80]}... Bear: {bear_arg[:80]}...")
+        return bull_arg, bear_arg
+
+    def _get_settings(self) -> dict:
         from utils.config import load_settings
-        _risk = load_settings().get("risk", {})
+        return load_settings()
+
+
+    def _build_prompt(self, state: dict, bull_arg: str = "", bear_arg: str = "") -> str:
+        """Construit le prompt de synthèse depuis l'état + les arguments du débat."""
+        base = self._build_base_prompt(state)
+        debate_section = ""
+        if bull_arg and bear_arg:
+            debate_section = (
+                f"\n\n--- BULL RESEARCHER ---\n{bull_arg}"
+                f"\n\n--- BEAR RESEARCHER ---\n{bear_arg}"
+                f"\n\nAdjudicate the debate above. Weigh both arguments against the data."
+            )
+        return base + debate_section + "\n\nGenerate the synthesis in the requested JSON format."
+
+    def _build_base_prompt(self, state: dict) -> str:
+        """Construit la section données brutes du prompt."""
+        _risk = self._get_settings().get("risk", {})
         buy_threshold = float(_risk.get("buy_threshold", 62))
         exit_threshold = float(_risk.get("exit_threshold", 52))
 
@@ -191,9 +265,9 @@ class SynthesisAgent:
         if adt:
             parts.append(f"**Air du Temps** : {adt.get('full_text', '')[:500]}")
 
-        return "\n".join(parts) + "\n\nGenerate the synthesis in the requested JSON format."
+        return "\n".join(parts)
 
-    def _fallback_synthesis(self, state: dict) -> dict:
+(self, state: dict) -> dict:
         """Synthèse déterministe sans LLM."""
         analyses = state.get("agent_analyses", {})
         scores = [v.get("score", 50) for v in analyses.values() if isinstance(v, dict)]

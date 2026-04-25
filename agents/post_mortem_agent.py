@@ -113,8 +113,155 @@ class PostMortemAgent:
                 f"Post-mortem {cycle_id}: {action} entry={entry_price:.2f} "
                 f"current={current_price:.2f} P&L={pnl:.2f}$"
             )
+
+            # ── Réflexion LLM sur la décision (inspiré TradingAgents memory loop) ──
+            if pnl != 0.0:
+                # Enrichir la décision avec le contexte stocké
+                import json as _json_local
+                ctx_raw = decision.get("decision_context")
+                ctx = {}
+                if ctx_raw:
+                    try:
+                        ctx = _json_local.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
+                    except Exception:
+                        pass
+                enriched = dict(decision)
+                enriched["agent_scores"] = {
+                    k: v.get("score", 50) for k, v in ctx.get("agents", {}).items()
+                }
+                enriched["debate_winner"] = ctx.get("synthesis", {}).get("debate_winner", "N/A")
+                enriched["score"] = ctx.get("decision", {}).get("score", decision.get("score", 50))
+                self._llm_reflect(enriched, round(pnl, 2), price_change_pct)
+
         except Exception as exc:
             logger.error(f"Post-mortem error for decision {decision.get('cycle_id')}: {exc}")
+
+    def _llm_reflect(self, decision: dict, pnl: float, price_change_pct: float) -> None:
+        """Génère une leçon LLM sur la décision et la persiste en mémoire."""
+        try:
+            from utils.config import load_settings, get_env
+            import yaml, json as _json
+
+            cfg = load_settings()
+            llm_cfg = cfg.get("llm", {})
+            provider = llm_cfg.get("provider", "anthropic")
+
+            with open("config/prompts.yaml", "r", encoding="utf-8") as f:
+                prompts = yaml.safe_load(f)
+            sys_prompt = prompts.get("post_mortem_reflection", "You are a trading analyst.")
+
+            outcome = "PROFIT" if pnl > 0 else "LOSS"
+            agent_scores = decision.get("agent_scores", {})
+            scores_str = " | ".join(
+                f"{k}={v:.0f}" for k, v in agent_scores.items()
+            ) if agent_scores else "N/A"
+
+            user_prompt = (
+                f"Decision: {decision.get('action')} {decision.get('asset')} "
+                f"@ {decision.get('entry_price', 0):.2f}\n"
+                f"Synthesis score: {decision.get('score', 50):.0f}\n"
+                f"Agent scores: {scores_str}\n"
+                f"Outcome: {outcome} ({price_change_pct*100:+.2f}%) P&L={pnl:+.2f}$\n"
+                f"Debate winner at decision time: {decision.get('debate_winner', 'N/A')}"
+            )
+
+            # Construire le LLM (réutilise la même factory que SynthesisAgent)
+            timeout_s = int(llm_cfg.get("request_timeout_seconds", 60))
+            llm = None
+            try:
+                if provider == "deepseek":
+                    from langchain_openai import ChatOpenAI
+                    llm = ChatOpenAI(
+                        model=llm_cfg.get("model", "deepseek-chat"),
+                        temperature=0.2, max_tokens=512,
+                        openai_api_key=get_env("DEEPSEEK_API_KEY"),
+                        openai_api_base="https://api.deepseek.com",
+                        request_timeout=timeout_s,
+                    )
+                elif provider == "xai":
+                    from langchain_openai import ChatOpenAI
+                    llm = ChatOpenAI(
+                        model=llm_cfg.get("model", "grok-beta"),
+                        temperature=0.2, max_tokens=512,
+                        openai_api_key=get_env("XAI_API_KEY"),
+                        openai_api_base="https://api.x.ai/v1",
+                        request_timeout=timeout_s,
+                    )
+                elif provider == "ollama":
+                    from langchain_openai import ChatOpenAI
+                    base_url = get_env("OLLAMA_BASE_URL", required=False, default="http://localhost:11434/v1")
+                    llm = ChatOpenAI(
+                        model=llm_cfg.get("model", "nemotron"),
+                        temperature=0.2, max_tokens=512,
+                        openai_api_key="ollama",
+                        openai_api_base=base_url,
+                        request_timeout=timeout_s,
+                    )
+                else:  # anthropic
+                    from langchain_anthropic import ChatAnthropic
+                    llm = ChatAnthropic(
+                        model=llm_cfg.get("model", "claude-3-5-haiku-20241022"),
+                        temperature=0.2, max_tokens=512,
+                        api_key=get_env("ANTHROPIC_API_KEY"),
+                        timeout=timeout_s,
+                    )
+            except Exception as init_exc:
+                logger.debug(f"LLM reflect init failed: {init_exc}")
+                return
+
+            from langchain_core.messages import HumanMessage, SystemMessage
+            response = llm.invoke([
+                SystemMessage(content=sys_prompt),
+                HumanMessage(content=user_prompt),
+            ])
+            content = response.content
+            try:
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0].strip()
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0].strip()
+                reflection = _json.loads(content)
+            except Exception:
+                reflection = {"lesson": content[:200]}
+
+            # Persister la réflexion
+            self._save_reflection(decision, pnl, reflection)
+            logger.info(
+                f"[Reflection] {decision.get('asset')} {outcome}: {reflection.get('lesson', '')[:100]}"
+            )
+        except Exception as exc:
+            logger.debug(f"LLM reflection skipped: {exc}")
+
+    def _save_reflection(self, decision: dict, pnl: float, reflection: dict) -> None:
+        """Sauvegarde la réflexion dans le fichier mémoire des leçons."""
+        import json as _json
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        memory_path = Path(__file__).resolve().parent.parent / "storage" / "trading_memory.json"
+        try:
+            if memory_path.exists():
+                with open(memory_path, "r", encoding="utf-8") as f:
+                    memory = _json.load(f)
+            else:
+                memory = {"lessons": []}
+
+            memory.setdefault("lessons", []).append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "asset": decision.get("asset"),
+                "action": decision.get("action"),
+                "score": decision.get("score"),
+                "pnl": pnl,
+                "debate_winner": decision.get("debate_winner"),
+                **reflection,
+            })
+            # Garder les 200 dernières leçons
+            memory["lessons"] = memory["lessons"][-200:]
+
+            with open(memory_path, "w", encoding="utf-8") as f:
+                _json.dump(memory, f, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            logger.debug(f"Reflection save failed: {exc}")
 
     def _get_current_price(self, asset: str) -> float:
         """Recupere le prix actuel via CCXT."""

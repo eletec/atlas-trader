@@ -151,15 +151,11 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Selectbox dropdown — élargit le menu sans toucher le popover wrapper */
+        /* Selectbox dropdown — couleurs uniquement, la largeur est geree par MutationObserver JS */
         ul[data-baseweb="menu"] { min-width: max-content !important; }
         ul[data-baseweb="menu"] li,
-        [data-baseweb="option"],
-        [role="option"] {
+        [data-baseweb="option"] {
             white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            max-width: none !important;
         }
     """
 
@@ -227,25 +223,20 @@ def _inject_theme_css():
         }
         [data-baseweb="select"] span,
         [data-baseweb="select"] div { color: #FAFAFA !important; }
-        /* Selectbox dropdown — élargit le menu sans toucher le popover wrapper */
+        /* Selectbox dropdown — couleurs uniquement, la largeur est geree par MutationObserver JS */
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
             min-width: max-content !important;
         }
         ul[data-baseweb="menu"] li,
-        [data-baseweb="option"],
-        [role="option"] {
+        [data-baseweb="option"] {
             background-color: #21262d !important;
             color: #FAFAFA !important;
             white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-            max-width: none !important;
         }
         ul[data-baseweb="menu"] li:hover,
-        [data-baseweb="option"]:hover,
-        [role="option"]:hover {
+        [data-baseweb="option"]:hover {
             background-color: #30363d !important;
         }
         /* Slider labels */

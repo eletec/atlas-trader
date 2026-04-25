@@ -338,6 +338,34 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
     p.localStorage.setItem('atlas_nav_c', c ? '1' : '0');
     setPad(c);
   }});
+
+  /* ── Fix BaseWeb dropdown width — supprime le width inline injecte par JS ── */
+  if (!p._atlasDropMo) {{
+    function _atlasFixPop(el) {{
+      /* Seulement les popovers qui contiennent un menu select */
+      if (!el.querySelector('ul[data-baseweb="menu"]')) return;
+      el.style.removeProperty('width');
+      el.style.minWidth = 'max-content';
+      /* Observer les reeecritures ulterieures de l\'attribut style */
+      new p.MutationObserver(function() {{
+        if (el.style.width && el.style.width !== 'auto') {{
+          el.style.removeProperty('width');
+          el.style.minWidth = 'max-content';
+        }}
+      }}).observe(el, {{ attributes: true, attributeFilter: ['style'] }});
+    }}
+    p._atlasDropMo = new p.MutationObserver(function(muts) {{
+      muts.forEach(function(m) {{
+        m.addedNodes.forEach(function(n) {{
+          if (!n.querySelectorAll) return;
+          var pops = (n.getAttribute && n.getAttribute('data-baseweb') === 'popover')
+            ? [n] : Array.prototype.slice.call(n.querySelectorAll('[data-baseweb="popover"]'));
+          pops.forEach(_atlasFixPop);
+        }});
+      }});
+    }});
+    p._atlasDropMo.observe(d.body, {{ childList: true, subtree: true }});
+  }}
 }})();
 </script>""", height=0, scrolling=False)
 

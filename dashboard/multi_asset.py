@@ -279,18 +279,18 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
       'border-right:1px solid rgba(255,255,255,.12);' +
       'transition:width .2s ease;overflow:hidden;box-sizing:border-box;}}' +
       '#atlas-sidenav.c{{width:' + MINI + 'px;}}' +
-      '#ant{{display:flex;align-items:center;justify-content:flex-end;height:42px;' +
-      'padding:0 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.07);' +
-      'color:rgba(255,255,255,.5);font-size:19px;user-select:none;flex-shrink:0;}}' +
+      '#ant{{display:flex;align-items:center;justify-content:flex-end;height:34px;' +
+      'padding:0 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.07);' +
+      'color:rgba(255,255,255,.5);font-size:17px;user-select:none;flex-shrink:0;}}' +
       '#atlas-sidenav.c #ant{{justify-content:center;padding:0;}}' +
-      '.ans{{font-size:9px;font-weight:700;letter-spacing:1.5px;opacity:.35;' +
-      'text-transform:uppercase;padding:10px 12px 3px;color:#fff;white-space:nowrap;flex-shrink:0;}}' +
+      '.ans{{font-size:8px;font-weight:700;letter-spacing:1.5px;opacity:.35;' +
+      'text-transform:uppercase;padding:6px 12px 1px;color:#fff;white-space:nowrap;flex-shrink:0;}}' +
       '#atlas-sidenav.c .ans{{display:none;}}' +
-      '.ani{{display:flex;align-items:center;gap:8px;padding:7px 10px;text-decoration:none;' +
-      'color:rgba(255,255,255,.75);font-size:13px;' +
+      '.ani{{display:flex;align-items:center;gap:7px;padding:4px 8px;text-decoration:none;' +
+      'color:rgba(255,255,255,.75);font-size:12px;' +
       'font-family:-apple-system,BlinkMacSystemFont,sans-serif;' +
-      'border-radius:6px;margin:1px 4px;white-space:nowrap;transition:background .15s;}}' +
-      '#atlas-sidenav.c .ani{{justify-content:center;padding:8px 0;margin:1px 0;border-radius:0;}}' +
+      'border-radius:5px;margin:0 4px;white-space:nowrap;transition:background .15s;}}' +
+      '#atlas-sidenav.c .ani{{justify-content:center;padding:6px 0;margin:0;border-radius:0;}}' +
       '.ani:hover{{background:rgba(255,255,255,.08);color:#fff;}}' +
       '.ani.a{{background:rgba(255,75,75,.22);font-weight:600;color:#fff;}}' +
       '.ani-ic{{font-size:17px;min-width:24px;text-align:center;flex-shrink:0;line-height:1;}}' +

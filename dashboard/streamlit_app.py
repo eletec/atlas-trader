@@ -2549,7 +2549,7 @@ def render_admin_panel():
         (None, None,      "Modèles & Agents"),
         ("◇",  "mirofish", t("tab_mirofish")),
         ("⬡",  "agents",   t("tab_agents")),
-        ("🔮", "kronos",   t("tab_kronos")),
+        ("◉",  "kronos",   t("tab_kronos")),
         ("⏱",  "timesfm",  t("tab_timesfm")),
         # ── Marché & Risque ───────────────────────────────────────────────────
         (None, None,      "Marché & Risque"),
@@ -2557,14 +2557,14 @@ def render_admin_panel():
         ("⊞",  "regime",   t("tab_market_regime")),
         # ── Performance & Analyse ─────────────────────────────────────────────
         (None, None,      "Performance"),
-        ("📊", "agperf",   "Agents Perf"),
-        ("🔍", "meta",     "Méta-Analyse"),
+        ("▦",  "agperf",   "Agents Perf"),
+        ("⊚",  "meta",     "Méta-Analyse"),
         # ── Système ───────────────────────────────────────────────────────────
         (None, None,      "Système"),
         ("⇄",  "flux",     t("tab_flux")),
         ("≡",  "logging",  t("tab_logging")),
-        ("👤", "users",    t("tab_users")),
-        ("🌐", "peractif", "Par Actif"),
+        ("⊙",  "users",    t("tab_users")),
+        ("⊕",  "peractif", "Par Actif"),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [

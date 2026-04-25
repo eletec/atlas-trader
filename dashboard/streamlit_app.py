@@ -151,8 +151,8 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Selectbox dropdown — couleurs uniquement, la largeur est geree par MutationObserver JS */
-        ul[data-baseweb="menu"] { min-width: max-content !important; }
+        /* Selectbox dropdown — min-width !important bat le style inline injecte par BaseWeb */
+        [data-baseweb="popover"] { min-width: max-content !important; }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"] {
             white-space: nowrap !important;
@@ -223,11 +223,11 @@ def _inject_theme_css():
         }
         [data-baseweb="select"] span,
         [data-baseweb="select"] div { color: #FAFAFA !important; }
-        /* Selectbox dropdown — couleurs uniquement, la largeur est geree par MutationObserver JS */
+        /* Selectbox dropdown — min-width !important bat le style inline injecte par BaseWeb */
+        [data-baseweb="popover"] { min-width: max-content !important; }
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
-            min-width: max-content !important;
         }
         ul[data-baseweb="menu"] li,
         [data-baseweb="option"] {

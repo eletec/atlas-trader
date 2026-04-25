@@ -414,45 +414,51 @@ def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
             unsafe_allow_html=True
         )
 
-        cols = st.columns(len(fluxes_in_cat))
-        for col, (flux_name, flux_def) in zip(cols, fluxes_in_cat):
-            with col:
-                status_info = statuses.get(flux_name, {})
-                stat_info = stats.get(flux_name, {})
-                status = status_info.get("status", "unknown")
-                enabled = is_flux_enabled(flux_name, settings)
+        _MAX_COLS = 4
+        _chunks = [
+            fluxes_in_cat[i:i + _MAX_COLS]
+            for i in range(0, len(fluxes_in_cat), _MAX_COLS)
+        ]
+        for _chunk in _chunks:
+            cols = st.columns(_MAX_COLS)
+            for col, (flux_name, flux_def) in zip(cols, _chunk):
+                with col:
+                    status_info = statuses.get(flux_name, {})
+                    stat_info = stats.get(flux_name, {})
+                    status = status_info.get("status", "unknown")
+                    enabled = is_flux_enabled(flux_name, settings)
 
-                if not enabled:
-                    status = "disabled"
+                    if not enabled:
+                        status = "disabled"
 
-                icon = STATUS_ICONS.get(status, "⚪")
-                latency = status_info.get("latency_ms", 0)
-                sla = flux_def["sla_latency_ms"]
-                last_ts = status_info.get("timestamp", "—")
-                if last_ts and last_ts != "—":
-                    try:
-                        dt = datetime.fromisoformat(str(last_ts))
-                        ago = int((datetime.utcnow() - dt).total_seconds())
-                        last_ts = f"{ago}s ago" if ago < 3600 else f"{ago//3600}h ago"
-                    except Exception:
-                        pass
+                    icon = STATUS_ICONS.get(status, "⚪")
+                    latency = status_info.get("latency_ms", 0)
+                    sla = flux_def["sla_latency_ms"]
+                    last_ts = status_info.get("timestamp", "—")
+                    if last_ts and last_ts != "—":
+                        try:
+                            dt = datetime.fromisoformat(str(last_ts))
+                            ago = int((datetime.utcnow() - dt).total_seconds())
+                            last_ts = f"{ago}s ago" if ago < 3600 else f"{ago//3600}h ago"
+                        except Exception:
+                            pass
 
-                err_rate = stat_info.get("error_rate_pct", 0)
-                latency_color = "normal" if latency <= sla else "inverse"
+                    err_rate = stat_info.get("error_rate_pct", 0)
+                    latency_color = "normal" if latency <= sla else "inverse"
 
-                with st.container(border=True):
-                    st.markdown(f"**{icon} {flux_def['label']}**")
-                    st.caption(t(f"flux_desc_{flux_name}"))
-                    st.metric(t("flux_latency"), f"{latency}ms", delta=None,
-                              delta_color=latency_color)
-                    c1, c2 = st.columns(2)
-                    c1.metric(t("flux_errors"), f"{err_rate}%")
-                    c2.metric("Items/h", f"{stat_info.get('total_items', 0)}")
-                    st.caption(t("flux_last_call").format(ts=last_ts))
+                    with st.container(border=True):
+                        st.markdown(f"**{icon} {flux_def['label']}**")
+                        st.caption(t(f"flux_desc_{flux_name}"))
+                        st.metric(t("flux_latency"), f"{latency}ms", delta=None,
+                                  delta_color=latency_color)
+                        c1, c2 = st.columns(2)
+                        c1.metric(t("flux_errors"), f"{err_rate}%")
+                        c2.metric("Items/h", f"{stat_info.get('total_items', 0)}")
+                        st.caption(t("flux_last_call").format(ts=last_ts))
 
-                    if status == "error" and status_info.get("error_message"):
-                        st.error(f"⚠️ {status_info['error_message'][:80]}",
-                                 icon="🚨")
+                        if status == "error" and status_info.get("error_message"):
+                            st.error(f"⚠️ {status_info['error_message'][:80]}",
+                                     icon="🚨")
 
 
 def render_controls(settings: dict) -> dict | None:

@@ -2529,30 +2529,30 @@ def render_admin_panel():
     _ADMIN_SECTIONS = [
         # ── Sources & Données ────────────────────────────────────────────────
         (None, None,      "Sources & Données"),
-        ("⚙",  "llm",      t("tab_llm")),
-        ("⛏",  "crawler",  t("tab_crawler")),
-        ("◈",  "news",     t("tab_news")),
-        ("⊛",  "sources",  t("tab_sources")),
+        ('<i class="fas fa-microchip"></i>',      "llm",      t("tab_llm")),
+        ('<i class="fas fa-spider"></i>',          "crawler",  t("tab_crawler")),
+        ('<i class="fas fa-newspaper"></i>',       "news",     t("tab_news")),
+        ('<i class="fas fa-satellite-dish"></i>',  "sources",  t("tab_sources")),
         # ── Modèles & Agents ─────────────────────────────────────────────────
         (None, None,      "Modèles & Agents"),
-        ("◇",  "mirofish", t("tab_mirofish")),
-        ("⬡",  "agents",   t("tab_agents")),
-        ("◉",  "kronos",   t("tab_kronos")),
-        ("⏱",  "timesfm",  t("tab_timesfm")),
+        ('<i class="fas fa-fish"></i>',            "mirofish", t("tab_mirofish")),
+        ('<i class="fas fa-network-wired"></i>',   "agents",   t("tab_agents")),
+        ('<i class="fas fa-robot"></i>',           "kronos",   t("tab_kronos")),
+        ('<i class="fas fa-chart-line"></i>',      "timesfm",  t("tab_timesfm")),
         # ── Marché & Risque ───────────────────────────────────────────────────
         (None, None,      "Marché & Risque"),
-        ("⚖",  "risk",     t("tab_risk")),
-        ("⊞",  "regime",   t("tab_market_regime")),
-        # ── Performance & Analyse ─────────────────────────────────────────────
+        ('<i class="fas fa-shield-halved"></i>',   "risk",     t("tab_risk")),
+        ('<i class="fas fa-wave-square"></i>',     "regime",   t("tab_market_regime")),
+        # ── Performance ──────────────────────────────────────────────────────
         (None, None,      "Performance"),
-        ("▦",  "agperf",   "Agents Perf"),
-        ("⊚",  "meta",     "Méta-Analyse"),
+        ('<i class="fas fa-chart-bar"></i>',       "agperf",   "Agents Perf"),
+        ('<i class="fas fa-magnifying-glass-chart"></i>', "meta", "Méta-Analyse"),
         # ── Système ───────────────────────────────────────────────────────────
         (None, None,      "Système"),
-        ("⇄",  "flux",     t("tab_flux")),
-        ("≡",  "logging",  t("tab_logging")),
-        ("⊙",  "users",    t("tab_users")),
-        ("⊕",  "peractif", "Par Actif"),
+        ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
+        ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
+        ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
+        ('<i class="fas fa-layer-group"></i>',     "peractif", "Par Actif"),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -3335,7 +3335,7 @@ def render_admin_panel():
             st.warning(f"Kronos stats unavailable: {exc}")
 
     elif _atab == "agperf":  # Agents Perf
-        st.markdown('<h4>📊 Performance par agent</h4>', unsafe_allow_html=True)
+        st.markdown('<h4><i class="fas fa-chart-bar" style="margin-right:7px;color:#7986cb;"></i> Performance par agent</h4>', unsafe_allow_html=True)
         st.caption(
             "Win rate, Brier score et P&L moyen par agent individuel sur les décisions évaluées. "
             "Win rate > 55% = signal utile. Brier < 0.22 = meilleur que le hasard."
@@ -3413,7 +3413,7 @@ def render_admin_panel():
             st.warning(f"Stats agents indisponibles : {_ap_exc}")
 
     elif _atab == "meta":  # Méta-Analyse
-        st.markdown('<h4>🔍 Méta-Analyse LLM — Patterns d\'échec</h4>', unsafe_allow_html=True)
+        st.markdown('<h4><i class="fas fa-magnifying-glass-chart" style="margin-right:7px;color:#7986cb;"></i> Méta-Analyse LLM — Patterns d\'échec</h4>', unsafe_allow_html=True)
         st.caption(
             "Claude analyse les décisions perdantes pour détecter des patterns récurrents, "
             "identifier les agents peu fiables et formuler des recommandations concrètes."
@@ -3625,11 +3625,13 @@ def render_admin_panel():
         st.caption("⚙️ Les paramètres HMM, ADX et fenêtres sont configurables **par actif** dans l'onglet **🌐 Par Actif**.")
 
     elif _atab == "flux":  # Flux Manager
+        st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)
         st.info(t("cfg_flux_info"))
         render_flux_manager_page()
         # pas de bouton save ici, géré dans flux_manager
 
     elif _atab == "users":  # Utilisateurs
+        st.markdown('<h4><i class="fas fa-user" style="margin-right:7px;color:#7986cb;"></i> Utilisateurs</h4>', unsafe_allow_html=True)
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()

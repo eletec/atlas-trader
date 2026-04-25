@@ -294,7 +294,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
       '.ani:hover{{background:rgba(255,255,255,.08);color:#fff;}}' +
       '.ani.a{{background:rgba(255,75,75,.22);font-weight:600;color:#fff;}}' +
       '.ani-ic{{font-size:17px;min-width:24px;text-align:center;flex-shrink:0;line-height:1;}}' +
-      '#atlas-sidenav.c .ani-ic{{min-width:' + MINI + 'px;font-size:18px;}}' +
+      '#atlas-sidenav.c .ani-ic{{min-width:' + MINI + 'px;font-size:15px;}}' +
       '.ani-tx{{white-space:nowrap;overflow:hidden;transition:opacity .15s;}}' +
       '#atlas-sidenav.c .ani-tx{{opacity:0;width:0;pointer-events:none;position:absolute;}}';
     d.head.appendChild(s);

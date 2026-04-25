@@ -246,6 +246,17 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
 
   var collapsed = p.localStorage.getItem('atlas_nav_c') === '1';
 
+  /* ── CSS dropdown injecte dans le HEAD parent (les popovers sont portales dans le parent) ── */
+  if (!d.getElementById('atlas-dropdown-css')) {{
+    var dropS = d.createElement('style');
+    dropS.id = 'atlas-dropdown-css';
+    dropS.textContent = [
+      '[data-baseweb="popover"] {{ min-width: max-content !important; }}',
+      'ul[data-baseweb="menu"] li, [data-baseweb="option"] {{ white-space: nowrap !important; }}'
+    ].join(' ');
+    d.head.appendChild(dropS);
+  }}
+
   function navUrl(key) {{
     var u = new URL(p.location.href);
     u.searchParams.set(QPARAM, key);

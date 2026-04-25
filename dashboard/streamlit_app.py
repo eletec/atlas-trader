@@ -535,6 +535,32 @@ button[data-testid="stTooltipIcon"] svg line,
 </style>
 """, unsafe_allow_html=True)
 
+    # Injection CSS dans le document PARENT (contourne le scope iframe Streamlit)
+    # Nécessaire car BaseWeb injecte les popover/portals avec style="width:Xpx" inline via JS
+    import streamlit.components.v1 as _cv1_css
+    _dropdown_bg   = "#21262d" if theme != "light" else "#ffffff"
+    _dropdown_fg   = "#FAFAFA" if theme != "light" else "#31333F"
+    _dropdown_bdr  = "rgba(255,255,255,0.15)" if theme != "light" else "#dee2e6"
+    _dropdown_hov  = "#30363d" if theme != "light" else "#f1f3f5"
+    _cv1_css.html(f"""<script>
+(function() {{
+  var d = window.parent.document;
+  var sid = 'atlas-dropdown-css';
+  var old = d.getElementById(sid);
+  if (old) old.remove();
+  var s = d.createElement('style');
+  s.id = sid;
+  s.textContent = [
+    '[data-baseweb="popover"]{{width:auto!important;max-width:90vw!important;}}',
+    '[data-baseweb="popover"]>div,[data-baseweb="popover"]>div>div{{width:auto!important;min-width:max-content!important;}}',
+    'ul[data-baseweb="menu"]{{width:max-content!important;min-width:100%!important;background:{_dropdown_bg}!important;border-color:{_dropdown_bdr}!important;}}',
+    'ul[data-baseweb="menu"] li,[data-baseweb="option"],[role="option"]{{background:{_dropdown_bg}!important;color:{_dropdown_fg}!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:none!important;}}',
+    'ul[data-baseweb="menu"] li:hover,[data-baseweb="option"]:hover,[role="option"]:hover{{background:{_dropdown_hov}!important;}}'
+  ].join('');
+  d.head.appendChild(s);
+}})();
+</script>""", height=0, scrolling=False)
+
 # ===========================================================
 # SESSION STATE
 # ===========================================================

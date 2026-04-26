@@ -13,6 +13,8 @@ logger = logging.getLogger("zeitgeist.fundamental")
 class FundamentalAgent:
     """Analyse les fondamentaux on-chain et macro avec interpretation LLM."""
 
+    _climate_cache: dict = {}  # cache module-level partagé entre instances (TTL 24h)
+
     def __init__(self):
         from utils.config import load_settings
         cfg = load_settings()
@@ -36,8 +38,9 @@ class FundamentalAgent:
 
         # Tentative d'enrichissement LLM
         air = state.get("air_du_temps") or {}
+        asset = state.get("asset", "BTC/USDT")
         try:
-            llm_result = self._analyze_with_llm(indicators, air)
+            llm_result = self._analyze_with_llm(indicators, air, asset=asset)
             # Fusion : score moyen pondere (LLM 60%, rules 40%)
             blended_score = round(llm_result["score"] * 0.6 + rule_result["score"] * 0.4, 1)
             return {
@@ -58,7 +61,7 @@ class FundamentalAgent:
             logger.warning(f"FundamentalAgent LLM fallback (rules): {exc}")
             return rule_result
 
-    def _analyze_with_llm(self, indicators: dict, air: dict) -> dict:
+    def _analyze_with_llm(self, indicators: dict, air: dict, asset: str = "BTC/USDT") -> dict:
         """Appel Claude Haiku : interpretation contextuelle des indicateurs."""
         price = indicators.get("price", 0)
         ma_50 = indicators.get("ma_50", 0)
@@ -96,10 +99,18 @@ class FundamentalAgent:
             if parts:
                 onchain_block = "\nOn-chain metrics:\n" + "\n".join(parts)
 
+        # Climate context — pertinent uniquement pour WTI/USD et EUR/USD
+        climate_block = ""
+        if asset in ("WTI/USD", "EUR/USD"):
+            climate_ctx = self._fetch_climate_context()
+            if climate_ctx:
+                climate_block = f"\nClimate context:\n- {climate_ctx}\n"
+
+        asset_label = asset.replace("/", "")
         prompt = (
-            "You are a senior crypto technical analyst. Analyze the indicators and give "
+            f"You are a senior {asset_label} analyst. Analyze the indicators and give "
             "a conviction score [0-100].\n\n"
-            f"BTC Indicators:\n"
+            f"{asset_label} Indicators:\n"
             f"- Price: ${price:,.0f} | MA50: ${ma_50:,.0f} "
             f"({'ABOVE' if price > ma_50 else 'BELOW'} MA50)\n"
             f"- RSI-14 (15m): {rsi:.1f} | RSI-1h: {rsi_1h} | RSI-4h: {rsi_4h}\n"
@@ -110,6 +121,7 @@ class FundamentalAgent:
             f"- 24h Volume: ${volume/1e9:.2f}B\n"
             f"- Bollinger position: {bb_pct}\n"
             f"{onchain_block}\n"
+            f"{climate_block}"
             f"Macro context:\n{air_summary}\n\n"
             "Respond in strict JSON:\n"
             '{"score": <0-100>, "signal": "BULLISH"|"NEUTRAL"|"BEARISH", '
@@ -212,6 +224,127 @@ class FundamentalAgent:
                 data["total_market_cap_usd"] = float(total_mc)
 
         return data
+
+    @staticmethod
+    def _fetch_climate_context() -> str:
+        """
+        Retourne l'anomalie de température globale NASA GISTEMP v4 sous forme
+        de chaîne descriptive.
+
+        Stratégie de résilience (3 niveaux) :
+          1. Cache mémoire (TTL 24h) — pas de I/O du tout
+          2. Fichier local  storage/gistemp_v4.csv  — mis à jour à chaque
+             download réussi ; utilisé comme fallback si NASA est hors ligne.
+             Les données historiques GISTEMP sont immutables (seul le dernier
+             point évolue) : un fichier de plusieurs semaines reste valide.
+          3. Download depuis data.giss.nasa.gov — tenté seulement si le cache
+             mémoire est expiré.
+        """
+        import time
+        import csv
+        import io
+        import urllib.request
+        from pathlib import Path
+
+        _KEY = "gistemp_v4"
+        _MEM_TTL = 86400        # 24 h — ne pas re-télécharger avant
+        _LOCAL_PATH = Path(__file__).resolve().parent.parent / "storage" / "gistemp_v4.csv"
+        _URL = "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv"
+
+        cache = FundamentalAgent._climate_cache
+
+        # ── 1. Cache mémoire ─────────────────────────────────────────────
+        entry = cache.get(_KEY)
+        if entry and (time.time() - entry["ts"]) < _MEM_TTL:
+            return entry["value"]
+
+        # ── Helpers ───────────────────────────────────────────────────────
+        def _parse(raw_text: str) -> str:
+            """Parse le CSV GISTEMP et retourne la chaîne descriptive."""
+            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            rows = []
+            reader = csv.reader(io.StringIO(raw_text))
+            for row in reader:
+                if row and row[0].strip().lstrip("-").isdigit():
+                    rows.append(row)
+            if not rows:
+                raise ValueError("GISTEMP: aucune ligne de données")
+
+            last = rows[-1]
+            year = last[0].strip()
+            annual = last[13].strip() if len(last) > 13 else "***"
+
+            last_month_name, last_month_val = "N/A", "***"
+            for i, m in enumerate(months):
+                val = last[i + 1].strip() if len(last) > i + 1 else "***"
+                if val != "***":
+                    last_month_name, last_month_val = m, val
+
+            if annual != "***":
+                anomaly_val = float(annual)
+                period = f"{year} annual"
+            elif last_month_val != "***":
+                anomaly_val = float(last_month_val)
+                period = f"{year}-{last_month_name}"
+            else:
+                raise ValueError("GISTEMP: toutes les valeurs manquantes")
+
+            sign = "+" if anomaly_val >= 0 else ""
+            if anomaly_val >= 1.0:
+                interp = "significantly above baseline — warm conditions bearish energy demand (WTI↓)"
+            elif anomaly_val >= 0.5:
+                interp = "above baseline — mild conditions, moderate impact on energy demand"
+            elif anomaly_val >= 0.0:
+                interp = "slightly above baseline — near-normal conditions"
+            else:
+                interp = "below baseline — colder than normal, supportive energy demand (WTI↑)"
+
+            return (
+                f"NASA GISTEMP v4 ({period}): {sign}{anomaly_val:.2f}°C vs "
+                f"1951-1980 baseline — {interp}"
+            )
+
+        # ── 2. Tenter le download réseau ─────────────────────────────────
+        raw_from_network: str | None = None
+        try:
+            req = urllib.request.Request(_URL, headers={"User-Agent": "zeitgeist-trader/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw_from_network = resp.read().decode("utf-8", errors="ignore")
+
+            result = _parse(raw_from_network)
+            logger.info("GISTEMP v4 fetched from NASA: %s", result)
+
+            # Persister localement pour les futurs fallbacks
+            try:
+                _LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+                _LOCAL_PATH.write_text(raw_from_network, encoding="utf-8")
+                logger.debug("GISTEMP v4 saved to %s", _LOCAL_PATH)
+            except Exception as save_exc:
+                logger.debug("GISTEMP v4 local save failed (non-bloquant): %s", save_exc)
+
+        except Exception as net_exc:
+            logger.warning("GISTEMP v4 network unavailable (%s) — trying local cache", net_exc)
+
+            # ── 3. Fallback fichier local ─────────────────────────────────
+            result = ""
+            if _LOCAL_PATH.exists():
+                try:
+                    raw_local = _LOCAL_PATH.read_text(encoding="utf-8")
+                    result = _parse(raw_local)
+                    age_days = (time.time() - _LOCAL_PATH.stat().st_mtime) / 86400
+                    logger.info(
+                        "GISTEMP v4 loaded from local cache (%.0f days old): %s",
+                        age_days, result,
+                    )
+                except Exception as local_exc:
+                    logger.debug("GISTEMP v4 local parse failed: %s", local_exc)
+            else:
+                logger.debug("GISTEMP v4: aucun fichier local disponible")
+
+        # ── Mettre en cache mémoire ───────────────────────────────────────
+        cache[_KEY] = {"ts": time.time(), "value": result}
+        return result
 
     @staticmethod
     def _rule_based(indicators: dict) -> dict:
@@ -342,6 +475,14 @@ class FundamentalAgent:
         ]
 
         asset = state.get("asset", "BTC/USDT")
+
+        # Inject climate context for energy/FX assets before agentic prompt
+        climate_suffix = ""
+        if asset in ("WTI/USD", "EUR/USD"):
+            climate_ctx = self._fetch_climate_context()
+            if climate_ctx:
+                climate_suffix = f"\n\nAdditional context: {climate_ctx}"
+
         messages = [
             {
                 "role": "user",
@@ -349,7 +490,7 @@ class FundamentalAgent:
                     f"Analyze the fundamentals of {asset}. "
                     "Use the available tools to collect data, then "
                     "return a JSON with: score (int 0-100), signal (BULLISH/BEARISH/NEUTRAL), "
-                    "summary (str), confidence (float 0-1)."
+                    f"summary (str), confidence (float 0-1).{climate_suffix}"
                 ),
             }
         ]

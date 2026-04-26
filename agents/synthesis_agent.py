@@ -267,7 +267,7 @@ class SynthesisAgent:
 
         return "\n".join(parts)
 
-(self, state: dict) -> dict:
+    def _fallback_synthesis(self, state: dict) -> dict:
         """Synthèse déterministe sans LLM."""
         analyses = state.get("agent_analyses", {})
         scores = [v.get("score", 50) for v in analyses.values() if isinstance(v, dict)]

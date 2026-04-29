@@ -107,10 +107,12 @@ class MiroFishWrapper:
             score = float(raw.get("score", raw.get("bull_score", 50)))
             narratives = raw.get("narratives", raw.get("stories", []))
             probas = raw.get("probabilities", raw.get("probas", {}))
+            signal = raw.get("signal", None)
         else:
             score = 50.0
             narratives = []
             probas = {}
+            signal = None
 
         probas = {
             "bull": probas.get("bull", probas.get("bullish", 0.33)),
@@ -118,12 +120,21 @@ class MiroFishWrapper:
             "neutral": probas.get("neutral", 0.34),
         }
 
+        # signal — dériver depuis le score si non fourni par l'API
+        if not signal:
+            signal = "BUY" if score >= 65 else ("SELL" if score <= 35 else "HOLD")
+
+        # confidence — probabilité de la direction dominante
+        confidence = max(probas["bull"], probas["bear"], probas["neutral"])
+
         return {
             "score": max(0.0, min(100.0, score)),
             "probas": probas,
             "narratives": narratives[:5] if narratives else [],
             "dominant_narrative": narratives[0] if narratives else "indisponible",
             "n_agents_used": self.n_agents,
+            "signal": signal,
+            "confidence": round(confidence, 3),
         }
 
     def _run_fallback(self, seed: str) -> dict:

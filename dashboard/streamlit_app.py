@@ -3640,7 +3640,14 @@ def render_admin_panel():
                 st.info("Aucune leçon enregistrée pour l'instant (le fichier sera créé après le premier trade clôturé).")
             else:
                 with open(_mem_file, "r", encoding="utf-8") as _mf:
-                    _lessons: list[dict] = _mem_json.load(_mf)
+                    _raw_mem = _mem_json.load(_mf)
+                # Support both formats: {"lessons": [...]} and [...]
+                if isinstance(_raw_mem, dict):
+                    _lessons: list[dict] = _raw_mem.get("lessons", [])
+                elif isinstance(_raw_mem, list):
+                    _lessons = _raw_mem
+                else:
+                    _lessons = []
 
                 if not _lessons:
                     st.info("Le fichier existe mais ne contient aucune leçon.")

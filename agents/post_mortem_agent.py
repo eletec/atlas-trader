@@ -129,7 +129,7 @@ class PostMortemAgent:
                 enriched["agent_scores"] = {
                     k: v.get("score", 50) for k, v in ctx.get("agents", {}).items()
                 }
-                enriched["debate_winner"] = ctx.get("synthesis", {}).get("debate_winner", "N/A")
+                enriched["debate_winner"] = (ctx.get("agents", {}).get("synthesis") or {}).get("debate_winner") or "N/A"
                 enriched["score"] = ctx.get("decision", {}).get("score", decision.get("score", 50))
                 self._llm_reflect(enriched, round(pnl, 2), price_change_pct)
 

@@ -3724,7 +3724,7 @@ def render_admin_panel():
                                     f"<span style='color:#e53935;font-size:11px;'>⚠️ Méfiance : <b>{_atl_l}</b></span>",
                                     unsafe_allow_html=True,
                                 )
-                            if _dw_l:
+                            if _dw_l and str(_dw_l).upper() not in ("N/A", "NONE", ""):
                                 _dw_clr = "#69f0ae" if "BULL" in str(_dw_l).upper() else ("#e53935" if "BEAR" in str(_dw_l).upper() else "#ffb74d")
                                 _detail_cols[2].markdown(
                                     f"<span style='color:{_dw_clr};font-size:11px;'>🥊 Débat: <b>{_dw_l}</b></span>",

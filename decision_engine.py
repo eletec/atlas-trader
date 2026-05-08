@@ -563,16 +563,17 @@ class DecisionEngine:
             action = "HOLD"
             hv_mf_blocked = True
 
-        # Filtre 3 : Conflit market_regime < 40 ET x_sentiment > 80 → veto
+        # Filtre 3 : Conflit market_regime < 50 ET x_sentiment > 75 → veto
         # Méta-analyse 2026-04-24 : signal baissier fort du régime masqué par sentiment euphorique
+        # Seuils élargis 2026-05-07 (< 40 manquait mr=45/xs=82 → 5 trades perdants consécutifs)
         # Applicable à tous les régimes — détecte les entrées à contre-tendance excessive
         if action == "BUY":
             _mr_score = (agent_analyses or {}).get("market_regime", {}).get("score", 50.0)
             _xs_score = (agent_analyses or {}).get("x_sentiment", {}).get("score", 50.0)
-            if _mr_score < 40 and _xs_score > 80:
+            if _mr_score < 50 and _xs_score > 75:
                 logger.info(
-                    f"Conflict veto: market_regime={_mr_score:.0f} < 40 ET "
-                    f"x_sentiment={_xs_score:.0f} > 80 — signal contradictoire — BUY → HOLD"
+                    f"Conflict veto: market_regime={_mr_score:.0f} < 50 ET "
+                    f"x_sentiment={_xs_score:.0f} > 75 — signal contradictoire — BUY → HOLD"
                 )
                 action = "HOLD"
                 conflict_blocked = True

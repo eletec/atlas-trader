@@ -295,7 +295,7 @@ agents:
     weight_in_scoring: 0.0
   kronos:
     enabled: true
-    weight_in_scoring: 0.20  # nouveau — à calibrer (démarre à 0.20 pour phase d'observation)
+    weight_in_scoring: 0.00  # Brier 0.306, WR 30.8%, avg P&L -$0.33/BUY — pire agent → neutralisé
   market_regime:
     enabled: true
     weight_in_scoring: 0.70  # Brier 0.225, WR 66% — meilleur agent → poids maximal

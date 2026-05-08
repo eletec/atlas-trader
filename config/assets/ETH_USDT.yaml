@@ -8,8 +8,8 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: balanced
-  buy_threshold: 74           # relevé 70→74 (ETH win=37.5% / Kelly négatif — live data mai 2026)
-  exit_threshold: 52          # relevé 38→52 : sortie dès signal neutre (38 ne se déclenchait jamais)
+  buy_threshold: 78           # relevé 74→78 (ETH WR 25% sur 8 trades — seuil haute conviction uniquement)
+  exit_threshold: 62          # relevé 52→62 : 52 ne se déclenche jamais (floor 49.5 avec market=90)
   buy_cooldown_minutes: 120   # cooldown 2h anti-doublon
   kelly_max_fraction: 0.2
   position_size_pct: 4.0

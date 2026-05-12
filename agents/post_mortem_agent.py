@@ -82,37 +82,45 @@ class PostMortemAgent:
 
     def _process_single(self, decision: dict) -> None:
         """Calcule le resultat reel d'une decision et l'enregistre."""
-        from storage.database import update_decision_result
+        from storage.database import update_decision_result, mark_reflection_done
         try:
             cycle_id = decision["cycle_id"]
             action = decision.get("action", "HOLD")
             entry_price = decision.get("entry_price", 0) or 0
 
             if action == "HOLD" or entry_price == 0:
-                update_decision_result(cycle_id, 0.0)
+                mark_reflection_done(cycle_id)
                 return
 
             # SELL = signal de sortie, P&L déjà calculé sur la ligne BUY via close_position()
             # Ne pas réévaluer comme short fictif (système long-only spot)
             if action == "SELL":
-                update_decision_result(cycle_id, 0.0)
+                mark_reflection_done(cycle_id)
                 return
 
-            current_price = self._get_current_price(decision.get("asset", "BTC/USDT"))
-            position_size = decision.get("position_size", 0) or 0
-
-            if current_price and entry_price:
-                price_change_pct = (current_price - entry_price) / entry_price
-                direction = 1 if action == "BUY" else -1
-                pnl = position_size * price_change_pct * direction
+            # Si result_24h déjà rempli (position clôturée via SL/TP), on utilise le P&L réel
+            # Sans écraser la valeur correcte par un calcul sur le prix courant (souvent faux)
+            existing_pnl = decision.get("result_24h")
+            if existing_pnl is not None:
+                pnl = float(existing_pnl)
+                price_change_pct = pnl / (decision.get("position_size", 1) or 1)
             else:
-                pnl = 0.0
+                current_price = self._get_current_price(decision.get("asset", "BTC/USDT"))
+                position_size = decision.get("position_size", 0) or 0
 
-            update_decision_result(cycle_id, round(pnl, 2))
-            logger.info(
-                f"Post-mortem {cycle_id}: {action} entry={entry_price:.2f} "
-                f"current={current_price:.2f} P&L={pnl:.2f}$"
-            )
+                if current_price and entry_price:
+                    price_change_pct = (current_price - entry_price) / entry_price
+                    direction = 1 if action == "BUY" else -1
+                    pnl = position_size * price_change_pct * direction
+                else:
+                    pnl = 0.0
+                    price_change_pct = 0.0
+
+                update_decision_result(cycle_id, round(pnl, 2))
+                logger.info(
+                    f"Post-mortem {cycle_id}: {action} entry={entry_price:.2f} "
+                    f"current={current_price:.2f} P&L={pnl:.2f}$"
+                )
 
             # ── Réflexion LLM sur la décision (inspiré TradingAgents memory loop) ──
             if pnl != 0.0:
@@ -132,6 +140,9 @@ class PostMortemAgent:
                 enriched["debate_winner"] = (ctx.get("agents", {}).get("synthesis") or {}).get("debate_winner") or "N/A"
                 enriched["score"] = ctx.get("decision", {}).get("score", decision.get("score", 50))
                 self._llm_reflect(enriched, round(pnl, 2), price_change_pct)
+
+            # Marquer comme traité même si pnl=0 pour éviter les doublons
+            mark_reflection_done(cycle_id)
 
         except Exception as exc:
             logger.error(f"Post-mortem error for decision {decision.get('cycle_id')}: {exc}")

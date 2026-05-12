@@ -39,6 +39,7 @@ DDL_STATEMENTS = [
         tp_price        REAL,
         position_size   REAL,
         result_24h      REAL,                  -- P&L après 24h (NULL jusqu'au post-mortem)
+        reflection_done INTEGER DEFAULT 0,     -- 1 = leçon LLM déjà générée
         weights_snapshot TEXT,                 -- JSON des poids au moment de la décision
         decision_context TEXT,                  -- JSON complet : market_indicators + agent_summaries + effective_weights + reasoning
         llm_tokens      INTEGER DEFAULT 0,
@@ -202,6 +203,7 @@ def _migrate_v2(conn) -> None:
         ("llm_tokens",        "ALTER TABLE decisions ADD COLUMN llm_tokens INTEGER DEFAULT 0"),
         ("cycle_duration_ms", "ALTER TABLE decisions ADD COLUMN cycle_duration_ms INTEGER DEFAULT 0"),
         ("errors",            "ALTER TABLE decisions ADD COLUMN errors TEXT"),
+        ("reflection_done",   "ALTER TABLE decisions ADD COLUMN reflection_done INTEGER DEFAULT 0"),
     ]
     for col, stmt in migrations:
         if col not in existing:
@@ -364,6 +366,16 @@ def update_decision_result(cycle_id: str, result_24h: float) -> None:
         conn.execute(
             "UPDATE decisions SET result_24h = ? WHERE cycle_id = ?",
             (result_24h, cycle_id)
+        )
+        conn.commit()
+
+
+def mark_reflection_done(cycle_id: str) -> None:
+    """Marque la réflexion LLM comme complète pour éviter les doublons."""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE decisions SET reflection_done = 1 WHERE cycle_id = ?",
+            (cycle_id,)
         )
         conn.commit()
 
@@ -577,9 +589,15 @@ def get_pending_postmortems(delay_hours: int = 24) -> list[dict]:
         rows = conn.execute(
             """
             SELECT * FROM decisions
-            WHERE result_24h IS NULL
-              AND action != 'HOLD'
-              AND datetime(timestamp, '+' || ? || ' hours') < datetime(?)
+            WHERE action NOT IN ('HOLD', 'SELL')
+              AND reflection_done = 0
+              AND (
+                -- Position encore ouverte après delay_hours (rare en pratique)
+                (result_24h IS NULL AND datetime(timestamp, '+' || ? || ' hours') < datetime(?))
+                OR
+                -- Position clôturée via SL/TP — reflection jamais déclenchée
+                (result_24h IS NOT NULL)
+              )
             """,
             (delay_hours, cutoff)
         ).fetchall()

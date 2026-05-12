@@ -8,8 +8,8 @@ monitor:
   breaking_news_threshold: 0.65
 risk:
   mode: balanced
-  buy_threshold: 72           # SOL = altcoin à beta élevé — signal requis plus fort que BTC/ETH
-  exit_threshold: 38          # zone neutre large [38-72] — sort uniquement sur signal vraiment baissier
+  buy_threshold: 80           # relevé 72→80 : SOL beta élevé, trade 75.53 (11-mai) = perte confirmée
+  exit_threshold: 62          # relevé 38→62 : floor=49.5 avec market=90, exit<52 mathématiquement impossible
   kelly_max_fraction: 0.2
   position_size_pct: 4.0
   max_open_positions: 1       # une seule position longue à la fois par actif

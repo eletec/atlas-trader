@@ -30,8 +30,8 @@ circuit_breaker:
 scoring:
   weights:
     mirofish: 0.12
-    market: 0.4
-    agents: 0.3
+    market: 0.30  # réduit 0.40→0.30 : market_data bloqué à 90 (RSI<30 lagging) — moins de dominance
+    agents: 0.40  # augmenté 0.30→0.40 : market_regime (WR 66.7%) mérite plus de poids
     contrarian: 0.18
 market_regime:
   n_hmm_states: 2

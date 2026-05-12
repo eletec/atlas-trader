@@ -30,8 +30,8 @@ circuit_breaker:
 scoring:
   weights:
     mirofish: 0.1
-    market: 0.38
-    agents: 0.34
+    market: 0.28  # réduit 0.38→0.28 : même problème market_data lagging
+    agents: 0.44  # augmenté 0.34→0.44 : agents plus discriminants
     contrarian: 0.18
 market_regime:
   n_hmm_states: 2

@@ -931,7 +931,11 @@ def _derive_market_score(indicators: MarketIndicators | None) -> float:
 
     # RSI contribution (±20 points)
     if rsi < 30:
-        score += 20   # survente → haussier
+        # Survente — mais si trend_4h DOWN c'est un couteau qui tombe → bonus réduit
+        if indicators.get("trend_4h") == "DOWN":
+            score += 5   # falling knife : oversold ne garantit pas le rebond
+        else:
+            score += 20  # survente en tendance neutre/haussière → haussier
     elif rsi > 70:
         score -= 20   # surachat → baissier
     else:

@@ -90,7 +90,6 @@ COPY --chown=atlas:atlas config/           ./config/
 COPY --chown=atlas:atlas dashboard/        ./dashboard/
 COPY --chown=atlas:atlas execution/        ./execution/
 COPY --chown=atlas:atlas graph/            ./graph/
-COPY --chown=atlas:atlas mirofish/         ./mirofish/
 COPY --chown=atlas:atlas storage/          ./storage/
 COPY --chown=atlas:atlas utils/            ./utils/
 COPY --chown=atlas:atlas decision_engine.py main.py ./

@@ -2583,6 +2583,12 @@ def render_profile_comparison():
         f'{t("profiles_title")}</h3>',
         unsafe_allow_html=True,
     )
+    st.info(
+        "⚠️ **Données héritées V1** — Le pipeline V2 (quant pur) ne génère plus de décisions "
+        "par profil shadow. Les chiffres ci-dessous proviennent de l'ancien pipeline LLM et "
+        "ne sont plus mis à jour. Utilisez **BO → Reset V2 → Vider profils shadow V1** pour purger.",
+        icon="🗄️",
+    )
 
     try:
         from storage.database import get_shadow_comparison_stats, get_shadow_pnl_series
@@ -3314,9 +3320,9 @@ def render_admin_panel():
         )
         st.warning("⚠️ Ces opérations sont irréversibles. Utilisez l'onglet Sauvegarde avant toute purge.")
 
-        st.markdown("#### Données V1 (décisions LLM + trades)")
+        st.markdown("#### Données V1 (décisions LLM + trades + profils shadow)")
         st.caption("Les décisions V1 issues du pipeline LLM ne sont plus utilisées. Purger pour nettoyer la base.")
-        _col_r1, _col_r2 = st.columns(2)
+        _col_r1, _col_r2, _col_r3_v1 = st.columns(3)
         with _col_r1:
             if st.button("🗑️ Vider les décisions V1", type="secondary", use_container_width=True, key="reset_v1_decisions"):
                 try:
@@ -3339,6 +3345,18 @@ def render_admin_panel():
                         _con_r.execute("DELETE FROM trades")
                         _con_r.commit()
                     st.success("✅ Table `trades` vidée.")
+                except Exception as _re_r:
+                    st.error(f"Erreur : {_re_r}")
+        with _col_r3_v1:
+            if st.button("🗑️ Vider profils shadow V1", type="secondary", use_container_width=True, key="reset_v1_shadow"):
+                try:
+                    import sqlite3 as _sq3
+                    from utils.config import load_settings as _ls_r
+                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3.connect(_db_r) as _con_r:
+                        _con_r.execute("DELETE FROM shadow_decisions")
+                        _con_r.commit()
+                    st.success("✅ Table `shadow_decisions` vidée.")
                 except Exception as _re_r:
                     st.error(f"Erreur : {_re_r}")
 

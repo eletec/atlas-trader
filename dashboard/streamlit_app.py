@@ -2978,6 +2978,11 @@ def render_admin_panel():
             unsafe_allow_html=True,
         )
         st.caption(t("mem_caption"))
+        st.info(
+            "ℹ️ **Pipeline V2** — le pipeline quantitatif pur ne génère pas de leçons post-mortem automatiques. "
+            "Les entrées ci-dessous sont des leçons héritées du pipeline V1 (LLM). "
+            "Elles restent consultables à titre de référence."
+        )
         try:
             import json as _mem_json
             from pathlib import Path as _MemPath
@@ -3162,6 +3167,11 @@ def render_admin_panel():
                 _is_forex_pa  = any(_pas.endswith(s) for s in ("/USD", "/EUR", "/GBP", "/JPY")) and not _is_crypto_pa
                 _is_commodity_pa = _pas in ("XAU/USD", "XAG/USD", "WTI/USD")
 
+                st.caption(
+                    "💡 V2 lit les paramètres globaux (settings.yaml). "
+                    "Ces valeurs seront utilisées comme surcharges par actif dans une version future."
+                )
+
                 # ── Général ──────────────────────────────────────────────────
                 with st.expander("⚙ Général", expanded=True):
                     _c1, _c2 = st.columns(2)
@@ -3171,57 +3181,24 @@ def render_admin_panel():
                             int(_pacfg.get("paper_capital_usd", 10000)), step=500,
                             key=f"pa_cap_{_paslug}"
                         )
+                    with _c2:
                         _pacfg["loop_interval_seconds"] = st.number_input(
                             "Intervalle boucle (s)", 60, 3600,
                             int(_pacfg.get("loop_interval_seconds", 900)), step=60,
                             key=f"pa_loop_{_paslug}"
                         )
-                    with _c2:
-                        _pamon = dict(_pacfg.get("monitor", {}))
-                        _pamon["interval_seconds"] = st.number_input(
-                            "Monitor interval (s)", 30, 600,
-                            int(_pamon.get("interval_seconds", 60)), step=10,
-                            key=f"pa_mon_{_paslug}"
-                        )
-                        _pamon["breaking_news_threshold"] = st.slider(
-                            "Breaking news seuil", 0.4, 0.9,
-                            float(_pamon.get("breaking_news_threshold", 0.65)), 0.05,
-                            key=f"pa_bnt_{_paslug}"
-                        )
-                        _pacfg["monitor"] = _pamon
 
-                # ── Risk & Seuils ─────────────────────────────────────────────
+                # ── Risk & Seuils (V2) ────────────────────────────────────────
                 with st.expander("⚖ Risk & Seuils", expanded=True):
                     _par = dict(_pacfg.get("risk", {}))
                     _c1, _c2 = st.columns(2)
                     with _c1:
-                        _rmodes_pa = ["conservative", "balanced", "aggressive"]
-                        _rdef_pa = _par.get("mode", "balanced")
-                        if _rdef_pa not in _rmodes_pa:
-                            _rmodes_pa.append(_rdef_pa)
-                        _par["mode"] = st.radio(
-                            "Mode", _rmodes_pa, index=_rmodes_pa.index(_rdef_pa),
-                            horizontal=True, key=f"pa_rmode_{_paslug}"
-                        )
-                        _par["buy_threshold"] = st.slider(
-                            t("pa_buy_threshold"), 50, 95, int(_par.get("buy_threshold", 62)),
-                            key=f"pa_buy_{_paslug}"
-                        )
-                        _par["exit_threshold"] = st.slider(
-                            t("pa_exit_threshold"), 20, 60, int(_par.get("exit_threshold", 52)),
-                            key=f"pa_exit_{_paslug}"
-                        )
-                        _par["kelly_max_fraction"] = st.slider(
-                            "Kelly max", 0.05, 0.50,
-                            float(_par.get("kelly_max_fraction", 0.25)), 0.05,
-                            key=f"pa_kelly_{_paslug}"
-                        )
                         _par["position_size_pct"] = st.slider(
-                            "Position size (%)", 0.5, 20.0,
-                            float(_par.get("position_size_pct", 5.0)), 0.5,
-                            key=f"pa_pos_{_paslug}"
+                            "Position size (%)", 0.1, 10.0,
+                            float(_par.get("position_size_pct", 1.5)), 0.1,
+                            key=f"pa_pos_{_paslug}",
+                            help="Fraction du capital risquée par trade (V2 = 1.5% par défaut)."
                         )
-                    with _c2:
                         _par["max_drawdown_pct"] = st.slider(
                             t("pa_max_dd"), 3.0, 50.0,
                             float(_par.get("max_drawdown_pct", 15.0)), 1.0,
@@ -3232,42 +3209,23 @@ def render_admin_panel():
                             int(_par.get("max_open_positions", 3)),
                             key=f"pa_mop_{_paslug}"
                         )
+                    with _c2:
                         _par["atr_multiplier_sl"] = st.slider(
                             "ATR ×SL", 0.5, 5.0,
-                            float(_par.get("atr_multiplier_sl", 2.0)), 0.25,
-                            key=f"pa_atrs_{_paslug}"
+                            float(_par.get("atr_multiplier_sl", 2.5)), 0.25,
+                            key=f"pa_atrs_{_paslug}",
+                            help="Multiplicateur ATR pour le stop-loss (V2 = 2.5×)."
                         )
                         _par["atr_multiplier_tp"] = st.slider(
                             "ATR ×TP", 0.5, 8.0,
                             float(_par.get("atr_multiplier_tp", 3.0)), 0.25,
-                            key=f"pa_atrtp_{_paslug}"
+                            key=f"pa_atrtp_{_paslug}",
+                            help="Multiplicateur ATR pour le take-profit (V2 = 3.0×)."
                         )
                         _par["human_in_the_loop"] = st.toggle(
                             "Human in the loop",
                             _par.get("human_in_the_loop", False),
                             key=f"pa_hitl_{_paslug}"
-                        )
-                    st.markdown(f"**{t('pa_ma50_section')}**")
-                    _ma50_opts_pa = ["off", "gradual", "block", "strict"]
-                    _ma50_def_pa = _par.get("ma50_filter_mode", "gradual")
-                    if _ma50_def_pa not in _ma50_opts_pa:
-                        _ma50_opts_pa.append(_ma50_def_pa)
-                    _par["ma50_filter_mode"] = st.radio(
-                        t("pa_ma50_mode"), _ma50_opts_pa,
-                        index=_ma50_opts_pa.index(_ma50_def_pa),
-                        horizontal=True, key=f"pa_ma50mode_{_paslug}"
-                    )
-                    if _par["ma50_filter_mode"] == "gradual":
-                        _cm1, _cm2 = st.columns(2)
-                        _par["ma50_strong_signal_threshold"] = _cm1.slider(
-                            t("pa_ma50_strong_thr"), 60, 95,
-                            int(_par.get("ma50_strong_signal_threshold", 72)),
-                            key=f"pa_ma50s_{_paslug}"
-                        )
-                        _par["ma50_gradual_size_factor"] = _cm2.slider(
-                            t("pa_ma50_size_factor"), 0.1, 1.0,
-                            float(_par.get("ma50_gradual_size_factor", 0.5)), 0.05,
-                            key=f"pa_ma50f_{_paslug}"
                         )
                     _pacfg["risk"] = _par
 
@@ -3300,77 +3258,7 @@ def render_admin_panel():
                             )
                         _pacfg["circuit_breaker"] = _pcb
 
-                # ── Scoring ───────────────────────────────────────────────────
-                with st.expander(t("pa_scoring_section"), expanded=False):
-                    _psc = dict(_pacfg.get("scoring", {}))
-                    _pw = dict(_psc.get("weights", {}))
-                    _c1, _c2 = st.columns(2)
-                    with _c1:
-                        _pw["mirofish"] = st.slider(
-                            "MiroFish", 0.0, 0.5,
-                            float(_pw.get("mirofish", 0.12)), 0.01, key=f"pa_wmf_{_paslug}"
-                        )
-                        _pw["market"] = st.slider(
-                            "Market Data", 0.0, 0.8,
-                            float(_pw.get("market", 0.40)), 0.01, key=f"pa_wmd_{_paslug}"
-                        )
-                    with _c2:
-                        _pw["agents"] = st.slider(
-                            "Agents", 0.0, 0.8,
-                            float(_pw.get("agents", 0.30)), 0.01, key=f"pa_wag_{_paslug}"
-                        )
-                        _pw["contrarian"] = st.slider(
-                            "Contrarian", 0.0, 0.5,
-                            float(_pw.get("contrarian", 0.18)), 0.01, key=f"pa_wco_{_paslug}"
-                        )
-                    _ptot = sum(_pw.values())
-                    if abs(_ptot - 1.0) > 0.05:
-                        st.warning(t("pa_weight_total_warn").format(total=_ptot))
-                    else:
-                        st.caption(t("pa_weight_total_ok").format(total=_ptot))
-                    _psc["weights"] = _pw
-                    _pacfg["scoring"] = _psc
-
-                # ── Agents activés ────────────────────────────────────────────
-                with st.expander(t("pa_agents_section"), expanded=False):
-                    _pags = dict(_pacfg.get("agents", {}))
-                    _ag_list = [
-                        "market_data", "fundamental", "x_sentiment", "contrarian",
-                        "fear_greed", "polymarket", "timesfm", "kronos", "market_regime",
-                    ]
-                    if _is_forex_pa or _is_commodity_pa:
-                        _ag_list.append("economic_calendar")
-                    if _is_forex_pa:
-                        _ag_list.append("central_bank")
-                    for _agn in _ag_list:
-                        _agc = dict(_pags.get(_agn, {}))
-                        _col_a, _col_b = st.columns([2, 1])
-                        with _col_a:
-                            _agc["enabled"] = st.toggle(
-                                _agn.replace("_", " ").title(),
-                                _agc.get("enabled", True),
-                                key=f"pa_agen_{_paslug}_{_agn}"
-                            )
-                        with _col_b:
-                            _agc["weight_in_scoring"] = st.number_input(
-                                t("pa_agent_weight"), 0.0, 2.0,
-                                float(_agc.get("weight_in_scoring",
-                                      settings.get("agents", {}).get(_agn, {}).get("weight_in_scoring", 1.0))),
-                                0.05,
-                                key=f"pa_agw_{_paslug}_{_agn}",
-                                help=t("pa_agent_weight_help")
-                            )
-                        if _agn == "x_sentiment":
-                            _xkw = ", ".join(_agc.get("keywords", []))
-                            _nkw = st.text_input(
-                                "Keywords X/Twitter", value=_xkw,
-                                key=f"pa_xkw_{_paslug}"
-                            )
-                            _agc["keywords"] = [k.strip() for k in _nkw.split(",") if k.strip()]
-                        _pags[_agn] = _agc
-                    _pacfg["agents"] = _pags
-
-                # ── Market Regime ─────────────────────────────────────────────
+                # ── Market Regime (V2) ────────────────────────────────────────
                 with st.expander("⊞ Market Regime", expanded=False):
                     _pmr = dict(_pacfg.get("market_regime", {}))
                     _c1, _c2 = st.columns(2)
@@ -3393,82 +3281,6 @@ def render_admin_panel():
                             key=f"pa_tw_{_paslug}"
                         )
                     _pacfg["market_regime"] = _pmr
-
-                # ── Kronos (par actif) ────────────────────────────────────────
-                with st.expander(t("pa_kronos_section"), expanded=False):
-                    _pkr = dict(_pacfg.get("kronos", {}))
-                    _kr_global = settings.get("kronos", {})
-                    _c1, _c2 = st.columns(2)
-                    with _c1:
-                        _pkr["forecast_horizon"] = st.number_input(
-                            "Horizon (candles)", 1, 512,
-                            int(_pkr.get("forecast_horizon", _kr_global.get("forecast_horizon", 96))), 8,
-                            key=f"pa_kr_hor_{_paslug}",
-                            help=t("pa_kronos_horizon_help")
-                        )
-                        _pkr["lookback"] = st.number_input(
-                            "Lookback (candles contexte)", 20, 2048,
-                            int(_pkr.get("lookback", _kr_global.get("lookback", 400))), 50,
-                            key=f"pa_kr_lb_{_paslug}",
-                            help=t("pa_kronos_lb_help")
-                        )
-                        _pkr["timeout_seconds"] = st.number_input(
-                            "Timeout (s)", 30, 600,
-                            int(_pkr.get("timeout_seconds", _kr_global.get("timeout_seconds", 120))), 10,
-                            key=f"pa_kr_to_{_paslug}",
-                        )
-                    with _c2:
-                        _pkr["temperature"] = st.slider(
-                            "Température", 0.1, 2.0,
-                            float(_pkr.get("temperature", _kr_global.get("temperature", 1.0))), 0.05,
-                            key=f"pa_kr_temp_{_paslug}",
-                            help=t("pa_kronos_temp_help")
-                        )
-                        _pkr["top_p"] = st.slider(
-                            "Top-p", 0.0, 1.0,
-                            float(_pkr.get("top_p", _kr_global.get("top_p", 0.9))), 0.05,
-                            key=f"pa_kr_topp_{_paslug}",
-                        )
-                        _pkr["sample_count"] = st.number_input(
-                            "Trajectoires", 1, 10,
-                            int(_pkr.get("sample_count", _kr_global.get("sample_count", 1))), 1,
-                            key=f"pa_kr_sc_{_paslug}",
-                        )
-                    _pacfg["kronos"] = _pkr
-
-                # ── MiroFish poids ────────────────────────────────────────────
-                with st.expander(t("pa_mirofish_section"), expanded=False):
-                    _pmf = dict(_pacfg.get("mirofish", {}))
-                    _mf_global = settings.get("mirofish", {})
-                    _mf_news_default = float(_pmf.get("seed_news_weight",
-                                             _mf_global.get("seed_news_weight", 0.6)))
-                    _mf_news_new = st.slider(
-                        t("pa_mf_news_weight"),
-                        0.0, 1.0, _mf_news_default, 0.05,
-                        key=f"pa_mf_news_{_paslug}",
-                        help=t("pa_mf_news_help")
-                    )
-                    _pmf["seed_news_weight"] = round(_mf_news_new, 2)
-                    _pmf["air_du_temps_weight"] = round(1.0 - _mf_news_new, 2)
-                    st.metric(t("pa_mf_adt_weight"), f"{_pmf['air_du_temps_weight']:.0%}")
-                    _pacfg["mirofish"] = _pmf
-
-                # ── Crawler templates ─────────────────────────────────────────
-                with st.expander(t("pa_crawler_section"), expanded=False):
-                    _pcr = dict(_pacfg.get("crawler", {}))
-                    _pcr_raw = "\n".join(_pcr.get("templates", []))
-                    _pcr_new = st.text_area(
-                        t("pa_crawler_templates").format(asset=_pas),
-                        value=_pcr_raw, height=200,
-                        key=f"pa_crawler_{_paslug}",
-                        help=t("pa_crawler_help")
-                    )
-                    _pcr["templates"] = [
-                        l.strip() for l in _pcr_new.splitlines()
-                        if l.strip() and not l.strip().startswith("#")
-                    ]
-                    st.caption(t("pa_crawler_count").format(n=len(_pcr["templates"])))
-                    _pacfg["crawler"] = _pcr
 
                 # ── Bouton Sauvegarder ────────────────────────────────────────
                 st.markdown("---")

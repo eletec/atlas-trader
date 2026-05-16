@@ -4154,6 +4154,120 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "es": "Motor Quant V2", "it": "Motore Quant V2", "pt": "Motor Quant V2",
         "nl": "Kwant Engine V2", "zh": "量化引擎 V2",
     },
+    # ── Sidebar section headers ───────────────────────────────────────────────
+    "admin_section_quant": {
+        "fr": "V2 Quant", "en": "V2 Quant", "de": "V2 Quant",
+        "es": "V2 Quant", "it": "V2 Quant", "pt": "V2 Quant",
+        "nl": "V2 Quant", "zh": "V2 量化",
+    },
+    "admin_section_system": {
+        "fr": "Système", "en": "System", "de": "System",
+        "es": "Sistema", "it": "Sistema", "pt": "Sistema",
+        "nl": "Systeem", "zh": "系统",
+    },
+    "admin_section_backup": {
+        "fr": "Sauvegarde", "en": "Backup", "de": "Backup",
+        "es": "Respaldo", "it": "Backup", "pt": "Backup",
+        "nl": "Back-up", "zh": "备份",
+    },
+    # ── Admin tab labels ──────────────────────────────────────────────────────
+    "tab_per_asset": {
+        "fr": "Par Actif", "en": "Per Asset", "de": "Je Aktie",
+        "es": "Por Activo", "it": "Per Asset", "pt": "Por Ativo",
+        "nl": "Per Actief", "zh": "逐资产",
+    },
+    "tab_memory": {
+        "fr": "Mémoire", "en": "Memory", "de": "Gedächtnis",
+        "es": "Memoria", "it": "Memoria", "pt": "Memória",
+        "nl": "Geheugen", "zh": "记忆",
+    },
+    "tab_backup": {
+        "fr": "Sauvegarde", "en": "Backup", "de": "Backup",
+        "es": "Respaldo", "it": "Backup", "pt": "Backup",
+        "nl": "Back-up", "zh": "备份",
+    },
+    "tab_reset_v2": {
+        "fr": "Reset V2", "en": "Reset V2", "de": "Reset V2",
+        "es": "Reset V2", "it": "Reset V2", "pt": "Reset V2",
+        "nl": "Reset V2", "zh": "重置 V2",
+    },
+    # ── Flux Manager V2 — categories ─────────────────────────────────────────
+    "flux_cat_data": {
+        "fr": "Données", "en": "Data", "de": "Daten",
+        "es": "Datos", "it": "Dati", "pt": "Dados",
+        "nl": "Data", "zh": "数据",
+    },
+    "flux_cat_processing": {
+        "fr": "Traitement", "en": "Processing", "de": "Verarbeitung",
+        "es": "Procesamiento", "it": "Elaborazione", "pt": "Processamento",
+        "nl": "Verwerking", "zh": "处理",
+    },
+    "flux_cat_decision": {
+        "fr": "Décision", "en": "Decision", "de": "Entscheidung",
+        "es": "Decisión", "it": "Decisione", "pt": "Decisão",
+        "nl": "Beslissing", "zh": "决策",
+    },
+    # ── Flux Manager V2 — step descriptions ──────────────────────────────────
+    "flux_desc_ohlcv_loader": {
+        "fr": "CCXT — chargement OHLCV 15m (cache disque)",
+        "en": "CCXT — OHLCV 15m load (disk cache)",
+        "de": "CCXT — OHLCV 15m laden (Disk-Cache)",
+        "es": "CCXT — carga OHLCV 15m (caché disco)",
+        "it": "CCXT — caricamento OHLCV 15m (cache disco)",
+        "pt": "CCXT — carga OHLCV 15m (cache disco)",
+        "nl": "CCXT — OHLCV 15m laden (schijfcache)",
+        "zh": "CCXT — 加载 OHLCV 15m (磁盘缓存)",
+    },
+    "flux_desc_features": {
+        "fr": "log_return, ATR, ADX, MA50, vol_z — calcul causal",
+        "en": "log_return, ATR, ADX, MA50, vol_z — causal computation",
+        "de": "log_return, ATR, ADX, MA50, vol_z — kausale Berechnung",
+        "es": "log_return, ATR, ADX, MA50, vol_z — cálculo causal",
+        "it": "log_return, ATR, ADX, MA50, vol_z — calcolo causale",
+        "pt": "log_return, ATR, ADX, MA50, vol_z — cálculo causal",
+        "nl": "log_return, ATR, ADX, MA50, vol_z — causale berekening",
+        "zh": "log_return, ATR, ADX, MA50, vol_z — 因果计算",
+    },
+    "flux_desc_regime": {
+        "fr": "ADX + volatilité (HMM optionnel) — filtre trending/ranging",
+        "en": "ADX + volatility (optional HMM) — trending/ranging filter",
+        "de": "ADX + Volatilität (HMM optional) — Trending/Ranging-Filter",
+        "es": "ADX + volatilidad (HMM opcional) — filtro trending/ranging",
+        "it": "ADX + volatilità (HMM opzionale) — filtro trending/ranging",
+        "pt": "ADX + volatilidade (HMM opcional) — filtro trending/ranging",
+        "nl": "ADX + volatiliteit (HMM optioneel) — trending/ranging-filter",
+        "zh": "ADX + 波动率 (可选 HMM) — 趋势/震荡过滤",
+    },
+    "flux_desc_signal_model": {
+        "fr": "LogisticRegression + Platt scaling — P(up) / P(dn)",
+        "en": "LogisticRegression + Platt scaling — P(up) / P(dn)",
+        "de": "LogisticRegression + Platt-Skalierung — P(up) / P(dn)",
+        "es": "LogisticRegression + Platt scaling — P(up) / P(dn)",
+        "it": "LogisticRegression + Platt scaling — P(up) / P(dn)",
+        "pt": "LogisticRegression + Platt scaling — P(up) / P(dn)",
+        "nl": "LogisticRegression + Platt-schaling — P(up) / P(dn)",
+        "zh": "逻辑回归 + Platt 校准 — P(up) / P(dn)",
+    },
+    "flux_desc_strategy": {
+        "fr": "Décision LONG/SHORT/HOLD selon régime × P(up)",
+        "en": "LONG/SHORT/HOLD decision based on regime × P(up)",
+        "de": "LONG/SHORT/HOLD-Entscheidung nach Regime × P(up)",
+        "es": "Decisión LONG/SHORT/HOLD según régimen × P(up)",
+        "it": "Decisione LONG/SHORT/HOLD in base al regime × P(up)",
+        "pt": "Decisão LONG/SHORT/HOLD com base em regime × P(up)",
+        "nl": "LONG/SHORT/HOLD-beslissing op basis van regime × P(up)",
+        "zh": "基于 regime × P(up) 的 LONG/SHORT/HOLD 决策",
+    },
+    "flux_desc_risk": {
+        "fr": "Position sizing ATR — SL/TP, Kelly, max drawdown",
+        "en": "ATR position sizing — SL/TP, Kelly, max drawdown",
+        "de": "ATR-Positionsgröße — SL/TP, Kelly, Max-Drawdown",
+        "es": "Position sizing ATR — SL/TP, Kelly, drawdown máx.",
+        "it": "Position sizing ATR — SL/TP, Kelly, max drawdown",
+        "pt": "Position sizing ATR — SL/TP, Kelly, max drawdown",
+        "nl": "ATR-positiegrootte — SL/TP, Kelly, max drawdown",
+        "zh": "ATR 仓位管理 — SL/TP、Kelly、最大回撤",
+    },
 }
 
 _current_lang: str = "en"

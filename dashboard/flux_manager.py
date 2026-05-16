@@ -21,127 +21,72 @@ except ImportError:
 # CONFIGURATION DES FLUX
 # ===========================================================
 
+# Pipeline V2 — étapes exécutées séquentiellement par LiveRunner chaque cycle.
 FLUX_DEFINITIONS = {
-    "fast_news": {
-        "label": "📰 Fast News Listener",
-        "description": "RSS + NewsAPI — polling 60s",
-        "category": "intelligence",
+    "ohlcv_loader": {
+        "label": "📊 OHLCV Loader",
+        "description": "CCXT — chargement OHLCV 15m (cache disque)",
+        "category": "data",
         "sla_latency_ms": 5000,
-        "config_key": "news",
-    },
-    "crawler": {
-        "label": "🕷 Broad Web Crawler",
-        "description": "Tavily + Firecrawl — quotidien",
-        "category": "intelligence",
-        "sla_latency_ms": 60000,
-        "config_key": "crawler",
-    },
-    "market_data": {
-        "label": "📊 Market Data (CCXT WS)",
-        "description": "OHLCV + Orderbook — temps réel",
-        "category": "intelligence",
-        "sla_latency_ms": 1000,
         "config_key": "exchange",
     },
-    "mirofish": {
-        "label": "🐟 MiroFish Simulation",
-        "description": "Swarm d'agents — par cycle",
-        "category": "simulation",
-        "sla_latency_ms": 120000,
-        "config_key": "mirofish",
+    "features": {
+        "label": "⚙ Feature Engineering",
+        "description": "log_return, ATR, ADX, MA50, vol_z — calcul causal",
+        "category": "processing",
+        "sla_latency_ms": 500,
+        "config_key": "quant",
     },
-    "agent_fundamental": {
-        "label": "📈 Agent Fundamental",
-        "description": "On-chain + macro — LLM",
-        "category": "analysis",
-        "sla_latency_ms": 15000,
-        "config_key": "agents.fundamental",
+    "regime": {
+        "label": "⊞ Régime Marché",
+        "description": "ADX + volatilité (HMM optionnel) — filtre trending/ranging",
+        "category": "processing",
+        "sla_latency_ms": 500,
+        "config_key": "quant",
     },
-    "agent_x_sentiment": {
-        "label": "🐦 Agent X Sentiment",
-        "description": "Twitter/X sentiment — LLM",
-        "category": "analysis",
-        "sla_latency_ms": 15000,
-        "config_key": "agents.x_sentiment",
+    "signal_model": {
+        "label": "🧠 Signal Model",
+        "description": "LogisticRegression + Platt scaling — P(up) / P(dn)",
+        "category": "processing",
+        "sla_latency_ms": 200,
+        "config_key": "quant",
     },
-    "agent_contrarian": {
-        "label": "🔄 Agent Contrarian",
-        "description": "Fear & Greed, long/short ratio",
-        "category": "analysis",
-        "sla_latency_ms": 10000,
-        "config_key": "agents.contrarian",
+    "strategy": {
+        "label": "📐 Stratégie V2",
+        "description": "Décision LONG/SHORT/HOLD selon régime × P(up)",
+        "category": "decision",
+        "sla_latency_ms": 100,
+        "config_key": "quant",
     },
-    "agent_fear_greed": {
-        "label": "😱 Agent Fear & Greed",
-        "description": "Indice alternative.me — signal contrarien",
-        "category": "analysis",
-        "sla_latency_ms": 10000,
-        "config_key": "agents.fear_greed",
-    },
-    "agent_polymarket": {
-        "label": "🎯 Agent Polymarket",
-        "description": "Marchés prédictifs BTC — probabilités calibrées",
-        "category": "analysis",
-        "sla_latency_ms": 10000,
-        "config_key": "agents.polymarket",
-    },
-    "agent_market_regime": {
-        "label": "⊞ Agent Market Regime",
-        "description": "HMM gaussien + ADX — filtre de régime",
-        "category": "analysis",
-        "sla_latency_ms": 5000,
-        "config_key": "agents.market_regime",
-    },
-    "agent_timesfm": {
-        "label": "⏱ Agent TimesFM",
-        "description": "Google TimesFM — prévision OHLCV (désactivé, remplacé par Kronos)",
-        "category": "analysis",
-        "sla_latency_ms": 180000,
-        "config_key": "agents.timesfm",
-    },
-    "agent_kronos": {
-        "label": "🔮 Agent Kronos",
-        "description": "Modèle fondation OHLCV — prévision 24h (AAAI 2026)",
-        "category": "analysis",
-        "sla_latency_ms": 120000,
-        "config_key": "agents.kronos",
-    },
-    "synthesis": {
-        "label": "🧠 Synthesis Agent",
-        "description": "Synthèse LLM finale",
-        "category": "analysis",
-        "sla_latency_ms": 20000,
-        "config_key": "llm",
+    "risk": {
+        "label": "⚖ Risk Manager",
+        "description": "Position sizing ATR — SL/TP, Kelly, max drawdown",
+        "category": "decision",
+        "sla_latency_ms": 100,
+        "config_key": "risk",
     },
     "paper_trader": {
         "label": "⚡ Paper Trader",
-        "description": "Exécution CCXT testnet",
+        "description": "Exécution simulée CCXT (testnet/paper)",
         "category": "execution",
         "sla_latency_ms": 3000,
         "config_key": "exchange",
     },
-    "post_mortem": {
-        "label": "🔍 Post-Mortem Agent",
-        "description": "Feedback loop 24h",
-        "category": "execution",
-        "sla_latency_ms": 30000,
-        "config_key": "post_mortem",
-    },
 }
 
 CATEGORY_COLORS = {
-    "intelligence": "#1f77b4",   # bleu
-    "simulation": "#ff7f0e",     # orange
-    "analysis": "#2ca02c",       # vert
-    "execution": "#d62728",      # rouge
+    "data":       "#1f77b4",   # bleu
+    "processing": "#2ca02c",   # vert
+    "decision":   "#ff7f0e",   # orange
+    "execution":  "#d62728",   # rouge
 }
 
 # CATEGORY_LABELS are resolved at render time via t() — see render_status_board()
 CATEGORY_LABEL_KEYS = {
-    "intelligence": "flux_cat_intelligence",
-    "simulation":   "flux_cat_simulation",
-    "analysis":     "flux_cat_analysis",
-    "execution":    "flux_cat_execution",
+    "data":       "flux_cat_data",
+    "processing": "flux_cat_processing",
+    "decision":   "flux_cat_decision",
+    "execution":  "flux_cat_execution",
 }
 
 STATUS_ICONS = {
@@ -299,7 +244,7 @@ def toggle_flux(flux_name: str, enabled: bool, settings: dict) -> dict:
 # ===========================================================
 
 def render_pipeline_diagram(statuses: dict[str, dict]) -> None:
-    """Affiche le diagramme du pipeline avec statuts colorés via Graphviz (natif Streamlit)."""
+    """Diagramme du pipeline V2 quantitatif avec statuts colorés via Graphviz."""
     def _color(flux_name: str) -> str:
         s = statuses.get(flux_name, {}).get("status", "unknown")
         return {"ok": "#2ecc71", "hold": "#2ecc71", "error": "#e74c3c", "timeout": "#f3a10c",
@@ -312,85 +257,62 @@ def render_pipeline_diagram(statuses: dict[str, dict]) -> None:
         return f"{short}\\n[{icon}]"
 
     dot = f"""
-digraph pipeline {{
+digraph pipeline_v2 {{
     rankdir=LR
     bgcolor="#0e1117"
     node [shape=box, style="filled,rounded", fontcolor="white", fontname="Helvetica", fontsize=10]
-    edge [color="#7986cb", arrowsize=0.7, penwidth=1.2]
+    edge [color="#7986cb", arrowsize=0.8, penwidth=1.4]
 
-    subgraph cluster_INT {{
-        label="Intelligence"
+    subgraph cluster_DATA {{
+        label="Données"
         style=filled
         fillcolor="#10192a"
         color="#1f77b4"
         fontcolor="#7bb8e8"
         fontname="Helvetica-Bold"
-        FN [label="{_lbl('fast_news', 'Fast News')}",   fillcolor="{_color('fast_news')}"]
-        CR [label="{_lbl('crawler', 'Crawler')}",       fillcolor="{_color('crawler')}"]
-        MD [label="{_lbl('market_data', 'Market Data')}", fillcolor="{_color('market_data')}"]
+        OL [label="{_lbl('ohlcv_loader', 'OHLCV\\nLoader')}", fillcolor="{_color('ohlcv_loader')}"]
     }}
 
-    subgraph cluster_SIM {{
-        label="Simulation"
-        style=filled
-        fillcolor="#1a120a"
-        color="#ff7f0e"
-        fontcolor="#ffb87b"
-        fontname="Helvetica-Bold"
-        MF [label="{_lbl('mirofish', 'MiroFish')}", fillcolor="{_color('mirofish')}"]
-    }}
-
-    subgraph cluster_ANA {{
-        label="Analysis"
+    subgraph cluster_PROC {{
+        label="Traitement"
         style=filled
         fillcolor="#0a1a0a"
         color="#2ca02c"
         fontcolor="#7bc87b"
         fontname="Helvetica-Bold"
-        AF [label="{_lbl('agent_fundamental', 'Fundamental')}", fillcolor="{_color('agent_fundamental')}"]
-        AS [label="{_lbl('agent_x_sentiment', 'X Sentiment')}",  fillcolor="{_color('agent_x_sentiment')}"]
-        AC [label="{_lbl('agent_contrarian', 'Contrarian')}",    fillcolor="{_color('agent_contrarian')}"]
-        FG [label="{_lbl('agent_fear_greed', 'Fear & Greed')}",  fillcolor="{_color('agent_fear_greed')}"]
-        PO [label="{_lbl('agent_polymarket', 'Polymarket')}",    fillcolor="{_color('agent_polymarket')}"]
-        MR [label="{_lbl('agent_market_regime', 'Régime')}",     fillcolor="{_color('agent_market_regime')}"]
-        KR [label="{_lbl('agent_kronos', 'Kronos')}",            fillcolor="{_color('agent_kronos')}"]
-        TF [label="{_lbl('agent_timesfm', 'TimesFM')}",          fillcolor="{_color('agent_timesfm')}"]
-        SY [label="{_lbl('synthesis', 'Synthesis')}",            fillcolor="{_color('synthesis')}"]
+        FE [label="{_lbl('features', 'Features')}", fillcolor="{_color('features')}"]
+        RE [label="{_lbl('regime', 'Régime')}", fillcolor="{_color('regime')}"]
+        SM [label="{_lbl('signal_model', 'Signal\\nModel')}", fillcolor="{_color('signal_model')}"]
+    }}
+
+    subgraph cluster_DEC {{
+        label="Décision"
+        style=filled
+        fillcolor="#1a120a"
+        color="#ff7f0e"
+        fontcolor="#ffb87b"
+        fontname="Helvetica-Bold"
+        ST [label="{_lbl('strategy', 'Stratégie')}", fillcolor="{_color('strategy')}"]
+        RK [label="{_lbl('risk', 'Risk\\nManager')}", fillcolor="{_color('risk')}"]
     }}
 
     subgraph cluster_EXE {{
-        label="Execution"
+        label="Exécution"
         style=filled
         fillcolor="#1a0a0a"
         color="#d62728"
         fontcolor="#e87b7b"
         fontname="Helvetica-Bold"
-        PT [label="{_lbl('paper_trader', 'Paper Trader')}", fillcolor="{_color('paper_trader')}"]
-        PM [label="{_lbl('post_mortem', 'Post-Mortem')}",  fillcolor="{_color('post_mortem')}"]
+        PT [label="{_lbl('paper_trader', 'Paper\\nTrader')}", fillcolor="{_color('paper_trader')}"]
     }}
 
-    FN -> MF
-    CR -> MF
-    MD -> AF
-    MD -> MR
-    MD -> KR
-    MD -> TF
-    MF -> AF
-    MF -> AS
-    MF -> AC
-    MF -> FG
-    MF -> PO
-    AF -> SY
-    AS -> SY
-    AC -> SY
-    FG -> SY
-    PO -> SY
-    KR -> SY
-    TF -> SY [style=dashed, color="#444", label="off"]
-    MR -> SY [style=dashed, color="#7986cb", label="filtre"]
-    SY -> PT
-    PT -> PM
-    PM -> MF [style=dashed, color="#555"]
+    OL -> FE
+    FE -> RE
+    FE -> SM
+    RE -> ST [label="filtre", style=dashed, color="#7986cb"]
+    SM -> ST [label="P(up)"]
+    ST -> RK
+    RK -> PT
 }}
 """
     st.graphviz_chart(dot, use_container_width=True)
@@ -398,8 +320,8 @@ digraph pipeline {{
 
 def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
                          settings: dict) -> None:
-    """Tableau de statut temps réel de chaque flux."""
-    categories = ["intelligence", "simulation", "analysis", "execution"]
+    """Tableau de statut temps réel de chaque étape du pipeline V2."""
+    categories = ["data", "processing", "decision", "execution"]
 
     for cat in categories:
         fluxes_in_cat = [
@@ -465,56 +387,61 @@ def render_controls(settings: dict) -> dict | None:
     """Panneau de contrôle — enable/disable + force refresh par flux."""
     st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
-    updated_settings = dict(settings)
-    changed = False
+def render_controls(settings: dict) -> dict | None:
+    """Panneau de contrôle V2 — actifs actifs + paramètres globaux."""
+    st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
-    for cat in ["intelligence", "simulation", "analysis", "execution"]:
-        fluxes_in_cat = [(k, v) for k, v in FLUX_DEFINITIONS.items() if v["category"] == cat]
-        if not fluxes_in_cat:
-            continue
+    st.info(
+        "🔬 **V2 Pipeline** — le pipeline quantitatif s'exécute comme une unité (pas de toggle par étape). "
+        "Pour configurer les seuils et le timeframe, utilisez l'onglet **Moteur Quant V2**. "
+        "Pour le capital et le risk par actif, utilisez **Par Actif**."
+    )
 
-        st.markdown(
-            f"<p style='color:{CATEGORY_COLORS[cat]};font-weight:600;margin:12px 0 4px'>"
-            f"{t(CATEGORY_LABEL_KEYS[cat])}</p>",
-            unsafe_allow_html=True
-        )
+    # Actifs actifs — seul vrai contrôle V2 ici
+    st.markdown("#### Actifs surveillés")
+    proj = settings.get("project", {})
+    _pa_opts = proj.get("active_assets", ["BTC/USDT"])
+    _pa_new = st.multiselect(
+        "Actifs actifs (pipeline V2)",
+        options=_pa_opts + ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XAU/USD",
+                            "XAG/USD", "WTI/USD", "GBP/USD", "EUR/USD"],
+        default=_pa_opts,
+        key="flux_ctrl_active_assets",
+        help="Le daemon itère sur tous ces actifs à chaque cycle de 15 min.",
+    )
 
-        hdr_name, hdr_desc, hdr_toggle, hdr_force = st.columns([3, 5, 1, 1])
-        hdr_name.caption("**Flux**")
-        hdr_desc.caption("**Description**")
-        hdr_toggle.caption("**On**")
-        hdr_force.caption("")
+    st.markdown("#### Paper Trading")
+    exch = settings.get("exchange", {})
+    _testnet = st.toggle("Mode testnet", value=exch.get("testnet", True),
+                         key="flux_ctrl_testnet")
 
-        for flux_name, flux_def in fluxes_in_cat:
-            col_name, col_desc, col_toggle, col_force = st.columns([3, 5, 1, 1])
-            with col_name:
-                st.markdown(f"**{flux_def['label']}**")
-            with col_desc:
-                st.caption(t(f"flux_desc_{flux_name}"))
-            with col_toggle:
-                enabled = is_flux_enabled(flux_name, settings)
-                new_val = st.toggle(
-                    "",
-                    value=enabled,
-                    key=f"toggle_{flux_name}",
-                    label_visibility="hidden"
-                )
-                if new_val != enabled:
-                    updated_settings = toggle_flux(flux_name, new_val, updated_settings)
-                    changed = True
-            with col_force:
-                if st.button(
-                    "🔄",
-                    key=f"force_{flux_name}",
-                    help=t("flux_force_help").format(label=flux_def['label']),
-                    use_container_width=True,
-                ):
-                    st.session_state[f"force_{flux_name}"] = True
-                    st.toast(t("flux_force_toast").format(label=flux_def['label']), icon="🔄")
+    st.markdown("#### Paramètres pipeline")
+    qcfg = settings.get("quant", {})
+    col1, col2 = st.columns(2)
+    with col1:
+        _ival = settings.get("project", {}).get("loop_interval_seconds", 900)
+        _ival_new = st.number_input("Intervalle cycle (s)", 60, 3600, int(_ival), 60,
+                                    key="flux_ctrl_interval")
+    with col2:
+        _hmm = qcfg.get("use_hmm", False)
+        _hmm_new = st.toggle("Utiliser HMM", value=_hmm, key="flux_ctrl_hmm",
+                             help="Active le filtre HMM (hmmlearn requis).")
 
-        st.divider()
+    changed = (
+        set(_pa_new) != set(_pa_opts)
+        or _testnet != exch.get("testnet", True)
+        or _ival_new != _ival
+        or _hmm_new != _hmm
+    )
+    if not changed:
+        return None
 
-    return updated_settings if changed else None
+    updated = dict(settings)
+    updated.setdefault("project", {})["active_assets"] = _pa_new
+    updated.setdefault("exchange", {})["testnet"] = _testnet
+    updated.setdefault("project", {})["loop_interval_seconds"] = int(_ival_new)
+    updated.setdefault("quant", {})["use_hmm"] = _hmm_new
+    return updated
 
 
 def render_latency_chart(flux_name: str, hours: int = 1) -> None:

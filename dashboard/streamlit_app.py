@@ -657,150 +657,66 @@ def _save_settings(settings: dict) -> bool:
 
 def _force_run_background(asset: str, log_q) -> None:
     """
-    Exécute le cycle complet depuis un thread background.
+    Exécute le cycle V2 depuis un thread background.
     Poste des chaînes HTML dans log_q au fur et à mesure.
     Poste ("__done__", (is_error: bool, message: str)) en dernier.
     """
     import time as _time
-    import threading as _threading
     import logging
-    from utils.i18n import t as _t
-    from graph.workflow import (
-        create_initial_state,
-        node_fetch_news, node_crawl_web, node_run_mirofish,
-        node_fetch_market_data, node_analyze_agents, node_synthesize,
-        node_calculate_score, node_decide, node_execute,
-        should_continue_after_news, should_execute,
-    )
 
-    _logger = logging.getLogger("zeitgeist.workflow")
+    _logger = logging.getLogger("atlas.workflow")
 
     def _log(txt):
         log_q.put(txt)
 
-    def _log_sub(txt):
-        log_q.put(f"<span style='font-size:12px;opacity:0.7;padding-left:12px'>{txt}</span>")
-
-    _STEP_TIMEOUTS = {
-        "fetch_news": 45, "crawl_web": 90, "run_mirofish": 45,
-        "fetch_market": 45, "agents": 210, "synthesize": 120,
-        "score": 20, "decide": 20,
-    }
-
-    def _run_step(step_key, fn, s, timeout_s):
-        _res = [None]; _err = [None]
-        def _w():
-            try:
-                _res[0] = fn(s)
-            except Exception as e:
-                _err[0] = e
-        thr = _threading.Thread(target=_w, daemon=True, name=f"frd_{step_key}")
-        thr.start()
-        thr.join(timeout=timeout_s)
-        if thr.is_alive():
-            return None, TimeoutError(f"timeout {timeout_s}s — nœud bloqué")
-        if _err[0] is not None:
-            return None, _err[0]
-        return _res[0], None
-
-    STEPS = [
-        ("fetch_news",   _t("run_step_news"),    node_fetch_news),
-        ("crawl_web",    _t("run_step_crawl"),   node_crawl_web),
-        ("run_mirofish", _t("run_step_mirofish"),node_run_mirofish),
-        ("fetch_market", _t("run_step_market"),  node_fetch_market_data),
-        ("agents",       _t("run_step_agents"),  node_analyze_agents),
-        ("synthesize",   _t("run_step_synth"),   node_synthesize),
-        ("score",        _t("run_step_score"),   node_calculate_score),
-        ("decide",       _t("run_step_decide"),  node_decide),
-    ]
-
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
-    _logger.info(f"=== DASHBOARD CYCLE START at {start_ts} — type: dashboard-force ({asset}) ===")
+    _logger.info(f"=== DASHBOARD FORCE-RUN V2 — {asset} @ {start_ts} ===")
+    _log(f"🚀 <b>Démarrage cycle V2</b> — {asset} ({start_ts})")
+    _log(f"⏳ <b>OHLCV → Features → Régime → Signal → Stratégie → Risk...</b>")
 
-    state = create_initial_state(asset)
     t_total = _time.time()
+    try:
+        from graph.workflow import run_cycle
+        result = run_cycle(asset=asset, trigger="force")
+        total_s = _time.time() - t_total
 
-    for key, label, fn in STEPS:
-        _log(f"⏳ <b>{label}</b>")
-        t0 = _time.time()
-        try:
-            patch, _step_err = _run_step(key, fn, state, _STEP_TIMEOUTS.get(key, 90))
-            if _step_err:
-                raise _step_err
-            if patch:
-                state.update(patch)
-            elapsed_s = _time.time() - t0
+        action   = result.get("action", "N/A").upper()
+        prob_up  = result.get("prob_up")
+        regime   = "TREND" if result.get("regime_trending") else "RANGE"
+        capital  = result.get("capital", 0)
+        close    = result.get("close_price", 0)
+        reason   = result.get("reason", "")
+        errors   = result.get("errors", [])
+        pos      = result.get("position")
 
-            if key == "fetch_news":
-                if should_continue_after_news(state) == "abort":
-                    _log(f"⚠️ {_t('run_no_news_abort')}")
-                    break
-                n = len(state.get("news_items", []))
-                _log(f"✅ <b>{label}</b> — {_t('run_news_count').format(n=n)} ({elapsed_s:.1f}s)")
-            elif key == "crawl_web":
-                st_ = state.get("crawler_status", "?")
-                _log(f"✅ <b>{label}</b> — {_t('run_status')}: {st_} ({elapsed_s:.1f}s)")
-            elif key == "run_mirofish":
-                mf = state.get("mirofish_result") or {}
-                _log(f"✅ <b>{label}</b> — {_t('run_signal')}: {mf.get('signal','?')} {_t('run_conf')}: {mf.get('confidence',0):.0%} ({elapsed_s:.1f}s)")
-            elif key == "fetch_market":
-                mi = state.get("market_indicators") or {}
-                _log(f"✅ <b>{label}</b> — BTC: ${mi.get('price',0):,.0f} RSI: {mi.get('rsi_14',0):.1f} ({elapsed_s:.1f}s)")
-            elif key == "agents":
-                analyses = state.get("agent_analyses", {})
-                errs_n = len(state.get("errors", []))
-                for aname, adata in analyses.items():
-                    if isinstance(adata, dict):
-                        asig  = adata.get("signal", "?")
-                        asc   = adata.get("score", 50)
-                        aconf = adata.get("confidence", 0)
-                        asum  = adata.get("summary", "")
-                        if asig == "NEUTRAL" and aconf == 0:
-                            _log_sub(f"⚠️ {aname} — fallback ({asum})")
-                        else:
-                            _log_sub(f"✓ {aname} — {asig} (score {asc:.0f}, conf {aconf:.0%})")
-                _log(f"✅ <b>{label}</b> — {_t('run_agents_count').format(n=len(analyses), e=errs_n)} ({elapsed_s:.1f}s)")
-            elif key == "synthesize":
-                _log(f"✅ <b>{label}</b> — tokens: {state.get('llm_tokens_used', 0)} ({elapsed_s:.1f}s)")
-            elif key == "score":
-                _log(f"✅ <b>{label}</b> — score: {state.get('global_score', 0):.1f}/100 ({elapsed_s:.1f}s)")
-            elif key == "decide":
-                action = (state.get("decision") or {}).get("action", "HOLD")
-                _log(f"✅ <b>{label}</b> — <b>{action}</b> ({elapsed_s:.1f}s)")
-                if should_execute(state) == "execute":
-                    _log(f"⏳ <b>{_t('run_trade_exec')} ({action})</b>")
-                    t0e = _time.time()
-                    try:
-                        patch, _exec_err = _run_step("execute", node_execute, state, 30)
-                        if _exec_err:
-                            raise _exec_err
-                        if patch:
-                            state.update(patch)
-                        tr = state.get("trade_result") or {}
-                        _log(f"✅ <b>{_t('run_trade_done')}</b> — {tr.get('status','?')} ({_time.time()-t0e:.1f}s)")
-                    except Exception as exc:
-                        _log(f"❌ <b>{_t('run_trade_failed')}</b> — {exc}")
-        except Exception as exc:
-            _log(f"❌ <b>{label}</b> — {exc} ({_time.time()-t0:.1f}s)")
-            state.setdefault("errors", []).append(f"{key}: {exc}")
+        _log(f"✅ <b>Pipeline OK</b> — {total_s:.1f}s")
+        _log(
+            f"📊 Prix: <b>${close:,.2f}</b> | Régime: <b>{regime}</b> | "
+            f"P(up): <b>{f'{prob_up:.3f}' if prob_up is not None else 'N/A'}</b>"
+        )
+        _log(f"🎯 Décision: <b>{action}</b> — {reason}")
+        if pos:
+            _log(
+                f"📌 Position: <b>{pos.get('side','?').upper()}</b> "
+                f"@ {pos.get('entry_price',0):,.2f} | "
+                f"SL={pos.get('sl',0):,.2f} TP={pos.get('tp',0):,.2f}"
+            )
+        _log(f"💰 Capital: <b>${capital:,.0f}</b>")
 
-    total_s = _time.time() - t_total
-    state["cycle_duration_ms"] = int(total_s * 1000)
-    errs = state.get("errors", [])
-    final_action = (state.get("decision") or {}).get("action", "N/A")
-    final_score  = state.get("global_score", 0)
+        if errors:
+            for e in errors:
+                _log(f"⚠️ {e}")
+            msg = f"Cycle V2 terminé ({len(errors)} avertissement(s)) — {action} | {total_s:.1f}s"
+            log_q.put(("__done__", (False, msg)))
+        else:
+            msg = f"Cycle V2 OK — {action} | capital ${capital:,.0f} | {total_s:.1f}s"
+            log_q.put(("__done__", (False, msg)))
 
-    end_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
-    _logger.info(
-        f"=== CYCLE DASHBOARD FIN à {end_ts} — "
-        f"{total_s:.1f}s | score={final_score:.1f} | "
-        f"decision={final_action} | erreurs={len(errs)} ==="
-    )
-    if errs:
-        msg = f"{_t('run_done_errors').format(n=len(errs))} — {final_action} | score {final_score:.0f} | {total_s:.1f}s"
-    else:
-        msg = f"{_t('run_done')} — {final_action} | score {final_score:.0f} | {total_s:.1f}s"
-    log_q.put(("__done__", (bool(errs), msg)))
+    except Exception as exc:
+        total_s = _time.time() - t_total
+        _logger.exception(f"Force-run V2 échoué: {exc}")
+        _log(f"❌ <b>Erreur cycle V2</b> — {exc} ({total_s:.1f}s)")
+        log_q.put(("__done__", (True, f"Erreur: {exc}")))
 
 
 @st.dialog("⚡ Force Run", width="small")
@@ -2561,12 +2477,27 @@ def render_agent_scores_chart(asset: str):
 
 def render_live_logs(key: str = "global"):
     """Affiche tous les logs avec pagination (100 lignes par page)."""
-    st.markdown(
-        f'<h3 style="margin:0 0 12px;font-size:18px;">'
-        f'<i class="fas fa-terminal" style="margin-right:8px;color:#7986cb;"></i>'
-        f'{t("logs_title")}</h3>',
-        unsafe_allow_html=True,
-    )
+    col_title, col_del = st.columns([5, 1])
+    with col_title:
+        st.markdown(
+            f'<h3 style="margin:0 0 12px;font-size:18px;">'
+            f'<i class="fas fa-terminal" style="margin-right:8px;color:#7986cb;"></i>'
+            f'{t("logs_title")}</h3>',
+            unsafe_allow_html=True,
+        )
+    with col_del:
+        if st.button("🗑️ Vider", key=f"btn_clear_logs_{key}",
+                     help="Supprime toutes les entrées de la table logs",
+                     use_container_width=True):
+            try:
+                from storage.database import get_connection
+                with get_connection() as conn:
+                    conn.execute("DELETE FROM logs")
+                    conn.commit()
+                st.success("Logs supprimés.", icon="✅")
+                st.rerun()
+            except Exception as _e:
+                st.error(f"Erreur suppression logs : {_e}")
     try:
         from storage.database import get_connection
         with get_connection() as conn:

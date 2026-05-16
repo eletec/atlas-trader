@@ -278,6 +278,16 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return base
 
 
+def get_active_assets() -> list[str]:
+    """Retourne la liste des actifs actifs depuis project.active_assets (ou [project.asset])."""
+    cfg = load_settings()
+    assets = cfg.get("project", {}).get("active_assets", [])
+    if not assets:
+        fallback = cfg.get("project", {}).get("asset", "BTC/USDT")
+        return [fallback]
+    return list(assets)
+
+
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
     """Sauvegarde settings.yaml en préservant les commentaires existants."""
     import stat

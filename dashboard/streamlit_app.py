@@ -1463,6 +1463,7 @@ def _render_v2_monitoring(state: dict, theme: str, bg: str, bdr: str, txt: str, 
             st.warning(f"{icon} {msg}")
 
 
+def render_portfolio(portfolio: dict):
     """Portefeuille paper en cartes Bootstrap-like avec Font Awesome."""
     theme   = _get_theme()
     pnl     = portfolio.get("total_pnl", 0)

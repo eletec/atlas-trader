@@ -4149,6 +4149,11 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "es": "Máx. Caída", "it": "Max Drawdown", "pt": "Max Drawdown",
         "nl": "Max. Drawdown", "zh": "最大回撤",
     },
+    "tab_quant_v2": {
+        "fr": "Moteur Quant V2", "en": "V2 Quant Engine", "de": "Quant-Engine V2",
+        "es": "Motor Quant V2", "it": "Motore Quant V2", "pt": "Motor Quant V2",
+        "nl": "Kwant Engine V2", "zh": "量化引擎 V2",
+    },
 }
 
 _current_lang: str = "en"

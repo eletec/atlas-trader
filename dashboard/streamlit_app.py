@@ -2805,36 +2805,21 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
-        # ── Sources & Données ────────────────────────────────────────────────
-        (None, None,      "Sources & Données"),
-        ('<i class="fas fa-microchip"></i>',      "llm",      t("tab_llm")),
-        ('<i class="fas fa-spider"></i>',          "crawler",  t("tab_crawler")),
-        ('<i class="fas fa-newspaper"></i>',       "news",     t("tab_news")),
-        ('<i class="fas fa-satellite-dish"></i>',  "sources",  t("tab_sources")),
-        # ── Modèles & Agents ─────────────────────────────────────────────────
-        (None, None,      "Modèles & Agents"),
-        ('<i class="fas fa-fish"></i>',            "mirofish", t("tab_mirofish")),
-        ('<i class="fas fa-network-wired"></i>',   "agents",   t("tab_agents")),
-        ('<i class="fas fa-robot"></i>',           "kronos",   t("tab_kronos")),
-        ('<i class="fas fa-chart-line"></i>',      "timesfm",  t("tab_timesfm")),
-        # ── Marché & Risque ───────────────────────────────────────────────────
-        (None, None,      "Marché & Risque"),
+        # ── V2 Quant ─────────────────────────────────────────────────────────
+        (None, None,      t("admin_section_quant")),
+        ('<i class="fas fa-microchip"></i>',       "quant",    t("tab_quant_v2")),
         ('<i class="fas fa-shield-halved"></i>',   "risk",     t("tab_risk")),
-        ('<i class="fas fa-wave-square"></i>',     "regime",   t("tab_market_regime")),
-        # ── Performance ──────────────────────────────────────────────────────
-        (None, None,      "Performance"),
-        ('<i class="fas fa-chart-bar"></i>',       "agperf",   "Agents Perf"),
-        ('<i class="fas fa-magnifying-glass-chart"></i>', "meta", "Méta-Analyse"),
-        ('<i class="fas fa-brain"></i>',           "memory",   "Mémoire"),
         # ── Système ───────────────────────────────────────────────────────────
-        (None, None,      "Système"),
+        (None, None,      t("admin_section_system")),
         ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
         ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
         ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
-        ('<i class="fas fa-layer-group"></i>',     "peractif", "Par Actif"),
+        ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
+        ('<i class="fas fa-brain"></i>',           "memory",   t("tab_memory")),
         # ── Sauvegarde ──────────────────────────────────────────────────
-        (None, None,      "Sauvegarde"),
-        ('<i class="fas fa-floppy-disk"></i>',      "backup",   "Sauvegarde / Restauration"),
+        (None, None,      t("admin_section_backup")),
+        ('<i class="fas fa-floppy-disk"></i>',     "backup",   t("tab_backup")),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",    t("tab_reset_v2")),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -2842,389 +2827,94 @@ def render_admin_panel():
         else {"key": s[1], "icon": s[0], "text": s[2]}
         for s in _ADMIN_SECTIONS
     ]
-    _atab = st.query_params.get("_atab", "llm")
+    _atab = st.query_params.get("_atab", "quant")
     if _atab not in _admin_keys:
-        _atab = "llm"
+        _atab = "quant"
     _inject_custom_sidenav(_admin_items, _atab, qparam="_atab")
 
-    if _atab == "llm":  # LLM
-        st.markdown(f'<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_llm_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_llm_info"))
-        llm = settings.get("llm", {})
-        col1, col2 = st.columns(2)
-        with col1:
-            _llm_providers = ["anthropic", "deepseek", "openai", "xai", "ollama"]
-            _llm_default = llm.get("provider", "anthropic")
-            if _llm_default not in _llm_providers:
-                _llm_providers.append(_llm_default)
-            llm["provider"] = st.radio(t("cfg_provider"), _llm_providers,
-                index=_llm_providers.index(_llm_default),
-                horizontal=True, help=t("cfg_provider_help"))
-            llm["model"] = st.text_input(t("cfg_model"), value=llm.get("model", "claude-3-5-sonnet-20241022"),
-                help=t("cfg_model_help"))
-        with col2:
-            llm["temperature"] = st.slider(t("cfg_temperature"), 0.0, 1.0,
-                float(llm.get("temperature", 0.3)), 0.05,
-                help=t("cfg_temperature_help"))
-            llm["max_tokens"] = st.number_input(t("cfg_max_tokens"), 512, 8192,
-                int(llm.get("max_tokens", 4096)), step=512,
-                help=t("cfg_max_tokens_help"))
-            llm["request_timeout_seconds"] = st.number_input(
-                t("cfg_timeout_llm"),
-                min_value=10, max_value=300,
-                value=int(llm.get("request_timeout_seconds", 60)),
-                step=10,
-                help=t("cfg_timeout_help")
-            )
-        llm["cache_responses"] = st.toggle(t("cfg_cache_responses"), llm.get("cache_responses", True),
-            help=t("cfg_cache_help"))
-
-        # Clés API par provider
-        st.markdown(f"**{t('cfg_api_keys')}**")
-        _provider_now = llm.get("provider", "anthropic")
-        import os as _os
-        _key_labels = {
-            "anthropic": ("Anthropic API Key", "ANTHROPIC_API_KEY", "anthropic_api_key"),
-            "deepseek":  ("DeepSeek API Key",  "DEEPSEEK_API_KEY",  "deepseek_api_key"),
-            "openai":    ("OpenAI API Key",    "OPENAI_API_KEY",    "openai_api_key"),
-            "xai":       ("xAI API Key",       "XAI_API_KEY",       "xai_api_key"),
-            "ollama":    ("Ollama Base URL",   "OLLAMA_BASE_URL",   "ollama_base_url"),
-        }
-        _lbl, _env_var, _cfg_key = _key_labels.get(_provider_now, (f"{_provider_now} API Key", "", f"{_provider_now}_api_key"))
-        _current_val = llm.get(_cfg_key) or _os.environ.get(_env_var, "")
-        _new_val = st.text_input(
-            _lbl,
-            value=_current_val,
-            type="password",
-            help=t("cfg_api_key_saved").format(env=_env_var),
-            key=f"llm_api_key_{_provider_now}",
-        )
-        if _new_val:
-            llm[_cfg_key] = _new_val
-        settings["llm"] = llm
-
-        # CA7 — Section "Analyser avec le LLM" (utilise le provider configuré)
-        st.divider()
-        _provider_label = llm.get("provider", "LLM").capitalize()
+    if _atab == "quant":  # Quant V2 Pipeline
         st.markdown(
-            f"<h4><i class=\"fas fa-terminal\" style=\"margin-right:7px;color:#7986cb;\"></i>"
-            f"{t('cfg_analyze_with').format(provider=_provider_label)}</h4>",
+            f'<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>'
+            f'{t("tab_quant_v2")}</h4>',
             unsafe_allow_html=True,
         )
-        # Clé API du provider actif (lecture seule pour info ; éditable via champ dédié ci-dessus)
-        import os as _os
-        _prov = llm.get("provider", "anthropic")
-        _key_map = {
-            "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-            "deepseek":  ("deepseek_api_key",  "DEEPSEEK_API_KEY"),
-            "openai":    ("openai_api_key",     "OPENAI_API_KEY"),
-            "xai":       ("xai_api_key",        "XAI_API_KEY"),
-            "github":    ("github_api_key",     "GITHUB_TOKEN"),
-            "ollama":    ("ollama_base_url",     "OLLAMA_BASE_URL"),
-        }
-        _cfg_k, _env_k = _key_map.get(_prov, (f"{_prov}_api_key", ""))
-        _cur_key = llm.get(_cfg_k) or _os.environ.get(_env_k, "")
-        _placeholder = _cur_key if (_cur_key and not _cur_key.endswith("...")) else ""
-        _new_key = st.text_input(
-            t("cfg_api_key_for_prov").format(provider=_provider_label),
-            value=_placeholder,
-            type="password",
-            help=t("cfg_api_key_saved2").format(env=_env_k),
-            key=f"ca7_key_{_prov}",
+        st.info(
+            "Paramètres du pipeline quantitatif V2 — régime de marché, modèle de signal, "
+            "seuils de décision et refit périodique."
         )
-        if _new_key:
-            llm[_cfg_k] = _new_key
-            settings["llm"] = llm
-        claude_prompt = st.text_area(
-            t("cfg_ca7_prompt"),
-            value=t("cfg_ca7_default_prompt"),
-            height=100,
-            key="ca7_claude_prompt",
-        )
-        ca7_col1, ca7_col2 = st.columns([1, 3])
-        with ca7_col1:
-            ca7_timeout = st.number_input(t("cfg_ca7_timeout"), min_value=10, max_value=300,
-                                          value=60, step=10, key="ca7_timeout")
-        with ca7_col2:
-            ca7_inject = st.toggle(t("cfg_ca7_inject"), value=True, key="ca7_inject")
-        if st.button(t("cfg_ca7_run").format(provider=_provider_label), key="ca7_run_btn"):
-            with st.spinner("Analyse en cours…"):
-                try:
-                    from utils.claude_cli import run_claude_analysis
-                    _full_prompt = claude_prompt
-                    if ca7_inject:
-                        import json as _json
-                        _ctx_parts = []
-                        try:
-                            from storage.database import get_recent_decisions, get_recent_trades
-                            _decisions = get_recent_decisions(10)
-                            if _decisions:
-                                _ctx_parts.append("## Dernières décisions du système (JSON)\n```json\n"
-                                    + _json.dumps(_decisions, ensure_ascii=False, indent=2, default=str)
-                                    + "\n```")
-                            _trades = get_recent_trades(5)
-                            if _trades:
-                                _ctx_parts.append("## Derniers trades BUY/SELL\n```json\n"
-                                    + _json.dumps(_trades, ensure_ascii=False, indent=2, default=str)
-                                    + "\n```")
-                        except Exception as _db_exc:
-                            _ctx_parts.append(f"*(données DB indisponibles : {_db_exc})*")
-                        try:
-                            _port = _get_portfolio()
-                            _ctx_parts.append(
-                                f"## Portfolio actuel\n"
-                                f"- Capital : {_port.get('capital', '?')} USDT\n"
-                                f"- Valeur : {_port.get('current_value', '?')} USDT\n"
-                                f"- PnL total : {_port.get('total_pnl', '?')} USDT "
-                                f"({_port.get('total_pnl_pct', '?')}%)\n"
-                                f"- Nb trades : {_port.get('n_trades', '?')}"
-                            )
-                        except Exception:
-                            pass
-                        if _ctx_parts:
-                            _full_prompt = (
-                                "Tu es un assistant de trading algorithmique. "
-                                "Voici les données réelles du système Atlas Trader :\n\n"
-                                + "\n\n".join(_ctx_parts)
-                                + "\n\n---\n\n"
-                                + claude_prompt
-                            )
-                    ca7_result = run_claude_analysis(_full_prompt, timeout=int(ca7_timeout))
-                    st.text_area(t("cfg_ca7_result"), value=ca7_result, height=300, key="ca7_result")
-                except Exception as _ca7_exc:
-                    st.error(f"Erreur : {_ca7_exc}")
-
-    elif _atab == "crawler":  # Crawler
-        st.markdown(f'<h4><i class="fas fa-spider" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_crawler_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_crawler_info"))
-        crawler = settings.get("crawler", {})
+        q = settings.get("quant", {})
         col1, col2 = st.columns(2)
         with col1:
-            _crawler_providers = ["tavily", "firecrawl", "serpapi", "duckduckgo"]
-            _crawler_default = crawler.get("provider", "tavily")
-            if _crawler_default not in _crawler_providers:
-                _crawler_providers.append(_crawler_default)
-            crawler["provider"] = st.radio(t("cfg_provider"), _crawler_providers,
-                index=_crawler_providers.index(_crawler_default), key="crawler_provider",
-                horizontal=True, help=t("cfg_provider_help"))
-            crawler["n_themes"] = st.slider(t("cfg_n_themes"), 5, 15, int(crawler.get("n_themes", 10)),
-                help=t("cfg_n_themes_help"))
-        with col2:
-            crawler["max_pages_per_theme"] = st.slider(t("cfg_pages_theme"), 3, 20,
-                int(crawler.get("max_pages_per_theme", 10)),
-                help=t("cfg_pages_theme_help"))
-            _freq_opts = ["daily", "per_cycle", "trigger"]
-            _freq_default = crawler.get("frequency", "daily")
-            if _freq_default not in _freq_opts:
-                _freq_opts.append(_freq_default)
-            crawler["frequency"] = st.radio(t("cfg_frequency"), _freq_opts,
-                index=_freq_opts.index(_freq_default),
-                horizontal=True, help=t("cfg_frequency_help"))
-        _cr_all_assets = list(settings.get("project", {}).get("active_assets",
-                         ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
-        _cr_icons = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
-        _cr_subtabs = st.tabs(["🌐 Macro"] + [f"{_cr_icons.get(a,'◆')} {a.split('/')[0]}" for a in _cr_all_assets])
-        with _cr_subtabs[0]:
-            _macro_raw = st.text_area(
-                t("cfg_templates"),
-                value="\n".join(crawler.get("templates_macro", crawler.get("templates", []))),
-                key="crawler_templates_macro", height=200,
-                help="Templates communs à TOUS les actifs. {asset} et {year} sont remplacés dynamiquement."
+            _tf_opts = ["1m", "5m", "15m", "30m", "1h", "4h"]
+            _tf_cur = q.get("timeframe", "15m")
+            if _tf_cur not in _tf_opts:
+                _tf_opts.append(_tf_cur)
+            q["timeframe"] = st.selectbox(
+                "Timeframe OHLCV", _tf_opts,
+                index=_tf_opts.index(_tf_cur),
+                help="Granularité des barres OHLCV (ccxt notation).",
             )
-            crawler["templates_macro"] = [
-                l.strip() for l in _macro_raw.splitlines()
-                if l.strip() and not l.strip().startswith("#")
-            ]
-            st.caption(f"{len(crawler['templates_macro'])} templates macro configurés")
-        for _ci, _ca in enumerate(_cr_all_assets):
-            with _cr_subtabs[_ci + 1]:
-                try:
-                    from utils.config import load_asset_config as _cr_lac, save_asset_config as _cr_sac
-                    _cr_acfg = _cr_lac(_ca)
-                except Exception:
-                    _cr_acfg = {}
-                _cr_tmpl = _cr_acfg.get("crawler", {}).get("templates", [])
-                _cr_new = st.text_area(
-                    f"Templates spécifiques {_ca}",
-                    value="\n".join(_cr_tmpl),
-                    key=f"cr_tmpl_{_ca.replace('/', '_')}",
-                    height=200,
-                    help=f"{{{{asset}}}} → {_ca.split('/')[0]}, {{{{year}}}} → année courante. "
-                         "Ajoutés AUX templates macro globaux."
-                )
-                _cr_acfg.setdefault("crawler", {})["templates"] = [
-                    l.strip() for l in _cr_new.splitlines()
-                    if l.strip() and not l.strip().startswith("#")
-                ]
-                st.caption(f"{len(_cr_acfg['crawler']['templates'])} templates spécifiques")
-                if st.button(f"💾 Sauvegarder templates {_ca}", key=f"cr_save_{_ca.replace('/', '_')}",
-                             type="primary", use_container_width=True):
-                    try:
-                        from utils.config import save_asset_config as _cr_sac2
-                        _cr_sac2(_ca, _cr_acfg)
-                        st.success(f"✅ Templates {_ca} sauvegardés")
-                    except Exception as _ce:
-                        st.error(f"❌ Erreur : {_ce}")
-        settings["crawler"] = crawler
-
-    elif _atab == "news":  # News
-        st.markdown(f'<h4><i class="fas fa-newspaper" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_news_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_news_info"))
-        news = settings.get("news", {})
-        col1, col2 = st.columns(2)
-        with col1:
-            news["polling_interval_seconds"] = st.slider(
-                t("cfg_polling_interval"), 60, 3600,
-                int(news.get("polling_interval_seconds", 900)), step=60,
-                help=t("cfg_polling_interval_help")
+            q["history_days"] = st.slider(
+                "Historique (jours)", 30, 365,
+                int(q.get("history_days", 90)), 10,
+                help="Nombre de jours d'historique chargés au refit.",
+            )
+            q["train_fraction"] = st.slider(
+                "Fraction train/test", 0.55, 0.85,
+                float(q.get("train_fraction", 0.70)), 0.05,
+                help="Fraction des données utilisées pour l'entraînement.",
+            )
+            q["horizon_bars"] = st.selectbox(
+                "Horizon (barres)", [1, 2, 4, 8, 16],
+                index=[1, 2, 4, 8, 16].index(int(q.get("horizon_bars", 4))),
+                help="Horizon de prédiction en nombre de barres (ex: 4 × 15min = 1h).",
             )
         with col2:
-            news["max_items_per_cycle"] = st.number_input(
-                t("cfg_items_max_cycle"), 10, 200, int(news.get("max_items_per_cycle", 30)),
-                help=t("cfg_items_max_cycle_help")
+            q["p_up_threshold"] = st.slider(
+                "Seuil LONG — P(up) >", 0.50, 0.75,
+                float(q.get("p_up_threshold", 0.55)), 0.01,
+                help="Au-dessus de ce seuil en régime trending → signal LONG.",
             )
-        # Mots-clés par actif
-        sources_per_asset = news.get("sources_per_asset", {})
-        _all_assets = list(settings.get("project", {}).get("active_assets",
-                      ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
-        _kw_icons = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
-        st.markdown('<div style="margin-top:2rem;"></div>', unsafe_allow_html=True)
-        st.markdown('<h5 style="margin-top:0;margin-bottom:0.5rem;">🔑 Mots-clés de surveillance par actif</h5>', unsafe_allow_html=True)
-        _kw_tabs = st.tabs([f"{_kw_icons.get(a,'◆')} {a.split('/')[0]}" for a in _all_assets])
-        for _ki, _ka in enumerate(_all_assets):
-            with _kw_tabs[_ki]:
-                _kw_data = sources_per_asset.get(_ka, {})
-                _kw_new = st.text_input(
-                    "Mots-clés (séparés par virgules)",
-                    value=", ".join(_kw_data.get("keywords", [])),
-                    key=f"news_kw_{_ka.replace('/', '_')}"
-                )
-                _kw_data["keywords"] = [k.strip() for k in _kw_new.split(",") if k.strip()]
-                sources_per_asset[_ka] = _kw_data
-        news["sources_per_asset"] = sources_per_asset
-        settings["news"] = news
+            q["p_dn_threshold"] = st.slider(
+                "Seuil SHORT — P(up) <", 0.25, 0.50,
+                float(q.get("p_dn_threshold", 0.45)), 0.01,
+                help="En dessous de ce seuil en régime trending → signal SHORT.",
+            )
+            _dead_zone = q["p_up_threshold"] - q["p_dn_threshold"]
+            st.caption(f"Zone morte : [{q['p_dn_threshold']:.2f} – {q['p_up_threshold']:.2f}] "
+                       f"(amplitude = {_dead_zone:.2f})")
+            q["refit_interval_hours"] = st.number_input(
+                "Intervalle refit (heures)", 12, 720,
+                int(q.get("refit_interval_hours", 168)), 12,
+                help="Le modèle est réentraîné automatiquement toutes les N heures.",
+            )
+            q["use_hmm"] = st.toggle(
+                "Utiliser HMM pour la détection de régime",
+                bool(q.get("use_hmm", False)),
+                help="Active le filtre HMM (hmmlearn requis — désactiver en local si absent).",
+            )
+        settings["quant"] = q
 
-    elif _atab == "sources":  # Sources
-        st.markdown(f'<h4><i class="fas fa-satellite-dish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_sources_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_sources_info"))
-        news = settings.get("news", {})
-        sources_per_asset = news.get("sources_per_asset", {})
-        _all_assets_src = list(settings.get("project", {}).get("active_assets",
-                           ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
-
-        # ── Sources macro (communes à tous les actifs) ──────────────────────
-        st.markdown("#### 🌐 Sources macro \u2014 communes à tous les actifs")
-        macro_raw = "\n".join(news.get("sources_rss_macro", []))
-        macro_edited = st.text_area(
-            "Flux RSS macro (un par ligne)",
-            value=macro_raw, height=180, key="rss_macro",
-            help="Géopolitique, économie, banques centrales… pertinents pour tous les actifs."
-        )
-        news["sources_rss_macro"] = [
-            u.split("#")[0].strip()
-            for u in macro_edited.splitlines()
-            if u.strip() and not u.strip().startswith("#")
-        ]
-        st.caption(f"{len(news['sources_rss_macro'])} flux macro configurés")
-
+        # ── État live du modèle ───────────────────────────────────────────────
         st.markdown("---")
-
-        # ── Sources spécifiques par actif ───────────────────────────────────
-        _src_icons = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "EUR/USD": "€", "GBP/USD": "£"}
-        _src_tabs = st.tabs([f"{_src_icons.get(a,'◆')} {a.split('/')[0]}" for a in _all_assets_src])
-        for _si, _sa in enumerate(_all_assets_src):
-            with _src_tabs[_si]:
-                _src = sources_per_asset.get(_sa, {})
-
-                # --- RSS ---
-                st.markdown(f"#### 📰 {t('cfg_rss_title')}")
-                rss_edited = st.text_area(
-                    t("cfg_rss_area"),
-                    value="\n".join(_src.get("rss", [])), height=220,
-                    key=f"rss_sources_{_sa.replace('/', '_')}",
-                    help="Un flux RSS par ligne. Lignes commençant par # ignorées."
-                )
-                _src["rss"] = [
-                    u.split("#")[0].strip()
-                    for u in rss_edited.splitlines()
-                    if u.strip() and not u.strip().startswith("#")
-                ]
-                st.caption(t("cfg_rss_count").format(n=len(_src['rss'])))
-
-                # --- Nitter ---
-                st.markdown(f"#### 🐦 {t('cfg_nitter_title')}")
-                nitter_edited = st.text_area(
-                    t("cfg_nitter_area"),
-                    value="\n".join(_src.get("nitter", [])), height=140,
-                    key=f"nitter_sources_{_sa.replace('/', '_')}",
-                    help="Un compte par ligne (sans @)."
-                )
-                _src["nitter"] = [
-                    u.strip().lstrip("@")
-                    for u in nitter_edited.splitlines()
-                    if u.strip()
-                ]
-                st.caption(t("cfg_nitter_count").format(n=len(_src['nitter'])))
-
-                # --- Reddit ---
-                st.markdown(f"#### 🤖 {t('cfg_reddit_title')}")
-                reddit_edited = st.text_area(
-                    t("cfg_reddit_area"),
-                    value="\n".join(_src.get("reddit", [])), height=100,
-                    key=f"reddit_sources_{_sa.replace('/', '_')}",
-                    help="Un subreddit par ligne (sans r/)."
-                )
-                _src["reddit"] = [
-                    u.strip().lstrip("r/")
-                    for u in reddit_edited.splitlines()
-                    if u.strip()
-                ]
-                st.caption(t("cfg_reddit_count").format(n=len(_src['reddit'])))
-
-                # --- CryptoPanic (crypto uniquement) ---
-                _cp_map = news.get("cryptopanic", {}).get("asset_currency_map", {"BTC/USDT": "BTC", "ETH/USDT": "ETH"})
-                if _sa in _cp_map:
-                    st.markdown("#### 🚨 CryptoPanic")
-                    cp = news.get("cryptopanic", {})
-                    _cp_col1, _cp_col2 = st.columns(2)
-                    with _cp_col1:
-                        cp["enabled"] = st.toggle(t("cfg_cp_enable"), cp.get("enabled", True),
-                                                   key=f"cp_enabled_{_sa.replace('/', '_')}")
-                    with _cp_col2:
-                        cp["max_items"] = st.number_input(
-                            t("cfg_cp_max"), 5, 50, int(cp.get("max_items", 15)),
-                            key=f"cp_max_{_sa.replace('/', '_')}")
-                    news["cryptopanic"] = cp
-                else:
-                    st.caption("🚨 CryptoPanic : non applicable pour cet actif (crypto uniquement)")
-
-                sources_per_asset[_sa] = _src
-        news["sources_per_asset"] = sources_per_asset
-
-        settings["news"] = news
-
-    elif _atab == "mirofish":  # MiroFish
-        st.markdown(f'<h4><i class="fas fa-fish" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_mirofish_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_mirofish_info"))
-        mf = settings.get("mirofish", {})
-        col1, col2 = st.columns(2)
-        with col1:
-            mf["n_agents"] = st.number_input(t("cfg_mf_agents"), 1000, 50000,
-                int(mf.get("n_agents", 5000)), step=1000,
-                help=t("cfg_mf_agents_help"))
-            mf["n_steps"] = st.number_input(t("cfg_mf_steps"), 10, 500,
-                int(mf.get("n_steps", 100)), step=10,
-                help=t("cfg_mf_steps_help"))
-        with col2:
-            mf["seed_news_weight"] = st.slider(t("cfg_mf_news_weight"), 0.0, 1.0,
-                float(mf.get("seed_news_weight", 0.6)), 0.05,
-                help=t("cfg_mf_news_weight_help"))
-            mf["air_du_temps_weight"] = 1 - mf["seed_news_weight"]
-            st.metric(t("cfg_mf_adt_weight"), f"{mf['air_du_temps_weight']:.0%}")
-        settings["mirofish"] = mf
+        st.markdown("#### État courant du modèle V2")
+        try:
+            from storage.database import get_v2_state
+            _qs = get_v2_state()
+            if _qs:
+                _qa, _qb = st.columns(2)
+                _qa.metric("Dernier refit", str(_qs.get("model_fit_at", "—"))[:16])
+                _qa.metric("Régime courant", "TRENDING" if _qs.get("regime") == 1 else "RANGING")
+                _qb.metric("P(up)", f"{_qs.get('prob_up', 0):.1%}" if _qs.get("prob_up") else "—")
+                _qb.metric("Décision", str(_qs.get("action", "—")).upper())
+            else:
+                st.info("Aucun cycle V2 exécuté encore.")
+        except Exception as _qe:
+            st.caption(f"État indisponible : {_qe}")
 
     elif _atab == "risk":  # Risk
         st.markdown(f'<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_risk_title")}</h4>', unsafe_allow_html=True)
+
         st.info(t("cfg_risk_info"))
         st.caption("💡 Mode, seuils BUY/EXIT, Kelly, drawdown, position size et filtre MA50 sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
         risk = settings.get("risk", {})
@@ -3253,127 +2943,6 @@ def render_admin_panel():
             st.error(t("cfg_testnet_warn"))
         settings["exchange"] = exch
 
-    elif _atab == "agents":  # Agents
-        st.markdown(f'<h4><i class="fas fa-network-wired" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_agents_title")}</h4>', unsafe_allow_html=True)
-        agents = settings.get("agents", {})
-
-        # ── Groupe 1 : Agents de scoring direct ──────────────────────────────
-        st.markdown("#### 🎯 Agents de scoring direct")
-        st.caption(
-            "Ces agents contribuent **directement** au score final de la décision. "
-            "Poids 0.0 = désactivé du score (mais l'agent continue de tourner si enabled=True)."
-        )
-        _direct_agents = [
-            ("market_data",  "Données OHLCV + momentum technique"),
-            ("contrarian",   "Signal contra-tendance composite (agrège fundamental, sentiment, fear&greed, timesfm/kronos)"),
-            ("polymarket",   "Marchés prédictifs décentralisés"),
-            ("kronos",       "Modèle de fondation OHLCV (prévision 24h)"),
-        ]
-        for agent_name, _role in _direct_agents:
-            cfg = agents.get(agent_name, {})
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                cfg["enabled"] = st.toggle(
-                    f"**{agent_name}** — *{_role}*",
-                    cfg.get("enabled", True),
-                    key=f"toggle_{agent_name}"
-                )
-            with col2:
-                cfg["weight_in_scoring"] = st.number_input(
-                    t("cfg_agent_weight").format(name=agent_name), 0.0, 2.0,
-                    float(cfg.get("weight_in_scoring", 1.0)), 0.1,
-                    key=f"weight_{agent_name}"
-                )
-            agents[agent_name] = cfg
-
-        # market_regime — info-only (configure via onglet dédié)
-        st.markdown("---")
-        mr_cfg = agents.get("market_regime", {})
-        mr_cfg["enabled"] = st.toggle(
-            "**market_regime** — *Filtre HMM + ADX (bloque les trades en tendance baissière)*",
-            mr_cfg.get("enabled", True),
-            key="toggle_market_regime"
-        )
-        st.caption(t("cfg_regime_agent_note"))
-        agents["market_regime"] = mr_cfg
-
-        # ── Groupe 2 : Inputs du contrarian ──────────────────────────────────
-        st.markdown("---")
-        st.markdown("#### 🔄 Inputs du Contrarian")
-        st.markdown(
-            "<div style='background:#1a2332;border-left:3px solid #7986cb;padding:8px 14px;"
-            "border-radius:4px;font-size:13px;margin-bottom:12px;'>"
-            "ℹ️ Ces agents <b>tournent toujours</b> (même si leur poids est mis à 0.0) "
-            "car leur score est lu par le <b>Contrarian</b> pour détecter les extrêmes de marché. "
-            "Le <em>weight_in_scoring</em> ne contrôle que leur contribution <b>directe</b> au score final — "
-            "mettre ce poids à 0.0 évite la double comptabilisation si le Contrarian les agrège déjà."
-            "</div>",
-            unsafe_allow_html=True,
-        )
-        _contrarian_inputs = [
-            ("fundamental",   "Données on-chain + macro (score bas = signal contrarian HAUSSIER)"),
-            ("x_sentiment",   "Sentiment X/Twitter (score haut = euphorique = signal contrarian BAISSIER)"),
-            ("fear_greed",    "Indice Fear & Greed (score haut = greed = signal contrarian BAISSIER)"),
-            ("timesfm",       "Prévision Google TimesFM (désactivé, remplacé par Kronos)"),
-        ]
-        for agent_name, _role in _contrarian_inputs:
-            cfg = agents.get(agent_name, {})
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                cfg["enabled"] = st.toggle(
-                    f"**{agent_name}** — *{_role}*",
-                    cfg.get("enabled", True),
-                    key=f"toggle_{agent_name}"
-                )
-            with col2:
-                cfg["weight_in_scoring"] = st.number_input(
-                    t("cfg_agent_weight").format(name=agent_name), 0.0, 2.0,
-                    float(cfg.get("weight_in_scoring", 0.0)), 0.1,
-                    key=f"weight_{agent_name}"
-                )
-            agents[agent_name] = cfg
-
-        # AlphaCombination — pondération dynamique IC-based
-        st.markdown("---")
-        st.markdown("**⚗ Alpha Combination** *(Fundamental Law of Active Management)*")
-        ac_cfg = agents.get("alpha_combination", {})
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            ac_cfg["enabled"] = st.toggle(
-                "Poids dynamiques IC-based (remplace weight_in_scoring statiques)",
-                ac_cfg.get("enabled", False),
-                key="toggle_alpha_combination",
-                help="Active la pondération dynamique des agents basée sur leur Information Coefficient historique. Nécessite min_history trades évalués.",
-            )
-        with col2:
-            ac_cfg["min_history"] = st.number_input(
-                "Min trades évalués", 5, 200,
-                int(ac_cfg.get("min_history", 20)), 5,
-                key="ac_min_history",
-                help="Nombre minimum de trades avec result_24h pour activer les poids dynamiques."
-            )
-        col3, col4 = st.columns(2)
-        with col3:
-            ac_cfg["lookback_days"] = st.number_input(
-                "Fenêtre (jours)", 7, 365,
-                int(ac_cfg.get("lookback_days", 90)), 7,
-                key="ac_lookback_days",
-            )
-        with col4:
-            ac_cfg["ic_floor"] = st.number_input(
-                "IC floor (seuil min)", 0.0, 0.5,
-                float(ac_cfg.get("ic_floor", 0.0)), 0.01,
-                key="ac_ic_floor",
-                help="Les agents avec IC ≤ ce seuil reçoivent un poids nul.",
-            )
-        if ac_cfg.get("enabled"):
-            st.info("Actif : les poids seront recalculés à chaque cycle selon l'historique des 20+ derniers trades évalués.")
-        else:
-            st.caption("Inactif — poids statiques weight_in_scoring utilisés.")
-        agents["alpha_combination"] = ac_cfg
-
-        settings["agents"] = agents
-
     elif _atab == "logging":  # Logging
         st.markdown(f'<h4><i class="fas fa-list-check" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_logging_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_logging_info"))
@@ -3391,398 +2960,6 @@ def render_admin_panel():
         log_cfg["telegram_enabled"] = st.toggle("Telegram", log_cfg.get("telegram_enabled", False))
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
         settings["logging"] = log_cfg
-
-    elif _atab == "timesfm":  # TimesFM
-        st.markdown(f'<h4><i class="fas fa-chart-line" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_timesfm_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_timesfm_info"))
-        tfm = settings.get("timesfm", {})
-        tfm["forecast_horizon"] = st.number_input(
-            t("cfg_tfm_horizon"), 1, 96,
-            int(tfm.get("forecast_horizon", 24)), 1,
-            help=t("cfg_tfm_horizon_help")
-        )
-        settings["timesfm"] = tfm
-
-        # ── Performance TimesFM ──
-        st.markdown("---")
-        st.markdown(f'<h4><i class="fas fa-bullseye" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_tfm_perf_title")}</h4>', unsafe_allow_html=True)
-        try:
-            from storage.database import get_timesfm_stats, evaluate_timesfm_forecasts
-            # Évaluer les forecasts arrivés à échéance
-            n_eval = evaluate_timesfm_forecasts()
-            if n_eval:
-                st.toast(f"{n_eval} forecast(s) evaluated", icon="🎯")
-
-            stats = get_timesfm_stats()
-
-            if stats["total"] == 0:
-                st.info(t("cfg_tfm_no_data"))
-            else:
-                theme = _get_theme()
-                bg, bdr, txt, muted, ic = _card_colors(theme)
-                kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
-
-                dir_acc = f"{stats['direction_accuracy']:.0f}%" if stats["direction_accuracy"] is not None else "—"
-                mae_val = f"{stats['mae']:.2f}%" if stats["mae"] is not None else "—"
-                lat_val = f"{stats['avg_latency_ms']}ms" if stats["avg_latency_ms"] else "—"
-                conf_val = f"{stats['avg_confidence']:.0%}" if stats["avg_confidence"] is not None else "—"
-
-                grid = (
-                    _html_card("fas fa-chart-simple", t("cfg_tfm_total"), str(stats["total"]), **kw) +
-                    _html_card("fas fa-check-double", t("cfg_tfm_evaluated"), str(stats["evaluated"]), **kw) +
-                    _html_card("fas fa-bullseye", t("cfg_tfm_dir_acc"), dir_acc, **kw) +
-                    _html_card("fas fa-ruler", t("cfg_tfm_mae"), mae_val, **kw) +
-                    _html_card("fas fa-gauge", t("cfg_tfm_confidence"), conf_val, **kw) +
-                    _html_card("fas fa-bolt", t("cfg_tfm_latency"), lat_val, **kw)
-                )
-                st.markdown(
-                    f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));'
-                    f'gap:10px;margin-bottom:16px;">{grid}</div>',
-                    unsafe_allow_html=True,
-                )
-
-                # Tableau — dernières prédictions évaluées
-                if stats.get("recent"):
-                    st.markdown(f"**{t('cfg_tfm_recent')}**")
-                    for r in stats["recent"]:
-                        hit = "✅" if r["direction_hit"] else "❌"
-                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(r.get("signal", ""), "⚪")
-                        st.markdown(
-                            f"{hit} {sig_icon} `{r['timestamp'][:16]}` — "
-                            f"Pred: **{r['pct_change']:+.2f}%** → Real: **{r['actual_change']:+.2f}%** "
-                            f"(${r['current_price']:,.0f} → ${r['actual_price']:,.0f})"
-                        )
-
-                # Prédictions en attente
-                if stats.get("pending"):
-                    st.markdown(f"**{t('cfg_tfm_pending')}**")
-                    for p in stats["pending"]:
-                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(p.get("signal", ""), "⚪")
-                        st.markdown(
-                            f"⏳ {sig_icon} `{p['timestamp'][:16]}` — "
-                            f"Pred: **{p['pct_change']:+.2f}%** "
-                            f"(${p['current_price']:,.0f} → ${p['predicted_price']:,.0f}) "
-                            f"horizon: {p['horizon_candles']}×15min"
-                        )
-        except Exception as exc:
-            st.warning(f"TimesFM stats unavailable: {exc}")
-
-    elif _atab == "kronos":  # Kronos
-        st.markdown(f'<h4><i class="fas fa-robot" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_kronos_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_kronos_info"))
-
-        kr = settings.get("kronos", {})
-        kr_agents = settings.get("agents", {}).get("kronos", {})
-
-        # Toggle + Modèle en pleine largeur (évite la troncature du selectbox dans une colonne étroite)
-        kr_enabled = st.toggle(
-            "Kronos activé", value=bool(kr.get("enabled", True)),
-            key="kronos_enabled",
-        )
-        kr["enabled"] = kr_enabled
-        kr_agents["enabled"] = kr_enabled
-
-        _model_options = [
-            "NeoQuasar/Kronos-mini",
-            "NeoQuasar/Kronos-small",
-            "NeoQuasar/Kronos-base",
-        ]
-        _model_current = kr.get("model_name", "NeoQuasar/Kronos-mini")
-        if _model_current not in _model_options:
-            _model_options.append(_model_current)
-        kr["model_name"] = st.selectbox(
-            t("cfg_kronos_model"),
-            _model_options,
-            index=_model_options.index(_model_current),
-            help=t("cfg_kronos_model_help"),
-            key="kronos_model",
-        )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            kr["forecast_horizon"] = st.number_input(
-                t("cfg_kronos_horizon"), min_value=1, max_value=512,
-                value=int(kr.get("forecast_horizon", 96)), step=8,
-                help=t("cfg_kronos_horizon_help"), key="kronos_horizon",
-            )
-            kr["lookback"] = st.number_input(
-                t("cfg_kronos_lookback"), min_value=20, max_value=2048,
-                value=int(kr.get("lookback", 400)), step=50,
-                help=t("cfg_kronos_lookback_help"), key="kronos_lookback",
-            )
-
-        with col2:
-            kr["temperature"] = st.slider(
-                t("cfg_kronos_temperature"), 0.1, 2.0,
-                float(kr.get("temperature", 1.0)), 0.05,
-                help=t("cfg_kronos_temperature_help"), key="kronos_temp",
-            )
-            kr["top_p"] = st.slider(
-                t("cfg_kronos_top_p"), 0.0, 1.0,
-                float(kr.get("top_p", 0.9)), 0.05,
-                help=t("cfg_kronos_top_p_help"), key="kronos_top_p",
-            )
-            kr["sample_count"] = st.number_input(
-                t("cfg_kronos_sample_count"), min_value=1, max_value=20,
-                value=int(kr.get("sample_count", 1)), step=1,
-                help=t("cfg_kronos_sample_count_help"), key="kronos_sample_count",
-            )
-            kr["timeout_seconds"] = st.number_input(
-                t("cfg_kronos_timeout"), min_value=30, max_value=600,
-                value=int(kr.get("timeout_seconds", 120)), step=10,
-                help=t("cfg_kronos_timeout_help"), key="kronos_timeout",
-            )
-            kr_agents["weight_in_scoring"] = st.slider(
-                t("cfg_kronos_weight"), 0.0, 1.0,
-                float(kr_agents.get("weight_in_scoring", 0.20)), 0.05,
-                key="kronos_weight",
-            )
-
-        settings["kronos"] = kr
-        if "agents" not in settings:
-            settings["agents"] = {}
-        settings["agents"]["kronos"] = kr_agents
-
-        # Horizon info
-        _horizon_h = int(kr.get("forecast_horizon", 96)) * 15 / 60
-        _lookback_h = int(kr.get("lookback", 400)) * 15 / 60
-        st.caption(
-            f"Horizon : {kr.get('forecast_horizon', 96)} × 15min = **{_horizon_h:.1f}h** | "
-            f"Contexte : {kr.get('lookback', 400)} × 15min = **{_lookback_h:.1f}h**"
-        )
-
-        # ── Performance Kronos ──
-        st.markdown("---")
-        st.markdown(f'<h4><i class="fas fa-bullseye" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_kronos_perf_title")}</h4>', unsafe_allow_html=True)
-        try:
-            from storage.database import get_kronos_stats, evaluate_kronos_forecasts
-            n_eval = evaluate_kronos_forecasts()
-            if n_eval:
-                st.toast(f"{n_eval} forecast(s) Kronos evaluated", icon="🎯")
-
-            kstats = get_kronos_stats()
-
-            if kstats["total"] == 0:
-                st.info(t("cfg_kronos_no_data"))
-            else:
-                theme = _get_theme()
-                bg, bdr, txt, muted, ic = _card_colors(theme)
-                kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
-
-                dir_acc = f"{kstats['direction_accuracy']:.0f}%" if kstats["direction_accuracy"] is not None else "—"
-                mae_val = f"{kstats['mae']:.2f}%" if kstats["mae"] is not None else "—"
-                lat_val = f"{kstats['avg_latency_ms']}ms" if kstats["avg_latency_ms"] else "—"
-                conf_val = f"{kstats['avg_confidence']:.0%}" if kstats["avg_confidence"] is not None else "—"
-
-                grid = (
-                    _html_card("fas fa-chart-simple", t("cfg_tfm_total"), str(kstats["total"]), **kw) +
-                    _html_card("fas fa-check-double", t("cfg_tfm_evaluated"), str(kstats["evaluated"]), **kw) +
-                    _html_card("fas fa-bullseye", t("cfg_tfm_dir_acc"), dir_acc, **kw) +
-                    _html_card("fas fa-ruler", t("cfg_tfm_mae"), mae_val, **kw) +
-                    _html_card("fas fa-gauge", t("cfg_tfm_confidence"), conf_val, **kw) +
-                    _html_card("fas fa-bolt", t("cfg_tfm_latency"), lat_val, **kw)
-                )
-                st.markdown(
-                    f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));'
-                    f'gap:10px;margin-bottom:16px;">{grid}</div>',
-                    unsafe_allow_html=True,
-                )
-
-                if kstats.get("recent"):
-                    st.markdown(f"**{t('cfg_tfm_recent')}**")
-                    for r in kstats["recent"]:
-                        hit = "✅" if r["direction_hit"] else "❌"
-                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(r.get("signal", ""), "⚪")
-                        _mdl_short = str(r.get("model_name", "")).split("/")[-1]
-                        _asset_lbl = r.get("asset", "")
-                        st.markdown(
-                            f"{hit} {sig_icon} `{r['timestamp'][:16]}` [{_asset_lbl}] `{_mdl_short}` — "
-                            f"Pred: **{r['pct_change']:+.2f}%** → Real: **{r['actual_change']:+.2f}%** "
-                            f"(${r['current_price']:,.2f} → ${r['actual_price']:,.2f})"
-                        )
-
-                if kstats.get("pending"):
-                    st.markdown(f"**{t('cfg_tfm_pending')}**")
-                    for p in kstats["pending"]:
-                        sig_icon = {"BULLISH": "🟢", "BEARISH": "🔴"}.get(p.get("signal", ""), "⚪")
-                        _mdl_short = str(p.get("model_name", "")).split("/")[-1]
-                        _asset_lbl = p.get("asset", "")
-                        st.markdown(
-                            f"⏳ {sig_icon} `{p['timestamp'][:16]}` [{_asset_lbl}] `{_mdl_short}` — "
-                            f"Pred: **{p['pct_change']:+.2f}%** "
-                            f"(${p['current_price']:,.2f} → ${p['predicted_price']:,.2f}) "
-                            f"horizon: {p['horizon_candles']}×15min"
-                        )
-        except Exception as exc:
-            st.warning(f"Kronos stats unavailable: {exc}")
-
-    elif _atab == "agperf":  # Agents Perf
-        st.markdown('<h4><i class="fas fa-chart-bar" style="margin-right:7px;color:#7986cb;"></i> Performance par agent</h4>', unsafe_allow_html=True)
-        st.caption(
-            "Win rate, Brier score et P&L moyen par agent individuel sur les décisions évaluées. "
-            "Win rate > 55% = signal utile. Brier < 0.22 = meilleur que le hasard."
-        )
-        try:
-            from storage.database import get_agent_performance_stats
-            _ap_all_assets = list(settings.get("project", {}).get("active_assets", []))
-            _ap_c1, _ap_c2 = st.columns(2)
-            with _ap_c1:
-                _ap_asset_sel = st.radio(
-                    "Actif", ["Tous"] + _ap_all_assets,
-                    horizontal=True, key="ap_asset_sel"
-                )
-            with _ap_c2:
-                _ap_days = st.radio(
-                    "Fenêtre (jours)", [7, 14, 30, 60, 90],
-                    index=2, horizontal=True, key="ap_days"
-                )
-            _ap_asset = None if _ap_asset_sel == "Tous" else _ap_asset_sel
-            _ap_stats = get_agent_performance_stats(asset=_ap_asset, days=_ap_days)
-
-            if not _ap_stats:
-                st.info("Pas encore assez de décisions évaluées (min 5 par agent).")
-            else:
-                # Tableau HTML
-                def _wr_color(wr):
-                    if wr >= 60: return "#27ae60"
-                    if wr >= 50: return "#f39c12"
-                    return "#e74c3c"
-
-                def _brier_color(b):
-                    if b < 0.20: return "#27ae60"
-                    if b < 0.24: return "#f39c12"
-                    return "#e74c3c"
-
-                _ap_rows = ""
-                for _ap in _ap_stats:
-                    _wrc = _wr_color(_ap["win_rate"])
-                    _bc  = _brier_color(_ap["brier_score"])
-                    _pnl_color = "#27ae60" if _ap["avg_pnl_on_buy"] >= 0 else "#e74c3c"
-                    _wt = f"{_ap['current_weight']:.2f}" if _ap["current_weight"] is not None else "–"
-                    _ap_rows += (
-                        f"<tr>"
-                        f"<td style='padding:5px 10px;'><b>{_ap['agent']}</b></td>"
-                        f"<td style='padding:5px 10px;color:{_wrc};font-weight:bold;'>{_ap['win_rate']}%</td>"
-                        f"<td style='padding:5px 10px;'>{_ap['signal_count']}</td>"
-                        f"<td style='padding:5px 10px;'>{_ap['avg_score']:.0f}</td>"
-                        f"<td style='padding:5px 10px;color:{_bc};'>{_ap['brier_score']:.4f}</td>"
-                        f"<td style='padding:5px 10px;color:{_pnl_color};'>{_ap['avg_pnl_on_buy']:+.2f}$</td>"
-                        f"<td style='padding:5px 10px;opacity:.7;'>{_wt}</td>"
-                        f"</tr>"
-                    )
-                st.markdown(
-                    f"""<table style='width:100%;border-collapse:collapse;'>
-                    <thead><tr style='border-bottom:1px solid #444;font-size:11px;opacity:.6;'>
-                      <th style='padding:4px 10px;text-align:left;'>Agent</th>
-                      <th style='padding:4px 10px;text-align:left;'>Win Rate</th>
-                      <th style='padding:4px 10px;text-align:left;'>Signaux</th>
-                      <th style='padding:4px 10px;text-align:left;'>Score moy.</th>
-                      <th style='padding:4px 10px;text-align:left;'>Brier ↓</th>
-                      <th style='padding:4px 10px;text-align:left;'>P&L moy/BUY</th>
-                      <th style='padding:4px 10px;text-align:left;'>Poids actuel</th>
-                    </tr></thead>
-                    <tbody>{_ap_rows}</tbody>
-                    </table>""",
-                    unsafe_allow_html=True,
-                )
-                st.markdown("---")
-                st.caption(
-                    "🟢 Win rate ≥ 60% → signal fiable | "
-                    "🟡 50-60% → signal marginalement utile | "
-                    "🔴 < 50% → signal néfaste, envisager de désactiver"
-                )
-        except Exception as _ap_exc:
-            st.warning(f"Stats agents indisponibles : {_ap_exc}")
-
-    elif _atab == "meta":  # Méta-Analyse
-        st.markdown(f'<h4><i class="fas fa-magnifying-glass-chart" style="margin-right:7px;color:#7986cb;"></i> {t("meta_title")}</h4>', unsafe_allow_html=True)
-        st.caption(t("meta_caption"))
-        try:
-            from storage.database import get_last_meta_analysis, get_decisions_for_meta
-            import json as _ma_json
-
-            _ma_analyses = get_last_meta_analysis(limit=3)
-
-            _ma_days_sel = st.radio(
-                t("meta_window"), [14, 30, 60, 90],
-                index=1, horizontal=True, key="ma_days"
-            )
-            if st.button(t("meta_run_btn"), key="btn_run_meta"):
-                try:
-                    from agents.post_mortem_agent import PostMortemAgent as _PMA
-                    with st.spinner(t("meta_running")):
-                        _PMA().run_meta_analysis_now()
-                    st.success(t("meta_done"))
-                    st.rerun()
-                except Exception as _ma_btn_exc:
-                    st.error(f"{t('err_generic')} : {_ma_btn_exc}")
-
-            if not _ma_analyses:
-                _ma_trades = get_decisions_for_meta(days=_ma_days_sel)
-                _ma_losing = [t for t in _ma_trades if t["result"] < 0]
-                st.info(t("meta_no_data").format(n_losing=len(_ma_losing), days=_ma_days_sel))
-            else:
-                for _ma_idx, _ma_item in enumerate(_ma_analyses):
-                    _ma_ts = _ma_item.get("timestamp", "")[:16]
-                    _ma_n  = _ma_item.get("n_trades", 0)
-                    _ma_nl = _ma_item.get("n_losing", 0)
-                    _ma_trig = _ma_item.get("run_trigger", "auto")
-
-                    with st.expander(
-                        ("\U0001f550" if _ma_idx > 0 else "\U0001f50d") + " " +
-                        t("meta_expander_label").format(
-                            ts=_ma_ts, n_losing=_ma_nl, n_trades=_ma_n, trigger=_ma_trig
-                        ),
-                        expanded=(_ma_idx == 0),
-                    ):
-                        # Afficher les recommandations structurées si JSON disponible
-                        if _ma_item.get("patterns_json"):
-                            try:
-                                _ma_data = _ma_json.loads(_ma_item["patterns_json"])
-
-                                _ma_resume = _ma_data.get("resume", "")
-                                if _ma_resume:
-                                    st.info(_ma_resume)
-
-                                _ma_recos = _ma_data.get("recos", [])
-                                if _ma_recos:
-                                    st.markdown(t("meta_recos"))
-                                    for _r in sorted(_ma_recos, key=lambda x: x.get("priorite", 99)):
-                                        st.markdown(
-                                            f"{_r.get('priorite','?')}. **{_r.get('action','?')}**  "
-                                            f"→ *{_r.get('rationale','')}*"
-                                        )
-
-                                _ma_ags = _ma_data.get("agents_problematiques", [])
-                                if _ma_ags:
-                                    st.markdown(t("meta_agents_prob"))
-                                    for _ag in _ma_ags:
-                                        st.markdown(
-                                            f"- **{_ag.get('agent','?')}** : {_ag.get('probleme','?')}  "
-                                            f"  ↳ *{_ag.get('condition','')}*"
-                                        )
-
-                                _ma_patterns = _ma_data.get("patterns", [])
-                                if _ma_patterns:
-                                    st.markdown(t("meta_patterns"))
-                                    for _p in _ma_patterns:
-                                        _imp = _p.get("impact", "")
-                                        _ic = "🔴" if _imp == "fort" else ("🟡" if _imp == "moyen" else "🟢")
-                                        st.markdown(
-                                            f"- {_ic} {_p.get('pattern','?')} "
-                                            f"*(fréquence: {_p.get('frequence','?')})*"
-                                        )
-
-                                _ma_pos = _ma_data.get("points_positifs", "")
-                                if _ma_pos:
-                                    st.markdown(f"{t('meta_positive')} {_ma_pos}")
-                            except Exception:
-                                st.markdown(_ma_item.get("summary_text", ""))
-                        else:
-                            st.markdown(_ma_item.get("summary_text", "_Aucun contenu_"))
-
-        except Exception as _ma_exc:
-            st.warning(f"{t('meta_unavailable')} {_ma_exc}")
 
     elif _atab == "memory":  # Mémoire post-trade
         st.markdown(
@@ -3893,123 +3070,6 @@ def render_admin_panel():
 
         except Exception as _mem_exc:
             st.warning(f"{t('mem_unavailable')} {_mem_exc}")
-
-    elif _atab == "regime":  # Market Regime
-        st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
-        st.markdown(
-            "<div style='background:#1a2332;border-left:3px solid #7986cb;padding:8px 14px;"
-            "border-radius:4px;font-size:13px;margin-bottom:16px;'>"
-            "Détecte le régime de marché de chaque actif via <b>HMM gaussien + ADX</b>. "
-            "Ce résultat <b>module les décisions</b> : "
-            "<span style='color:#e53935'>TRENDING_DOWN → BUY bloqué</span> · "
-            "<span style='color:#e65100'>HIGH_VOLATILITY → taille ×0.65</span> · "
-            "<span style='color:#43a047'>TRENDING_UP → favorable</span> · "
-            "<span style='color:#fb8c00'>SIDEWAYS → neutre</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        try:
-            from storage.database import get_recent_decisions
-            import json as _json
-
-            _regime_assets = list(settings.get("project", {}).get("active_assets",
-                                  ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]))
-            _regime_icons  = {"BTC/USDT": "₿", "ETH/USDT": "⟠", "XAU/USD": "◎", "XAG/USD": "◈",
-                               "WTI/USD": "⬡", "EUR/USD": "€", "GBP/USD": "£", "SOL/USDT": "◎"}
-            _badge_colors  = {"TRENDING_UP": "#43a047", "TRENDING_DOWN": "#e53935",
-                               "SIDEWAYS": "#fb8c00", "HIGH_VOLATILITY": "#e65100"}
-            _regime_emojis = {"TRENDING_UP": "▲", "TRENDING_DOWN": "▼",
-                               "SIDEWAYS": "↔", "HIGH_VOLATILITY": "⚡"}
-            _regime_fr     = {
-                "TRENDING_UP":    "Tendance haussière",
-                "TRENDING_DOWN":  "Tendance baissière",
-                "SIDEWAYS":       "Range / sans tendance",
-                "HIGH_VOLATILITY":"Haute volatilité",
-                "UNKNOWN":        "Données insuffisantes",
-            }
-            _impact_fr = {
-                "TRENDING_UP":    "✅ Trading normal",
-                "TRENDING_DOWN":  "🚫 BUY bloqué",
-                "SIDEWAYS":       "✅ Trading normal",
-                "HIGH_VOLATILITY":"⚠️ Taille position ×0.65",
-                "UNKNOWN":        "⏳ En attente",
-            }
-
-            # Grille 4 colonnes max
-            _n = len(_regime_assets)
-            _ncols = min(_n, 4)
-            for _chunk_start in range(0, _n, _ncols):
-                _chunk = _regime_assets[_chunk_start:_chunk_start + _ncols]
-                _rcols = st.columns(len(_chunk))
-                for _ri, _ra in enumerate(_chunk):
-                    with _rcols[_ri]:
-                        _rdecs = get_recent_decisions(6, asset=_ra)
-                        _sym = _ra.split("/")[0]
-                        _icon = _regime_icons.get(_ra, "◆")
-                        if not _rdecs:
-                            st.markdown(
-                                f'<div style="border:1px solid #333;border-radius:8px;padding:12px;">'
-                                f'<div style="font-size:1rem;font-weight:700;">{_icon} {_sym}</div>'
-                                f'<div style="color:#888;font-size:0.85rem;margin-top:6px;">Aucune donnée</div>'
-                                f'</div>', unsafe_allow_html=True
-                            )
-                            continue
-
-                        _rws   = _json.loads(_rdecs[0].get("weights_snapshot") or "{}")
-                        _rn    = _rws.get("regime", "UNKNOWN")
-                        _rp    = float(_rws.get("hmm_prob", 0.5))
-                        _rfeat = _rws.get("regime_features", {})
-                        _rdir  = _rws.get("direction_pressure", "")
-                        _rts   = str(_rdecs[0].get("timestamp", ""))[:16]
-                        _rcolor = _badge_colors.get(_rn, "#757575")
-                        _rem   = _regime_emojis.get(_rn, "?")
-                        _rlabel = _regime_fr.get(_rn, _rn)
-                        _impact = _impact_fr.get(_rn, "")
-
-                        _adx = _rfeat.get("adx", 0)
-                        _vol = _rfeat.get("rel_volatility", 1.0)
-                        _vol_ann = _rfeat.get("vol_abs_annualized", 0)
-
-                        # Historique 5 cycles compact (pastilles couleur)
-                        _dots = ""
-                        for _rd in _rdecs[1:6]:
-                            _rws2 = _json.loads(_rd.get("weights_snapshot") or "{}")
-                            _r2 = _rws2.get("regime", "")
-                            _c2 = _badge_colors.get(_r2, "#555")
-                            _e2 = _regime_emojis.get(_r2, "·")
-                            _dots += f'<span style="color:{_c2};margin-right:3px;font-size:0.85rem">{_e2}</span>'
-
-                        _card = (
-                            f'<div style="border:1px solid {_rcolor};border-radius:8px;padding:12px 14px;background:rgba(0,0,0,0.15);margin-bottom:4px">'
-                            f'<div style="font-size:1rem;font-weight:700;margin-bottom:6px;">{_icon} {_sym}</div>'
-                            f'<div style="display:inline-block;background:{_rcolor}22;border:1px solid {_rcolor};'
-                            f'border-radius:5px;padding:3px 10px;font-size:0.95rem;font-weight:700;color:{_rcolor}">'
-                            f'{_rem} {_rlabel}</div>'
-                        )
-                        if _rdir:
-                            _card += f'<div style="font-size:0.80rem;color:#b0bec5;margin-top:4px;font-style:italic">{_rdir}</div>'
-                        _card += (
-                            f'<div style="font-size:0.82rem;margin-top:6px;">{_impact}</div>'
-                            f'<div style="font-size:0.78rem;color:#90a4ae;margin-top:8px;border-top:1px solid #333;padding-top:6px">'
-                            f'HMM confiance : <b style="color:#ccc">{_rp:.0%}</b> &nbsp;·&nbsp; '
-                            f'ADX : <b style="color:#ccc">{_adx:.0f}</b> &nbsp;·&nbsp; '
-                            f'Vol relative : <b style="color:#ccc">{_vol:.2f}×</b>'
-                        )
-                        if _vol_ann:
-                            _card += f' ({_vol_ann:.0f}%/an)'
-                        _card += (
-                            f'</div>'
-                            f'<div style="margin-top:5px;font-size:0.75rem;color:#607d8b">5 derniers cycles : {_dots}</div>'
-                            f'<div style="color:#546e7a;font-size:0.70rem;margin-top:3px">{_rts}</div>'
-                            f'</div>'
-                        )
-                        st.markdown(_card, unsafe_allow_html=True)
-
-        except Exception as _re:
-            st.warning(f"Données régime indisponibles : {_re}")
-
-        st.caption("⚙️ Les paramètres HMM, ADX et fenêtres sont configurables **par actif** dans l'onglet **🌐 Par Actif**.")
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)
@@ -4493,11 +3553,67 @@ def render_admin_panel():
         except Exception as _lb_exc:
             st.caption(f"{t('bkp_list_error')} {_lb_exc}")
 
-    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif et Sauvegarde)
-    if _atab not in ("backup", "flux", "peractif"):
+    elif _atab == "reset":  # Purge des données
+        st.markdown(
+            '<h4><i class="fas fa-trash-alt" style="margin-right:7px;color:#e74c3c;"></i>'
+            ' Purge des données</h4>',
+            unsafe_allow_html=True,
+        )
+        st.warning("⚠️ Ces opérations sont irréversibles. Utilisez l'onglet Sauvegarde avant toute purge.")
+
+        st.markdown("#### Données V1 (décisions LLM + trades)")
+        st.caption("Les décisions V1 issues du pipeline LLM ne sont plus utilisées. Purger pour nettoyer la base.")
+        _col_r1, _col_r2 = st.columns(2)
+        with _col_r1:
+            if st.button("🗑️ Vider les décisions V1", type="secondary", use_container_width=True, key="reset_v1_decisions"):
+                try:
+                    import sqlite3 as _sq3
+                    from utils.config import load_settings as _ls_r
+                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3.connect(_db_r) as _con_r:
+                        _con_r.execute("DELETE FROM decisions")
+                        _con_r.commit()
+                    st.success("✅ Table `decisions` vidée.")
+                except Exception as _re_r:
+                    st.error(f"Erreur : {_re_r}")
+        with _col_r2:
+            if st.button("🗑️ Vider les trades V1", type="secondary", use_container_width=True, key="reset_v1_trades"):
+                try:
+                    import sqlite3 as _sq3
+                    from utils.config import load_settings as _ls_r
+                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3.connect(_db_r) as _con_r:
+                        _con_r.execute("DELETE FROM trades")
+                        _con_r.commit()
+                    st.success("✅ Table `trades` vidée.")
+                except Exception as _re_r:
+                    st.error(f"Erreur : {_re_r}")
+
+        st.markdown("#### Données V2 (état + equity curve)")
+        _col_r3, _col_r4 = st.columns(2)
+        with _col_r3:
+            if st.button("🗑️ Reset état + equity V2", type="secondary", use_container_width=True, key="reset_v2_all"):
+                try:
+                    import sqlite3 as _sq3
+                    from utils.config import load_settings as _ls_r
+                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3.connect(_db_r) as _con_r:
+                        _con_r.execute("DELETE FROM v2_equity")
+                        _con_r.execute("DELETE FROM v2_state")
+                        _con_r.commit()
+                    st.success("✅ Tables `v2_equity` et `v2_state` vidées.")
+                except Exception as _re_r:
+                    st.error(f"Erreur : {_re_r}")
+        with _col_r4:
+            st.caption("Après reset V2, relancer le daemon pour repartir d'un capital et d'un modèle propres.")
+
+    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde et Reset)
+    if _atab not in ("backup", "flux", "peractif", "reset"):
         st.markdown("---")
     if _atab == "backup":
         pass  # pas de bouton save_settings pour l'onglet backup
+    elif _atab == "reset":
+        pass  # le panneau reset gère ses propres boutons
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")

@@ -158,22 +158,31 @@ def _infer_v2_status() -> dict[str, dict]:
         age_s = (datetime.utcnow() - datetime.fromisoformat(state["updated_at"])).total_seconds()
     except Exception:
         return {}
-    # Cycle trop vieux (> 20 min) → ne pas afficher comme OK
-    if age_s > 1200:
-        return {}
     ts = state["updated_at"]
-    has_price  = bool(state.get("close_price"))
-    has_signal = state.get("prob_up") is not None
-    has_action = bool(state.get("action"))
+    has_price   = bool(state.get("close_price"))
+    has_signal  = state.get("prob_up") is not None
+    has_action  = bool(state.get("action"))
     has_capital = bool(state.get("capital"))
+
+    # < 30 min → ok ; 30 min–2 h → timeout (orange) ; > 2 h → unknown
+    if age_s < 1800:
+        health = "ok"
+    elif age_s < 7200:
+        health = "timeout"
+    else:
+        health = "unknown"
+
+    def _s(has_data: bool) -> str:
+        return health if has_data else "unknown"
+
     return {
-        "ohlcv_loader": {"status": "ok" if has_price  else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
-        "features":     {"status": "ok" if has_signal else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
-        "regime":       {"status": "ok" if has_signal else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
-        "signal_model": {"status": "ok" if has_signal else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
-        "strategy":     {"status": "ok" if has_action  else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
-        "risk":         {"status": "ok" if has_capital else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
-        "paper_trader": {"status": "ok",                               "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "ohlcv_loader": {"status": _s(has_price),   "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "features":     {"status": _s(has_signal),  "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "regime":       {"status": _s(has_signal),  "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "signal_model": {"status": _s(has_signal),  "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "strategy":     {"status": _s(has_action),  "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "risk":         {"status": _s(has_capital), "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "paper_trader": {"status": health,           "latency_ms": 0, "timestamp": ts, "items_count": 1},
     }
 
 

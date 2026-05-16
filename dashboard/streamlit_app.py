@@ -3530,11 +3530,8 @@ def render_admin_panel():
             st.warning(f"Stats agents indisponibles : {_ap_exc}")
 
     elif _atab == "meta":  # Méta-Analyse
-        st.markdown('<h4><i class="fas fa-magnifying-glass-chart" style="margin-right:7px;color:#7986cb;"></i> Méta-Analyse LLM — Patterns d\'échec</h4>', unsafe_allow_html=True)
-        st.caption(
-            "Claude analyse les décisions perdantes pour détecter des patterns récurrents, "
-            "identifier les agents peu fiables et formuler des recommandations concrètes."
-        )
+        st.markdown(f'<h4><i class="fas fa-magnifying-glass-chart" style="margin-right:7px;color:#7986cb;"></i> {t("meta_title")}</h4>', unsafe_allow_html=True)
+        st.caption(t("meta_caption"))
         try:
             from storage.database import get_last_meta_analysis, get_decisions_for_meta
             import json as _ma_json
@@ -3542,27 +3539,23 @@ def render_admin_panel():
             _ma_analyses = get_last_meta_analysis(limit=3)
 
             _ma_days_sel = st.radio(
-                "Fenêtre d'analyse (jours)", [14, 30, 60, 90],
+                t("meta_window"), [14, 30, 60, 90],
                 index=1, horizontal=True, key="ma_days"
             )
-            if st.button("▶ Lancer une méta-analyse maintenant", key="btn_run_meta"):
+            if st.button(t("meta_run_btn"), key="btn_run_meta"):
                 try:
                     from agents.post_mortem_agent import PostMortemAgent as _PMA
-                    with st.spinner("Analyse en cours (30–90s)..."):
+                    with st.spinner(t("meta_running")):
                         _PMA().run_meta_analysis_now()
-                    st.success("Analyse terminée — rechargez la page")
+                    st.success(t("meta_done"))
                     st.rerun()
                 except Exception as _ma_btn_exc:
-                    st.error(f"Erreur : {_ma_btn_exc}")
+                    st.error(f"{t('err_generic')} : {_ma_btn_exc}")
 
             if not _ma_analyses:
                 _ma_trades = get_decisions_for_meta(days=_ma_days_sel)
                 _ma_losing = [t for t in _ma_trades if t["result"] < 0]
-                st.info(
-                    f"Aucune méta-analyse disponible. "
-                    f"{len(_ma_losing)} trades perdants sur {_ma_days_sel}j. "
-                    f"Cliquez ▶ pour lancer une analyse (nécessite ≥5 pertes)."
-                )
+                st.info(t("meta_no_data").format(n_losing=len(_ma_losing), days=_ma_days_sel))
             else:
                 for _ma_idx, _ma_item in enumerate(_ma_analyses):
                     _ma_ts = _ma_item.get("timestamp", "")[:16]
@@ -3571,8 +3564,10 @@ def render_admin_panel():
                     _ma_trig = _ma_item.get("run_trigger", "auto")
 
                     with st.expander(
-                        f"{'🕐' if _ma_idx > 0 else '🔍'} Analyse du {_ma_ts} UTC — "
-                        f"{_ma_nl} pertes / {_ma_n} trades ({_ma_trig})",
+                        ("\U0001f550" if _ma_idx > 0 else "\U0001f50d") + " " +
+                        t("meta_expander_label").format(
+                            ts=_ma_ts, n_losing=_ma_nl, n_trades=_ma_n, trigger=_ma_trig
+                        ),
                         expanded=(_ma_idx == 0),
                     ):
                         # Afficher les recommandations structurées si JSON disponible
@@ -3586,7 +3581,7 @@ def render_admin_panel():
 
                                 _ma_recos = _ma_data.get("recos", [])
                                 if _ma_recos:
-                                    st.markdown("**✅ Recommandations :**")
+                                    st.markdown(t("meta_recos"))
                                     for _r in sorted(_ma_recos, key=lambda x: x.get("priorite", 99)):
                                         st.markdown(
                                             f"{_r.get('priorite','?')}. **{_r.get('action','?')}**  "
@@ -3595,7 +3590,7 @@ def render_admin_panel():
 
                                 _ma_ags = _ma_data.get("agents_problematiques", [])
                                 if _ma_ags:
-                                    st.markdown("**⚠️ Agents problématiques :**")
+                                    st.markdown(t("meta_agents_prob"))
                                     for _ag in _ma_ags:
                                         st.markdown(
                                             f"- **{_ag.get('agent','?')}** : {_ag.get('probleme','?')}  "
@@ -3604,7 +3599,7 @@ def render_admin_panel():
 
                                 _ma_patterns = _ma_data.get("patterns", [])
                                 if _ma_patterns:
-                                    st.markdown("**🔴 Patterns récurrents :**")
+                                    st.markdown(t("meta_patterns"))
                                     for _p in _ma_patterns:
                                         _imp = _p.get("impact", "")
                                         _ic = "🔴" if _imp == "fort" else ("🟡" if _imp == "moyen" else "🟢")
@@ -3615,32 +3610,29 @@ def render_admin_panel():
 
                                 _ma_pos = _ma_data.get("points_positifs", "")
                                 if _ma_pos:
-                                    st.markdown(f"**💚 Points positifs :** {_ma_pos}")
+                                    st.markdown(f"{t('meta_positive')} {_ma_pos}")
                             except Exception:
                                 st.markdown(_ma_item.get("summary_text", ""))
                         else:
                             st.markdown(_ma_item.get("summary_text", "_Aucun contenu_"))
 
         except Exception as _ma_exc:
-            st.warning(f"Méta-analyse indisponible : {_ma_exc}")
+            st.warning(f"{t('meta_unavailable')} {_ma_exc}")
 
     elif _atab == "memory":  # Mémoire post-trade
         st.markdown(
-            '<h4><i class="fas fa-brain" style="margin-right:7px;color:#7986cb;"></i>'
-            'Mémoire Post-Trade</h4>',
+            f'<h4><i class="fas fa-brain" style="margin-right:7px;color:#7986cb;"></i>'
+            f'{t("mem_title")}</h4>',
             unsafe_allow_html=True,
         )
-        st.caption(
-            "Leçons générées par le LLM après chaque clôture de position "
-            "(pattern détecté, agent à privilégier, etc.)."
-        )
+        st.caption(t("mem_caption"))
         try:
             import json as _mem_json
             from pathlib import Path as _MemPath
 
             _mem_file = _MemPath(__file__).parent.parent / "storage" / "trading_memory.json"
             if not _mem_file.exists():
-                st.info("Aucune leçon enregistrée pour l'instant (le fichier sera créé après le premier trade clôturé).")
+                st.info(t("mem_no_file"))
             else:
                 with open(_mem_file, "r", encoding="utf-8") as _mf:
                     _raw_mem = _mem_json.load(_mf)
@@ -3653,7 +3645,7 @@ def render_admin_panel():
                     _lessons = []
 
                 if not _lessons:
-                    st.info("Le fichier existe mais ne contient aucune leçon.")
+                    st.info(t("mem_empty_file"))
                 else:
                     # Métriques globales
                     _n_total = len(_lessons)
@@ -3661,7 +3653,7 @@ def render_admin_panel():
                     _losers  = [l for l in _lessons if str(l.get("pnl", 0) or 0) < "0" or (isinstance(l.get("pnl"), (int, float)) and l.get("pnl", 0) < 0)]
 
                     c1_m, c2_m, c3_m = st.columns(3)
-                    c1_m.metric("📚 Leçons totales", _n_total)
+                    c1_m.metric(t("mem_total"), _n_total)
                     # Collecte des agents fréquemment cités
                     _agent_trust_more: dict[str, int] = {}
                     _agent_trust_less: dict[str, int] = {}
@@ -3672,15 +3664,15 @@ def render_admin_panel():
                         if _atl: _agent_trust_less[_atl] = _agent_trust_less.get(_atl, 0) + 1
                     if _agent_trust_more:
                         _best_agent = max(_agent_trust_more, key=_agent_trust_more.get)
-                        c2_m.metric("🏆 Agent le + fiable", _best_agent, f"+{_agent_trust_more[_best_agent]}×")
+                        c2_m.metric(t("mem_best_agent"), _best_agent, f"+{_agent_trust_more[_best_agent]}×")
                     if _agent_trust_less:
                         _worst_agent = max(_agent_trust_less, key=_agent_trust_less.get)
-                        c3_m.metric("⚠️ Agent le - fiable", _worst_agent, f"−{_agent_trust_less[_worst_agent]}×", delta_color="inverse")
+                        c3_m.metric(t("mem_worst_agent"), _worst_agent, f"−{_agent_trust_less[_worst_agent]}×", delta_color="inverse")
 
                     st.markdown("---")
 
                     # Filtre
-                    _mem_filter = st.text_input("🔍 Filtrer les leçons", placeholder="ex: BTC, funding, trend…", key="mem_filter")
+                    _mem_filter = st.text_input(t("mem_filter"), placeholder=t("mem_filter_placeholder"), key="mem_filter")
 
                     # Affichage des leçons (plus récentes en premier)
                     _filtered = list(reversed(_lessons))
@@ -3691,7 +3683,7 @@ def render_admin_panel():
                             if _mem_filter_lo in str(l).lower()
                         ]
 
-                    st.caption(f"{len(_filtered)} leçon(s) affichée(s)")
+                    st.caption(t("mem_shown").format(n=len(_filtered)))
 
                     for _idx_l, _lesson in enumerate(_filtered[:50]):  # max 50 affichées
                         _ts_l     = (_lesson.get("timestamp") or "")[:16].replace("T", " ")
@@ -3719,23 +3711,23 @@ def render_admin_panel():
                             _dw_l  = _lesson.get("debate_winner")
                             if _atm_l:
                                 _detail_cols[0].markdown(
-                                    f"<span style='color:#69f0ae;font-size:11px;'>✅ Faire confiance à : <b>{_atm_l}</b></span>",
+                                    f"<span style='color:#69f0ae;font-size:11px;'>{t('mem_trust_more')} <b>{_atm_l}</b></span>",
                                     unsafe_allow_html=True,
                                 )
                             if _atl_l:
                                 _detail_cols[1].markdown(
-                                    f"<span style='color:#e53935;font-size:11px;'>⚠️ Méfiance : <b>{_atl_l}</b></span>",
+                                    f"<span style='color:#e53935;font-size:11px;'>{t('mem_trust_less')} <b>{_atl_l}</b></span>",
                                     unsafe_allow_html=True,
                                 )
                             if _dw_l and str(_dw_l).upper() not in ("N/A", "NONE", ""):
                                 _dw_clr = "#69f0ae" if "BULL" in str(_dw_l).upper() else ("#e53935" if "BEAR" in str(_dw_l).upper() else "#ffb74d")
                                 _detail_cols[2].markdown(
-                                    f"<span style='color:{_dw_clr};font-size:11px;'>🥊 Débat: <b>{_dw_l}</b></span>",
+                                    f"<span style='color:{_dw_clr};font-size:11px;'>{t('mem_debate')} <b>{_dw_l}</b></span>",
                                     unsafe_allow_html=True,
                                 )
 
         except Exception as _mem_exc:
-            st.warning(f"Mémoire indisponible : {_mem_exc}")
+            st.warning(f"{t('mem_unavailable')} {_mem_exc}")
 
     elif _atab == "regime":  # Market Regime
         st.markdown(f'<h4><i class="fas fa-wave-square" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_regime_title")}</h4>', unsafe_allow_html=True)
@@ -3870,13 +3862,10 @@ def render_admin_panel():
     elif _atab == "peractif":  # Par Actif — config/assets/{slug}.yaml
         st.markdown(
             '<h4><i class="fas fa-layer-group" style="margin-right:7px;color:#7986cb;"></i>'
-            'Configuration par actif</h4>',
+            f'{t("pa_title")}</h4>',
             unsafe_allow_html=True,
         )
-        st.info(
-            "Les paramètres ci-dessous surchargent les valeurs globales pour chaque actif. "
-            "Fichiers : config/assets/{SLUG}.yaml — cliquez 💾 pour valider chaque actif séparément."
-        )
+        st.info(t("pa_info"))
 
         # ── Actifs surveillés (anciennement onglet Marchés) ───────────────────
         st.markdown("""<style>
@@ -3902,21 +3891,21 @@ def render_admin_panel():
         # S'assurer que tous les actifs actifs sont dans les options
         _pa_options = sorted(set(_pa_known) | set(_pa_current_active))
         _pa_new_active = st.multiselect(
-            "🌐 Actifs surveillés",
+            t("pa_assets_watched"),
             options=_pa_options,
             default=_pa_current_active,
-            help="Seuls les actifs ayant un fichier config/assets/*.yaml sont supportés.",
+            help=t("pa_assets_help"),
             key="pa_active_assets",
         )
-        if st.button("💾 Sauvegarder la liste des actifs", key="btn_save_active_assets"):
+        if st.button(t("pa_save_assets_btn"), key="btn_save_active_assets"):
             try:
                 settings.setdefault("project", {})["active_assets"] = _pa_new_active
                 if _save_settings(settings):
-                    st.success(f"Liste sauvegardée : {', '.join(_pa_new_active)}")
+                    st.success(t("pa_assets_saved").format(assets=', '.join(_pa_new_active)))
                 else:
-                    st.error("Erreur sauvegarde settings.yaml")
+                    st.error(t("pa_assets_save_error"))
             except Exception as _exc_aa:
-                st.error(f"Erreur : {_exc_aa}")
+                st.error(f"{t('err_generic')} : {_exc_aa}")
         _pa_all = _pa_new_active or _pa_current_active
 
         st.markdown("---")
@@ -3980,11 +3969,11 @@ def render_admin_panel():
                             horizontal=True, key=f"pa_rmode_{_paslug}"
                         )
                         _par["buy_threshold"] = st.slider(
-                            "Seuil BUY", 50, 95, int(_par.get("buy_threshold", 62)),
+                            t("pa_buy_threshold"), 50, 95, int(_par.get("buy_threshold", 62)),
                             key=f"pa_buy_{_paslug}"
                         )
                         _par["exit_threshold"] = st.slider(
-                            "Seuil EXIT", 20, 60, int(_par.get("exit_threshold", 52)),
+                            t("pa_exit_threshold"), 20, 60, int(_par.get("exit_threshold", 52)),
                             key=f"pa_exit_{_paslug}"
                         )
                         _par["kelly_max_fraction"] = st.slider(
@@ -3999,12 +3988,12 @@ def render_admin_panel():
                         )
                     with _c2:
                         _par["max_drawdown_pct"] = st.slider(
-                            "Max drawdown (%)", 3.0, 50.0,
+                            t("pa_max_dd"), 3.0, 50.0,
                             float(_par.get("max_drawdown_pct", 15.0)), 1.0,
                             key=f"pa_dd_{_paslug}"
                         )
                         _par["max_open_positions"] = st.number_input(
-                            "Max positions", 1, 20,
+                            t("pa_max_positions"), 1, 20,
                             int(_par.get("max_open_positions", 3)),
                             key=f"pa_mop_{_paslug}"
                         )
@@ -4023,25 +4012,25 @@ def render_admin_panel():
                             _par.get("human_in_the_loop", False),
                             key=f"pa_hitl_{_paslug}"
                         )
-                    st.markdown("**📊 Filtre MA50**")
+                    st.markdown(f"**{t('pa_ma50_section')}**")
                     _ma50_opts_pa = ["off", "gradual", "block", "strict"]
                     _ma50_def_pa = _par.get("ma50_filter_mode", "gradual")
                     if _ma50_def_pa not in _ma50_opts_pa:
                         _ma50_opts_pa.append(_ma50_def_pa)
                     _par["ma50_filter_mode"] = st.radio(
-                        "Mode MA50", _ma50_opts_pa,
+                        t("pa_ma50_mode"), _ma50_opts_pa,
                         index=_ma50_opts_pa.index(_ma50_def_pa),
                         horizontal=True, key=f"pa_ma50mode_{_paslug}"
                     )
                     if _par["ma50_filter_mode"] == "gradual":
                         _cm1, _cm2 = st.columns(2)
                         _par["ma50_strong_signal_threshold"] = _cm1.slider(
-                            "Score min fort", 60, 95,
+                            t("pa_ma50_strong_thr"), 60, 95,
                             int(_par.get("ma50_strong_signal_threshold", 72)),
                             key=f"pa_ma50s_{_paslug}"
                         )
                         _par["ma50_gradual_size_factor"] = _cm2.slider(
-                            "Taille réduite ×", 0.1, 1.0,
+                            t("pa_ma50_size_factor"), 0.1, 1.0,
                             float(_par.get("ma50_gradual_size_factor", 0.5)), 0.05,
                             key=f"pa_ma50f_{_paslug}"
                         )
@@ -4070,14 +4059,14 @@ def render_admin_panel():
                                 key=f"pa_cbsc_{_paslug}"
                             )
                             _pcb["max_reduction"] = st.slider(
-                                "Max réduction", 0.0, 1.0,
+                                t("pa_cb_max_reduction"), 0.0, 1.0,
                                 float(_pcb.get("max_reduction", 0.75)), 0.05,
                                 key=f"pa_cbmr_{_paslug}"
                             )
                         _pacfg["circuit_breaker"] = _pcb
 
                 # ── Scoring ───────────────────────────────────────────────────
-                with st.expander("🎯 Scoring — Poids des composantes", expanded=False):
+                with st.expander(t("pa_scoring_section"), expanded=False):
                     _psc = dict(_pacfg.get("scoring", {}))
                     _pw = dict(_psc.get("weights", {}))
                     _c1, _c2 = st.columns(2)
@@ -4101,14 +4090,14 @@ def render_admin_panel():
                         )
                     _ptot = sum(_pw.values())
                     if abs(_ptot - 1.0) > 0.05:
-                        st.warning(f"⚠ Total poids : {_ptot:.2f} (idéalement = 1.0)")
+                        st.warning(t("pa_weight_total_warn").format(total=_ptot))
                     else:
-                        st.caption(f"Total poids : {_ptot:.2f} ✓")
+                        st.caption(t("pa_weight_total_ok").format(total=_ptot))
                     _psc["weights"] = _pw
                     _pacfg["scoring"] = _psc
 
                 # ── Agents activés ────────────────────────────────────────────
-                with st.expander("⬡ Agents activés", expanded=False):
+                with st.expander(t("pa_agents_section"), expanded=False):
                     _pags = dict(_pacfg.get("agents", {}))
                     _ag_list = [
                         "market_data", "fundamental", "x_sentiment", "contrarian",
@@ -4129,12 +4118,12 @@ def render_admin_panel():
                             )
                         with _col_b:
                             _agc["weight_in_scoring"] = st.number_input(
-                                "Poids", 0.0, 2.0,
+                                t("pa_agent_weight"), 0.0, 2.0,
                                 float(_agc.get("weight_in_scoring",
                                       settings.get("agents", {}).get(_agn, {}).get("weight_in_scoring", 1.0))),
                                 0.05,
                                 key=f"pa_agw_{_paslug}_{_agn}",
-                                help="Surcharge le poids global pour cet actif uniquement"
+                                help=t("pa_agent_weight_help")
                             )
                         if _agn == "x_sentiment":
                             _xkw = ", ".join(_agc.get("keywords", []))
@@ -4152,26 +4141,26 @@ def render_admin_panel():
                     _c1, _c2 = st.columns(2)
                     with _c1:
                         _pmr["n_hmm_states"] = st.number_input(
-                            "N états HMM", 2, 4, int(_pmr.get("n_hmm_states", 2)),
+                            t("pa_hmm_states"), 2, 4, int(_pmr.get("n_hmm_states", 2)),
                             key=f"pa_hmm_{_paslug}"
                         )
                         _pmr["adx_period"] = st.slider(
-                            "Période ADX", 7, 30, int(_pmr.get("adx_period", 18)),
+                            t("pa_adx_period"), 7, 30, int(_pmr.get("adx_period", 18)),
                             key=f"pa_adx_{_paslug}"
                         )
                     with _c2:
                         _pmr["vol_window"] = st.slider(
-                            "Fenêtre vol.", 10, 60, int(_pmr.get("vol_window", 30)),
+                            t("pa_vol_window"), 10, 60, int(_pmr.get("vol_window", 30)),
                             key=f"pa_vw_{_paslug}"
                         )
                         _pmr["trend_window"] = st.slider(
-                            "Fenêtre trend", 20, 100, int(_pmr.get("trend_window", 50)),
+                            t("pa_trend_window"), 20, 100, int(_pmr.get("trend_window", 50)),
                             key=f"pa_tw_{_paslug}"
                         )
                     _pacfg["market_regime"] = _pmr
 
                 # ── Kronos (par actif) ────────────────────────────────────────
-                with st.expander("🔮 Kronos — Config par actif", expanded=False):
+                with st.expander(t("pa_kronos_section"), expanded=False):
                     _pkr = dict(_pacfg.get("kronos", {}))
                     _kr_global = settings.get("kronos", {})
                     _c1, _c2 = st.columns(2)
@@ -4180,13 +4169,13 @@ def render_admin_panel():
                             "Horizon (candles)", 1, 512,
                             int(_pkr.get("forecast_horizon", _kr_global.get("forecast_horizon", 96))), 8,
                             key=f"pa_kr_hor_{_paslug}",
-                            help="Nombre de candles à prédire. Ex: 96 × 15min = 24h"
+                            help=t("pa_kronos_horizon_help")
                         )
                         _pkr["lookback"] = st.number_input(
                             "Lookback (candles contexte)", 20, 2048,
                             int(_pkr.get("lookback", _kr_global.get("lookback", 400))), 50,
                             key=f"pa_kr_lb_{_paslug}",
-                            help="Candles de contexte fournis au modèle"
+                            help=t("pa_kronos_lb_help")
                         )
                         _pkr["timeout_seconds"] = st.number_input(
                             "Timeout (s)", 30, 600,
@@ -4198,7 +4187,7 @@ def render_admin_panel():
                             "Température", 0.1, 2.0,
                             float(_pkr.get("temperature", _kr_global.get("temperature", 1.0))), 0.05,
                             key=f"pa_kr_temp_{_paslug}",
-                            help="0.1 = déterministe, 2.0 = créatif"
+                            help=t("pa_kronos_temp_help")
                         )
                         _pkr["top_p"] = st.slider(
                             "Top-p", 0.0, 1.0,
@@ -4213,45 +4202,43 @@ def render_admin_panel():
                     _pacfg["kronos"] = _pkr
 
                 # ── MiroFish poids ────────────────────────────────────────────
-                with st.expander("🐟 MiroFish — Poids par actif", expanded=False):
+                with st.expander(t("pa_mirofish_section"), expanded=False):
                     _pmf = dict(_pacfg.get("mirofish", {}))
                     _mf_global = settings.get("mirofish", {})
                     _mf_news_default = float(_pmf.get("seed_news_weight",
                                              _mf_global.get("seed_news_weight", 0.6)))
                     _mf_news_new = st.slider(
-                        "Poids News récentes",
+                        t("pa_mf_news_weight"),
                         0.0, 1.0, _mf_news_default, 0.05,
                         key=f"pa_mf_news_{_paslug}",
-                        help="Part des news récentes dans le seed MiroFish. "
-                             "Crypto : news-driven → ~0.7. Forex/Or : macro-driven → ~0.4."
+                        help=t("pa_mf_news_help")
                     )
                     _pmf["seed_news_weight"] = round(_mf_news_new, 2)
                     _pmf["air_du_temps_weight"] = round(1.0 - _mf_news_new, 2)
-                    st.metric("Poids Air du Temps", f"{_pmf['air_du_temps_weight']:.0%}")
+                    st.metric(t("pa_mf_adt_weight"), f"{_pmf['air_du_temps_weight']:.0%}")
                     _pacfg["mirofish"] = _pmf
 
                 # ── Crawler templates ─────────────────────────────────────────
-                with st.expander("⛏ Templates Crawler", expanded=False):
+                with st.expander(t("pa_crawler_section"), expanded=False):
                     _pcr = dict(_pacfg.get("crawler", {}))
                     _pcr_raw = "\n".join(_pcr.get("templates", []))
                     _pcr_new = st.text_area(
-                        f"Templates spécifiques {_pas} (un par ligne)",
+                        t("pa_crawler_templates").format(asset=_pas),
                         value=_pcr_raw, height=200,
                         key=f"pa_crawler_{_paslug}",
-                        help="{asset} → ticker court (ex: BTC), {year} → année courante. "
-                             "Les templates macro globaux (onglet Crawler) sont toujours ajoutés."
+                        help=t("pa_crawler_help")
                     )
                     _pcr["templates"] = [
                         l.strip() for l in _pcr_new.splitlines()
                         if l.strip() and not l.strip().startswith("#")
                     ]
-                    st.caption(f"{len(_pcr['templates'])} templates spécifiques + templates macro globaux")
+                    st.caption(t("pa_crawler_count").format(n=len(_pcr["templates"])))
                     _pacfg["crawler"] = _pcr
 
                 # ── Bouton Sauvegarder ────────────────────────────────────────
                 st.markdown("---")
                 if st.button(
-                    f"💾 Sauvegarder {_pas}",
+                    t("pa_save_btn").format(asset=_pas),
                     key=f"pa_save_{_paslug}",
                     type="primary",
                     use_container_width=True,
@@ -4260,63 +4247,63 @@ def render_admin_panel():
                         from utils.config import save_asset_config as _sac
                         _padir.mkdir(parents=True, exist_ok=True)
                         _sac(_pas, _pacfg)
-                        st.success(f"✅ config/assets/{_paslug}.yaml sauvegardé")
+                        st.success(t("pa_save_success").format(slug=_paslug))
                     except Exception as _savexc:
-                        st.error(f"❌ Erreur sauvegarde : {_savexc}")
+                        st.error(f"{t('pa_save_error')} {_savexc}")
 
     elif _atab == "backup":  # Sauvegarde / Restauration
-        st.markdown('<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>Sauvegarde &amp; Restauration de la configuration</h4>', unsafe_allow_html=True)
-        st.info("⚠️ La sauvegarde inclut **settings.yaml** et tous les fichiers **config/assets/*.yaml**.")
+        st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)
+        st.info(t("bkp_info"))
 
         col_exp, col_imp = st.columns(2)
 
         with col_exp:
-            st.subheader("📤 Exporter")
-            st.caption("Télécharge un fichier ZIP contenant toute la configuration actuelle.")
+            st.subheader(t("bkp_export_title"))
+            st.caption(t("bkp_export_caption"))
             try:
                 from utils.config import export_config_zip
                 from datetime import datetime as _dt
                 _zip_bytes = export_config_zip()
                 _zip_name  = f"atlas_config_{_dt.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
                 st.download_button(
-                    label="⬇️ Télécharger la configuration",
+                    label=t("bkp_download_btn"),
                     data=_zip_bytes,
                     file_name=_zip_name,
                     mime="application/zip",
                     use_container_width=True,
                 )
-                st.success(f"ZIP prêt — {len(_zip_bytes)//1024} Ko")
+                st.success(t("bkp_ready").format(n=len(_zip_bytes)//1024))
             except Exception as _exp_exc:
-                st.error(f"❌ Erreur export : {_exp_exc}")
+                st.error(f"{t('bkp_export_error')} {_exp_exc}")
 
         with col_imp:
-            st.subheader("📥 Importer / Restaurer")
-            st.caption("Restaure la configuration depuis un ZIP exporté précédemment. L'état actuel est sauvegardé automatiquement avant toute écrasure.")
-            _up = st.file_uploader("Choisir un fichier ZIP", type=["zip"], label_visibility="collapsed")
-            _confirm = st.checkbox("⚠️ Je confirme vouloir écraser la configuration actuelle")
-            if st.button("🔄 Restaurer depuis ce ZIP", disabled=(_up is None or not _confirm), use_container_width=True):
+            st.subheader(t("bkp_import_title"))
+            st.caption(t("bkp_import_caption"))
+            _up = st.file_uploader(t("bkp_choose_file"), type=["zip"], label_visibility="collapsed")
+            _confirm = st.checkbox(t("bkp_confirm_check"))
+            if st.button(t("bkp_restore_btn"), disabled=(_up is None or not _confirm), use_container_width=True):
                 try:
                     from utils.config import import_config_zip
                     _result = import_config_zip(_up.read(), backup_first=True)
                     st.success(
-                        f"✅ {len(_result['restored_files'])} fichier(s) restauré(s)\n"
-                        + (f"\n💾 Sauvegarde auto : `{_result['backup_path']}`" if _result['backup_path'] else "")
+                        t("bkp_restore_success").format(n=len(_result['restored_files']))
+                        + (f"\n{t('bkp_backup_path')} `{_result['backup_path']}`" if _result['backup_path'] else "")
                     )
                     if _result["errors"]:
                         for _e in _result["errors"]:
                             st.warning(f"⚠️ {_e}")
-                    st.info("🔄 Redémarrez le daemon pour appliquer les nouveaux paramètres.")
+                    st.info(t("bkp_restart_info"))
                 except Exception as _imp_exc:
-                    st.error(f"❌ Restauration échouée : {_imp_exc}")
+                    st.error(f"{t('bkp_restore_error')} {_imp_exc}")
 
         # Liste des sauvegardes automatiques disponibles
         st.markdown("---")
-        st.subheader("📂 Sauvegardes automatiques disponibles")
+        st.subheader(t("bkp_list_title"))
         try:
             from utils.config import list_config_backups, import_config_zip
             _backups = list_config_backups()
             if not _backups:
-                st.caption("Aucune sauvegarde disponible pour l'instant.")
+                st.caption(t("bkp_no_backups"))
             else:
                 for _bk in _backups[:10]:  # max 10 affichées
                     _bcol1, _bcol2, _bcol3 = st.columns([4, 1, 1])
@@ -4335,11 +4322,11 @@ def render_admin_panel():
                         if st.button("🔄", key=f"restore_{_bk['filename']}", help="Restaurer cette sauvegarde"):
                             try:
                                 _r = import_config_zip(_bk_bytes, backup_first=True)
-                                st.success(f"✅ {len(_r['restored_files'])} fichier(s) restauré(s) depuis {_bk['filename']}")
+                                st.success(t("bkp_restore_from").format(n=len(_r['restored_files']), filename=_bk['filename']))
                             except Exception as _re:
                                 st.error(f"❌ {_re}")
         except Exception as _lb_exc:
-            st.caption(f"Impossible de lister les sauvegardes : {_lb_exc}")
+            st.caption(f"{t('bkp_list_error')} {_lb_exc}")
 
     # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif et Sauvegarde)
     if _atab not in ("backup", "flux", "peractif"):

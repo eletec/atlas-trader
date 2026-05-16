@@ -145,11 +145,43 @@ def load_flux_metrics(flux_name: str | None = None, hours: int = 1) -> pd.DataFr
         conn.close()
 
 
+def _infer_v2_status() -> dict[str, dict]:
+    """Infère le statut des composants V2 depuis v2_state (V2 n'écrit pas dans flux_metrics)."""
+    try:
+        from storage.database import get_v2_state
+        state = get_v2_state()
+    except Exception:
+        return {}
+    if not state or not state.get("updated_at"):
+        return {}
+    try:
+        age_s = (datetime.utcnow() - datetime.fromisoformat(state["updated_at"])).total_seconds()
+    except Exception:
+        return {}
+    # Cycle trop vieux (> 20 min) → ne pas afficher comme OK
+    if age_s > 1200:
+        return {}
+    ts = state["updated_at"]
+    has_price  = bool(state.get("close_price"))
+    has_signal = state.get("prob_up") is not None
+    has_action = bool(state.get("action"))
+    has_capital = bool(state.get("capital"))
+    return {
+        "ohlcv_loader": {"status": "ok" if has_price  else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "features":     {"status": "ok" if has_signal else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "regime":       {"status": "ok" if has_signal else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "signal_model": {"status": "ok" if has_signal else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "strategy":     {"status": "ok" if has_action  else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "risk":         {"status": "ok" if has_capital else "unknown", "latency_ms": 0, "timestamp": ts, "items_count": 1},
+        "paper_trader": {"status": "ok",                               "latency_ms": 0, "timestamp": ts, "items_count": 1},
+    }
+
+
 def load_last_status_per_flux() -> dict[str, dict]:
     """Récupère le dernier statut de chaque flux."""
     conn = _get_db()
     if conn is None:
-        return _generate_demo_status()
+        return _infer_v2_status() or _generate_demo_status()
 
     query = """
         SELECT flux_name, status, latency_ms, items_count, timestamp, error_message
@@ -161,10 +193,13 @@ def load_last_status_per_flux() -> dict[str, dict]:
     try:
         df = pd.read_sql_query(query, conn)
         if df.empty:
-            return {}
-        return df.set_index("flux_name").to_dict("index")
+            # V2 n'écrit pas dans flux_metrics → inférer depuis v2_state
+            return _infer_v2_status()
+        # Filtrer aux flux V2 connus (évite les entrées V1 résiduelles)
+        result = df.set_index("flux_name").to_dict("index")
+        return {k: v for k, v in result.items() if k in FLUX_DEFINITIONS}
     except Exception:
-        return _generate_demo_status()
+        return _infer_v2_status() or _generate_demo_status()
     finally:
         conn.close()
 
@@ -398,10 +433,6 @@ def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
                             st.error(f"⚠️ {status_info['error_message'][:80]}",
                                      icon="🚨")
 
-
-def render_controls(settings: dict) -> dict | None:
-    """Panneau de contrôle — enable/disable + force refresh par flux."""
-    st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
 def render_controls(settings: dict) -> dict | None:
     """Panneau de contrôle V2 — actifs actifs + paramètres globaux."""

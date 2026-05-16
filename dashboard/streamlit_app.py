@@ -3055,9 +3055,10 @@ def render_admin_panel():
                             key=f"pa_dd_{_paslug}"
                         )
                         _par["max_open_positions"] = st.number_input(
-                            t("pa_max_positions"), 1, 20,
+                            t("pa_max_positions"), 0, 20,
                             int(_par.get("max_open_positions", 3)),
-                            key=f"pa_mop_{_paslug}"
+                            key=f"pa_mop_{_paslug}",
+                            help="0 = illimité (aucun plafond sur les positions simultanées)."
                         )
                     with _c2:
                         _par["atr_multiplier_sl"] = st.slider(

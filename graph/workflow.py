@@ -42,11 +42,15 @@ from quant.signal_model import SignalModel
 from quant.strategy import Action, decide
 
 _DEFAULT_SYMBOL = "BTC/USDT"
-_DEFAULT_TF = "15m"
+_DEFAULT_TF = "5m"    # settings.yaml : timeframe 5m (loop 300s)
 _HISTORY_DAYS = 90
 _TRAIN_FRACTION = 0.70
 _REFIT_INTERVAL_S = 7 * 86400
 _MAX_HISTORY_BARS = 90 * 96
+
+# Durée en secondes par barre selon le timeframe
+_TF_SECONDS = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+               "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}
 
 
 class LiveRunner:
@@ -218,8 +222,10 @@ class LiveRunner:
             # Si le trade est gagnant, le laisser courir (TP/SL gèrent la sortie)
             if not exit_signal and self._position_entry_ts:
                 try:
+                    # Durée d'une barre en secondes (dynamique selon self.timeframe)
+                    bar_secs = _TF_SECONDS.get(self.timeframe, 300)
                     elapsed_bars = int(
-                        (ohlcv.index[-1] - pd.Timestamp(self._position_entry_ts)).total_seconds() // 300
+                        (ohlcv.index[-1] - pd.Timestamp(self._position_entry_ts)).total_seconds() // bar_secs
                     )
                     if elapsed_bars >= 8:
                         if self._position.side == "long":

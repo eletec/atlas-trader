@@ -18,9 +18,9 @@ logger = logging.getLogger("zeitgeist.quant.risk")
 
 @dataclass
 class RiskParams:
-    fraction_per_trade: float = 0.015     # 1.5% du capital
+    fraction_per_trade: float = 0.0075    # 0.75% du capital (réduit en phase expérimentale)
     stop_loss_atr_mult: float = 2.5
-    take_profit_atr_mult: float = 3.0
+    take_profit_atr_mult: float = 3.5     # élevé de 3.0 → 3.5 : R:R 1.2 → 1.4 (DeepSeek)
     trailing_activation_atr: float = 1.0
     trailing_distance_atr: float = 1.0
     weekly_dd_kill_switch: float = 0.08   # 8% DD/sem → pause

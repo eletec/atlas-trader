@@ -185,15 +185,31 @@ class LiveRunner:
         if self._position is not None:
             self._position = self._risk_manager.update_trailing(self._position, close_price)
             exit_signal = self._risk_manager.should_exit(self._position, close_price)
+            # Time-based exit : 8 barres max = 40 min en 5m (Phase 1.3)
+            if not exit_signal and self._position_entry_ts:
+                try:
+                    elapsed_bars = int(
+                        (ohlcv.index[-1] - pd.Timestamp(self._position_entry_ts)).total_seconds() // 300
+                    )
+                    if elapsed_bars >= 8:
+                        exit_signal = "time_exit_8bars"
+                except Exception:
+                    pass
             if exit_signal:
                 trade_result = self._close_position(close_price, exit_signal)
                 self._position = None
 
         # ── Nouvelle entrée ───────────────────────────────────────────────────
+        # Filtre volume : n'entrer que si volume >= 70% de la médiane des 20 dernières barres
+        vol_ratio = 1.0
+        if len(ohlcv) >= 21:
+            vol_med = float(ohlcv["volume"].iloc[-21:-1].median())
+            vol_ratio = float(ohlcv["volume"].iloc[-1]) / (vol_med + 1e-9)
         if (self._position is None
                 and not self._risk_manager.is_paused(time.time())
                 and decision.action in (Action.LONG, Action.SHORT)
-                and atr_14 and atr_14 > 0):
+                and atr_14 and atr_14 > 0
+                and vol_ratio >= 0.70):   # Phase 3.3
             side = decision.action.value
             try:
                 pos = self._risk_manager.compute_position(
@@ -263,6 +279,7 @@ class LiveRunner:
         pnl_pct = net / (pos.entry_price * pos.size_units)
         if net > 0:
             self._wins += 1
+        self._position_entry_ts = None   # reset après fermeture
         self._risk_manager.record_trade_pnl_pct(pnl_pct, time.time())
         logger.info(f"SORTIE {reason} @ {price:.2f} | PnL={net:+.2f}$ ({pnl_pct:+.2%})")
         return {"exit_price": price, "pnl_abs": round(net, 2),

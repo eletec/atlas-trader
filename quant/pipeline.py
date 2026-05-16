@@ -32,6 +32,9 @@ DEFAULT_FEATURE_COLS = [
     "adx_14_q",
     "dist_ma50_q",
     "volume_z_20_q",
+    "hour_sin",       # calendaire — déjà ∈ [0,1], pas de normalisation _q
+    "hour_cos",
+    "is_weekend",
 ]
 
 
@@ -39,8 +42,8 @@ DEFAULT_FEATURE_COLS = [
 class PipelineConfig:
     horizon_bars: int = 4
     norm_window: int = 30 * 96
-    p_up_threshold: float = 0.55
-    p_dn_threshold: float = 0.45
+    p_up_threshold: float = 0.58    # élargi depuis 0.55 — consensus 3 IA
+    p_dn_threshold: float = 0.42    # élargi depuis 0.45
     use_hmm: bool = True
     use_signal_model: bool = True
     feature_cols: Sequence[str] = field(default_factory=lambda: list(DEFAULT_FEATURE_COLS))
@@ -83,7 +86,8 @@ def run_pipeline(
     feats_norm = normalize_features(
         feats_raw,
         window=cfg.norm_window,
-        columns=["log_return_1", "log_return_4", "log_return_24", "atr_pct", "adx_14", "dist_ma50", "volume_z_20"],
+        columns=["log_return_1", "log_return_4", "log_return_24",
+                 "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20"],
     )
     feats = pd.concat([feats_raw, feats_norm], axis=1)
 

@@ -110,6 +110,17 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Volatilité de la volatilité (régime helper)
     out["vol_of_vol_20"] = atr_14.pct_change().rolling(20, min_periods=20).std()
 
+    # Features calendaires — déterministes, strictement causales (Phase 3.1)
+    # Index supposé DatetimeIndex
+    try:
+        hour = df.index.hour
+        dow = df.index.dayofweek
+        out["hour_sin"] = (np.sin(2 * np.pi * hour / 24) + 1.0) / 2.0   # ∈ [0, 1]
+        out["hour_cos"] = (np.cos(2 * np.pi * hour / 24) + 1.0) / 2.0   # ∈ [0, 1]
+        out["is_weekend"] = (dow >= 5).astype(float)                       # 0 ou 1
+    except AttributeError:
+        pass  # index non-temporel (tests unitaires)
+
     return out
 
 

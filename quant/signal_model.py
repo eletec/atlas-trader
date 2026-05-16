@@ -22,6 +22,7 @@ logger = logging.getLogger("zeitgeist.quant.signal_model")
 try:
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import TimeSeriesSplit
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
 
@@ -64,9 +65,10 @@ class SignalModel:
                 ]
             )
             if self.use_calibration:
-                # cv=prefit non utilisé ; on calibre via CV interne sur le train
+                # TimeSeriesSplit : évite le leakage KFold sur séries temporelles (GPT)
+                tscv = TimeSeriesSplit(n_splits=min(self.cv_folds, 5))
                 self._model = CalibratedClassifierCV(
-                    base, method="sigmoid", cv=min(self.cv_folds, 5)
+                    base, method="sigmoid", cv=tscv
                 )
             else:
                 self._model = base

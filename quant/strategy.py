@@ -37,10 +37,10 @@ class Decision:
 def decide(
     probability_up: float | None,
     regime_trending: bool,
-    upper_threshold: float = 0.55,
-    lower_threshold: float = 0.45,
+    upper_threshold: float = 0.58,
+    lower_threshold: float = 0.42,
 ) -> Decision:
-    """Décision atomique. Aucune dépendance externe."""
+    """Décision atomique. Zone morte [0.42, 0.58] — élargie selon consensus 3 IA."""
     if not regime_trending:
         return Decision(Action.FLAT, probability_up, regime_trending, "regime_mean_reverting")
     if probability_up is None or pd.isna(probability_up):

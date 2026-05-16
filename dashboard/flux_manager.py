@@ -221,6 +221,8 @@ def load_flux_stats(hours: int = 24) -> dict[str, dict]:
 
     stats = {}
     for flux_name, group in df.groupby("flux_name"):
+        if flux_name not in FLUX_DEFINITIONS:
+            continue  # ignorer les flux V1 résiduels
         total = len(group)
         errors = len(group[group["status"] == "error"])
         stats[flux_name] = {

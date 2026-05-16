@@ -330,5 +330,11 @@ def _get_runner(asset: str) -> "LiveRunner":
 
 def run_cycle(asset: str = _DEFAULT_SYMBOL, trigger: str = "scheduled") -> dict:
     """Point d'entrée principal du daemon. Appelé toutes les 15min par main.py."""
-    runner = _get_runner(asset)
-    return runner.step(trigger=trigger)
+    from utils.cycle_lock import try_acquire, release as _lock_release
+    acquired = try_acquire(owner=f"v2_{trigger}", asset=asset)
+    try:
+        runner = _get_runner(asset)
+        return runner.step(trigger=trigger)
+    finally:
+        if acquired:
+            _lock_release(asset=asset)

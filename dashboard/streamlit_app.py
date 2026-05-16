@@ -890,6 +890,18 @@ def render_header():
     _cycle_locked = _cycle_is_locked()
     _daemon_alive = _cycle_locked
     if not _daemon_alive:
+        # V2 : vérifier l'ancienneté de v2_state.updated_at (< 30 min = daemon actif)
+        try:
+            from storage.database import get_v2_state as _hb_v2s
+            _v2st = _hb_v2s()
+            if _v2st and _v2st.get("updated_at"):
+                _v2_age = (datetime.utcnow() - datetime.fromisoformat(_v2st["updated_at"])).total_seconds()
+                if _v2_age < 1800:
+                    _daemon_alive = True
+        except Exception:
+            pass
+    if not _daemon_alive:
+        # Legacy V1 : fichiers heartbeat
         import glob as _hb_glob, os as _hb_os, time as _hb_time
         for _hbf in _hb_glob.glob("/tmp/atlas_heartbeat_*"):
             try:
@@ -2158,188 +2170,85 @@ def render_trades_list_sortable(trades: list[dict]):
 
 
 def render_last_decision(last_cycle: dict | None):
-    """Affiche la dernière décision avec explication IA et breakdown des scores."""
+    """Affiche la dernière décision V2 (depuis v2_state, pas la table V1 decisions)."""
     st.markdown('<div style="margin-top:24px;"></div>', unsafe_allow_html=True)
     st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-robot" style="margin-right:8px;color:#7986cb;"></i>{t("last_decision_title")}</h3>', unsafe_allow_html=True)
 
-    if not last_cycle:
+    # V2 : lire directement v2_state (la table decisions V1 n'est plus alimentée)
+    try:
+        from storage.database import get_v2_state
+        state = get_v2_state()
+    except Exception:
+        state = None
+
+    if not state:
         st.info(t("no_cycle"))
         return
 
-    action = last_cycle.get("action", "HOLD")
-    action_color = {"BUY": "green", "SELL": "red", "HOLD": "orange"}.get(action, "gray")
-    explanation = last_cycle.get("explanation", t("no_explanation"))
+    action = (state.get("action") or "flat").upper()
+    action_color = {"LONG": "#2ecc71", "SHORT": "#e74c3c", "FLAT": "#888888"}.get(action, "#888888")
+    explanation = state.get("reason") or "—"
 
-    # Formatage de la date/heure de la décision
-    ts = last_cycle.get("timestamp", "")
+    # Formatage de la date/heure (depuis v2_state.updated_at)
+    _ld_updated = state.get("updated_at") or ""
     ts_label = ""
-    if ts:
+    if _ld_updated:
         try:
-            dt = datetime.fromisoformat(ts)
+            dt = datetime.fromisoformat(_ld_updated)
             ts_label = _fmt_utc_local(dt)
         except Exception:
-            ts_label = ts[:16]
+            ts_label = _ld_updated[:16]
 
+    prob_up    = state.get("prob_up")
+    regime_raw = state.get("regime")
+    regime_str = "TREND" if regime_raw == 1 else ("RANGE" if regime_raw == 0 else "—")
+    close_price = state.get("close_price")
+    atr_14      = state.get("atr_14")
+    model_fit_at = state.get("model_fit_at")
+
+    # Carte action principale
     st.markdown(
-        f"<div style='border-left:4px solid {action_color}; padding:12px; "
-        f"border-radius:4px;'>"
-        f"<strong style='color:{action_color}'>{action}</strong> — "
-        f"Score: {last_cycle.get('score', 0):.0f}/100"
-        + (f" &nbsp;<span style='font-size:11px;opacity:0.55;'>🕐 {ts_label}</span>" if ts_label else "")
-        + f"<br><br>{explanation}</div>",
-        unsafe_allow_html=True
+        f"<div style='border-left:4px solid {action_color};padding:12px 16px;border-radius:4px;"
+        f"background:rgba(255,255,255,0.03);'>"
+        f"<strong style='color:{action_color};font-size:20px;'>{action}</strong>"
+        + (f" &nbsp;<span style='font-size:11px;opacity:0.5;'>🕐 {ts_label}</span>" if ts_label else "")
+        + "<br><span style='font-size:11px;opacity:0.55;'>Pipeline V2 quantitatif pur</span>"
+        + f"<br><br><b>Raison :</b> <code style='font-size:12px;'>{explanation}</code>"
+        + (f"<br><b>Régime :</b> {regime_str} &nbsp;·&nbsp; <b>P(↑) :</b> {prob_up:.3f}" if prob_up is not None else "")
+        + (f"<br><b>Prix clôture :</b> <b>${close_price:,.2f}</b>" if close_price else "")
+        + (f" &nbsp;·&nbsp; <b>ATR(14) :</b> ${atr_14:.2f}" if atr_14 else "")
+        + "</div>",
+        unsafe_allow_html=True,
     )
 
-    # ── Raisons de filtrage (MA50, Funding CB, HIGH_VOL) ────────────────────
-    _filter_pills = []
-    _above_ma50       = last_cycle.get("above_ma50")
-    _ma50_blocked     = last_cycle.get("ma50_blocked", False)
-    _ma50_penalty     = last_cycle.get("ma50_size_penalty", 1.0)
-    _funding_blocked  = last_cycle.get("funding_blocked", False)
-    _funding_mult     = last_cycle.get("funding_size_mult", 1.0)
-    _funding_reason   = last_cycle.get("funding_reason", "")
-    _hv_mult          = last_cycle.get("high_vol_size_mult", 1.0)
-    _buy_thr          = last_cycle.get("buy_threshold") or last_cycle.get("score_breakdown", {})
-
-    if _ma50_blocked:
-        _filter_pills.append(
-            "<span style='background:rgba(255,152,0,0.18);color:#ffb74d;"
-            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
-            "⚠ MA50 — score &lt; 72 requis sous MA50 → HOLD forcé</span>"
-        )
-    elif _above_ma50 is False and _ma50_penalty and _ma50_penalty < 1.0:
-        _filter_pills.append(
-            "<span style='background:rgba(255,152,0,0.12);color:#ffb74d;"
-            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
-            f"⚠ MA50 — prix sous MA50 · taille ×{_ma50_penalty:.0%}</span>"
-        )
-
-    if _funding_blocked:
-        _filter_pills.append(
-            "<span style='background:rgba(229,57,53,0.18);color:#ef9a9a;"
-            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
-            "🚫 Funding CB — BUY bloqué</span>"
-        )
-    elif _funding_mult and _funding_mult < 1.0:
-        _filter_pills.append(
-            "<span style='background:rgba(229,57,53,0.12);color:#ef9a9a;"
-            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
-            f"⚠ Funding élevé · taille ×{_funding_mult:.0%}</span>"
-        )
-
-    if _hv_mult and _hv_mult < 1.0:
-        _filter_pills.append(
-            "<span style='background:rgba(171,71,188,0.15);color:#ce93d8;"
-            "padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px;'>"
-            f"⚡ HIGH_VOL · taille ×{_hv_mult:.0%}</span>"
-        )
-
-    if _filter_pills:
+    # Position ouverte (si présente)
+    _ld_pos = state.get("position_side")
+    if _ld_pos:
+        _ld_entry = state.get("entry_price")
+        _ld_sl    = state.get("sl_price")
+        _ld_tp    = state.get("tp_price")
+        _ld_pcol  = "#2ecc71" if _ld_pos == "long" else "#e74c3c"
+        _ld_arrow = "▲" if _ld_pos == "long" else "▼"
         st.markdown(
-            f"<div style='margin-top:6px;'>{''.join(_filter_pills)}</div>",
+            f"<div style='margin-top:8px;padding:8px 12px;border-radius:6px;"
+            f"background:rgba(255,255,255,0.04);font-size:13px;'>"
+            f"<b style='color:{_ld_pcol}'>{_ld_arrow} {_ld_pos.upper()}</b>"
+            + (f" @ <b>${_ld_entry:,.2f}</b>" if _ld_entry else "")
+            + (f" &nbsp;·&nbsp; SL <b style='color:#e74c3c'>${_ld_sl:,.2f}</b>" if _ld_sl else "")
+            + (f" &nbsp;·&nbsp; TP <b style='color:#2ecc71'>${_ld_tp:,.2f}</b>" if _ld_tp else "")
+            + "</div>",
             unsafe_allow_html=True,
         )
 
-    # F11 — Score breakdown : contribution de chaque composant
-    breakdown = last_cycle.get("breakdown") or last_cycle.get("score_breakdown") or {}
-    if isinstance(breakdown, str):
+    # Date refit modèle
+    if model_fit_at:
         try:
-            import json as _json
-            breakdown = _json.loads(breakdown)
-        except Exception:
-            breakdown = {}
-    if breakdown:
-        parts = []
-        for name, data in breakdown.items():
-            if name == "final_score":
-                continue
-            if not isinstance(data, dict):
-                continue
-            component_score = data.get("score", 0)
-            weight = data.get("weight", 0)
-            contribution = data.get("contribution", component_score * weight)
-            parts.append(
-                f'<span style="margin-right:10px;white-space:nowrap;">'
-                f'<strong>{name}</strong>: {component_score:.0f} '
-                f'<span style="opacity:0.55;">×{weight:.0%}</span> '
-                f'= <strong>{contribution:.1f}</strong></span>'
-            )
-        if parts:
-            st.markdown(
-                f'<div style="font-size:12px;margin-top:8px;opacity:0.75;">'
-                f'{"".join(parts)}</div>',
-                unsafe_allow_html=True,
-            )
-
-    # ── Débat Bull/Bear + Signal 5-niveaux (si disponibles) ─────────────────
-    import json as _json_ld
-    _ctx_ld: dict = {}
-    _raw_ctx_ld = last_cycle.get("decision_context")
-    if _raw_ctx_ld:
-        try:
-            _ctx_ld = _json_ld.loads(_raw_ctx_ld) if isinstance(_raw_ctx_ld, str) else _raw_ctx_ld
+            fit_dt  = datetime.fromisoformat(model_fit_at)
+            age_h   = int((datetime.utcnow() - fit_dt).total_seconds() / 3600)
+            age_str = f"{age_h}h" if age_h < 48 else f"{age_h // 24}j"
+            st.caption(f"🧠 Modèle refit il y a {age_str}")
         except Exception:
             pass
-    _synth_ld = (_ctx_ld.get("agents") or {}).get("synthesis") or {}
-    _signal_detail_ld = _synth_ld.get("signal_detail")
-    _debate_winner_ld = _synth_ld.get("debate_winner")
-    _bull_arg_ld      = _synth_ld.get("bull_argument")
-    _bear_arg_ld      = _synth_ld.get("bear_argument")
-
-    # Badge signal 5-niveaux
-    if _signal_detail_ld:
-        _sig_colors = {
-            "STRONG_BUY":  ("rgba(27,94,32,0.25)",  "#69f0ae"),
-            "BUY":         ("rgba(27,94,32,0.15)",  "#a5d6a7"),
-            "HOLD":        ("rgba(255,152,0,0.15)", "#ffb74d"),
-            "SELL":        ("rgba(183,28,28,0.15)", "#ef9a9a"),
-            "STRONG_SELL": ("rgba(183,28,28,0.25)", "#e53935"),
-        }
-        _sig_bg, _sig_fg = _sig_colors.get(_signal_detail_ld, ("rgba(80,80,80,0.2)", "#ccc"))
-        st.markdown(
-            f"<div style='margin-top:10px;'>"
-            f"<span style='background:{_sig_bg};color:{_sig_fg};"
-            f"padding:3px 12px;border-radius:4px;font-size:12px;font-weight:700;"
-            f"border:1px solid {_sig_fg}40;'>"
-            f"📊 Signal LLM : {_signal_detail_ld}</span></div>",
-            unsafe_allow_html=True,
-        )
-
-    # Expander débat Bull/Bear
-    if _bull_arg_ld and _bear_arg_ld and _bull_arg_ld not in ("[debate skipped]", "[debate unavailable]"):
-        with st.expander("🥊 Débat Bull/Bear", expanded=False):
-            if _debate_winner_ld:
-                _w_upper = _debate_winner_ld.upper()
-                _w_color = "#69f0ae" if "BULL" in _w_upper else ("#e53935" if "BEAR" in _w_upper else "#ffb74d")
-                st.markdown(
-                    f"<div style='margin-bottom:10px;font-size:13px;'>"
-                    f"<strong>Vainqueur :</strong> "
-                    f"<span style='color:{_w_color};font-weight:700;'>{_debate_winner_ld}</span></div>",
-                    unsafe_allow_html=True,
-                )
-            c_bull_ld, c_bear_ld = st.columns(2)
-            with c_bull_ld:
-                st.markdown(
-                    "<div style='font-size:12px;font-weight:700;color:#69f0ae;margin-bottom:6px;'>🟢 Bull Researcher</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    f"<div style='font-size:12px;line-height:1.6;background:rgba(27,94,32,0.1);"
-                    f"padding:8px;border-radius:4px;border-left:3px solid #69f0ae40;'>"
-                    f"{_bull_arg_ld}</div>",
-                    unsafe_allow_html=True,
-                )
-            with c_bear_ld:
-                st.markdown(
-                    "<div style='font-size:12px;font-weight:700;color:#e53935;margin-bottom:6px;'>🔴 Bear Researcher</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    f"<div style='font-size:12px;line-height:1.6;background:rgba(183,28,28,0.1);"
-                    f"padding:8px;border-radius:4px;border-left:3px solid #e5393540;'>"
-                    f"{_bear_arg_ld}</div>",
-                    unsafe_allow_html=True,
-                )
 
 
 _LOGS_PAGE_SIZE = 100
@@ -2928,6 +2837,10 @@ def render_admin_panel():
             if not _mem_file.exists():
                 st.info(t("mem_no_file"))
             else:
+                if st.button("🗑️ Supprimer trading_memory.json", key="btn_purge_trading_memory", type="secondary"):
+                    _mem_file.unlink(missing_ok=True)
+                    st.success("trading_memory.json supprimé.")
+                    st.rerun()
                 with open(_mem_file, "r", encoding="utf-8") as _mf:
                     _raw_mem = _mem_json.load(_mf)
                 # Support both formats: {"lessons": [...]} and [...]
@@ -3320,46 +3233,6 @@ def render_admin_panel():
         )
         st.warning("⚠️ Ces opérations sont irréversibles. Utilisez l'onglet Sauvegarde avant toute purge.")
 
-        st.markdown("#### Données V1 (décisions LLM + trades + profils shadow)")
-        st.caption("Les décisions V1 issues du pipeline LLM ne sont plus utilisées. Purger pour nettoyer la base.")
-        _col_r1, _col_r2, _col_r3_v1 = st.columns(3)
-        with _col_r1:
-            if st.button("🗑️ Vider les décisions V1", type="secondary", use_container_width=True, key="reset_v1_decisions"):
-                try:
-                    import sqlite3 as _sq3
-                    from utils.config import load_settings as _ls_r
-                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3.connect(_db_r) as _con_r:
-                        _con_r.execute("DELETE FROM decisions")
-                        _con_r.commit()
-                    st.success("✅ Table `decisions` vidée.")
-                except Exception as _re_r:
-                    st.error(f"Erreur : {_re_r}")
-        with _col_r2:
-            if st.button("🗑️ Vider les trades V1", type="secondary", use_container_width=True, key="reset_v1_trades"):
-                try:
-                    import sqlite3 as _sq3
-                    from utils.config import load_settings as _ls_r
-                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3.connect(_db_r) as _con_r:
-                        _con_r.execute("DELETE FROM trades")
-                        _con_r.commit()
-                    st.success("✅ Table `trades` vidée.")
-                except Exception as _re_r:
-                    st.error(f"Erreur : {_re_r}")
-        with _col_r3_v1:
-            if st.button("🗑️ Vider profils shadow V1", type="secondary", use_container_width=True, key="reset_v1_shadow"):
-                try:
-                    import sqlite3 as _sq3
-                    from utils.config import load_settings as _ls_r
-                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3.connect(_db_r) as _con_r:
-                        _con_r.execute("DELETE FROM shadow_decisions")
-                        _con_r.commit()
-                    st.success("✅ Table `shadow_decisions` vidée.")
-                except Exception as _re_r:
-                    st.error(f"Erreur : {_re_r}")
-
         st.markdown("#### Données V2 (état + equity curve)")
         _col_r3, _col_r4 = st.columns(2)
         with _col_r3:
@@ -3570,11 +3443,7 @@ def main():
                 render_portfolio(_pf)
                 render_climate_metrics(_lc)
                 render_v2_quant_state(asset)
-                col_dec, col_chart = st.columns([1, 1], gap="medium")
-                with col_dec:
-                    render_last_decision(_lc)
-                with col_chart:
-                    render_agent_scores_chart(asset)
+                render_last_decision(_lc)
                 render_trades_list(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_chart(asset)

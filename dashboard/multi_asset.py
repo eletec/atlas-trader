@@ -66,22 +66,26 @@ def _score_bar(score: float) -> str:
 # Composant 1 : Vue globale
 # ---------------------------------------------------------------------------
 
+_ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}
+
 def render_global_overview() -> None:
     """
     Tableau consolidé multi-actifs affiché en tête de la vue Globale.
-    Montre : Actif | Dernier signal | Score | Timestamp | P&L 24h
+    V2 : lit v2_equity (dernière ligne par actif). Fallback sur decisions V1 si vide.
     """
     import streamlit as st
 
     try:
-        from storage.database import get_assets_summary
+        from storage.database import get_v2_assets_summary, get_assets_summary
         from utils.session import MarketSession
-        db_rows = get_assets_summary()
+        db_rows = get_v2_assets_summary()
+        is_v2 = bool(db_rows)
+        if not is_v2:
+            db_rows = get_assets_summary()
     except Exception as exc:
         st.warning(f'{t("global_data_unavailable")} : {exc}')
         return
 
-    # Fusionner avec tous les actifs actifs (afficher même sans décision en base)
     db_by_asset = {r["asset"]: r for r in db_rows}
     all_assets = _active_assets()
     rows = []
@@ -89,20 +93,35 @@ def render_global_overview() -> None:
         if asset in db_by_asset:
             rows.append(db_by_asset[asset])
         else:
-            rows.append({"asset": asset, "action": "–", "score": None, "timestamp": None, "result_24h": None})
+            rows.append({"asset": asset, "action": "flat", "score": None,
+                         "equity": None, "timestamp": None, "result_24h": None})
 
     st.markdown(f"### {t('global_overview_title')}")
 
-    # Enrichir avec le statut de session
+    extra_hdr = "Capital V2" if is_v2 else t('col_pnl')
     html_rows = ""
     for r in rows:
-        asset   = r.get("asset", "?")
-        action  = r.get("action", "HOLD")
-        score   = float(r.get("score") or 50)
-        ts      = (r.get("timestamp") or "")[:16]
-        pnl     = r.get("result_24h")
-        icon    = _asset_icon(asset)
+        asset  = r.get("asset", "?")
+        action = (r.get("action") or "flat").lower()
+        # V2 : direction basée sur l'action (LONG=75, SHORT=25, FLAT=50)
+        # V1 fallback : score 0-100 depuis decisions
+        if is_v2:
+            score = _ACTION_TO_DIR.get(action, 50)
+        else:
+            score = float(r.get("score") or 50)
+        ts    = (r.get("ts") or r.get("timestamp") or "")[:16]
+        icon  = _asset_icon(asset)
 
+        # Capital V2 ou P&L V1
+        if is_v2:
+            equity = r.get("equity")
+            extra_str = (f'<span style="font-size:12px;">${equity:,.0f}</span>' if equity else "—")
+        else:
+            pnl = r.get("result_24h")
+            extra_str = (
+                f'<span style="color:#27ae60">+{pnl:.1f}%</span>' if pnl and pnl > 0
+                else (f'<span style="color:#e74c3c">{pnl:.1f}%</span>' if pnl and pnl < 0 else "—")
+            )
         # Session status
         try:
             sess = MarketSession(asset)
@@ -110,20 +129,13 @@ def render_global_overview() -> None:
         except Exception:
             sess_label = "–"
 
-        pnl_str = (
-            f'<span style="color:#27ae60">+{pnl:.1f}%</span>'
-            if pnl and pnl > 0
-            else (f'<span style="color:#e74c3c">{pnl:.1f}%</span>'
-                  if pnl and pnl < 0
-                  else "–")
-        )
         html_rows += (
             f"<tr>"
             f"<td style='padding:6px 10px;'>{icon} {asset}</td>"
             f"<td style='padding:6px 10px;'>{_action_badge(action)}</td>"
             f"<td style='padding:6px 10px;'>{_score_bar(score)}</td>"
             f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts}</td>"
-            f"<td style='padding:6px 10px;'>{pnl_str}</td>"
+            f"<td style='padding:6px 10px;'>{extra_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{sess_label}</td>"
             f"</tr>"
         )
@@ -135,7 +147,7 @@ def render_global_overview() -> None:
           <th style="padding:4px 10px;text-align:left;">{t('col_signal')}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_score')}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_timestamp')}</th>
-          <th style="padding:4px 10px;text-align:left;">{t('col_pnl')}</th>
+          <th style="padding:4px 10px;text-align:left;">{extra_hdr}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_session')}</th>
         </tr></thead>
         <tbody>{html_rows}</tbody>

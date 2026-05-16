@@ -1882,6 +1882,30 @@ def append_v2_equity(
         logger.warning(f"append_v2_equity error: {exc}")
 
 
+def get_v2_assets_summary() -> list[dict]:
+    """
+    Résumé V2 multi-actifs : dernière ligne v2_equity par actif.
+    Utilisé par la vue globale du dashboard (remplacement de get_assets_summary).
+    """
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT e.asset, e.action, e.equity, e.close_price, e.ts
+                FROM v2_equity e
+                INNER JOIN (
+                    SELECT asset, MAX(ts) AS max_ts
+                    FROM v2_equity
+                    GROUP BY asset
+                ) latest ON e.asset = latest.asset AND e.ts = latest.max_ts
+                ORDER BY e.asset
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+    except Exception:
+        return []
+
+
 def get_v2_state() -> dict | None:
     """Lit l'état V2 courant."""
     try:

@@ -3455,11 +3455,10 @@ def main():
                 render_portfolio(portfolio)
 
             def _render_global():
-                """Vue consolidée : PnL tous actifs + profils + logs."""
+                """Vue consolidée : PnL tous actifs + logs."""
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)
                 render_pnl_chart(_tr_all, key="pnl_chart_global")
-                render_profile_comparison()
                 render_live_logs(key="global")
 
             render_asset_tabs(_render_for_asset, global_fn=_render_global, pre_global_fn=_render_portfolio_first)

@@ -98,7 +98,163 @@ def save_asset_config(asset: str, cfg: dict) -> None:
         yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
 
-def get_active_assets() -> list[str]:
+def export_config_zip() -> bytes:
+    """
+    Exporte toute la configuration du trader dans un fichier ZIP en mémoire.
+
+    Contenu du ZIP :
+        settings.yaml               ← config globale
+        assets/BTC_USDT.yaml        ← configs par actif
+        assets/ETH_USDT.yaml
+        ... (tous les fichiers dans config/assets/)
+
+    Retourne les bytes du ZIP, prêts à être téléchargés (st.download_button).
+    """
+    import io
+    import zipfile
+    from datetime import datetime
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # settings.yaml
+        settings_path = _SETTINGS_PATH
+        if settings_path.exists():
+            zf.write(settings_path, arcname="settings.yaml")
+
+        # Tous les fichiers config/assets/*.yaml
+        assets_dir = _SETTINGS_PATH.parent / "assets"
+        if assets_dir.is_dir():
+            for asset_file in sorted(assets_dir.glob("*.yaml")):
+                zf.write(asset_file, arcname=f"assets/{asset_file.name}")
+
+    return buf.getvalue()
+
+
+def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
+    """
+    Restaure la configuration depuis un ZIP exporté par export_config_zip().
+
+    Args:
+        zip_bytes: contenu du fichier ZIP à importer
+        backup_first: si True, sauvegarde l'état actuel avant d'écraser
+
+    Returns:
+        dict avec les clés :
+            "restored_files": list[str]  — fichiers restaurés
+            "backup_path": str | None    — chemin de la sauvegarde préalable
+            "errors": list[str]          — erreurs non bloquantes
+
+    Raises:
+        ValueError: si le ZIP est invalide ou vide
+        zipfile.BadZipFile: si les bytes ne forment pas un ZIP valide
+    """
+    import io
+    import zipfile
+    import stat
+    from datetime import datetime
+
+    errors: list[str] = []
+    restored: list[str] = []
+    backup_path: str | None = None
+
+    zf_io = io.BytesIO(zip_bytes)
+    with zipfile.ZipFile(zf_io, "r") as zf:
+        names = zf.namelist()
+        if not names:
+            raise ValueError("ZIP vide — aucun fichier à restaurer.")
+
+        # Vérification de sécurité : pas de path traversal
+        for name in names:
+            clean = Path(name).as_posix()
+            if ".." in clean or clean.startswith("/"):
+                raise ValueError(f"Chemin non autorisé dans le ZIP : {name!r}")
+
+        # Sauvegarde préalable (optionnelle mais activée par défaut)
+        if backup_first:
+            try:
+                backup_bytes = export_config_zip()
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                backup_dir = _SETTINGS_PATH.parent / "backups"
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                bp = backup_dir / f"config_backup_{ts}.zip"
+                bp.write_bytes(backup_bytes)
+                backup_path = str(bp)
+            except Exception as exc:
+                errors.append(f"Sauvegarde préalable échouée (import annulé) : {exc}")
+                raise RuntimeError(errors[-1]) from exc
+
+        # Restauration
+        config_dir = _SETTINGS_PATH.parent
+        assets_dir = config_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        for name in names:
+            # Seuls settings.yaml et assets/*.yaml sont acceptés
+            p = Path(name)
+            if p.name == "settings.yaml" and len(p.parts) == 1:
+                dest = config_dir / "settings.yaml"
+            elif len(p.parts) == 2 and p.parts[0] == "assets" and p.suffix == ".yaml":
+                dest = assets_dir / p.name
+            else:
+                errors.append(f"Fichier ignoré (hors périmètre) : {name}")
+                continue
+
+            try:
+                content = zf.read(name)
+                # Validation YAML basique avant d'écraser
+                yaml.safe_load(content)
+                # Correction permissions si nécessaire
+                if dest.exists() and not os.access(dest, os.W_OK):
+                    try:
+                        dest.chmod(dest.stat().st_mode | stat.S_IRUSR | stat.S_IWUSR)
+                    except PermissionError:
+                        errors.append(f"Permission refusée : {dest}")
+                        continue
+                dest.write_bytes(content)
+                restored.append(name)
+            except yaml.YAMLError as ye:
+                errors.append(f"YAML invalide dans {name} : {ye}")
+            except Exception as exc:
+                errors.append(f"Erreur lors de la restauration de {name} : {exc}")
+
+    if not restored:
+        raise ValueError("Aucun fichier n'a pu être restauré. " + " | ".join(errors))
+
+    return {
+        "restored_files": restored,
+        "backup_path": backup_path,
+        "errors": errors,
+    }
+
+
+def list_config_backups() -> list[dict]:
+    """
+    Liste les sauvegardes disponibles dans config/backups/.
+
+    Retourne une liste triée (plus récent en premier) de dicts :
+        {"filename": str, "path": Path, "size_kb": float, "mtime": datetime}
+    """
+    from datetime import datetime
+    backup_dir = _SETTINGS_PATH.parent / "backups"
+    if not backup_dir.is_dir():
+        return []
+    backups = []
+    for f in backup_dir.glob("config_backup_*.zip"):
+        try:
+            stat = f.stat()
+            backups.append({
+                "filename": f.name,
+                "path": f,
+                "size_kb": round(stat.st_size / 1024, 1),
+                "mtime": datetime.utcfromtimestamp(stat.st_mtime),
+            })
+        except Exception:
+            continue
+    backups.sort(key=lambda x: x["mtime"], reverse=True)
+    return backups
+
+
+
     """Retourne la liste des actifs activés depuis settings.yaml."""
     cfg = load_settings()
     return cfg.get("project", {}).get("active_assets", [

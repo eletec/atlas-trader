@@ -2667,6 +2667,9 @@ def render_admin_panel():
         ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
         ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
         ('<i class="fas fa-layer-group"></i>',     "peractif", "Par Actif"),
+        # ── Sauvegarde ──────────────────────────────────────────────────
+        (None, None,      "Sauvegarde"),
+        ('<i class="fas fa-floppy-disk"></i>',      "backup",   "Sauvegarde / Restauration"),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -4261,9 +4264,89 @@ def render_admin_panel():
                     except Exception as _savexc:
                         st.error(f"❌ Erreur sauvegarde : {_savexc}")
 
-    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager et Par Actif)
-    st.markdown("---")
-    if st.button(t('save_config_btn'), type="primary", use_container_width=True):
+    elif _atab == "backup":  # Sauvegarde / Restauration
+        st.markdown('<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>Sauvegarde &amp; Restauration de la configuration</h4>', unsafe_allow_html=True)
+        st.info("⚠️ La sauvegarde inclut **settings.yaml** et tous les fichiers **config/assets/*.yaml**.")
+
+        col_exp, col_imp = st.columns(2)
+
+        with col_exp:
+            st.subheader("📤 Exporter")
+            st.caption("Télécharge un fichier ZIP contenant toute la configuration actuelle.")
+            try:
+                from utils.config import export_config_zip
+                from datetime import datetime as _dt
+                _zip_bytes = export_config_zip()
+                _zip_name  = f"atlas_config_{_dt.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
+                st.download_button(
+                    label="⬇️ Télécharger la configuration",
+                    data=_zip_bytes,
+                    file_name=_zip_name,
+                    mime="application/zip",
+                    use_container_width=True,
+                )
+                st.success(f"ZIP prêt — {len(_zip_bytes)//1024} Ko")
+            except Exception as _exp_exc:
+                st.error(f"❌ Erreur export : {_exp_exc}")
+
+        with col_imp:
+            st.subheader("📥 Importer / Restaurer")
+            st.caption("Restaure la configuration depuis un ZIP exporté précédemment. L'état actuel est sauvegardé automatiquement avant toute écrasure.")
+            _up = st.file_uploader("Choisir un fichier ZIP", type=["zip"], label_visibility="collapsed")
+            _confirm = st.checkbox("⚠️ Je confirme vouloir écraser la configuration actuelle")
+            if st.button("🔄 Restaurer depuis ce ZIP", disabled=(_up is None or not _confirm), use_container_width=True):
+                try:
+                    from utils.config import import_config_zip
+                    _result = import_config_zip(_up.read(), backup_first=True)
+                    st.success(
+                        f"✅ {len(_result['restored_files'])} fichier(s) restauré(s)\n"
+                        + (f"\n💾 Sauvegarde auto : `{_result['backup_path']}`" if _result['backup_path'] else "")
+                    )
+                    if _result["errors"]:
+                        for _e in _result["errors"]:
+                            st.warning(f"⚠️ {_e}")
+                    st.info("🔄 Redémarrez le daemon pour appliquer les nouveaux paramètres.")
+                except Exception as _imp_exc:
+                    st.error(f"❌ Restauration échouée : {_imp_exc}")
+
+        # Liste des sauvegardes automatiques disponibles
+        st.markdown("---")
+        st.subheader("📂 Sauvegardes automatiques disponibles")
+        try:
+            from utils.config import list_config_backups, import_config_zip
+            _backups = list_config_backups()
+            if not _backups:
+                st.caption("Aucune sauvegarde disponible pour l'instant.")
+            else:
+                for _bk in _backups[:10]:  # max 10 affichées
+                    _bcol1, _bcol2, _bcol3 = st.columns([4, 1, 1])
+                    with _bcol1:
+                        st.caption(f"🗂 `{_bk['filename']}` — {_bk['mtime'].strftime('%d/%m/%Y %H:%M')} UTC — {_bk['size_kb']} Ko")
+                    with _bcol2:
+                        _bk_bytes = _bk["path"].read_bytes()
+                        st.download_button(
+                            "⬇️",
+                            data=_bk_bytes,
+                            file_name=_bk["filename"],
+                            mime="application/zip",
+                            key=f"dl_{_bk['filename']}",
+                        )
+                    with _bcol3:
+                        if st.button("🔄", key=f"restore_{_bk['filename']}", help="Restaurer cette sauvegarde"):
+                            try:
+                                _r = import_config_zip(_bk_bytes, backup_first=True)
+                                st.success(f"✅ {len(_r['restored_files'])} fichier(s) restauré(s) depuis {_bk['filename']}")
+                            except Exception as _re:
+                                st.error(f"❌ {_re}")
+        except Exception as _lb_exc:
+            st.caption(f"Impossible de lister les sauvegardes : {_lb_exc}")
+
+    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif et Sauvegarde)
+    if _atab not in ("backup", "flux", "peractif"):
+        st.markdown("---")
+    if _atab == "backup":
+        pass  # pas de bouton save_settings pour l'onglet backup
+    elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")
         else:

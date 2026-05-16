@@ -17,7 +17,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger("quant.signal_model")
+logger = logging.getLogger("zeitgeist.quant.signal_model")
 
 try:
     from sklearn.calibration import CalibratedClassifierCV

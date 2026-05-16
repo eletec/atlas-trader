@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger("quant.regime")
+logger = logging.getLogger("zeitgeist.quant.regime")
 
 try:
     from hmmlearn.hmm import GaussianHMM

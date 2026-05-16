@@ -30,7 +30,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger("quant.workflow")
+logger = logging.getLogger("zeitgeist.quant.workflow")
 
 from quant.data_loader import fetch_history, fetch_ohlcv
 from quant.features import compute_features, make_target_direction

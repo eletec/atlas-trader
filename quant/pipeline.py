@@ -21,7 +21,7 @@ from quant.risk import RiskManager, RiskParams
 from quant.signal_model import SignalModel
 from quant.strategy import Action, BaselineStrategy, decide
 
-logger = logging.getLogger("quant.pipeline")
+logger = logging.getLogger("zeitgeist.quant.pipeline")
 
 
 DEFAULT_FEATURE_COLS = [

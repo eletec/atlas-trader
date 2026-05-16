@@ -17,7 +17,7 @@ from enum import Enum
 
 import pandas as pd
 
-logger = logging.getLogger("quant.strategy")
+logger = logging.getLogger("zeitgeist.quant.strategy")
 
 
 class Action(str, Enum):

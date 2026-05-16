@@ -2,7 +2,7 @@ project:
   name: Atlas Trader
   version: 1.0.0-MVP
   asset: BTC/USDT
-  loop_interval_seconds: 900
+  loop_interval_seconds: 300
   active_assets:
   - BTC/USDT
   - ETH/USDT
@@ -363,7 +363,7 @@ assets:
   universe:
   - symbol: BTC/USDT
     exchange: binance
-    timeframe: 15m
+    timeframe: 5m
     theme_mapping:
     - bitcoin
     - crypto
@@ -416,7 +416,7 @@ admin:
 
 # ── Paramètres V2 Quant Pipeline ───────────────────────────────────────────
 quant:
-  timeframe: "15m"           # Timeframe OHLCV (ccxt notation)
+  timeframe: "5m"            # Timeframe OHLCV (ccxt notation)
   history_days: 90           # Historique de chargement au boot
   train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
   horizon_bars: 4            # Horizon de prédiction (barres forward)

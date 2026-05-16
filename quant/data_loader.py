@@ -13,7 +13,7 @@ from pathlib import Path
 import ccxt
 import pandas as pd
 
-logger = logging.getLogger("quant.data_loader")
+logger = logging.getLogger("zeitgeist.quant.data_loader")
 
 DEFAULT_EXCHANGE = "binance"
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "ohlcv"

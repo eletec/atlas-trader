@@ -38,6 +38,7 @@ class SignalModel:
 
     feature_cols: Sequence[str]
     use_calibration: bool = True
+    use_lgb: bool = False   # E.1 : LightGBM optionnel — désactivé par défaut (GPT)
     C: float = 1.0
     cv_folds: int = 5
     _model: object | None = field(default=None, init=False, repr=False)
@@ -58,12 +59,30 @@ class SignalModel:
             raise ValueError("Cible avec une seule classe — modèle dégénéré.")
 
         if SKLEARN_AVAILABLE:
-            base = Pipeline(
-                [
-                    ("scaler", StandardScaler()),
-                    ("lr", LogisticRegression(C=self.C, max_iter=500, solver="liblinear")),
-                ]
-            )
+            # E.1 LightGBM optionnel (flag use_lgb=True) — conservateur, validation OOS requise
+            # GPT : risque d'overfitting silencieux sur 18k samples. Comparer en walk-forward.
+            if self.use_lgb:
+                try:
+                    from lightgbm import LGBMClassifier
+                    base = Pipeline([
+                        ("lgb", LGBMClassifier(
+                            n_estimators=100, max_depth=3, learning_rate=0.03,
+                            num_leaves=8, min_data_in_leaf=500,
+                            feature_fraction=0.5, lambda_l2=10.0,
+                            verbose=-1, random_state=42,
+                        )),
+                    ])
+                    logger.info("SignalModel : LightGBM activé (use_lgb=True)")
+                except ImportError:
+                    logger.warning("lightgbm non disponible — fallback LogReg")
+                    self.use_lgb = False
+            if not self.use_lgb:
+                base = Pipeline(
+                    [
+                        ("scaler", StandardScaler()),
+                        ("lr", LogisticRegression(C=self.C, max_iter=500, solver="liblinear")),
+                    ]
+                )
             if self.use_calibration:
                 # TimeSeriesSplit : évite le leakage KFold sur séries temporelles (GPT)
                 tscv = TimeSeriesSplit(n_splits=min(self.cv_folds, 5))

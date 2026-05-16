@@ -32,6 +32,9 @@ DEFAULT_FEATURE_COLS = [
     "adx_14_q",
     "dist_ma50_q",
     "volume_z_20_q",
+    "vwap_dist_20_q",   # C.1 : VWAP distance / ATR (3/3 IA)
+    "bb_pct_b_q",       # C.2 : Bollinger %b (GPT + DeepSeek)
+    "obv_proxy_20_q",   # C.3 : OBV proxy rolling causal (Grok + DeepSeek)
     "hour_sin",       # calendaire — déjà ∈ [0,1], pas de normalisation _q
     "hour_cos",
     "is_weekend",
@@ -87,7 +90,8 @@ def run_pipeline(
         feats_raw,
         window=cfg.norm_window,
         columns=["log_return_1", "log_return_4", "log_return_24",
-                 "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20"],
+                 "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
+                 "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
     )
     feats = pd.concat([feats_raw, feats_norm], axis=1)
 
@@ -99,8 +103,11 @@ def run_pipeline(
     proba_up = pd.Series(index=feats.index, dtype="float64")
     if cfg.use_signal_model:
         y = make_target_direction(ohlcv, horizon=cfg.horizon_bars)
-        X_train = feats.loc[train_idx, cfg.feature_cols]
-        y_train = y.loc[train_idx]
+        # B.3 Warmup : exclure les premières norm_window barres (quantile instable — 3/3 IA)
+        warmup_cutoff = feats.index[min(cfg.norm_window, len(feats) - 1)]
+        sm_train_idx = train_idx[train_idx >= warmup_cutoff]
+        X_train = feats.loc[sm_train_idx, cfg.feature_cols]
+        y_train = y.loc[sm_train_idx]
         # Exclure les barres dont la cible n'est pas observable (fin de train)
         valid = X_train.notna().all(axis=1) & y_train.notna()
         try:

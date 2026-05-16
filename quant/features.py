@@ -110,6 +110,28 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Volatilité de la volatilité (régime helper)
     out["vol_of_vol_20"] = atr_14.pct_change().rolling(20, min_periods=20).std()
 
+    # C.1 VWAP distance normalisée par ATR (causal — shift(1)) — 3/3 IA, haute priorité
+    typical_price = (df["high"] + df["low"] + close) / 3.0
+    vwap_num = (typical_price * df["volume"]).shift(1).rolling(20, min_periods=20).sum()
+    vwap_den = df["volume"].shift(1).rolling(20, min_periods=20).sum()
+    vwap_20 = vwap_num / (vwap_den + 1e-9)
+    out["vwap_dist_20"] = (close - vwap_20) / (atr_14 + 1e-9)   # >0 = au-dessus du VWAP
+
+    # C.2 Bollinger %b sur 20 barres (causal — shift(1)) — GPT + DeepSeek
+    bb_mid = close.shift(1).rolling(20, min_periods=20).mean()
+    bb_std = close.shift(1).rolling(20, min_periods=20).std()
+    bb_upper = bb_mid + 2.0 * bb_std
+    bb_lower = bb_mid - 2.0 * bb_std
+    out["bb_pct_b"] = (close - bb_lower) / (bb_upper - bb_lower + 1e-9)  # ~[0,1]
+
+    # C.3 OBV proxy rolling causal — ratio volume signé sur 20 barres (Grok + DeepSeek)
+    # Pas d'OBV cumulatif (non-stationnaire) — proxy normalisé ∈ [-1, 1] approx.
+    signed_vol = df["volume"] * np.sign(df["close"].diff())
+    out["obv_proxy_20"] = (
+        signed_vol.shift(1).rolling(20, min_periods=20).sum()
+        / (df["volume"].shift(1).rolling(20, min_periods=20).sum() + 1e-9)
+    )
+
     # Features calendaires — déterministes, strictement causales (Phase 3.1)
     # Index supposé DatetimeIndex
     try:

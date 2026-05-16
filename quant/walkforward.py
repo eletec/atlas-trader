@@ -37,7 +37,7 @@ logger = logging.getLogger("zeitgeist.quant.walkforward")
 TRAIN_DAYS: int = 90
 TEST_DAYS:  int = 30
 STEP_DAYS:  int = 30   # pas de glissement = TEST_DAYS (aucun chevauchement OOS)
-MIN_FOLDS:  int = 8
+MIN_FOLDS:  int = 12   # F.1 : 12 folds → 450j OOS pour couvrir bull+bear+chop (Grok+DeepSeek)
 MAX_FOLDS:  int = 24
 PERM_ITER:  int = 500  # 500 suffisent pour p-value ±0.02 ; mettre 1000 en prod
 
@@ -205,21 +205,27 @@ def run_walkforward(
     logger.info(f"  Trades / fold        : {trades_per_fold:.0f}")
     logger.info(f"  Trades total OOS     : {trades_total}")
 
-    # 4. Test de permutation (bootstrap sur Sharpe) ───────────────────────────
+    # 4. Test de permutation — block sign randomization (GPT + DeepSeek)
+    # Block size ≈20% des folds pour préserver la dépendance temporelle (autocorrélation)
     logger.info("")
-    logger.info(f"--- Test de permutation H₀ : edge = 0 ({PERM_ITER} itérations) ---")
+    logger.info(f"--- Test de permutation H₀ : edge = 0 ({PERM_ITER} itérations, block bootstrap) ---")
     rng = np.random.default_rng(42)
     sharpe_obs = sharpe_mean
     null_dist = np.empty(PERM_ITER)
+    sharpe_vals = df["sharpe"].values.copy()
+    n_folds = len(sharpe_vals)
+    block_size = max(2, n_folds // 5)   # ~20% de la série par bloc
 
     for i in range(PERM_ITER):
-        # Simulation sous H0 : on signe aléatoirement les Sharpes (symétrisation)
-        signs  = rng.choice([-1.0, 1.0], size=len(df))
-        permuted = df["sharpe"].values * signs
-        null_dist[i] = float(permuted.mean())
+        # Randomisation des signes par blocs corrélés (préserve l'autocorrélation entre folds consécutifs)
+        n_blocks = (n_folds + block_size - 1) // block_size
+        block_signs = rng.choice([-1.0, 1.0], size=n_blocks)
+        signs = np.repeat(block_signs, block_size)[:n_folds]
+        null_dist[i] = float((sharpe_vals * signs).mean())
 
     p_value = float((null_dist >= sharpe_obs).mean())
     logger.info(f"  Sharpe moyen observé : {sharpe_obs:+.3f}")
+    logger.info(f"  Taille de bloc       : {block_size} folds")
     logger.info(f"  p-value (unilatérale): {p_value:.3f}  ← {'✓ SIGNIFICATIF' if p_value < 0.10 else '✗ NON SIGNIFICATIF'}")
 
     # 5. Critères de passage en live ──────────────────────────────────────────

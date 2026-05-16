@@ -1372,8 +1372,97 @@ def render_v2_quant_state(asset: str | None = None):
             col_s.metric(t("v2_sharpe"),     f"{sharpe:.2f}")
             col_d.metric(t("v2_max_dd"),     f"{max_dd:.2%}")
 
+    # ── F.2 Monitoring live — détection de dégradation (3/3 IA, GPT : CRITIQUE) ───────
+    _render_v2_monitoring(state, theme, bg, bdr, txt, muted)
 
-def render_portfolio(portfolio: dict):
+
+def _render_v2_monitoring(state: dict, theme: str, bg: str, bdr: str, txt: str, muted: str) -> None:
+    """Section monitoring : 6 indicateurs de dégradation en production."""
+    try:
+        from storage.database import get_v2_equity_curve, get_v2_state_history
+        import pandas as _pd
+    except Exception:
+        return
+
+    # Charger les 500 dernières barres d'equity + d'état pour les métriques rolling
+    equity_rows = get_v2_equity_curve(n=500)
+    if not equity_rows or len(equity_rows) < 20:
+        return
+
+    eq_df = _pd.DataFrame(equity_rows)
+    eq_df["ts"] = _pd.to_datetime(eq_df["ts"])
+    eq_df = eq_df.sort_values("ts").reset_index(drop=True)
+
+    # 1. Rolling Sharpe 30 jours (288 barres × 5m = 30j à 5m)
+    window_30d = min(288 * 30, len(eq_df))
+    rets_roll = eq_df["equity"].pct_change().dropna()
+    if len(rets_roll) >= 20:
+        r_win = rets_roll.iloc[-window_30d:]
+        rolling_sharpe = float(r_win.mean() / r_win.std() * (365 * 288) ** 0.5) if r_win.std() > 0 else 0.0
+    else:
+        rolling_sharpe = 0.0
+
+    # 2. Distribution P(up) — dérive par rapport à la moyenne historique
+    prob_up_current = state.get("prob_up")
+
+    # 3. Ratio régime TRENDING (depuis l'état courant uniquement)
+    regime_current = state.get("regime")
+    regime_label = "TRENDING" if regime_current == 1 else "RANGING" if regime_current is not None else "N/A"
+
+    # 4. Profit Factor rolling sur les 50 dernières actions
+    actions_50 = eq_df["action"].iloc[-50:] if "action" in eq_df.columns else _pd.Series([], dtype=str)
+    rets_50 = eq_df["equity"].pct_change().iloc[-50:].dropna()
+    if len(rets_50) >= 5:
+        wins = rets_50[rets_50 > 0].sum()
+        losses = abs(rets_50[rets_50 < 0].sum())
+        pf_rolling = float(wins / losses) if losses > 0 else float("inf")
+    else:
+        pf_rolling = None
+
+    # 5. Brier score proxy — |P(up) - 0.5| moyen (signal de conviction)
+    # (score de calibration approximatif sans cible connue)
+    if prob_up_current is not None:
+        conviction = abs(prob_up_current - 0.5)
+    else:
+        conviction = None
+
+    # ── Rendu des alertes ────────────────────────────────────────────────────
+    alerts = []
+    if rolling_sharpe < 0:
+        alerts.append(("🔴", f"Sharpe rolling 30j négatif ({rolling_sharpe:.2f}) — edge possiblement disparu"))
+    elif rolling_sharpe < 0.3:
+        alerts.append(("🟠", f"Sharpe rolling 30j faible ({rolling_sharpe:.2f}) — surveiller"))
+
+    if prob_up_current is not None and abs(prob_up_current - 0.5) < 0.01:
+        alerts.append(("🟠", f"P(up) ≈ 0.50 ({prob_up_current:.3f}) — signal neutre, edge possiblement perdu"))
+
+    if pf_rolling is not None and pf_rolling < 1.0:
+        alerts.append(("🔴", f"Profit Factor rolling 50 barres < 1.0 ({pf_rolling:.2f}) — pertes nettes récentes"))
+
+    st.markdown(
+        '<h4 style="margin:18px 0 8px;font-size:14px;color:' + muted + ';">'
+        '<i class="fas fa-heartbeat" style="margin-right:6px;color:#e74c3c;"></i>'
+        'Monitoring live — indicateurs de dégradation</h4>',
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+    sharpe_color = "#2ecc71" if rolling_sharpe >= 0.5 else ("#f39c12" if rolling_sharpe >= 0 else "#e74c3c")
+    col1.metric("Sharpe 30j", f"{rolling_sharpe:.2f}",
+                delta="OK" if rolling_sharpe >= 0 else "ALERTE",
+                delta_color="normal" if rolling_sharpe >= 0 else "inverse")
+    col2.metric("P(up) actuel", f"{prob_up_current:.3f}" if prob_up_current else "N/A",
+                delta=f"conv={conviction:.3f}" if conviction is not None else None)
+    col3.metric("Régime actuel", regime_label)
+    col4.metric("PF rolling 50", f"{pf_rolling:.2f}" if pf_rolling else "N/A",
+                delta="OK" if pf_rolling and pf_rolling >= 1.2 else "bas",
+                delta_color="normal" if pf_rolling and pf_rolling >= 1.2 else "inverse")
+
+    if alerts:
+        for icon, msg in alerts:
+            st.warning(f"{icon} {msg}")
+
+
     """Portefeuille paper en cartes Bootstrap-like avec Font Awesome."""
     theme   = _get_theme()
     pnl     = portfolio.get("total_pnl", 0)

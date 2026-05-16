@@ -66,6 +66,7 @@ class LiveRunner:
         self._model_fit_at = None
         self._position = None
         self._position_entry_ts = None
+        self._ohlcv_1h = None          # D.1 : données 1h pour filtre multi-TF
         self._risk_manager = RiskManager(RiskParams())
         self._capital = 10_000.0
         self._n_trades = 0
@@ -97,13 +98,18 @@ class LiveRunner:
         feats_norm = normalize_features(
             feats_raw, window=self.cfg.norm_window,
             columns=["log_return_1", "log_return_4", "log_return_24",
-                     "atr_pct", "adx_14", "dist_ma50", "volume_z_20"],
+                     "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
+                     "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
         )
         feats_all = pd.concat([feats_raw, feats_norm], axis=1)
         self._regime = RegimeDetector(use_hmm=self.cfg.use_hmm).fit(feats_all.loc[train_idx])
         y = make_target_direction(ohlcv, horizon=self.cfg.horizon_bars)
-        X_train = feats_all.loc[train_idx, list(self.cfg.feature_cols)]
-        y_train = y.loc[train_idx]
+        # B.3 Warmup : exclure les premières norm_window barres pour SignalModel
+        # (quantile-normalisation instable sur les premières barres — 3/3 IA)
+        warmup_cutoff = feats_all.index[min(self.cfg.norm_window, len(feats_all) - 1)]
+        train_sm_idx = train_idx[train_idx >= warmup_cutoff]
+        X_train = feats_all.loc[train_sm_idx, list(self.cfg.feature_cols)]
+        y_train = y.loc[train_sm_idx]
         valid = X_train.notna().all(axis=1) & y_train.notna()
         if valid.sum() < 100:
             logger.warning("Données insuffisantes pour SignalModel — P(up)=0.5 fixe.")
@@ -118,6 +124,15 @@ class LiveRunner:
                 self._model = None
         self._last_fit_ts = time.time()
         self._model_fit_at = datetime.utcnow().isoformat()
+        # D.1 Fetch données 1h pour filtre multi-timeframe (Grok + GPT + DeepSeek)
+        try:
+            ohlcv_1h = fetch_history(symbol=self.symbol, timeframe="1h",
+                                     days=self.history_days + 10, cache=True)
+            self._ohlcv_1h = ohlcv_1h
+            logger.info(f"Données 1h chargées : {len(ohlcv_1h)} barres")
+        except Exception as exc:
+            logger.warning(f"Fetch 1h history failed: {exc} — filtre 1h désactivé")
+            self._ohlcv_1h = None
         logger.info(f"Refit OK — {split} barres train | {len(ohlcv)-split} test")
 
     def _append_latest_bar(self):
@@ -136,6 +151,19 @@ class LiveRunner:
             combined = combined.iloc[-_MAX_HISTORY_BARS:]
         is_new = len(combined) > len(self._ohlcv)
         self._ohlcv = combined
+        # D.1 Mise à jour des données 1h (glissement de la fenêtre)
+        if self._ohlcv_1h is not None:
+            try:
+                new_1h = fetch_ohlcv(symbol=self.symbol, timeframe="1h", limit=3)
+                if not new_1h.empty and len(new_1h) >= 2:
+                    new_1h = new_1h.iloc[:-1]
+                combined_1h = pd.concat([self._ohlcv_1h, new_1h])
+                combined_1h = combined_1h[~combined_1h.index.duplicated(keep="last")].sort_index()
+                if len(combined_1h) > 2000:
+                    combined_1h = combined_1h.iloc[-2000:]
+                self._ohlcv_1h = combined_1h
+            except Exception:
+                pass
         return is_new
 
     def step(self, trigger="scheduled"):
@@ -150,7 +178,8 @@ class LiveRunner:
         feats_norm = normalize_features(
             feats_raw, window=self.cfg.norm_window,
             columns=["log_return_1", "log_return_4", "log_return_24",
-                     "atr_pct", "adx_14", "dist_ma50", "volume_z_20"],
+                     "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
+                     "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
         )
         feats_all = pd.concat([feats_raw, feats_norm], axis=1)
 
@@ -185,19 +214,39 @@ class LiveRunner:
         if self._position is not None:
             self._position = self._risk_manager.update_trailing(self._position, close_price)
             exit_signal = self._risk_manager.should_exit(self._position, close_price)
-            # Time-based exit : 8 barres max = 40 min en 5m (Phase 1.3)
+            # Time-based exit conditionnel : 8 barres max ET trade en perte (B.2 — 3/3 IA)
+            # Si le trade est gagnant, le laisser courir (TP/SL gèrent la sortie)
             if not exit_signal and self._position_entry_ts:
                 try:
                     elapsed_bars = int(
                         (ohlcv.index[-1] - pd.Timestamp(self._position_entry_ts)).total_seconds() // 300
                     )
                     if elapsed_bars >= 8:
-                        exit_signal = "time_exit_8bars"
+                        if self._position.side == "long":
+                            unrealized = (close_price - self._position.entry_price) / self._position.entry_price
+                        else:
+                            unrealized = (self._position.entry_price - close_price) / self._position.entry_price
+                        if unrealized <= 0.0:
+                            exit_signal = "time_exit_8bars_loss"
                 except Exception:
                     pass
             if exit_signal:
                 trade_result = self._close_position(close_price, exit_signal)
                 self._position = None
+
+        # ── Filtre multi-timeframe 1h (D.1 — 3/3 IA) ─────────────────────────────
+        # Veto si tendance horaire contra-directionnelle : SMA20 vs SMA50 sur 1h
+        trend_1h_veto = False
+        if decision.action in (Action.LONG, Action.SHORT) and self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 50:
+            c1h = self._ohlcv_1h["close"]
+            sma20_1h = c1h.rolling(20, min_periods=20).mean().iloc[-1]
+            sma50_1h = c1h.rolling(50, min_periods=50).mean().iloc[-1]
+            if pd.notna(sma20_1h) and pd.notna(sma50_1h):
+                trend_1h_up = bool(sma20_1h > sma50_1h)
+                if decision.action == Action.LONG and not trend_1h_up:
+                    trend_1h_veto = True   # signal LONG rejeté : tendance 1h baissière
+                elif decision.action == Action.SHORT and trend_1h_up:
+                    trend_1h_veto = True   # signal SHORT rejeté : tendance 1h hausse
 
         # ── Nouvelle entrée ───────────────────────────────────────────────────
         # Filtre volume : n'entrer que si volume >= 70% de la médiane des 20 dernières barres
@@ -209,7 +258,8 @@ class LiveRunner:
                 and not self._risk_manager.is_paused(time.time())
                 and decision.action in (Action.LONG, Action.SHORT)
                 and atr_14 and atr_14 > 0
-                and vol_ratio >= 0.70):   # Phase 3.3
+                and vol_ratio >= 0.70
+                and not trend_1h_veto):   # D.1 filtre 1h
             side = decision.action.value
             try:
                 pos = self._risk_manager.compute_position(

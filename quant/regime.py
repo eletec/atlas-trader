@@ -64,21 +64,28 @@ class RegimeDetector:
             return self._fit_threshold(features)
         hmm = GaussianHMM(
             n_components=self.n_states,
-            covariance_type="full",
+            covariance_type="diag",   # A.2 : diag > full sur 2 features / 63j (GPT)
+            min_covar=1e-4,            # A.2 : évite singularités de covariance
             n_iter=200,
             random_state=42,
         )
         hmm.fit(x.values)
         # Labellisation post-fit — causal : stats du TRAIN uniquement
-        variances = [float(hmm.covars_[s][0, 0]) for s in range(self.n_states)]
+        # covariance_type="diag" → covars_[s] est de shape (n_features,)
+        variances = [float(hmm.covars_[s][0]) for s in range(self.n_states)]
         means = [float(hmm.means_[s][0]) for s in range(self.n_states)]
         stds = [np.sqrt(v) + 1e-9 for v in variances]
-        # Panic = état à variance maximale (mouvements extrêmes non directionnels)
-        self._panic_state = int(np.argmax(variances))
-        # Trending = parmi les états restants, Sharpe |mean|/std le plus élevé
+        sharpe_like = [abs(means[s]) / stds[s] for s in range(self.n_states)]
+        # A.1 : Panic = variance max ET non-directionnel (sharpe < 0.10)
+        # Évite de classer un crash directionnel baissier comme Panic → raterait les SHORTs
+        panic_candidates = [s for s in range(self.n_states) if sharpe_like[s] < 0.10]
+        if panic_candidates:
+            self._panic_state = max(panic_candidates, key=lambda s: variances[s])
+        else:
+            self._panic_state = int(np.argmax(variances))  # fallback : variance max
+        # Trending = non-Panic avec Sharpe-like maximal
         non_panic = [s for s in range(self.n_states) if s != self._panic_state]
-        sharpes = [abs(means[s]) / stds[s] for s in non_panic]
-        self._trending_state = non_panic[int(np.argmax(sharpes))]
+        self._trending_state = max(non_panic, key=lambda s: sharpe_like[s])
         # Seuil chaos vol_of_vol calibré sur le TRAIN (causal)
         if "vol_of_vol_20" in features.columns:
             vov = features["vol_of_vol_20"].dropna()
@@ -91,7 +98,7 @@ class RegimeDetector:
         logger.info(
             "HMM %d états fit OK — " % self.n_states
             + " | ".join(
-                f"state{s}={labels[s]} var={variances[s]:.6f} mean={means[s]:.6f}"
+                f"state{s}={labels[s]} var={variances[s]:.6f} mean={means[s]:.6f} sharpe={sharpe_like[s]:.3f}"
                 for s in range(self.n_states)
             )
         )
@@ -122,12 +129,17 @@ class RegimeDetector:
             out = self._predict_hmm(features)
         else:
             out = self._predict_threshold(features)
-        # Gate chaos : force 0.0 si vol_of_vol dépasse le seuil calibré sur TRAIN (Phase 1.1)
+        # B.1 Gate chaos — seuil adaptatif rolling backward (3/3 IA)
+        # Remplace le p80 TRAIN figé par un quantile glissant causal (2880 barres, shift(1))
         if (
             "vol_of_vol_20" in features.columns
             and self._vov_chaos_threshold < float("inf")
         ):
-            chaos = features["vol_of_vol_20"] > self._vov_chaos_threshold
+            vov = features["vol_of_vol_20"]
+            rolling_thresh = vov.rolling(2880, min_periods=720).quantile(0.80).shift(1)
+            # Fallback sur seuil TRAIN pour les premières barres sans historique suffisant
+            adaptive_thresh = rolling_thresh.where(rolling_thresh.notna(), self._vov_chaos_threshold)
+            chaos = vov > adaptive_thresh
             out[chaos.fillna(False)] = 0.0
         return out
 
@@ -174,10 +186,13 @@ class RegimeDetector:
             from scipy.stats import multivariate_normal
             log_B = np.zeros((n_samples, n_states))
             for s in range(n_states):
+                cov_s = self._hmm.covars_[s]
+                if cov_s.ndim == 1:
+                    cov_s = np.diag(cov_s)  # diag → matrice pleine pour scipy
                 log_B[:, s] = multivariate_normal.logpdf(
                     observations,
                     mean=self._hmm.means_[s],
-                    cov=self._hmm.covars_[s],
+                    cov=cov_s,
                 )
         log_A = np.log(self._hmm.transmat_ + 1e-300)   # (n_states, n_states)
         # α_0 : distribution filtrée initiale

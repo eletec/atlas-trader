@@ -29,22 +29,7 @@ RUN pip install --upgrade pip && \
     pip install --prefix=/install --no-cache-dir wheel packaging && \
     pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# MiroFish optionnel — echec tolere (mode fallback actif si absent)
-RUN pip install --prefix=/install --no-cache-dir git+https://github.com/666ghj/MiroFish.git || \
-    echo "WARNING: MiroFish unavailable, fallback mode active"
-
-# Pré-télécharger le modèle TimesFM 500M (~2GB) dans le cache HuggingFace
-# pour éviter le téléchargement au premier lancement du container
-# NOTE: désactivé sur le serveur actuel (GTX 1050 Ti / Pascal incompatible)
-# Activé ici pour le build GX10 — commenter si build pour serveur de prod
-RUN PYTHONPATH=/install/lib/python3.11/site-packages \
-    python -c "from huggingface_hub import snapshot_download; snapshot_download('google/timesfm-2.0-500m-pytorch')" || \
-    echo "WARNING: TimesFM model download failed, will retry at runtime"
-
-# Installer Playwright browsers (pour le fallback crawling)
-RUN pip install --prefix=/install --no-cache-dir playwright && \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
-    /install/bin/playwright install chromium --with-deps || true
+# (MiroFish, TimesFM, Playwright supprimés — V2 pipeline ne les utilise pas)
 
 
 # ----- Stage 2 : Runtime -----
@@ -73,9 +58,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copier les wheels installés depuis le builder
 COPY --from=builder /install /usr/local
-
-# Copier le cache HuggingFace (modèle TimesFM pré-téléchargé)
-COPY --from=builder /root/.cache/huggingface /home/atlas/.cache/huggingface
 
 # Créer l'utilisateur non-root pour la sécurité
 RUN groupadd -r atlas && useradd -r -g atlas -d /app -s /bin/bash atlas

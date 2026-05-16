@@ -165,6 +165,39 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_shadow_profile ON shadow_decisions(profile_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_cycle ON shadow_decisions(cycle_id)",
     "CREATE INDEX IF NOT EXISTS idx_meta_ts ON meta_analyses(timestamp DESC)",
+    # ── V2 quant state (une seule ligne mise à jour à chaque barre) ──────────
+    """
+    CREATE TABLE IF NOT EXISTS v2_state (
+        id              INTEGER PRIMARY KEY DEFAULT 1,
+        updated_at      TEXT    NOT NULL,
+        asset           TEXT    NOT NULL DEFAULT 'BTC/USDT',
+        bar_ts          TEXT,
+        close_price     REAL,
+        regime          INTEGER,    -- 1=trending, 0=ranging, NULL=inconnu
+        prob_up         REAL,       -- P(up) ∈ [0,1] ou NULL
+        action          TEXT,       -- long | short | flat
+        reason          TEXT,
+        atr_14          REAL,
+        position_side   TEXT,       -- long | short | NULL (si pas de position)
+        entry_price     REAL,
+        sl_price        REAL,
+        tp_price        REAL,
+        capital         REAL,
+        model_fit_at    TEXT        -- timestamp dernier ré-entraînement
+    )
+    """,
+    # ── V2 equity curve (une ligne par barre traitée) ─────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS v2_equity (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts          TEXT    NOT NULL,
+        asset       TEXT    NOT NULL,
+        equity      REAL    NOT NULL,
+        action      TEXT,
+        close_price REAL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_v2_equity_ts ON v2_equity(ts DESC)",
 ]
 
 
@@ -1764,6 +1797,125 @@ def get_last_meta_analysis(asset: str | None = None, limit: int = 3) -> list[dic
                     """,
                     (limit,),
                 ).fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+# ===========================================================
+# V2 QUANT — état live + courbe equity
+# ===========================================================
+
+def write_v2_state(
+    asset: str,
+    bar_ts: str,
+    close_price: float,
+    regime: int | None,
+    prob_up: float | None,
+    action: str,
+    reason: str,
+    atr_14: float | None = None,
+    position_side: str | None = None,
+    entry_price: float | None = None,
+    sl_price: float | None = None,
+    tp_price: float | None = None,
+    capital: float | None = None,
+    model_fit_at: str | None = None,
+) -> None:
+    """Upsert de l'état V2 courant (1 seule ligne id=1)."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO v2_state
+                    (id, updated_at, asset, bar_ts, close_price, regime, prob_up,
+                     action, reason, atr_14, position_side, entry_price, sl_price,
+                     tp_price, capital, model_fit_at)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    updated_at    = excluded.updated_at,
+                    asset         = excluded.asset,
+                    bar_ts        = excluded.bar_ts,
+                    close_price   = excluded.close_price,
+                    regime        = excluded.regime,
+                    prob_up       = excluded.prob_up,
+                    action        = excluded.action,
+                    reason        = excluded.reason,
+                    atr_14        = excluded.atr_14,
+                    position_side = excluded.position_side,
+                    entry_price   = excluded.entry_price,
+                    sl_price      = excluded.sl_price,
+                    tp_price      = excluded.tp_price,
+                    capital       = excluded.capital,
+                    model_fit_at  = excluded.model_fit_at
+                """,
+                (
+                    datetime.utcnow().isoformat(), asset, bar_ts, close_price,
+                    regime, prob_up, action, reason, atr_14, position_side,
+                    entry_price, sl_price, tp_price, capital, model_fit_at,
+                ),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"write_v2_state error: {exc}")
+
+
+def append_v2_equity(
+    ts: str,
+    asset: str,
+    equity: float,
+    action: str | None = None,
+    close_price: float | None = None,
+) -> None:
+    """Ajoute un point à la courbe equity V2."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO v2_equity (ts, asset, equity, action, close_price)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (ts, asset, equity, action, close_price),
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.warning(f"append_v2_equity error: {exc}")
+
+
+def get_v2_state() -> dict | None:
+    """Lit l'état V2 courant."""
+    try:
+        with get_connection() as conn:
+            row = conn.execute("SELECT * FROM v2_state WHERE id = 1").fetchone()
+            return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def get_v2_equity_curve(n: int = 2000, asset: str = "BTC/USDT") -> list[dict]:
+    """Lit les N derniers points equity V2."""
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT ts, equity, action, close_price FROM v2_equity "
+                "WHERE asset = ? ORDER BY ts DESC LIMIT ?",
+                (asset, n),
+            ).fetchall()
+            return list(reversed([dict(r) for r in rows]))
+    except Exception:
+        return []
+
+
+def get_v2_recent_trades(n: int = 50, asset: str = "BTC/USDT") -> list[dict]:
+    """Retourne les N dernières entrées en position V2."""
+    try:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT ts, equity, action, close_price FROM v2_equity "
+                "WHERE asset = ? AND action IN ('long', 'short') "
+                "ORDER BY ts DESC LIMIT ?",
+                (asset, n),
+            ).fetchall()
             return [dict(r) for r in rows]
     except Exception:
         return []

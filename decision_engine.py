@@ -1,747 +1,114 @@
-"""
-decision_engine.py — Score Calculator + Risk Engine + Decision Engine
-Centralise toute la logique de décision et de gestion du risque.
+﻿"""
+decision_engine.py — Moteur de decision V2 (quant pur)
+
+Remplace le systeme V1 (ScoringWeights, AlphaCombinationAgent,
+MiroFish, Kronos, vetos techniques, Kelly sizing).
+
+V2 : wrapper mince autour de quant/strategy.py.
+     Toute la logique de decision est dans :
+       - quant.strategy.decide()       — arbre regime x P(up)
+       - quant.risk.RiskManager        — sizing, SL/TP, trailing, kill-switch
+       - graph.workflow.LiveRunner     — etat stateful inter-cycles
+
+Ce fichier expose la classe DecisionEngine pour retrocompatibilite
+eventuelle et comme point de documentation des regles V2.
 """
 from __future__ import annotations
 
 import logging
-import math
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
-logger = logging.getLogger("zeitgeist.decision")
+logger = logging.getLogger("quant.decision_engine")
 
-
-# ===========================================================
-# SCORE CALCULATOR
-# ===========================================================
 
 @dataclass
-class ScoringWeights:
-    mirofish: float = 0.40
-    market: float = 0.30
-    agents: float = 0.20
-    contrarian: float = 0.10
-    MIN: float = field(default=0.05, repr=False)
-    MAX: float = field(default=0.60, repr=False)
+class V2Decision:
+    """Structure d une decision V2."""
+    action: str              # long | short | flat
+    reason: str              # raison machine (dead_zone, p_up_high, etc.)
+    regime_trending: bool
+    probability_up: float | None
+    entry_price: float | None = None
+    sl_price: float | None = None
+    tp_price: float | None = None
+    position_size_pct: float = 0.015
 
-    def validate(self) -> None:
-        total = self.mirofish + self.market + self.agents + self.contrarian
-        if not (0.99 < total < 1.01):
-            raise ValueError(f"Les poids doivent sommer à 1.0 (actuel: {total:.3f})")
-        for name, val in [("mirofish", self.mirofish), ("market", self.market),
-                          ("agents", self.agents), ("contrarian", self.contrarian)]:
-            if not (self.MIN <= val <= self.MAX):
-                raise ValueError(f"Poids '{name}'={val:.3f} hors bornes [{self.MIN}, {self.MAX}]")
-
-
-class ScoreCalculator:
-    """Calcule le score global de conviction [0-100]."""
-
-    def __init__(self, asset: str | None = None):
-        from utils.config import load_asset_config, load_settings
-        cfg = load_asset_config(asset) if asset else load_settings()
-        w = cfg.get("scoring", {}).get("weights", {})
-        self.weights = ScoringWeights(
-            mirofish=w.get("mirofish", 0.40),
-            market=w.get("market", 0.30),
-            agents=w.get("agents", 0.20),
-            contrarian=w.get("contrarian", 0.10),
-        )
-        # Poids individuels par agent (weight_in_scoring) — utilisés pour pondérer agents_mean
-        self._agent_weights: dict[str, float] = {
-            name: float(acfg.get("weight_in_scoring", 1.0))
-            for name, acfg in cfg.get("agents", {}).items()
-            if isinstance(acfg, dict)
-        }
-
-        # AlphaCombination — poids dynamiques IC-based (Fundamental Law of Active Management)
-        # Remplace les poids statiques si activé et si l'historique est suffisant.
-        try:
-            from agents.alpha_combination_agent import AlphaCombinationAgent
-            _ac = AlphaCombinationAgent()
-            if _ac.enabled:
-                dynamic_weights = _ac.run(asset=asset)
-                if dynamic_weights:
-                    self._agent_weights.update(dynamic_weights)
-                    logger.info(
-                        f"AlphaCombination: poids dynamiques actifs "
-                        f"({len(dynamic_weights)} agents)"
-                    )
-        except Exception as _e:
-            logger.debug(f"AlphaCombination: non disponible — {_e}")
-
-    def calculate(
-        self,
-        mirofish_score: float,
-        market_score: float,
-        agent_scores: dict[str, float],
-        contrarian_score: float,
-        mirofish_n_agents: int = 0,
-    ) -> tuple[float, dict]:
-        """
-        Calcule le score global pondéré.
-
-        Si MiroFish tourne en mode fallback lexical (n_agents_used < 500),
-        son poids est réduit à 12 % et les poids restants sont renormalisés.
-        Cela évite qu'un score lexical naïf (~50) écrase les signaux forts.
-
-        Returns:
-            score: float [0-100]
-            breakdown: dict — contribution de chaque composant
-        """
-        # Poids MiroFish adaptatif
-        _MIROFISH_FALLBACK_WEIGHT = 0.12
-        if mirofish_n_agents < 500 and self.weights.mirofish > _MIROFISH_FALLBACK_WEIGHT:
-            # Réduire MiroFish et redistribuer le delta sur market + agents
-            delta = self.weights.mirofish - _MIROFISH_FALLBACK_WEIGHT
-            w_mf = _MIROFISH_FALLBACK_WEIGHT
-            remaining = self.weights.market + self.weights.agents + self.weights.contrarian
-            w_mkt = self.weights.market  + delta * (self.weights.market  / remaining)
-            w_agt = self.weights.agents  + delta * (self.weights.agents  / remaining)
-            w_ctr = self.weights.contrarian + delta * (self.weights.contrarian / remaining)
-            logger.info(
-                f"MiroFish fallback (n_agents={mirofish_n_agents}) — poids réduit "
-                f"{self.weights.mirofish:.0%}→{w_mf:.0%}, "
-                f"market {self.weights.market:.0%}→{w_mkt:.0%}"
-            )
-        else:
-            w_mf, w_mkt, w_agt, w_ctr = (
-                self.weights.mirofish, self.weights.market,
-                self.weights.agents, self.weights.contrarian,
-            )
-
-        # Score moyen des agents — pondéré par weight_in_scoring individuel
-        if agent_scores:
-            total_w = sum(self._agent_weights.get(n, 1.0) for n in agent_scores)
-            if total_w > 0:
-                agents_mean = sum(
-                    s * self._agent_weights.get(n, 1.0)
-                    for n, s in agent_scores.items()
-                ) / total_w
-            else:
-                agents_mean = sum(agent_scores.values()) / len(agent_scores)
-        else:
-            agents_mean = 50.0
-
-        weighted_score = (
-            mirofish_score * w_mf
-            + market_score * w_mkt
-            + agents_mean * w_agt
-            + contrarian_score * w_ctr
-        )
-
-        score = max(0.0, min(100.0, weighted_score))
-
-        breakdown = {
-            "mirofish": {"score": mirofish_score, "weight": w_mf,
-                         "contribution": round(mirofish_score * w_mf, 2),
-                         "fallback_mode": mirofish_n_agents < 500},
-            "market": {"score": market_score, "weight": w_mkt,
-                       "contribution": round(market_score * w_mkt, 2)},
-            "agents": {"score": agents_mean, "weight": w_agt,
-                       "contribution": round(agents_mean * w_agt, 2),
-                       "detail": agent_scores,
-                       "agent_weights": {n: self._agent_weights.get(n, 1.0) for n in agent_scores}},
-            "contrarian": {"score": contrarian_score, "weight": w_ctr,
-                           "contribution": round(contrarian_score * w_ctr, 2)},
-            "final_score": round(score, 2),
-        }
-
-        logger.debug(
-            f"Score: {score:.1f} "
-            f"(MF={mirofish_score:.0f}×{w_mf:.2f} "
-            f"+ MKT={market_score:.0f}×{w_mkt:.2f} "
-            f"+ AGT={agents_mean:.0f}×{w_agt:.2f} "
-            f"+ CTR={contrarian_score:.0f}×{w_ctr:.2f})"
-        )
-        return round(score, 2), breakdown
-
-
-# ===========================================================
-# RISK ENGINE
-# ===========================================================
-
-class RiskEngine:
-    """Gestion du risque : sizing, SL/TP, circuit breaker."""
-
-    def __init__(self, asset: str | None = None):
-        from utils.config import load_asset_config, load_settings
-        from storage.database import get_pnl_history
-        cfg = load_asset_config(asset) if asset else load_settings()
-        risk = cfg.get("risk", {})
-        exchange = cfg.get("exchange", {})
-        self._asset = asset  # conservé pour check_funding_circuit_breaker
-
-        self.mode: str = risk.get("mode", "balanced")
-        self.kelly_max: float = risk.get("kelly_max_fraction", 0.25)
-        self.max_dd_pct: float = risk.get("max_drawdown_pct", 15.0)
-        self.pos_size_pct: float = risk.get("position_size_pct", 5.0)
-        self.atr_sl_mult: float = risk.get("atr_multiplier_sl", 2.0)
-        self.atr_tp_mult: float = risk.get("atr_multiplier_tp", 3.0)
-        self.capital: float = exchange.get("paper_capital_usd", 10000.0)
-        self.min_pos_pct: float = risk.get("min_position_size_pct", 2.0)
-
-        # Ajustements selon le mode
-        mode_multipliers = {"conservative": 0.5, "balanced": 1.0, "aggressive": 1.5}
-        mult = mode_multipliers.get(self.mode, 1.0)
-        self.kelly_max *= mult
-        self.pos_size_pct *= mult
-
-    def is_circuit_breaker_active(self, market_indicators: dict | None = None) -> bool:
-        """Vérifie uniquement le drawdown maximal (circuit breaker dur).
-        Pour le funding, utiliser check_funding_circuit_breaker() qui retourne un multiplier graduel.
-        """
-        try:
-            from storage.database import get_pnl_history
-            history = get_pnl_history()
-            if history:
-                cumulative_pnl = sum(h.get("result_24h", 0) or 0 for h in history)
-                drawdown_pct = abs(cumulative_pnl) / self.capital * 100
-                if drawdown_pct >= self.max_dd_pct:
-                    logger.warning(
-                        f"CIRCUIT BREAKER ACTIF — drawdown={drawdown_pct:.1f}% >= {self.max_dd_pct}%"
-                    )
-                    return True
-        except Exception:
-            pass
-        return False
-
-    def check_funding_circuit_breaker(
-        self, market_indicators: dict | None = None, regime: str | None = None
-    ) -> tuple[bool, str, float]:
-        """
-        Évalue le risque de sur-levier via le funding rate.
-
-        Retourne:
-            blocked   : bool   — True = ne pas ouvrir de nouveau BUY
-            reason    : str    — explication pour les logs / SynthesisAgent
-            size_mult : float  — multiplicateur à appliquer sur la taille de position (0.0–1.0)
-
-        Trois niveaux :
-          funding < warning  → normal, taille 100%
-          warning ≤ funding < block → réduction progressive jusqu'à max_reduction
-          funding ≥ block (soutenu sur sustain_cycles) → blocage total
-          funding très négatif → signal contrarian LONG (noté dans reason)
-
-        En régime HIGH_VOLATILITY le seuil de blocage est abaissé de 0.045 % → 0.035 %
-        pour protéger davantage lors des périodes de haute volatilité.
-        """
-        from utils.config import load_asset_config, load_settings
-        _asset = getattr(self, "_asset", None)
-        cfg = load_asset_config(_asset) if _asset else load_settings()
-        cfg = cfg.get("circuit_breaker", {})
-
-        f_warning  = float(cfg.get("funding_warning",  0.00018))  # 0.018 %
-        f_block    = float(cfg.get("funding_block",    0.00045))  # 0.045 %
-        sustain    = int(cfg.get("sustain_period_cycles", 3))
-        max_reduc  = float(cfg.get("max_reduction", 0.75))
-
-        # Seuil plus strict en HIGH_VOLATILITY (0.045 % → 0.035 %)
-        if regime == "HIGH_VOLATILITY":
-            f_block = min(f_block, 0.00035)
-            logger.debug(f"[FundingCB] HIGH_VOLATILITY — f_block abaissé à {f_block:.4%}")
-
-        ind = market_indicators or {}
-        current_funding = float(ind.get("funding_rate", 0.0) or 0.0)
-
-        # Historique récent (liste des N dernières valeurs collectées par MarketDataAgent)
-        recent = list(ind.get("recent_funding_rates") or [current_funding])
-        if not recent:
-            recent = [current_funding]
-
-        # Moyenne sur les derniers `sustain` cycles — filtre les pics isolés
-        window = recent[-sustain:] if len(recent) >= sustain else recent
-        avg_funding = sum(window) / len(window)
-
-        reason = ""
-        size_mult = 1.0
-        blocked = False
-
-        if avg_funding >= f_block:
-            # Blocage dur uniquement si soutenu (avg sur sustain cycles)
-            blocked = True
-            size_mult = 0.0
-            reason = (
-                f"EXTREME_LONG_OVERLEVERAGE: funding moyen={avg_funding:.4%} "
-                f">= seuil blocage {f_block:.4%} (soutenu {len(window)} cycles)"
-            )
-            logger.warning(f"[FundingCB] Blocage BUY — {reason}")
-
-        elif avg_funding >= f_warning:
-            # Réduction progressive : linéaire entre warning et block
-            excess = (avg_funding - f_warning) / max(f_block - f_warning, 1e-9)
-            size_mult = max(1.0 - excess * max_reduc, 1.0 - max_reduc)
-            reason = (
-                f"HIGH_FUNDING_WARNING: funding moyen={avg_funding:.4%} "
-                f"→ taille réduite à {size_mult:.0%}"
-            )
-            logger.info(f"[FundingCB] {reason}")
-
-        else:
-            reason = f"funding_normal ({avg_funding:.4%})"
-
-        # Signal contrarian bonus : funding très négatif = shorts sur-leveragés
-        if avg_funding < -0.00025:  # −0.025 %
-            reason += " | EXTREME_SHORT_CROWDING (potential long squeeze)"
-
-        return blocked, reason, size_mult
-
-    def calculate_position_size(
-        self, price: float, score: float = 50.0
-    ) -> float:
-        """Calcule la taille de position en USD via Kelly Criterion.
-
-        Utilise les stats réelles (win_rate, rr_ratio) depuis la DB si >= 5 trades fermés,
-        sinon les valeurs par défaut conservatives.
-        Quand Kelly est négatif (stats défavorables), utilise 20% de la taille max.
-
-        La taille est ensuite pondérée par un multiplicateur de conviction basé sur le score :
-        - score au seuil (62 BUY)  → ~47% de la taille max
-        - score à 80               → ~72% de la taille max
-        - score à 100              → 100% de la taille max
-        """
-        max_size = self.capital * (self.pos_size_pct / 100)
-
-        # Charger les stats réelles pour Kelly adaptatif
-        try:
-            from storage.database import get_closed_trade_stats
-            stats = get_closed_trade_stats(asset=self._asset, min_trades=5)
-        except Exception:
-            stats = {}
-
-        if stats:
-            win_rate = max(0.1, min(0.9, stats["win_rate"]))
-            rr_ratio = max(0.1, stats["rr_ratio"])
-            kelly = (win_rate * rr_ratio - (1 - win_rate)) / rr_ratio
-            if kelly <= 0:
-                # Stats défavorables → position minimale de sauvegarde (20% du max)
-                base_size = max_size * 0.2
-                logger.debug(
-                    f"Kelly négatif ({kelly:.3f}) — stats réelles win={win_rate:.0%} RR={rr_ratio:.2f}"
-                    f" — position minimale ${base_size:.0f}"
-                )
-            else:
-                kelly = min(kelly, self.kelly_max)
-                base_size = min(self.capital * kelly, max_size)
-                logger.debug(
-                    f"Kelly adaptatif: win={win_rate:.0%} RR={rr_ratio:.2f} → k={kelly:.3f}"
-                    f" → base=${base_size:.0f} (n={stats['n_trades']})"
-                )
-        else:
-            # Pas assez d'historique → Kelly par défaut conservateur
-            win_rate, rr_ratio = 0.55, 1.5
-            kelly = (win_rate * rr_ratio - (1 - win_rate)) / rr_ratio
-            kelly = max(0.0, min(kelly, self.kelly_max))
-            base_size = min(self.capital * kelly, max_size)
-            logger.debug(f"Kelly défaut (pas d'historique suffisant) → base=${base_size:.0f}")
-
-        # Multiplicateur de conviction : conviction faible → petite position
-        # Formule : 0.3 + 0.7 * (|score - 50| / 50), clampé entre 0.3 et 1.0
-        conviction = abs(score - 50.0) / 50.0          # 0.0 (neutre) → 1.0 (extrême)
-        conviction_mult = max(0.3, min(1.0, 0.3 + 0.7 * conviction))
-        final_size = base_size * conviction_mult
-
-        # Plancher absolu : évite des positions trop faibles pour générer du P&L
-        min_usd = self.capital * (self.min_pos_pct / 100)
-        final_size = round(max(final_size, min_usd), 2)
-
-        logger.debug(
-            f"Position size: base=${base_size:.0f} × conviction_mult={conviction_mult:.2f}"
-            f" (score={score:.0f}) → ${final_size:.0f} (floor=${min_usd:.0f})"
-        )
-        return final_size
-
-    def calculate_sl_tp(
-        self, entry_price: float, action: str, atr: float
-    ) -> tuple[float, float]:
-        """Calcule SL et TP basés sur l'ATR."""
-        atr = max(atr, entry_price * 0.001)  # ATR minimum de 0.1%
-
-        if action == "BUY":
-            sl = entry_price - (atr * self.atr_sl_mult)
-            tp = entry_price + (atr * self.atr_tp_mult)
-        elif action == "SELL":
-            sl = entry_price + (atr * self.atr_sl_mult)
-            tp = entry_price - (atr * self.atr_tp_mult)
-        else:
-            sl = tp = entry_price
-
-        return round(sl, 2), round(tp, 2)
-
-
-# ===========================================================
-# DECISION ENGINE
-# ===========================================================
 
 class DecisionEngine:
-    """Prend la décision finale et génère l'explication narrative."""
+    """
+    Moteur de decision V2 — interface unifiee pour tests et debug.
 
-    def __init__(self, asset: str | None = None):
-        from utils.config import load_asset_config, load_settings
-        cfg = load_asset_config(asset) if asset else load_settings()
-        risk = cfg.get("risk", {})
-        self._asset = asset  # conservé pour filtrer les positions par asset
-        self.buy_threshold: float = risk.get("buy_threshold", 70)
-        self.exit_threshold: float = risk.get("exit_threshold", 52)  # seuil de sortie d'une position longue
-        self.human_loop: bool = risk.get("human_in_the_loop", False)
-        self.ma50_filter_mode: str = risk.get("ma50_filter_mode", "gradual")
-        self.ma50_strong_threshold: float = risk.get("ma50_strong_signal_threshold", 80)
-        self.ma50_size_factor: float = risk.get("ma50_gradual_size_factor", 0.5)
-        self.max_open_positions: int = int(risk.get("max_open_positions", 0))
-        # Cooldowns anti-churning
-        self.buy_cooldown_min: float  = float(risk.get("buy_cooldown_minutes", 20))
-        self.sell_cooldown_min: float = float(risk.get("sell_cooldown_minutes", 60))
-        self.risk_engine = RiskEngine(asset=asset)
+    Usage normal : utiliser graph.workflow.run_cycle() directement.
+    Usage test/debug : instancier DecisionEngine et appeler decide_from_state().
+    """
 
-    def decide(
+    # Seuils de decision (PLAN_DEV_V2.md — consensus 5 IA)
+    P_UP_THRESHOLD = 0.55     # au-dessus : LONG
+    P_DN_THRESHOLD = 0.45     # en dessous : SHORT
+    # Zone morte [0.45, 0.55] : FLAT meme en regime trending
+
+    def decide_from_state(
         self,
-        score: float,
-        market_indicators: dict | None,
-        agent_analyses: dict,
-        mirofish_result: dict | None,
-    ) -> dict:
-        """Génère la décision de trading complète."""
-        # --- Logique position-aware (long-only spot) ---
-        # Si une position longue (BUY) est ouverte : gérer la sortie
-        # Sinon : chercher une entrée
-        _open_buys: list[dict] = []
-        try:
-            from storage.database import get_open_positions
-            _open_buys = [
-                p for p in get_open_positions()
-                if p["action"] == "BUY" and (not self._asset or p.get("asset") == self._asset)
-            ]
-        except Exception:
-            pass
+        regime_trending: bool,
+        probability_up: float | None,
+        close_price: float | None = None,
+        atr_14: float | None = None,
+        capital: float = 10_000.0,
+    ) -> V2Decision:
+        """
+        Produit une decision a partir de l etat courant.
 
-        has_long = len(_open_buys) > 0
+        Regles (inchangeables sauf validation OOS) :
+        1. Si regime = ranging (mean-reverting) → FLAT toujours.
+        2. Si regime = trending ET P(up) > 0.55 → LONG.
+        3. Si regime = trending ET P(up) < 0.45 → SHORT.
+        4. Sinon → FLAT (zone morte de +/-5% autour de 0.50).
 
-        if has_long:
-            # Position ouverte → sortir si le score chute sous exit_threshold
-            if score < self.exit_threshold:
-                action = "SELL"
-                logger.info(
-                    f"Exit signal: score {score:.0f} < exit_threshold {self.exit_threshold:.0f} "
-                    f"— SELL pour clore {len(_open_buys)} position(s) longue(s)"
-                )
-            else:
-                action = "HOLD"
-        else:
-            # Pas de position → entrer si score suffisant
-            if score >= self.buy_threshold:
-                action = "BUY"
-            else:
-                action = "HOLD"
+        SL = 2.5 × ATR14 ; TP = 3.0 × ATR14 (R:R ≈ 1.2)
+        Sizing : 1.5% du capital / distance_SL
+        """
+        from quant.strategy import decide
+        from quant.risk import RiskManager, RiskParams
 
-        # ── Cooldowns anti-churning (Fix A+E) ────────────────────────────────
-        if action == "BUY" and self._asset:
+        d = decide(
+            probability_up=probability_up,
+            regime_trending=regime_trending,
+            upper_threshold=self.P_UP_THRESHOLD,
+            lower_threshold=self.P_DN_THRESHOLD,
+        )
+
+        sl_price = None
+        tp_price = None
+        size_pct = 0.015
+
+        if d.action.value != "flat" and close_price and atr_14:
+            rm = RiskManager(RiskParams())
             try:
-                from storage.database import get_last_action_minutes_ago
-                # Cooldown post-SELL : ne pas ré-entrer trop vite après une fermeture
-                sell_ago = get_last_action_minutes_ago(self._asset, "SELL")
-                if sell_ago is not None and sell_ago < self.sell_cooldown_min:
-                    logger.info(
-                        f"Cooldown post-SELL: dernier SELL il y a {sell_ago:.1f} min"
-                        f" < {self.sell_cooldown_min} min — BUY → HOLD"
-                    )
-                    action = "HOLD"
-                else:
-                    # Anti-duplicate : empêche deux BUY sur le même actif en < N min
-                    buy_ago = get_last_action_minutes_ago(self._asset, "BUY")
-                    if buy_ago is not None and buy_ago < self.buy_cooldown_min:
-                        logger.info(
-                            f"Cooldown anti-dupliqué: dernier BUY il y a {buy_ago:.1f} min"
-                            f" < {self.buy_cooldown_min} min — BUY → HOLD"
-                        )
-                        action = "HOLD"
-            except Exception:
-                pass
-
-        # ── Filtre tendance 24h (Règle 2 — méta-analyse 2026-04-22/25) ─────────
-        # ETH : 5 pertes sur 5 trades où change_24h < -0.5%
-        # Blocage si repli journalier ≥ 0.5% — évite d'acheter en tendance baissière
-        if action == "BUY":
-            _chg_24h = (market_indicators or {}).get("change_pct_24h", None)
-            _trend_threshold_24h: float = -0.5  # configurable à terme
-            if _chg_24h is not None and _chg_24h < _trend_threshold_24h:
-                logger.info(
-                    f"Filtre tendance 24h: change_24h={_chg_24h:.2f}% < {_trend_threshold_24h}%"
-                    f" — tendance journalière négative — BUY → HOLD"
+                pos = rm.compute_position(
+                    side=d.action.value,
+                    entry_price=close_price,
+                    atr_value=atr_14,
+                    capital=capital,
                 )
-                action = "HOLD"
+                sl_price = pos.stop_loss
+                tp_price = pos.take_profit
+            except Exception as exc:
+                logger.debug(f"Sizing skip: {exc}")
 
-        # Cap max_open_positions (garde-fou supplémentaire sur BUY)
-        if action == "BUY" and self.max_open_positions > 0:
-            try:
-                from storage.database import count_open_positions
-                n_open = count_open_positions(asset=self._asset)
-                if n_open >= self.max_open_positions:
-                    logger.info(
-                        f"Max positions atteint ({n_open}/{self.max_open_positions}) — BUY converti en HOLD"
-                    )
-                    action = "HOLD"
-            except Exception:
-                pass
-
-        price = (market_indicators or {}).get("price", 0.0)
-        atr = (market_indicators or {}).get("atr_14", price * 0.02)
-
-        # --- Filtre tendance MA50 ---
-        above_ma50 = (market_indicators or {}).get("above_ma50", True)
-        ma_50 = (market_indicators or {}).get("ma_50", 0.0)
-        ma50_blocked = False
-        ma50_size_penalty = 1.0  # multiplicateur appliqué à position_size
-
-        if action == "BUY" and not above_ma50 and ma_50 > 0:
-            if self.ma50_filter_mode == "block":
-                # Blocage total
-                logger.info(
-                    f"MA50 filter [block]: BUY bloqué — prix {price:.0f} < MA50 {ma_50:.0f}"
-                )
-                action = "HOLD"
-                ma50_blocked = True
-            elif self.ma50_filter_mode == "gradual":
-                if score < self.ma50_strong_threshold:
-                    # Signal insuffisant → bloqué
-                    logger.info(
-                        f"MA50 filter [gradual]: BUY bloqué — score {score:.0f} < {self.ma50_strong_threshold} "
-                        f"et prix {price:.0f} < MA50 {ma_50:.0f}"
-                    )
-                    action = "HOLD"
-                    ma50_blocked = True
-                else:
-                    # Signal fort → autorisé avec taille réduite
-                    ma50_size_penalty = self.ma50_size_factor
-                    logger.info(
-                        f"MA50 filter [gradual]: BUY autorisé (score {score:.0f} ≥ {self.ma50_strong_threshold}) "
-                        f"mais taille ×{ma50_size_penalty:.1f} (prix sous MA50)"
-                    )
-            # mode "off" → aucun filtre
-
-        # Sizing et SL/TP seulement si BUY/SELL
-        # --- Funding circuit breaker (graduel) ---
-        funding_blocked = False
-        funding_size_mult = 1.0
-        funding_reason = ""
-        if action == "BUY":
-            _regime = agent_analyses.get("market_regime", {}).get("regime") if agent_analyses else None
-            funding_blocked, funding_reason, funding_size_mult = (
-                self.risk_engine.check_funding_circuit_breaker(market_indicators, regime=_regime)
-            )
-            if funding_blocked:
-                action = "HOLD"
-                logger.info(f"Funding CB: BUY → HOLD — {funding_reason}")
-            elif funding_size_mult < 1.0:
-                logger.info(f"Funding CB: taille BUY ×{funding_size_mult:.2f} — {funding_reason}")
-
-        # ── Filtres régime de marché (issus des méta-analyses post-mortem) ──────
-        _regime_hv = (agent_analyses or {}).get("market_regime", {}).get("regime", "")
-        _mf_score_raw = (mirofish_result or {}).get("score", 50.0)
-        hv_mf_blocked = False
-        td_blocked = False
-        conflict_blocked = False
-
-        # Filtre 1 : TRENDING_DOWN → hard block total
-        # Méta-analyse 2026-04-16 : 4/4 pertes | 2026-04-19 : 11/22 | 2026-04-24 : 16/29
-        # Aucune exception — le trend baissier domine tous les autres signaux
-        if action == "BUY" and _regime_hv == "TRENDING_DOWN":
-            logger.info(
-                f"TRENDING_DOWN hard block: BUY → HOLD "
-                f"(MiroFish={_mf_score_raw:.0f}, score={score:.0f})"
-            )
-            action = "HOLD"
-            td_blocked = True
-
-        # Filtre 2 : MiroFish < 50 → veto BUY dans TOUS les régimes
-        # Méta-analyse 2026-04-19 : 9/22 trades score≥68 mais MF<50 → perte
-        if action == "BUY" and _mf_score_raw < 50:
-            logger.info(
-                f"MiroFish global veto: MiroFish={_mf_score_raw:.0f} < 50 "
-                f"(régime={_regime_hv or 'UNKNOWN'}) — BUY → HOLD"
-            )
-            action = "HOLD"
-            hv_mf_blocked = True
-
-        # Filtre 3 : Conflit market_regime < 50 ET x_sentiment > 75 → veto
-        # Méta-analyse 2026-04-24 : signal baissier fort du régime masqué par sentiment euphorique
-        # Seuils élargis 2026-05-07 (< 40 manquait mr=45/xs=82 → 5 trades perdants consécutifs)
-        # Applicable à tous les régimes — détecte les entrées à contre-tendance excessive
-        if action == "BUY":
-            _mr_score = (agent_analyses or {}).get("market_regime", {}).get("score", 50.0)
-            _xs_score = (agent_analyses or {}).get("x_sentiment", {}).get("score", 50.0)
-            if _mr_score < 50 and _xs_score > 75:
-                logger.info(
-                    f"Conflict veto: market_regime={_mr_score:.0f} < 50 ET "
-                    f"x_sentiment={_xs_score:.0f} > 75 — signal contradictoire — BUY → HOLD"
-                )
-                action = "HOLD"
-                conflict_blocked = True
-
-        # Filtre 2 : kronos < 50 + HIGH_VOLATILITY → taille ×0.5
-        # (utilise Kronos si disponible, fallback sur TimesFM si actif)
-        _kronos_score = (agent_analyses or {}).get("kronos", {}).get("score", None)
-        _timesfm_score = (agent_analyses or {}).get("timesfm", {}).get("score", 50.0)
-        _forecast_score = _kronos_score if _kronos_score is not None else _timesfm_score
-        hv_timesfm_mult = 1.0
-        if action == "BUY" and _regime_hv == "HIGH_VOLATILITY" and _forecast_score < 50:
-            hv_timesfm_mult = 0.5
-            _fc_src = "kronos" if _kronos_score is not None else "timesfm"
-            logger.info(
-                f"HIGH_VOLATILITY + {_fc_src}={_forecast_score:.0f} < 50 — taille BUY ×{hv_timesfm_mult}"
-            )
-
-        if action in ("BUY", "SELL"):
-            _regime = _regime_hv
-            # En HIGH_VOLATILITY : réduire la taille de 35% indépendamment du funding
-            high_vol_mult = 0.65 if _regime == "HIGH_VOLATILITY" else 1.0
-            if high_vol_mult < 1.0:
-                logger.info(f"HIGH_VOLATILITY regime — taille position ×{high_vol_mult} (prudence)")
-
-            position_size = round(
-                self.risk_engine.calculate_position_size(price, score=score)
-                * ma50_size_penalty
-                * funding_size_mult
-                * high_vol_mult
-                * hv_timesfm_mult,
-                2,
-            )
-            sl, tp = self.risk_engine.calculate_sl_tp(price, action, atr)
-        else:
-            position_size = 0.0
-            sl = tp = price
-            high_vol_mult = 1.0
-            hv_timesfm_mult = 1.0
-
-        # Génération de l'explication
-        explanation = self._build_explanation(
-            action, score, agent_analyses, mirofish_result, market_indicators,
-            ma50_blocked=ma50_blocked, ma_50=ma_50, ma50_size_penalty=ma50_size_penalty
+        return V2Decision(
+            action=d.action.value,
+            reason=d.reason,
+            regime_trending=regime_trending,
+            probability_up=probability_up,
+            entry_price=close_price,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            position_size_pct=size_pct,
         )
 
-        risks = self._extract_risks(agent_analyses)
-        catalysts = self._extract_catalysts(agent_analyses)
-
-        return {
-            "action": action,
-            "score": score,
-            "position_size_usd": position_size,
-            "entry_price": price,
-            "sl_price": sl,
-            "tp_price": tp,
-            "explanation": explanation,
-            "risks": risks,
-            "catalysts": catalysts,
-            "approved": not self.human_loop,
-            "ma50_blocked": ma50_blocked,
-            "ma50_size_penalty": ma50_size_penalty,
-            "ma_50": ma_50,
-            "above_ma50": above_ma50,
-            "funding_blocked": funding_blocked,
-            "funding_size_mult": funding_size_mult,
-            "funding_reason": funding_reason,
-            "high_vol_size_mult": high_vol_mult,
-            "hv_mf_blocked": hv_mf_blocked,
-            "hv_timesfm_mult": hv_timesfm_mult,
-            "td_blocked": td_blocked,
-            "conflict_blocked": conflict_blocked,
-            # Seuils effectifs — pour audit trail
-            "buy_threshold": self.buy_threshold,
-            "exit_threshold": self.exit_threshold,
-            "reasoning": (
-                f"score={score:.1f} vs buy_threshold={self.buy_threshold} / exit_threshold={self.exit_threshold} | "
-                f"has_long={has_long} | ma50_blocked={ma50_blocked} | "
-                f"funding_blocked={funding_blocked} | td_blocked={td_blocked} | "
-                f"hv_mf_blocked={hv_mf_blocked} | conflict_blocked={conflict_blocked}"
-            ),
-        }
-
-    def _build_explanation(
-        self,
-        action: str,
-        score: float,
-        agent_analyses: dict,
-        mirofish_result: dict | None,
-        market_indicators: dict | None,
-        ma50_blocked: bool = False,
-        ma_50: float = 0.0,
-        ma50_size_penalty: float = 1.0,
-    ) -> str:
-        """Construit l'explication narrative de la décision."""
-        from utils.i18n import t
-
-        mf_score = (mirofish_result or {}).get("score", 50)
-        mf_narrative = (mirofish_result or {}).get("dominant_narrative", "n/a")
-        price = (market_indicators or {}).get("price", 0)
-        rsi = (market_indicators or {}).get("rsi_14", 50)
-
-        synthesis = agent_analyses.get("synthesis", {})
-        synthesis_text = synthesis.get("summary", "") if isinstance(synthesis, dict) else ""
-
-        explanation = (
-            f"**{t('dec_decision')}: {action}** ({t('dec_conviction')}: {score:.0f}/100)\n\n"
-            f"**{t('dec_mirofish')}** ({mf_score:.0f}/100): {mf_narrative}\n\n"
+    def decide_flat(self, reason: str = "manual") -> V2Decision:
+        """Retourne toujours FLAT — utilise pour les periodes de pause / kill-switch."""
+        return V2Decision(
+            action="flat", reason=reason,
+            regime_trending=False, probability_up=None,
         )
-
-        # Agent scores
-        agent_rows = []
-        signal_icons = {"BULLISH": "🟢", "BEARISH": "🔴", "NEUTRAL": "⚪"}
-        for name, analysis in agent_analyses.items():
-            if name == "synthesis" or not isinstance(analysis, dict):
-                continue
-            a_score = analysis.get("score", 50)
-            a_signal = analysis.get("signal", "NEUTRAL")
-            icon = signal_icons.get(a_signal, "⚪")
-            agent_rows.append(f"{icon} **{name}**: {a_score:.0f}/100")
-        if agent_rows:
-            explanation += f"**{t('dec_agents')}**: " + " | ".join(agent_rows) + "\n\n"
-
-        rsi_key = "dec_rsi_oversold" if rsi < 30 else ("dec_rsi_overbought" if rsi > 70 else "dec_rsi_neutral")
-        explanation += (
-            f"**{t('dec_market')}**: Price={price:.2f} | RSI={rsi:.0f} ({t(rsi_key)})\n\n"
-        )
-
-        if synthesis_text:
-            explanation += f"**{t('dec_ai_summary')}**: {synthesis_text}\n\n"
-
-        if action == "HOLD" and ma50_blocked:
-            explanation += t("dec_ma50_blocked").format(
-                score=f"{score:.0f}", price=f"{price:.0f}", ma50=f"{ma_50:.0f}"
-            )
-        elif action == "BUY" and ma50_size_penalty < 1.0:
-            explanation += t("dec_ma50_strong").format(
-                score=f"{score:.0f}", factor=f"{ma50_size_penalty:.1f}",
-                price=f"{price:.0f}", ma50=f"{ma_50:.0f}"
-            )
-        elif action == "HOLD" and score >= self.buy_threshold:
-            # Score suffisant pour BUY mais bloqué par un filtre (régime, cooldown, veto…)
-            explanation += t("dec_hold_filtered").format(
-                score=f"{score:.0f}", threshold=f"{self.buy_threshold:.0f}"
-            )
-        elif action == "HOLD":
-            explanation += t("dec_neutral_zone").format(
-                score=f"{score:.0f}", lo=f"{self.exit_threshold:.0f}",
-                hi=f"{self.buy_threshold - 1:.0f}"
-            )
-        elif action == "BUY":
-            explanation += t("dec_buy_signal").format(
-                score=f"{score:.0f}", threshold=f"{self.buy_threshold:.0f}"
-            )
-        else:
-            explanation += t("dec_sell_signal").format(
-                score=f"{score:.0f}", threshold=f"{self.exit_threshold:.0f}"
-            )
-
-        return explanation
-
-    def _extract_risks(self, agent_analyses: dict) -> list[str]:
-        synthesis = agent_analyses.get("synthesis", {})
-        if isinstance(synthesis, dict):
-            return synthesis.get("risks", [])[:3]
-        return []
-
-    def _extract_catalysts(self, agent_analyses: dict) -> list[str]:
-        synthesis = agent_analyses.get("synthesis", {})
-        if isinstance(synthesis, dict):
-            return synthesis.get("catalysts", [])[:3]
-        return []

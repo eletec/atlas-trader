@@ -413,3 +413,14 @@ monitor:
 admin:
   password_hash: ''
   session_timeout_minutes: 60
+
+# ── Paramètres V2 Quant Pipeline ───────────────────────────────────────────
+quant:
+  timeframe: "15m"           # Timeframe OHLCV (ccxt notation)
+  history_days: 90           # Historique de chargement au boot
+  train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
+  horizon_bars: 4            # Horizon de prédiction (barres forward)
+  p_up_threshold: 0.55       # Seuil P(up) pour signal LONG
+  p_dn_threshold: 0.45       # Seuil P(dn) pour signal SHORT  (zone morte = [0.45, 0.55])
+  use_hmm: false             # true en Docker (hmmlearn installé) ; false local (fallback ADX+vol)
+  refit_interval_hours: 168  # Refit hebdomadaire (7 * 24h)

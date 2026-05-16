@@ -4098,6 +4098,57 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "✅ {n} bestand(en) hersteld vanuit {filename}",
         "zh": "✅ 已从 {filename} 恢复 {n} 个文件",
     },
+    # ── V2 Quant dashboard ───────────────────────────────────────────────────
+    "v2_quant_title": {
+        "fr": "Moteur Quant V2", "en": "V2 Quant Engine", "de": "Quant-Engine V2",
+        "es": "Motor Quant V2", "it": "Motore Quant V2", "pt": "Motor Quant V2",
+        "nl": "Kwant Engine V2", "zh": "量化引擎 V2",
+    },
+    "v2_regime": {
+        "fr": "Régime", "en": "Regime", "de": "Marktregime",
+        "es": "Régimen", "it": "Regime", "pt": "Regime",
+        "nl": "Regime", "zh": "市场状态",
+    },
+    "v2_prob_up": {
+        "fr": "P(hausse)", "en": "P(up)", "de": "P(aufwärts)",
+        "es": "P(alza)", "it": "P(rialzo)", "pt": "P(alta)",
+        "nl": "P(omhoog)", "zh": "上涨概率",
+    },
+    "v2_decision": {
+        "fr": "Décision V2", "en": "V2 Decision", "de": "V2-Entscheidung",
+        "es": "Decisión V2", "it": "Decisione V2", "pt": "Decisão V2",
+        "nl": "V2-Beslissing", "zh": "V2决策",
+    },
+    "v2_capital": {
+        "fr": "Capital V2", "en": "V2 Capital", "de": "V2-Kapital",
+        "es": "Capital V2", "it": "Capitale V2", "pt": "Capital V2",
+        "nl": "V2-Kapitaal", "zh": "V2资金",
+    },
+    "v2_equity": {
+        "fr": "Equity V2", "en": "V2 Equity", "de": "V2-Eigenkapital",
+        "es": "Equity V2", "it": "Equity V2", "pt": "Equity V2",
+        "nl": "V2-Equity", "zh": "V2权益",
+    },
+    "v2_entries": {
+        "fr": "Entrées", "en": "Entries", "de": "Einträge",
+        "es": "Entradas", "it": "Entrate", "pt": "Entradas",
+        "nl": "Ingangen", "zh": "入场",
+    },
+    "v2_total_ret": {
+        "fr": "Rendement", "en": "Total Return", "de": "Gesamtrendite",
+        "es": "Rendimiento", "it": "Rendimento", "pt": "Retorno",
+        "nl": "Rendement", "zh": "总收益",
+    },
+    "v2_sharpe": {
+        "fr": "Sharpe", "en": "Sharpe", "de": "Sharpe",
+        "es": "Sharpe", "it": "Sharpe", "pt": "Sharpe",
+        "nl": "Sharpe", "zh": "夏普比率",
+    },
+    "v2_max_dd": {
+        "fr": "Max Drawdown", "en": "Max Drawdown", "de": "Max. Drawdown",
+        "es": "Máx. Caída", "it": "Max Drawdown", "pt": "Max Drawdown",
+        "nl": "Max. Drawdown", "zh": "最大回撤",
+    },
 }
 
 _current_lang: str = "en"

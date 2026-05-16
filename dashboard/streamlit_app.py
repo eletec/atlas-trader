@@ -1270,6 +1270,171 @@ def render_climate_metrics(last_cycle: dict | None):
     )
 
 
+def render_v2_quant_state(asset: str | None = None):
+    """
+    Bloc V2 Quant — régime, P(up), décision, position ouverte, courbe equity.
+    S'intègre dans le dashboard principal avec le même style de cartes.
+    Silencieux si la DB V2 n'a pas encore de données.
+    """
+    try:
+        from storage.database import get_v2_state, get_v2_equity_curve
+        import plotly.graph_objects as _go
+    except Exception:
+        return
+
+    state = get_v2_state()
+    if not state:
+        return  # Premier démarrage — rien à afficher encore
+
+    theme = _get_theme()
+    bg, bdr, txt, muted, ic = _card_colors(theme)
+    kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
+
+    # ── Titre section ──────────────────────────────────────────────────────────
+    st.markdown(
+        '<h3 style="margin:20px 0 10px;font-size:18px;">'
+        '<i class="fas fa-microchip" style="margin-right:8px;color:#7986cb;"></i>'
+        + t("v2_quant_title", lang=None) + '</h3>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Cartes : Régime / P(up) / Décision V2 / Capital V2 ───────────────────
+    regime_val = state.get("regime")
+    regime_trending = (regime_val == 1)
+    if regime_val is None:
+        regime_label = "N/A"
+        regime_color = "#888"
+    elif regime_trending:
+        regime_label = "TRENDING"
+        regime_color = "#2ecc71"
+    else:
+        regime_label = "RANGING"
+        regime_color = "#f39c12"
+
+    prob_up = state.get("prob_up")
+    if prob_up is not None:
+        prob_pct = f"{prob_up:.1%}"
+        if prob_up > 0.55:
+            prob_color = "#2ecc71"
+            prob_delta = "> 0.55 — signal haussier"
+            prob_d_pos = True
+        elif prob_up < 0.45:
+            prob_color = "#e74c3c"
+            prob_delta = "< 0.45 — signal baissier"
+            prob_d_pos = False
+        else:
+            prob_color = "#f39c12"
+            prob_delta = "zone morte [0.45 – 0.55]"
+            prob_d_pos = None
+    else:
+        prob_pct, prob_color, prob_delta, prob_d_pos = "N/A", "#888", None, None
+
+    action_v2 = (state.get("action") or "flat").upper()
+    act_v2_color = {"LONG": "#2ecc71", "SHORT": "#e74c3c"}.get(action_v2, "#888")
+    act_v2_fa = {"LONG": "fas fa-arrow-trend-up", "SHORT": "fas fa-arrow-trend-down"}.get(
+        action_v2, "fas fa-minus")
+    reason_v2 = state.get("reason", "")
+
+    cap_v2 = state.get("capital")
+    cap_v2_html = f'${cap_v2:,.0f}' if cap_v2 is not None else "N/A"
+
+    grid = (
+        _html_card("fas fa-wave-square", t("v2_regime"),
+                   f'<span style="color:{regime_color}">{regime_label}</span>',
+                   **kw) +
+        _html_card("fas fa-percent", t("v2_prob_up"),
+                   f'<span style="color:{prob_color}">{prob_pct}</span>',
+                   delta=prob_delta, d_pos=prob_d_pos, **kw) +
+        _html_card(act_v2_fa, t("v2_decision"),
+                   f'<span style="color:{act_v2_color}">{action_v2}</span>',
+                   delta=reason_v2 or None, d_pos=None, **kw) +
+        _html_card("fas fa-wallet", t("v2_capital"),
+                   cap_v2_html, **kw)
+    )
+    st.markdown(
+        f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));'
+        f'gap:12px;margin-bottom:12px;">{grid}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Position ouverte ──────────────────────────────────────────────────────
+    pos_side = state.get("position_side")
+    if pos_side:
+        entry = state.get("entry_price")
+        sl    = state.get("sl_price")
+        tp    = state.get("tp_price")
+        close = state.get("close_price")
+        pnl_pct = None
+        if entry and close:
+            pnl_pct = (close - entry) / entry if pos_side == "long" else (entry - close) / entry
+        pnl_col = "#2ecc71" if (pnl_pct or 0) >= 0 else "#e74c3c"
+        pnl_str = f"{pnl_pct:+.2%}" if pnl_pct is not None else "—"
+        pos_html = (
+            f'<div style="background:{bg};border:1px solid {bdr};border-radius:10px;'
+            f'padding:10px 14px;font-size:13px;margin-bottom:10px;">'
+            f'<b style="color:{"#2ecc71" if pos_side=="long" else "#e74c3c"}">'
+            f'{"▲" if pos_side=="long" else "▼"} {pos_side.upper()}</b>'
+            f'&nbsp;·&nbsp; Entry <b>${entry:,.2f}</b>'
+            f'&nbsp;·&nbsp; SL <b style="color:#e74c3c">${sl:,.2f}</b>'
+            f'&nbsp;·&nbsp; TP <b style="color:#2ecc71">${tp:,.2f}</b>'
+            f'&nbsp;·&nbsp; P&L latent <b style="color:{pnl_col}">{pnl_str}</b>'
+            f'</div>'
+        ) if entry and sl and tp else ""
+        if pos_html:
+            st.markdown(pos_html, unsafe_allow_html=True)
+
+    # ── Courbe equity V2 (compacte) ───────────────────────────────────────────
+    equity_rows = get_v2_equity_curve(n=200)
+    if equity_rows and len(equity_rows) >= 2:
+        import pandas as _pd
+        eq_df = _pd.DataFrame(equity_rows)
+        eq_df["ts"] = _pd.to_datetime(eq_df["ts"])
+        eq_df = eq_df.sort_values("ts")
+
+        fig = _go.Figure()
+        fig.add_trace(_go.Scatter(
+            x=eq_df["ts"], y=eq_df["equity"],
+            mode="lines", name=t("v2_equity"),
+            line=dict(color="#4fc3f7", width=2),
+            fill="tozeroy", fillcolor="rgba(79,195,247,0.06)",
+        ))
+        entries = eq_df[eq_df["action"].isin(["long", "short"])]
+        if not entries.empty:
+            fig.add_trace(_go.Scatter(
+                x=entries["ts"], y=entries["equity"],
+                mode="markers",
+                marker=dict(
+                    size=7,
+                    color=entries["action"].map({"long": "#2ecc71", "short": "#e74c3c"}),
+                    symbol=entries["action"].map({"long": "triangle-up", "short": "triangle-down"}),
+                ),
+                name=t("v2_entries"),
+            ))
+        fig.update_layout(
+            height=200, margin=dict(l=0, r=0, t=6, b=0),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(showgrid=False, color=muted),
+            yaxis=dict(showgrid=True, gridcolor=bdr, color=muted),
+            legend=dict(orientation="h", y=1.1, font=dict(color=muted, size=11)),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig, use_container_width=True, key=f"v2_equity_{asset or 'all'}")
+
+        # Métriques synthétiques inline
+        if len(eq_df) >= 5:
+            init = float(eq_df["equity"].iloc[0])
+            final = float(eq_df["equity"].iloc[-1])
+            total_ret = (final - init) / init
+            rets = eq_df["equity"].pct_change().dropna()
+            sharpe = float(rets.mean() / rets.std() * (365 * 96) ** 0.5) if rets.std() > 0 else 0.0
+            cummax = eq_df["equity"].cummax()
+            max_dd = float(((eq_df["equity"] - cummax) / cummax).min())
+            col_r, col_s, col_d = st.columns(3)
+            col_r.metric(t("v2_total_ret"),  f"{total_ret:+.2%}")
+            col_s.metric(t("v2_sharpe"),     f"{sharpe:.2f}")
+            col_d.metric(t("v2_max_dd"),     f"{max_dd:.2%}")
+
+
 def render_portfolio(portfolio: dict):
     """Portefeuille paper en cartes Bootstrap-like avec Font Awesome."""
     theme   = _get_theme()
@@ -4517,6 +4682,7 @@ def main():
                 _pf = _get_portfolio(asset=asset)   # portefeuille isolé pour cet actif
                 render_portfolio(_pf)
                 render_climate_metrics(_lc)
+                render_v2_quant_state(asset)
                 col_dec, col_chart = st.columns([1, 1], gap="medium")
                 with col_dec:
                     render_last_decision(_lc)

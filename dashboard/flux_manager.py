@@ -254,7 +254,23 @@ def render_pipeline_diagram(statuses: dict[str, dict]) -> None:
         s = statuses.get(flux_name, {}).get("status", "unknown")
         icon = {"ok": "OK", "error": "ERR", "timeout": "TMO",
                 "disabled": "OFF", "unknown": "?", "hold": "OK"}.get(s, "?")
-        return f"{short}\\n[{icon}]"
+        return short + "\\n[" + icon + "]"
+
+    # Pré-calcul des labels et couleurs (backslash interdit dans les {} d'un f-string < Py3.12)
+    lbl_ol = _lbl("ohlcv_loader", "OHLCV\\nLoader")
+    lbl_fe = _lbl("features", "Features")
+    lbl_re = _lbl("regime", "Regime")
+    lbl_sm = _lbl("signal_model", "Signal\\nModel")
+    lbl_st = _lbl("strategy", "Strategie")
+    lbl_rk = _lbl("risk", "Risk\\nManager")
+    lbl_pt = _lbl("paper_trader", "Paper\\nTrader")
+    clr_ol = _color("ohlcv_loader")
+    clr_fe = _color("features")
+    clr_re = _color("regime")
+    clr_sm = _color("signal_model")
+    clr_st = _color("strategy")
+    clr_rk = _color("risk")
+    clr_pt = _color("paper_trader")
 
     dot = f"""
 digraph pipeline_v2 {{
@@ -264,13 +280,13 @@ digraph pipeline_v2 {{
     edge [color="#7986cb", arrowsize=0.8, penwidth=1.4]
 
     subgraph cluster_DATA {{
-        label="Données"
+        label="Donnees"
         style=filled
         fillcolor="#10192a"
         color="#1f77b4"
         fontcolor="#7bb8e8"
         fontname="Helvetica-Bold"
-        OL [label="{_lbl('ohlcv_loader', 'OHLCV\\nLoader')}", fillcolor="{_color('ohlcv_loader')}"]
+        OL [label="{lbl_ol}", fillcolor="{clr_ol}"]
     }}
 
     subgraph cluster_PROC {{
@@ -280,30 +296,30 @@ digraph pipeline_v2 {{
         color="#2ca02c"
         fontcolor="#7bc87b"
         fontname="Helvetica-Bold"
-        FE [label="{_lbl('features', 'Features')}", fillcolor="{_color('features')}"]
-        RE [label="{_lbl('regime', 'Régime')}", fillcolor="{_color('regime')}"]
-        SM [label="{_lbl('signal_model', 'Signal\\nModel')}", fillcolor="{_color('signal_model')}"]
+        FE [label="{lbl_fe}", fillcolor="{clr_fe}"]
+        RE [label="{lbl_re}", fillcolor="{clr_re}"]
+        SM [label="{lbl_sm}", fillcolor="{clr_sm}"]
     }}
 
     subgraph cluster_DEC {{
-        label="Décision"
+        label="Decision"
         style=filled
         fillcolor="#1a120a"
         color="#ff7f0e"
         fontcolor="#ffb87b"
         fontname="Helvetica-Bold"
-        ST [label="{_lbl('strategy', 'Stratégie')}", fillcolor="{_color('strategy')}"]
-        RK [label="{_lbl('risk', 'Risk\\nManager')}", fillcolor="{_color('risk')}"]
+        ST [label="{lbl_st}", fillcolor="{clr_st}"]
+        RK [label="{lbl_rk}", fillcolor="{clr_rk}"]
     }}
 
     subgraph cluster_EXE {{
-        label="Exécution"
+        label="Execution"
         style=filled
         fillcolor="#1a0a0a"
         color="#d62728"
         fontcolor="#e87b7b"
         fontname="Helvetica-Bold"
-        PT [label="{_lbl('paper_trader', 'Paper\\nTrader')}", fillcolor="{_color('paper_trader')}"]
+        PT [label="{lbl_pt}", fillcolor="{clr_pt}"]
     }}
 
     OL -> FE

@@ -82,9 +82,7 @@ RUN chmod +x ./docker/entrypoint.sh ./docker/healthcheck.sh ./docker/watchdog.sh
 
 # Créer les répertoires persistables (montés en volumes)
 RUN mkdir -p /app/logs /app/storage /data && \
-    chown -R atlas:atlas /app /data /home/atlas
-
-# Exposer le port Streamlit
+    chown -R atlas:atlas /app /data
 EXPOSE 8501
 
 # Healthcheck sur le dashboard

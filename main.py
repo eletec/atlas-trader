@@ -70,36 +70,63 @@ def run_single_cycle(asset: str, trigger: str = "scheduled") -> dict:
     return run_cycle(asset=asset, trigger=trigger)
 
 
-def daemon_loop(asset: str, interval_s: int) -> None:
-    """Boucle principale : cycle quant toutes les interval_s secondes."""
+def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
+    """Boucle principale : cycle quant toutes les interval_s secondes.
+
+    Si cfg contient project.active_assets, tourne sur tous les actifs configurés.
+    Sinon, tourne sur asset uniquement.
+    """
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
 
-    logger.info(f"Daemon V2 demarree — asset={asset} | intervalle={interval_s}s")
-    consecutive_errors = 0
+    active_assets = (cfg or {}).get("project", {}).get("active_assets", [asset])
+    if not active_assets:
+        active_assets = [asset]
+
+    logger.info(
+        f"Daemon V2 démarré — actifs={active_assets} | intervalle={interval_s}s"
+    )
+    # Compteur d'erreurs par actif — un actif qui échoue systématiquement
+    # (ex: forex non disponible sur Binance) est mis en quarantaine.
+    asset_errors: dict[str, int] = {a: 0 for a in active_assets}
+    _QUARANTINE_AFTER = 3  # erreurs consécutives → mise en quarantaine
 
     while True:
         t0 = time.time()
-        try:
-            result = run_single_cycle(asset=asset, trigger="scheduled")
-            consecutive_errors = 0
-            action = result.get("action", "flat").upper()
-            capital = result.get("capital", 0)
-            logger.info(f"Cycle OK — action={action} | capital={capital:.0f}$")
-        except KeyboardInterrupt:
-            logger.info("Arret par KeyboardInterrupt.")
-            break
-        except Exception as exc:
-            consecutive_errors += 1
-            logger.error(f"Erreur cycle #{consecutive_errors}: {exc}")
-            logger.debug(traceback.format_exc())
-            if consecutive_errors >= 10:
-                logger.critical("10 erreurs consecutives — arret daemon.")
-                sys.exit(1)
+        for sym in active_assets:
+            if asset_errors.get(sym, 0) >= _QUARANTINE_AFTER:
+                logger.debug(f"Actif {sym} en quarantaine ({asset_errors[sym]} erreurs) — ignoré.")
+                continue
+            try:
+                result = run_single_cycle(asset=sym, trigger="scheduled")
+                asset_errors[sym] = 0  # reset sur succès
+                action = result.get("action", "flat").upper()
+                capital = result.get("capital", 0)
+                logger.info(
+                    f"Cycle OK — asset={sym} action={action} capital={capital:.0f}$"
+                )
+            except KeyboardInterrupt:
+                logger.info("Arrêt par KeyboardInterrupt.")
+                return
+            except Exception as exc:
+                asset_errors[sym] = asset_errors.get(sym, 0) + 1
+                logger.error(
+                    f"Erreur cycle {sym} (tentative {asset_errors[sym]}): {exc}"
+                )
+                logger.debug(traceback.format_exc())
+                if asset_errors[sym] == _QUARANTINE_AFTER:
+                    logger.warning(
+                        f"Actif {sym} mis en quarantaine après {_QUARANTINE_AFTER} erreurs."
+                    )
+
+        # Arrêt si TOUS les actifs sont en quarantaine
+        if all(asset_errors.get(a, 0) >= _QUARANTINE_AFTER for a in active_assets):
+            logger.critical("Tous les actifs en quarantaine — arrêt daemon.")
+            sys.exit(1)
 
         elapsed = time.time() - t0
         wait = max(0.0, interval_s - elapsed)
-        logger.debug(f"Prochaine execution dans {wait:.0f}s")
+        logger.debug(f"Prochain cycle dans {wait:.0f}s (durée actuelle={elapsed:.0f}s)")
         time.sleep(wait)
 
 
@@ -189,7 +216,7 @@ def main(argv=None) -> int:
         return 0
 
     if args.daemon:
-        daemon_loop(asset=asset, interval_s=interval_s)
+        daemon_loop(asset=asset, interval_s=interval_s, cfg=cfg)
         return 0
 
     if args.backtest:

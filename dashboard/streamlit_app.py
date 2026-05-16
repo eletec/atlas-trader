@@ -1165,6 +1165,16 @@ def render_climate_metrics(last_cycle: dict | None):
             time_ago = f"{diff} min" if diff < 60 else f"{diff // 60} h"
         except Exception:
             pass
+    # Fallback V2 : si pas de cycle V1 récent (<2h), lire v2_state.updated_at
+    if time_ago == "—" or (ts and (datetime.utcnow() - datetime.fromisoformat(ts)).total_seconds() > 7200):
+        try:
+            from storage.database import get_v2_state as _gv2s
+            _v2 = _gv2s()
+            if _v2 and _v2.get("updated_at"):
+                _diff2 = int((datetime.utcnow() - datetime.fromisoformat(_v2["updated_at"])).total_seconds() / 60)
+                time_ago = ("V2 " + (f"{_diff2} min" if _diff2 < 60 else f"{_diff2 // 60} h"))
+        except Exception:
+            pass
 
     # Indicateur propre à l'asset :
     #  - ⟳ en cours  : lock actif pour cet asset

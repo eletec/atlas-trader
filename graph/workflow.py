@@ -294,15 +294,16 @@ class LiveRunner:
 
 
 # ===========================================================
-# SINGLETON + API PUBLIQUE
+# REGISTRE PAR ACTIF + API PUBLIQUE
 # ===========================================================
 
-_runner: Optional[LiveRunner] = None
+_runners: dict[str, "LiveRunner"] = {}
 
 
-def _get_runner(asset: str) -> LiveRunner:
-    global _runner
-    if _runner is None or _runner.symbol != asset:
+def _get_runner(asset: str) -> "LiveRunner":
+    """Retourne (ou crée) le LiveRunner pour cet actif."""
+    global _runners
+    if asset not in _runners:
         try:
             from utils.config import load_settings
             cfg = load_settings()
@@ -317,17 +318,17 @@ def _get_runner(asset: str) -> LiveRunner:
             p_dn_threshold=qcfg.get("p_dn_threshold", 0.45),
             initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
         )
-        _runner = LiveRunner(
+        _runners[asset] = LiveRunner(
             symbol=asset,
             timeframe=qcfg.get("timeframe", "15m"),
             history_days=qcfg.get("history_days", 90),
             train_fraction=qcfg.get("train_fraction", 0.70),
             config=pipe_cfg,
         )
-    return _runner
+    return _runners[asset]
 
 
 def run_cycle(asset: str = _DEFAULT_SYMBOL, trigger: str = "scheduled") -> dict:
-    """Point d entrée principal du daemon. Appelé toutes les 15min par main.py."""
+    """Point d'entrée principal du daemon. Appelé toutes les 15min par main.py."""
     runner = _get_runner(asset)
     return runner.step(trigger=trigger)

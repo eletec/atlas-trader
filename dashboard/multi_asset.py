@@ -145,7 +145,7 @@ def render_global_overview() -> None:
         <thead><tr style="border-bottom:1px solid #444;font-size:12px;opacity:.6;">
           <th style="padding:4px 10px;text-align:left;">{t('col_asset')}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_signal')}</th>
-          <th style="padding:4px 10px;text-align:left;">{t('col_score')}</th>
+          <th style="padding:4px 10px;text-align:left;">{"Direction V2" if is_v2 else t('col_score')}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_timestamp')}</th>
           <th style="padding:4px 10px;text-align:left;">{extra_hdr}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_session')}</th>

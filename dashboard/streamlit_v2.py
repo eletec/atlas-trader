@@ -471,6 +471,66 @@ with st.expander("⚙️ Configuration Quant (Admin)", expanded=False):
             except Exception as _e:
                 st.error(f"Erreur sauvegarde : {_e}")
 
+# ===========================================================
+# SECTION 7 — MULTI-ACTIFS (Phase 5)
+# ===========================================================
+with st.expander("🌐 Multi-Actifs — Vue consolidée", expanded=False):
+    try:
+        from dashboard.multi_asset import render_global_overview
+        render_global_overview()
+    except Exception as _ma_exc:
+        st.info(f"Vue multi-actifs indisponible : {_ma_exc}")
+
+st.divider()
+
+# ===========================================================
+# SECTION 8 — VALIDATION PHASE 4 (résultats walk-forward cached)
+# ===========================================================
+with st.expander("🔬 Validation Phase 4 — Derniers résultats WF", expanded=False):
+    @st.cache_data(ttl=3600)
+    def _load_wf_result():
+        try:
+            from quant.walkforward import run_walkforward
+            from quant.config import get_quant_cfg
+            qcfg = get_quant_cfg()
+            return run_walkforward(
+                symbol=qcfg.symbol,
+                timeframe=qcfg.timeframe,
+                total_days=max(qcfg.wf_max_folds * qcfg.wf_train_days + qcfg.wf_test_days, 420),
+                verbose=False,
+            )
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    _wf = _load_wf_result()
+    if _wf is None or "error" in (_wf or {}):
+        st.warning("Walk-forward non disponible (données insuffisantes ou erreur).")
+        if _wf:
+            st.caption(str(_wf.get("error", "")))
+    else:
+        _wf_df = _wf.get("folds")
+        if _wf_df is not None and not _wf_df.empty:
+            col_wf1, col_wf2, col_wf3, col_wf4 = st.columns(4)
+            col_wf1.metric("Sharpe médian OOS", f"{_wf.get('sharpe_median', 0):.2f}")
+            col_wf2.metric("Profit factor moyen", f"{_wf.get('profit_factor_mean', 0):.2f}")
+            col_wf3.metric("p-value permutation", f"{_wf.get('p_value', 1):.3f}")
+            col_wf4.metric(
+                "Verdict",
+                "✓ GO-LIVE" if _wf.get("pass_criteria") else "✗ PAPER",
+            )
+            st.dataframe(
+                _wf_df[["fold", "test_start", "test_end", "sharpe", "total_return",
+                         "max_dd", "win_rate", "n_trades"]].rename(columns={
+                    "fold": "#", "test_start": "Début OOS", "test_end": "Fin OOS",
+                    "sharpe": "Sharpe", "total_return": "Rdt", "max_dd": "DD max",
+                    "win_rate": "WR", "n_trades": "Trades",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Résultats walk-forward vides.")
+
 
 st.markdown(
     '<div style="color:#374151; font-size:0.7rem; text-align:center; margin-top:20px">'

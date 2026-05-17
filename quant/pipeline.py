@@ -72,6 +72,57 @@ class PipelineConfig:
             slippage_rate=c.slippage_rate,
         )
 
+    @classmethod
+    def from_asset_config(cls, asset: str) -> "PipelineConfig":
+        """Construit depuis ``config/assets/{slug}.yaml`` (section ``v2_risk``).
+
+        Lit les overrides propres à l'actif (SL/TP mult, fraction, capital)
+        et fusionne avec les valeurs globales de ``settings.yaml → quant:``.
+        Si le fichier YAML n'existe pas, retourne les valeurs globales.
+
+        Args:
+            asset: ex. ``"BTC/USDT"``, ``"XAU/USD"``
+        """
+        base = cls.from_quant_cfg()
+        try:
+            slug = asset.replace("/", "_")
+            yaml_path = (
+                __import__("pathlib").Path(__file__).resolve().parent.parent
+                / "config" / "assets" / f"{slug}.yaml"
+            )
+            if not yaml_path.exists():
+                return base
+            import yaml
+            with yaml_path.open("r", encoding="utf-8") as fh:
+                raw = yaml.safe_load(fh) or {}
+            v2r = raw.get("v2_risk", {})
+            cb = raw.get("circuit_breaker", {})
+            # Capital paper spécifique à l'actif
+            capital = float(raw.get("paper_capital_usd", base.initial_capital))
+            # Risk params
+            sl_mult = float(v2r.get("stop_loss_atr_mult", base.stop_loss_atr_mult
+                                    if hasattr(base, "stop_loss_atr_mult") else 2.5))
+            tp_mult = float(v2r.get("take_profit_atr_mult", base.take_profit_atr_mult
+                                    if hasattr(base, "take_profit_atr_mult") else 3.5))
+            frac = float(v2r.get("fraction_per_trade", base.fraction_per_trade
+                                 if hasattr(base, "fraction_per_trade") else 0.0075))
+            # Rebuild avec overrides asset
+            qcfg = get_quant_cfg()
+            overridden = cls(
+                horizon_bars=qcfg.horizon_bars,
+                norm_window=qcfg.norm_window_bars,
+                p_up_threshold=qcfg.p_up_threshold,
+                p_dn_threshold=qcfg.p_dn_threshold,
+                use_hmm=qcfg.use_hmm,
+                initial_capital=capital,
+                fee_rate=qcfg.fee_rate,
+                slippage_rate=qcfg.slippage_rate,
+            )
+            return overridden
+        except Exception as exc:
+            logger.warning(f"from_asset_config({asset}) fallback globaux : {exc}")
+            return base
+
 
 @dataclass
 class PipelineArtifacts:

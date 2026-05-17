@@ -36,6 +36,9 @@ def parse_args() -> argparse.Namespace:
     group.add_argument("--dashboard", action="store_true", help="Lance le dashboard V2")
     group.add_argument("--backtest", action="store_true", help="Backtest OOS complet")
     group.add_argument("--walkforward", action="store_true", help="Walk-forward 6m/3m")
+    group.add_argument("--validate", action="store_true", help="Validation Phase 4 complete (PBO, MC, stress)")
+    group.add_argument("--multi-asset", action="store_true", dest="multi_asset",
+                       help="Walk-forward sur tous les actifs actifs")
     parser.add_argument("--interval", type=int, default=None, help="Intervalle secondes (override)")
     parser.add_argument("--asset", type=str, default=None, help="Actif (ex: BTC/USDT)")
     parser.add_argument("--days", type=int, default=90, help="Historique en jours")
@@ -168,26 +171,36 @@ def cmd_backtest(asset: str, days: int) -> int:
 
 def cmd_walkforward(asset: str, days: int) -> int:
     """Walk-forward 6m train / 3m test."""
-    from quant.data_loader import fetch_history
-    from quant.pipeline import run_pipeline, PipelineConfig
-    from quant.validation import walk_forward_split
+    from quant.walkforward import run_walkforward
+
+    result = run_walkforward(symbol=asset, timeframe="5m", total_days=max(days, 420))
+    return 0 if result is not None else 1
+
+
+def cmd_validate(asset: str, days: int) -> int:
+    """Validation Phase 4 complete : WF + PBO + Monte Carlo + Stress tests."""
+    from quant.validation import run_full_validation
+
+    result = run_full_validation(
+        symbol=asset,
+        timeframe="5m",
+        total_days=max(days, 420),
+        n_mc_perms=5_000,
+        verbose=True,
+    )
+    return 0 if result.get("pass_all") else 2
+
+
+def cmd_multi_asset(days: int) -> int:
+    """Walk-forward sur tous les actifs actifs — tableau comparatif."""
+    from quant.multi_asset_runner import run_all_assets
     import pandas as pd
 
-    ohlcv = fetch_history(symbol=asset, timeframe="15m", days=days)
-    folds = list(walk_forward_split(ohlcv.index, train_months=6, test_months=3))
-    if not folds:
-        logger.error("Historique insuffisant pour walk-forward 6m/3m.")
+    df = run_all_assets(timeframe="5m", total_days=max(days, 420))
+    if df.empty:
+        logger.error("Aucun résultat — vérifier active_assets dans settings.yaml.")
         return 1
-    rows = []
-    for k, (train_idx, test_idx) in enumerate(folds, 1):
-        logger.info(f"Fold {k}/{len(folds)}")
-        arts = run_pipeline(ohlcv, train_idx, test_idx, PipelineConfig(use_hmm=False))
-        m = arts.backtest.metrics
-        rows.append({"fold": k, "sharpe": m["sharpe"], "ret": m["total_return"],
-                     "dd": m["max_dd"], "n_trades": len(arts.backtest.trades)})
-    df = pd.DataFrame(rows)
-    logger.info("=== Walk-forward ===\n" + df.to_string(index=False))
-    logger.info(f"Sharpe moyen: {df['sharpe'].mean():.2f} | Ret moyen: {df['ret'].mean():.2%}")
+    logger.info("\n=== Résultats Multi-Actifs ===\n" + df.to_string(index=False))
     return 0
 
 
@@ -235,7 +248,13 @@ def main(argv=None) -> int:
         return cmd_backtest(asset=asset, days=args.days)
 
     if args.walkforward:
-        return cmd_walkforward(asset=asset, days=max(args.days, 540))
+        return cmd_walkforward(asset=asset, days=args.days)
+
+    if args.validate:
+        return cmd_validate(asset=asset, days=args.days)
+
+    if args.multi_asset:
+        return cmd_multi_asset(days=args.days)
 
     return 1
 

@@ -1085,21 +1085,25 @@ def render_climate_metrics(last_cycle: dict | None):
     ts     = last_cycle.get("timestamp", "") if last_cycle else ""
     asset  = (last_cycle.get("asset", "") if last_cycle else "").replace("/", "_")
 
+    # Fallback V2 : si aucune donnée V1, lire v2_state pour action + timestamp
+    if action == "—":
+        try:
+            from storage.database import get_v2_state as _gv2s
+            _v2 = _gv2s()
+            if _v2:
+                _v2_raw = (_v2.get("action") or "flat").upper()
+                action = _v2_raw  # LONG / SHORT / FLAT
+                ts = _v2.get("updated_at", "")
+                if not asset:
+                    asset = (_v2.get("asset", "")).replace("/", "_")
+        except Exception:
+            pass
+
     time_ago = "—"
     if ts:
         try:
             diff = int((datetime.utcnow() - datetime.fromisoformat(ts)).total_seconds() / 60)
-            time_ago = f"{diff} min" if diff < 60 else f"{diff // 60} h"
-        except Exception:
-            pass
-    # Fallback V2 : si pas de cycle V1 récent (<2h), lire v2_state.updated_at
-    if time_ago == "—" or (ts and (datetime.utcnow() - datetime.fromisoformat(ts)).total_seconds() > 7200):
-        try:
-            from storage.database import get_v2_state as _gv2s
-            _v2 = _gv2s()
-            if _v2 and _v2.get("updated_at"):
-                _diff2 = int((datetime.utcnow() - datetime.fromisoformat(_v2["updated_at"])).total_seconds() / 60)
-                time_ago = ("V2 " + (f"{_diff2} min" if _diff2 < 60 else f"{_diff2 // 60} h"))
+            time_ago = f"V2 {diff} min" if diff < 60 else f"V2 {diff // 60} h"
         except Exception:
             pass
 
@@ -1152,9 +1156,12 @@ def render_climate_metrics(last_cycle: dict | None):
                 )
 
     act_map = {
-        "BUY":  ("#2ecc71", "fas fa-arrow-trend-up"),
-        "SELL": ("#e74c3c", "fas fa-arrow-trend-down"),
-        "HOLD": ("#f39c12", "fas fa-hand"),
+        "BUY":   ("#2ecc71", "fas fa-arrow-trend-up"),
+        "SELL":  ("#e74c3c", "fas fa-arrow-trend-down"),
+        "HOLD":  ("#f39c12", "fas fa-hand"),
+        "LONG":  ("#2ecc71", "fas fa-arrow-trend-up"),
+        "SHORT": ("#e74c3c", "fas fa-arrow-trend-down"),
+        "FLAT":  ("#888888", "fas fa-minus"),
     }
     act_color, act_fa = act_map.get(action, ("#aaa", "fas fa-minus"))
 
@@ -2261,7 +2268,7 @@ def render_trades_list_sortable(trades: list[dict]):
 def render_last_decision(last_cycle: dict | None):
     """Affiche la dernière décision V2 (depuis v2_state, pas la table V1 decisions)."""
     st.markdown('<div style="margin-top:24px;"></div>', unsafe_allow_html=True)
-    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-robot" style="margin-right:8px;color:#7986cb;"></i>{t("last_decision_title")}</h3>', unsafe_allow_html=True)
+    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-chart-bar" style="margin-right:8px;color:#7986cb;"></i>{t("last_decision_title")}</h3>', unsafe_allow_html=True)
 
     # V2 : lire directement v2_state (la table decisions V1 n'est plus alimentée)
     try:

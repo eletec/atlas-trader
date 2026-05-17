@@ -21,10 +21,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "Portefeuille", "zh": "投资组合",
     },
     "last_decision_title": {
-        "fr": "Dernière décision IA", "en": "Latest AI Decision",
-        "de": "Letzte KI-Entscheidung", "es": "Última decisión IA",
-        "it": "Ultima decisione IA", "pt": "Última decisão IA",
-        "nl": "Laatste AI-beslissing", "zh": "最新AI决策",
+        "fr": "Dernière décision", "en": "Latest Decision",
+        "de": "Letzte Entscheidung", "es": "Última decisión",
+        "it": "Ultima decisione", "pt": "Última decisão",
+        "nl": "Laatste beslissing", "zh": "最新决策",
     },
     "btc_live_title": {
         "fr": "BTC Live — Positions ouvertes", "en": "BTC Live — Open Positions",

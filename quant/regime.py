@@ -28,6 +28,14 @@ except ImportError:
     logger.warning("hmmlearn indisponible — fallback ADX+vol_of_vol activé.")
 
 
+def _rgcfg(key: str, fallback):
+    try:
+        from quant.config import get_quant_cfg
+        return getattr(get_quant_cfg(), key)
+    except Exception:
+        return fallback
+
+
 @dataclass
 class RegimeDetector:
     """Détecteur de régime 2 états.
@@ -52,14 +60,6 @@ class RegimeDetector:
     _prev_trending_state: int | None = field(default=None, init=False, repr=False)  # P1.4
     _prev_panic_state: int | None = field(default=None, init=False, repr=False)     # P1.4
     _vov_chaos_threshold: float = field(default=float("inf"), init=False, repr=False)
-
-
-def _rgcfg(key: str, fallback):
-    try:
-        from quant.config import get_quant_cfg
-        return getattr(get_quant_cfg(), key)
-    except Exception:
-        return fallback
 
     def fit(self, features: pd.DataFrame) -> "RegimeDetector":
         """Entraîne sur la fenêtre TRAIN. Aucune donnée OOS ne doit transiter ici."""

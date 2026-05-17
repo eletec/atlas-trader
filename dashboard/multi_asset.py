@@ -76,7 +76,7 @@ def render_global_overview() -> None:
     import streamlit as st
 
     try:
-        from storage.database import get_v2_assets_summary, get_assets_summary
+        from storage.database import get_v2_assets_summary, get_assets_summary, get_connection
         from utils.session import MarketSession
         db_rows = get_v2_assets_summary()
         is_v2 = bool(db_rows)
@@ -85,6 +85,18 @@ def render_global_overview() -> None:
     except Exception as exc:
         st.warning(f'{t("global_data_unavailable")} : {exc}')
         return
+
+    # prob_up par actif depuis les lignes per-asset de v2_state (id=hash(asset)+100)
+    _prob_up_by_asset: dict[str, float] = {}
+    if is_v2:
+        try:
+            with get_connection() as _conn:
+                _pu_rows = _conn.execute(
+                    "SELECT asset, prob_up FROM v2_state WHERE id >= 100 AND prob_up IS NOT NULL"
+                ).fetchall()
+                _prob_up_by_asset = {r["asset"]: float(r["prob_up"]) for r in _pu_rows}
+        except Exception:
+            pass
 
     db_by_asset = {r["asset"]: r for r in db_rows}
     all_assets = _active_assets()
@@ -106,7 +118,8 @@ def render_global_overview() -> None:
         # V2 : direction basée sur l'action (LONG=75, SHORT=25, FLAT=50)
         # V1 fallback : score 0-100 depuis decisions
         if is_v2:
-            score = _ACTION_TO_DIR.get(action, 50)
+            _pu = _prob_up_by_asset.get(asset)
+            score = round(float(_pu) * 100) if _pu is not None else _ACTION_TO_DIR.get(action, 50)
         else:
             score = float(r.get("score") or 50)
         ts    = (r.get("ts") or r.get("timestamp") or "")[:16]

@@ -429,12 +429,38 @@ class LiveRunner:
 
     def _persist(self, **kwargs):
         try:
-            from storage.database import write_v2_state, append_v2_equity
+            from storage.database import write_v2_state, append_v2_equity, get_connection
+            from datetime import datetime as _dt
             write_v2_state(**kwargs, capital=round(self._capital, 2),
                            model_fit_at=self._model_fit_at)
             append_v2_equity(ts=kwargs["bar_ts"], asset=kwargs["asset"],
                              equity=round(self._capital, 2), action=kwargs["action"],
                              close_price=kwargs["close_price"])
+            # Ligne par-actif dans v2_state (id basé sur hash) — pour Direction V2 multi-asset
+            _asset = kwargs["asset"]
+            _asset_id = abs(hash(_asset)) % 999_900 + 100
+            with get_connection() as _conn:
+                _conn.execute(
+                    """
+                    INSERT INTO v2_state
+                        (id, updated_at, asset, bar_ts, close_price, regime, prob_up,
+                         action, reason, atr_14, capital, model_fit_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        updated_at=excluded.updated_at, asset=excluded.asset,
+                        bar_ts=excluded.bar_ts, close_price=excluded.close_price,
+                        regime=excluded.regime, prob_up=excluded.prob_up,
+                        action=excluded.action, reason=excluded.reason,
+                        atr_14=excluded.atr_14, capital=excluded.capital,
+                        model_fit_at=excluded.model_fit_at
+                    """,
+                    (_asset_id, _dt.utcnow().isoformat(), _asset,
+                     kwargs.get("bar_ts"), kwargs.get("close_price"),
+                     kwargs.get("regime"), kwargs.get("prob_up"),
+                     kwargs.get("action"), kwargs.get("reason"),
+                     kwargs.get("atr_14"), round(self._capital, 2), self._model_fit_at)
+                )
+                _conn.commit()
         except Exception as exc:
             logger.warning(f"Persist V2 state failed: {exc}")
 

@@ -39,7 +39,7 @@ from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
 from quant.regime import RegimeDetector
 from quant.risk import Position, RiskManager, RiskParams
 from quant.signal_model import SignalModel
-from quant.strategy import Action, decide
+from quant.strategy import Action, decide, decide_range
 
 
 def _wf_qcfg():
@@ -91,6 +91,7 @@ class LiveRunner:
         self._position_entry_ts = None
         self._ohlcv_1h = None          # D.1 : données 1h pour filtre multi-TF
         self._risk_manager = RiskManager(RiskParams())
+        self._risk_manager_range: RiskManager | None = None   # initialisé après chargement config
         self._capital = 10_000.0
         self._n_trades = 0
         self._wins = 0
@@ -213,6 +214,7 @@ class LiveRunner:
         regime_series = self._regime.predict(feats_all) if self._regime else pd.Series([np.nan])
         regime_val = regime_series.iloc[-1] if len(regime_series) else np.nan
         regime_trending = bool(regime_val == 1.0) if pd.notna(regime_val) else False
+        regime_ranging  = bool(regime_val == 0.5) if pd.notna(regime_val) else False
 
         prob_up = None
         if self._model is not None:
@@ -229,6 +231,21 @@ class LiveRunner:
             upper_threshold=self.cfg.p_up_threshold,
             lower_threshold=self.cfg.p_dn_threshold,
         )
+
+        # Stratégie mean-reverting en régime RANGE (consensus 3 IA)
+        # Si le signal directionnel est FLAT (pas en TREND), tenter une entrée range
+        if decision.action == Action.FLAT and regime_ranging:
+            qcfg = _wf_qcfg()
+            bb_pb   = feats_raw["bb_pct_b"].iloc[-1]  if "bb_pct_b"    in feats_raw.columns else None
+            vwap_d  = feats_raw["vwap_dist_20"].iloc[-1] if "vwap_dist_20" in feats_raw.columns else None
+            decision = decide_range(
+                bb_pct_b=float(bb_pb)  if bb_pb  is not None and pd.notna(bb_pb)  else None,
+                vwap_dist=float(vwap_d) if vwap_d is not None and pd.notna(vwap_d) else None,
+                prob_up=prob_up,
+                bb_long_threshold=getattr(qcfg, "range_bb_long_threshold",  0.10),
+                bb_short_threshold=getattr(qcfg, "range_bb_short_threshold", 0.90),
+                vwap_conf=getattr(qcfg, "range_vwap_conf", 0.30),
+            )
 
         latest_bar = ohlcv.iloc[-1]
         bar_ts = str(ohlcv.index[-1])
@@ -290,8 +307,11 @@ class LiveRunner:
                 and vol_ratio >= 0.70
                 and not trend_1h_veto):   # D.1 filtre 1h
             side = decision.action.value
+            is_range_trade = decision.reason.startswith("range_mean_revert")
+            # Utiliser le RiskManager range (SL/TP/fraction réduits) pour les trades mean-reverting
+            risk_mgr = self._risk_manager_range if (is_range_trade and self._risk_manager_range) else self._risk_manager
             try:
-                pos = self._risk_manager.compute_position(
+                pos = risk_mgr.compute_position(
                     side=side, entry_price=close_price,
                     atr_value=atr_14, capital=self._capital,
                 )
@@ -299,7 +319,8 @@ class LiveRunner:
                 self._position = pos
                 self._position_entry_ts = bar_ts
                 self._n_trades += 1
-                logger.info(f"ENTRÉE {side.upper()} @ {close_price:.2f} | SL={pos.stop_loss:.2f} TP={pos.take_profit:.2f}")
+                mode_label = "RANGE-MR" if is_range_trade else "TREND"
+                logger.info(f"ENTRÉE {side.upper()} [{mode_label}] @ {close_price:.2f} | SL={pos.stop_loss:.2f} TP={pos.take_profit:.2f}")
             except Exception as exc:
                 logger.warning(f"Entrée ignorée: {exc}")
 
@@ -315,10 +336,11 @@ class LiveRunner:
         )
 
         cycle_ms = int((time.time() - t0) * 1000)
+        regime_label = "TREND" if regime_trending else ("RANGE" if regime_ranging else "PANIC")
         logger.info(
-            f"[V2] {bar_ts[:16]} | {'TREND' if regime_trending else 'RANG'} | "
+            f"[V2] {bar_ts[:16]} | {regime_label} | "
             f"P(up)={f'{prob_up:.3f}' if prob_up is not None else 'N/A'} | "
-            f"{decision.action.value.upper()} | capital={self._capital:.0f}$ | {cycle_ms}ms"
+            f"{decision.action.value.upper()}({decision.reason}) | capital={self._capital:.0f}$ | {cycle_ms}ms"
         )
         return {
             "cycle_id": f"v2_{int(time.time())}",
@@ -396,6 +418,27 @@ class LiveRunner:
 _runners: dict[str, "LiveRunner"] = {}
 
 
+def _load_asset_v2_config(asset: str) -> dict:
+    """Charge la section v2_risk: du fichier config/assets/{slug}.yaml.
+
+    Retourne un dict vide si le fichier n'existe pas ou si v2_risk est absent.
+    Permet de surcharger les params risk par actif sans toucher settings.yaml.
+    """
+    slug = asset.replace("/", "_")
+    from pathlib import Path
+    import yaml as _yaml
+    path = Path(__file__).parent.parent / "config" / "assets" / f"{slug}.yaml"
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = _yaml.safe_load(f) or {}
+        return data.get("v2_risk", {})
+    except Exception as exc:
+        logger.warning(f"Erreur lecture config assets/{slug}.yaml: {exc}")
+        return {}
+
+
 def _runner_fingerprint(qcfg: dict) -> tuple:
     """Empreinte des paramètres structurels — changement → recréation du runner."""
     return (
@@ -453,7 +496,7 @@ def _get_runner(asset: str) -> "LiveRunner":
         p_dn_threshold=float(qcfg.get("p_dn_threshold", 0.42)),
         initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
     )
-    _runners[asset] = LiveRunner(
+    runner = LiveRunner(
         symbol=asset,
         timeframe=qcfg.get("timeframe", _DEFAULT_TF()),
         history_days=qcfg.get("history_days", _HISTORY_DAYS()),
@@ -461,6 +504,38 @@ def _get_runner(asset: str) -> "LiveRunner":
         config=pipe_cfg,
         refit_interval_s=int(qcfg.get("refit_interval_hours", 168)) * 3600,
     )
+
+    # Override des paramètres risk par actif depuis config/assets/{slug}.yaml → v2_risk:
+    asset_v2 = _load_asset_v2_config(asset)
+    if asset_v2:
+        p = runner._risk_manager.params
+        if "stop_loss_atr_mult"    in asset_v2: p.stop_loss_atr_mult    = float(asset_v2["stop_loss_atr_mult"])
+        if "take_profit_atr_mult"  in asset_v2: p.take_profit_atr_mult  = float(asset_v2["take_profit_atr_mult"])
+        if "fraction_per_trade"    in asset_v2: p.fraction_per_trade    = float(asset_v2["fraction_per_trade"])
+        logger.info(f"[config] {asset} v2_risk override: SL×{p.stop_loss_atr_mult} TP×{p.take_profit_atr_mult} f={p.fraction_per_trade:.4f}")
+        # RiskManager dédié au mode mean-reverting RANGE (SL/TP réduits)
+        qc = _wf_qcfg()
+        sl_r  = float(asset_v2.get("range_sl_atr_mult",   getattr(qc, "range_sl_atr_mult",   1.5)))
+        tp_r  = float(asset_v2.get("range_tp_atr_mult",   getattr(qc, "range_tp_atr_mult",   1.5)))
+        fmult = float(asset_v2.get("range_fraction_mult", getattr(qc, "range_fraction_mult", 0.5)))
+        range_params = RiskParams(
+            stop_loss_atr_mult=sl_r,
+            take_profit_atr_mult=tp_r,
+            fraction_per_trade=p.fraction_per_trade * fmult,
+        )
+        runner._risk_manager_range = RiskManager(range_params)
+    else:
+        # Pas de config par actif — range manager basé sur les defaults globaux
+        qc = _wf_qcfg()
+        base_f = runner._risk_manager.params.fraction_per_trade
+        range_params = RiskParams(
+            stop_loss_atr_mult=getattr(qc, "range_sl_atr_mult", 1.5),
+            take_profit_atr_mult=getattr(qc, "range_tp_atr_mult", 1.5),
+            fraction_per_trade=base_f * getattr(qc, "range_fraction_mult", 0.5),
+        )
+        runner._risk_manager_range = RiskManager(range_params)
+
+    _runners[asset] = runner
     return _runners[asset]
 
 

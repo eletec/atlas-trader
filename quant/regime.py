@@ -66,7 +66,16 @@ def _rgcfg(key: str, fallback):
         return self._fit_threshold(features)
 
     def _fit_hmm(self, features: pd.DataFrame) -> "RegimeDetector":
-        x = features[["log_return_1", "atr_pct"]].dropna()
+        # Sélection conditionnelle des features HMM (Grok + GPT : 4 features si dispo)
+        hmm_cols = ["log_return_1", "atr_pct"]
+        extra_cols = ["adx_14", "vol_of_vol_20"]
+        if all(c in features.columns for c in extra_cols):
+            n_extra = min(features[c].notna().sum() for c in extra_cols)
+            if n_extra >= 300:
+                hmm_cols = hmm_cols + extra_cols
+        self._hmm_feature_cols = hmm_cols
+
+        x = features[hmm_cols].dropna()
         if len(x) < 200:
             logger.warning(f"Données HMM insuffisantes ({len(x)}), fallback threshold.")
             return self._fit_threshold(features)
@@ -152,7 +161,8 @@ def _rgcfg(key: str, fallback):
         return out
 
     def _predict_hmm(self, features: pd.DataFrame) -> pd.Series:
-        x_full = features[["log_return_1", "atr_pct"]]
+        hmm_cols = getattr(self, "_hmm_feature_cols", ["log_return_1", "atr_pct"])
+        x_full = features[hmm_cols]
         valid_mask = x_full.notna().all(axis=1)
         x = x_full[valid_mask]
         if len(x) == 0:
@@ -162,18 +172,19 @@ def _rgcfg(key: str, fallback):
         trend_probs = filtered[:, self._trending_state]
         panic_probs = filtered[:, self._panic_state]
         # Hysteresis : évite les transitions trop rapides (GPT + Grok)
+        # États : 1.0=TREND, 0.5=RANGE (mean-reverting possible), 0.0=PANIC
         states = np.empty(len(x), dtype=float)
-        prev = 0.0
+        prev = 0.5      # boot en RANGE (pas PANIC) — conservateur mais pas bloquant
         for i in range(len(trend_probs)):
             pp = panic_probs[i]
             tp = trend_probs[i]
             if pp > 0.60:
-                prev = 0.0      # panic → force mean-reverting
+                prev = 0.0      # PANIC confirmé → pas de trading
             elif tp > 0.65:
-                prev = 1.0      # trending confirmé
+                prev = 1.0      # TREND confirmé → stratégie directionnelle
             elif tp < 0.35:
-                prev = 0.0      # ranging confirmé
-            # zone [0.35, 0.65] → maintient l'état précédent (inertie)
+                prev = 0.5      # RANGE confirmé → stratégie mean-reverting
+            # zone [0.35, 0.65] → inertie (maintient l'état précédent)
             states[i] = prev
         out = pd.Series(np.nan, index=features.index, dtype="float64")
         out.loc[valid_mask] = states
@@ -222,7 +233,12 @@ def _rgcfg(key: str, fallback):
     def _predict_threshold(self, features: pd.DataFrame) -> pd.Series:
         adx_ = features["adx_14"]
         vov_ = features["vol_of_vol_20"]
-        trending = ((adx_ > self.adx_threshold) & (vov_ < self.vov_threshold)).astype(float)
-        # Masque les zones où les features ne sont pas définies
-        trending = trending.where(adx_.notna() & vov_.notna())
-        return trending
+        # 3 états : 1.0=TREND, 0.5=RANGE, 0.0=PANIC
+        out = pd.Series(0.5, index=features.index, dtype="float64")   # défaut = RANGE
+        trending = (adx_ > self.adx_threshold) & (vov_ < self.vov_threshold)
+        panic = vov_ > self._vov_chaos_threshold
+        out[trending.fillna(False)] = 1.0
+        out[panic.fillna(False)] = 0.0     # PANIC écrase TREND si les deux sont vrais
+        # NaN sur valeurs manquantes
+        out[adx_.isna() | vov_.isna()] = np.nan
+        return out

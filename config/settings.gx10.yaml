@@ -419,3 +419,20 @@ quant:
   p_dn_threshold: 0.45       # Seuil P(dn) pour signal SHORT
   use_hmm: true              # hmmlearn installé sur GX10
   refit_interval_hours: 168  # Refit hebdomadaire (7 × 24h)
+  # ── Mean-reverting RANGE (activé depuis consensus 3 IA) ─────────────────
+  range_sl_atr_mult: 1.5     # SL plus serré en range (vs 2.5 en trend)
+  range_tp_atr_mult: 1.5     # TP symétrique → R:R = 1.0
+  range_fraction_mult: 0.50  # 50% du sizing trend
+  range_bb_long_threshold: 0.10   # %b < 10% → signal LONG range
+  range_bb_short_threshold: 0.90  # %b > 90% → signal SHORT range
+  range_vwap_conf: 0.30      # |vwap_dist/ATR| > 0.3 pour confirmer
+  # ── Walk-forward (durci après consensus 3 IA) ────────────────────────────
+  wf_train_days: 90          # fenêtre train
+  wf_test_days: 30           # fenêtre test OOS non-chevauchante
+  wf_step_days: 30           # pas de défilement (step = test → pas de leak)
+  wf_min_folds: 8            # minimum 8 folds (240j OOS avant validation)
+  # ── Critères go-live durcis (Grok + GPT + DeepSeek) ─────────────────────
+  go_live_sharpe_min: 0.80   # was 0.5 — trop permissif sur intraday bruité
+  go_live_pf_min: 1.30       # was 1.2
+  go_live_pvalue_max: 0.05   # was 0.10
+  go_live_positive_folds_pct: 0.65  # was 0.60

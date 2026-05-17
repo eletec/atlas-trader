@@ -83,12 +83,20 @@ class QuantConfig:
     wf_max_folds: int       = 24
     wf_perm_iter: int       = 500
 
-    # ── Critères go-live ───────────────────────────────────────────────────
-    go_live_sharpe_min: float        = 0.5
-    go_live_pf_min: float            = 1.2
+    # ── Mean-reverting RANGE trading ───────────────────────────────────────
+    range_sl_atr_mult: float       = 1.5    # SL en régime RANGE (plus serré qu'en TREND)
+    range_tp_atr_mult: float       = 1.5    # TP symétrique → R:R = 1.0
+    range_fraction_mult: float     = 0.50   # fraction du sizing TREND (50% par défaut)
+    range_bb_long_threshold: float  = 0.10  # bb_pct_b < X → signal LONG range
+    range_bb_short_threshold: float = 0.90  # bb_pct_b > X → signal SHORT range
+    range_vwap_conf: float         = 0.30   # |vwap_dist| > X pour confirmation VWAP
+
+    # ── Critères go-live (durcis après consensus 3 IA) ─────────────────────
+    go_live_sharpe_min: float        = 0.80  # was 0.5 — trop permissif sur intraday bruité
+    go_live_pf_min: float            = 1.30  # was 1.2
     go_live_trades_min: int          = 250
-    go_live_pvalue_max: float        = 0.10
-    go_live_positive_folds_pct: float = 0.60
+    go_live_pvalue_max: float        = 0.05  # was 0.10 — consensus Grok/GPT/DeepSeek
+    go_live_positive_folds_pct: float = 0.65 # was 0.60
 
     # ── Propriétés dérivées ────────────────────────────────────────────────
     @property

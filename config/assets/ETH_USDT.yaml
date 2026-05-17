@@ -2,26 +2,16 @@ asset: ETH/USDT
 exchange: binance
 testnet: true
 paper_capital_usd: 5000
-loop_interval_seconds: 900
-monitor:
-  interval_seconds: 60
-  breaking_news_threshold: 0.65
-risk:
-  mode: balanced
-  buy_threshold: 78           # relevé 74→78 (ETH WR 25% sur 8 trades — seuil haute conviction uniquement)
-  exit_threshold: 62          # relevé 52→62 : 52 ne se déclenche jamais (floor 49.5 avec market=90)
-  buy_cooldown_minutes: 120   # cooldown 2h anti-doublon
-  kelly_max_fraction: 0.2
-  position_size_pct: 4.0
-  max_open_positions: 0       # 0 = illimité (aligné sur la config globale)
-  atr_multiplier_sl: 1.8
-  atr_multiplier_tp: 3.0
-  atr_period: 14
+
+# ── Paramètres V2 (lus par graph/workflow.py) ─────────────────────────────────
+v2_risk:
+  stop_loss_atr_mult: 2.5
+  take_profit_atr_mult: 3.5
+  fraction_per_trade: 0.0060    # sizing légèrement réduit vs BTC (beta élevé ETH)
   max_drawdown_pct: 18.0
-  ma50_filter_mode: gradual
-  ma50_strong_signal_threshold: 72
-  ma50_gradual_size_factor: 0.5
-  human_in_the_loop: false
+  range_sl_atr_mult: 1.5
+  range_tp_atr_mult: 1.5
+  range_fraction_mult: 0.50
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045

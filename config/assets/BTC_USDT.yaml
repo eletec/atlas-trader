@@ -2,26 +2,18 @@ asset: BTC/USDT
 exchange: binance
 testnet: true
 paper_capital_usd: 10000
-loop_interval_seconds: 900
-monitor:
-  interval_seconds: 60
-  breaking_news_threshold: 0.65
-risk:
-  mode: balanced
-  buy_threshold: 74           # relevé 70→74 (5 trades perdants 70-73.9 — no edge confirmé mai 2026)
-  exit_threshold: 62          # relevé 52→62 : 52 ne se déclenche jamais (floor 49.5 avec market=90)
-  buy_cooldown_minutes: 120   # cooldown 2h anti-doublon (ex: trades 03:45+03:47 même signal)
-  kelly_max_fraction: 0.25
-  position_size_pct: 5.0
-  max_open_positions: 0       # 0 = illimité (aligné sur la config globale)
-  atr_multiplier_sl: 1.8
-  atr_multiplier_tp: 3.0
-  atr_period: 14
-  max_drawdown_pct: 15.0
-  ma50_filter_mode: gradual
-  ma50_strong_signal_threshold: 72
-  ma50_gradual_size_factor: 0.5
-  human_in_the_loop: false
+
+# ── Paramètres V2 (lus par graph/workflow.py) ─────────────────────────────────
+# Les anciens seuils V1 (buy_threshold, exit_threshold, scoring, agents) sont
+# supprimés — V2 décide uniquement sur P(up) + régime HMM.
+v2_risk:
+  stop_loss_atr_mult: 2.5       # SL en mode tendance (ATR × mult)
+  take_profit_atr_mult: 3.5     # TP en mode tendance → R:R = 1.4
+  fraction_per_trade: 0.0075    # 0.75% du capital par trade
+  max_drawdown_pct: 15.0        # drawdown hebdo max avant kill-switch
+  range_sl_atr_mult: 1.5        # SL mean-reverting (plus serré)
+  range_tp_atr_mult: 1.5        # TP mean-reverting (symétrique, R:R=1.0)
+  range_fraction_mult: 0.50     # 50% du sizing normal en range
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045

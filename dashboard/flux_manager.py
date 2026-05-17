@@ -89,6 +89,18 @@ CATEGORY_LABEL_KEYS = {
     "execution":  "flux_cat_execution",
 }
 
+# Correspondance flux_name → module(s) logger réel dans SQLite
+# Certains modules V2 utilisent un nom de logger différent du flux_name.
+FLUX_LOG_MODULES = {
+    "ohlcv_loader": ["zeitgeist.quant.data_loader"],
+    "features":     ["zeitgeist.quant.pipeline", "zeitgeist.quant.features"],
+    "regime":       ["zeitgeist.quant.regime"],
+    "signal_model": ["zeitgeist.quant.signal_model"],
+    "strategy":     ["zeitgeist.quant.strategy", "zeitgeist.quant.workflow"],
+    "risk":         ["zeitgeist.quant.risk"],
+    "paper_trader": ["zeitgeist.paper_trader", "zeitgeist.execution.paper_trader"],
+}
+
 STATUS_ICONS = {
     "ok": "🟢",
     "hold": "🟢",
@@ -566,22 +578,32 @@ def render_latency_chart(flux_name: str, hours: int = 1) -> None:
 
 
 def render_flux_logs(flux_name: str | None, limit: int = 50) -> None:
-    """Logs filtrés par flux."""
+    """Logs filtrés par flux — utilise FLUX_LOG_MODULES pour mapper flux_name → logger réel."""
     conn = _get_db()
     if conn is None:
         st.info(t("flux_logs_unavailable"))
         return
 
-    query = """
+    if flux_name:
+        # Résoudre les modules réels depuis le mapping, avec fallback sur %flux_name%
+        modules = FLUX_LOG_MODULES.get(flux_name, [f"%{flux_name}%"])
+        # Construire une clause OR pour tous les modules du flux
+        or_clauses = " OR ".join("module LIKE ?" for _ in modules)
+        where_clause = f"AND ({or_clauses})"
+        params: tuple = tuple(m if "%" in m else f"%{m}%" for m in modules) + (limit,)
+    else:
+        where_clause = ""
+        params = (limit,)
+
+    query = f"""
         SELECT timestamp, level, module, message
         FROM logs
         WHERE 1=1
-        {}
+        {where_clause}
         ORDER BY timestamp DESC
         LIMIT ?
-    """.format("AND module LIKE ?" if flux_name else "")
+    """
 
-    params = (f"%{flux_name}%", limit) if flux_name else (limit,)
     try:
         df = pd.read_sql_query(query, conn, params=params)
         if df.empty:
@@ -611,6 +633,8 @@ def render_flux_logs(flux_name: str | None, limit: int = 50) -> None:
         )
     except Exception as exc:
         st.error(t("flux_logs_error").format(exc=exc))
+    finally:
+        conn.close()
 
 
 def render_alerts_config(settings: dict) -> dict | None:

@@ -2760,7 +2760,6 @@ def render_admin_panel():
         ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
         ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
         ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
-        ('<i class="fas fa-brain"></i>',           "memory",   t("tab_memory")),
         # ── Sauvegarde ──────────────────────────────────────────────────
         (None, None,      t("admin_section_backup")),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",   t("tab_backup")),
@@ -2907,125 +2906,6 @@ def render_admin_panel():
         log_cfg["telegram_enabled"] = st.toggle("Telegram", log_cfg.get("telegram_enabled", False))
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
         settings["logging"] = log_cfg
-
-    elif _atab == "memory":  # Mémoire post-trade
-        st.markdown(
-            f'<h4><i class="fas fa-brain" style="margin-right:7px;color:#7986cb;"></i>'
-            f'{t("mem_title")}</h4>',
-            unsafe_allow_html=True,
-        )
-        st.caption(t("mem_caption"))
-        st.info(
-            "ℹ️ **Pipeline V2** — le pipeline quantitatif pur ne génère pas de leçons post-mortem automatiques. "
-            "Les entrées ci-dessous sont des leçons héritées du pipeline V1 (LLM). "
-            "Elles restent consultables à titre de référence."
-        )
-        try:
-            import json as _mem_json
-            from pathlib import Path as _MemPath
-
-            _mem_file = _MemPath(__file__).parent.parent / "storage" / "trading_memory.json"
-            if not _mem_file.exists():
-                st.info(t("mem_no_file"))
-            else:
-                if st.button("🗑️ Supprimer trading_memory.json", key="btn_purge_trading_memory", type="secondary"):
-                    _mem_file.unlink(missing_ok=True)
-                    st.success("trading_memory.json supprimé.")
-                    st.rerun()
-                with open(_mem_file, "r", encoding="utf-8") as _mf:
-                    _raw_mem = _mem_json.load(_mf)
-                # Support both formats: {"lessons": [...]} and [...]
-                if isinstance(_raw_mem, dict):
-                    _lessons: list[dict] = _raw_mem.get("lessons", [])
-                elif isinstance(_raw_mem, list):
-                    _lessons = _raw_mem
-                else:
-                    _lessons = []
-
-                if not _lessons:
-                    st.info(t("mem_empty_file"))
-                else:
-                    # Métriques globales
-                    _n_total = len(_lessons)
-                    _winners = [l for l in _lessons if str(l.get("debate_winner", "")).upper() == "BULL"]
-                    _losers  = [l for l in _lessons if str(l.get("pnl", 0) or 0) < "0" or (isinstance(l.get("pnl"), (int, float)) and l.get("pnl", 0) < 0)]
-
-                    c1_m, c2_m, c3_m = st.columns(3)
-                    c1_m.metric(t("mem_total"), _n_total)
-                    # Collecte des agents fréquemment cités
-                    _agent_trust_more: dict[str, int] = {}
-                    _agent_trust_less: dict[str, int] = {}
-                    for _l in _lessons:
-                        _atm = _l.get("agent_to_trust_more")
-                        _atl = _l.get("agent_to_trust_less")
-                        if _atm: _agent_trust_more[_atm] = _agent_trust_more.get(_atm, 0) + 1
-                        if _atl: _agent_trust_less[_atl] = _agent_trust_less.get(_atl, 0) + 1
-                    if _agent_trust_more:
-                        _best_agent = max(_agent_trust_more, key=_agent_trust_more.get)
-                        c2_m.metric(t("mem_best_agent"), _best_agent, f"+{_agent_trust_more[_best_agent]}×")
-                    if _agent_trust_less:
-                        _worst_agent = max(_agent_trust_less, key=_agent_trust_less.get)
-                        c3_m.metric(t("mem_worst_agent"), _worst_agent, f"−{_agent_trust_less[_worst_agent]}×", delta_color="inverse")
-
-                    st.markdown("---")
-
-                    # Filtre
-                    _mem_filter = st.text_input(t("mem_filter"), placeholder=t("mem_filter_placeholder"), key="mem_filter")
-
-                    # Affichage des leçons (plus récentes en premier)
-                    _filtered = list(reversed(_lessons))
-                    if _mem_filter:
-                        _mem_filter_lo = _mem_filter.lower()
-                        _filtered = [
-                            l for l in _filtered
-                            if _mem_filter_lo in str(l).lower()
-                        ]
-
-                    st.caption(t("mem_shown").format(n=len(_filtered)))
-
-                    for _idx_l, _lesson in enumerate(_filtered[:50]):  # max 50 affichées
-                        _ts_l     = (_lesson.get("timestamp") or "")[:16].replace("T", " ")
-                        _asset_l  = _lesson.get("asset", "?")
-                        _pnl_l    = _lesson.get("pnl")
-                        _pnl_str  = f"P&L ${float(_pnl_l):+.2f}" if _pnl_l is not None else ""
-                        _pnl_clr  = "#69f0ae" if _pnl_l and float(_pnl_l) >= 0 else "#e53935"
-                        _pattern  = _lesson.get("pattern_detected", "")
-                        _text_l   = _lesson.get("lesson", "—")
-
-                        _exp_label = f"{_ts_l}  ·  {_asset_l}"
-                        if _pnl_str:
-                            _exp_label += f"  ·  {_pnl_str}"
-                        if _pattern:
-                            _exp_label += f"  ·  🔍 {_pattern[:40]}"
-
-                        with st.expander(_exp_label, expanded=(_idx_l == 0)):
-                            st.markdown(
-                                f"<div style='font-size:13px;line-height:1.6;'>{_text_l}</div>",
-                                unsafe_allow_html=True,
-                            )
-                            _detail_cols = st.columns(3)
-                            _atm_l = _lesson.get("agent_to_trust_more")
-                            _atl_l = _lesson.get("agent_to_trust_less")
-                            _dw_l  = _lesson.get("debate_winner")
-                            if _atm_l:
-                                _detail_cols[0].markdown(
-                                    f"<span style='color:#69f0ae;font-size:11px;'>{t('mem_trust_more')} <b>{_atm_l}</b></span>",
-                                    unsafe_allow_html=True,
-                                )
-                            if _atl_l:
-                                _detail_cols[1].markdown(
-                                    f"<span style='color:#e53935;font-size:11px;'>{t('mem_trust_less')} <b>{_atl_l}</b></span>",
-                                    unsafe_allow_html=True,
-                                )
-                            if _dw_l and str(_dw_l).upper() not in ("N/A", "NONE", ""):
-                                _dw_clr = "#69f0ae" if "BULL" in str(_dw_l).upper() else ("#e53935" if "BEAR" in str(_dw_l).upper() else "#ffb74d")
-                                _detail_cols[2].markdown(
-                                    f"<span style='color:{_dw_clr};font-size:11px;'>{t('mem_debate')} <b>{_dw_l}</b></span>",
-                                    unsafe_allow_html=True,
-                                )
-
-        except Exception as _mem_exc:
-            st.warning(f"{t('mem_unavailable')} {_mem_exc}")
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)

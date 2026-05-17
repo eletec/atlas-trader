@@ -66,15 +66,16 @@ RUN groupadd -r atlas && useradd -r -g atlas -d /app -s /bin/bash atlas
 WORKDIR /app
 
 # Copier le code source
-COPY --chown=atlas:atlas agents/           ./agents/
+COPY --chown=atlas:atlas backtest/         ./backtest/
 COPY --chown=atlas:atlas comparison/       ./comparison/
 COPY --chown=atlas:atlas config/           ./config/
 COPY --chown=atlas:atlas dashboard/        ./dashboard/
 COPY --chown=atlas:atlas execution/        ./execution/
 COPY --chown=atlas:atlas graph/            ./graph/
+COPY --chown=atlas:atlas quant/            ./quant/
 COPY --chown=atlas:atlas storage/          ./storage/
 COPY --chown=atlas:atlas utils/            ./utils/
-COPY --chown=atlas:atlas decision_engine.py main.py ./
+COPY --chown=atlas:atlas main.py ./
 
 # Copier les scripts Docker
 COPY --chown=atlas:atlas docker/           ./docker/

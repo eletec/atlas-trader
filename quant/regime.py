@@ -94,7 +94,10 @@ class RegimeDetector:
         # covariance_type="diag" → covars_[s] est de shape (n_features,)
         try:
             logger.info(f"_fit_hmm debug — covars_ shape={hmm.covars_.shape} means_ shape={hmm.means_.shape}")
-            variances = [float(np.asarray(hmm.covars_[s]).flat[0]) for s in range(self.n_states)]
+            # hmmlearn ≥ 0.3 stocke covars_ comme (n_states, n_features, n_features)
+            # pour covariance_type="diag". Extraire la diagonale si nécessaire.
+            _diag = lambda s: np.diag(np.asarray(hmm.covars_[s])) if np.asarray(hmm.covars_[s]).ndim == 2 else np.asarray(hmm.covars_[s])
+            variances = [float(_diag(s)[0]) for s in range(self.n_states)]
             means = [float(np.asarray(hmm.means_[s]).flat[0]) for s in range(self.n_states)]
         except Exception:
             logger.error("_fit_hmm post-fit labelling FAILED:\n" + traceback.format_exc())
@@ -224,8 +227,11 @@ class RegimeDetector:
         from scipy.stats import norm as _norm
         log_B = np.zeros((n_samples, n_states))
         for s in range(n_states):
-            var_s  = self._hmm.covars_[s]   # (n_features,)
-            mean_s = self._hmm.means_[s]    # (n_features,)
+            # hmmlearn ≥ 0.3 stocke covars_ comme (n_states, n_features, n_features)
+            # pour covariance_type="diag" — extraire la diagonale si nécessaire.
+            _c = np.asarray(self._hmm.covars_[s])
+            var_s  = np.diag(_c) if _c.ndim == 2 else _c   # → (n_features,)
+            mean_s = self._hmm.means_[s]                    # (n_features,)
             log_B[:, s] = np.sum(
                 _norm.logpdf(observations, loc=mean_s, scale=np.sqrt(var_s + 1e-300)),
                 axis=1,

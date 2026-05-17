@@ -344,8 +344,9 @@ risk:
   atr_multiplier_sl: 2.5
   atr_multiplier_tp: 4.0
   atr_period: 14
-  buy_threshold: 65
-  exit_threshold: 40          # optimisé par sweep backtest 365j BTC+ETH (was: buy=62, exit=45, sl=2.0, tp=3.0)
+  # buy_threshold / exit_threshold : reliques V1 (scoring-based) — non utilisés par V2 (P(up) + HMM)
+  # buy_threshold: 65
+  # exit_threshold: 40
   human_in_the_loop: false
   ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
@@ -435,8 +436,8 @@ quant:
   fraction_per_trade: 0.0075      # fraction du capital risqué par trade (0.75%)
   stop_loss_atr_mult: 2.5         # multiplicateur ATR pour le stop-loss
   take_profit_atr_mult: 3.5       # multiplicateur ATR pour le take-profit (R:R 1.4)
-  trailing_activation_atr: 1.0    # activation trailing après +N ATR
-  trailing_distance_atr: 1.0      # distance du trailing stop (en ATR)
+  trailing_activation_atr: 1.5    # was 1.0 — trop agressif, coupe les winners tôt (Q16 IA)
+  trailing_distance_atr: 1.5      # was 1.0 — recommandation consensus 3 IA : 1.5-2.0
   weekly_dd_kill_switch: 0.08     # DD hebdo déclenchant le kill-switch (8%)
   kill_switch_pause_days: 7       # durée de pause après kill-switch
 
@@ -453,12 +454,12 @@ quant:
   wf_max_folds: 24                # nombre maximum de folds
   wf_perm_iter: 500               # itérations pour le test de permutation
 
-  # ── Critères go-live ───────────────────────────────────────────────────────
-  go_live_sharpe_min: 0.5         # Sharpe médian OOS minimum
-  go_live_pf_min: 1.2             # Profit Factor moyen minimum
+  # ── Critères go-live durcis (consensus Grok + GPT + DeepSeek) ───────────────
+  go_live_sharpe_min: 0.80        # was 0.5 — trop permissif sur intraday bruité
+  go_live_pf_min: 1.30            # was 1.2
   go_live_trades_min: 250         # nombre total de trades minimum
-  go_live_pvalue_max: 0.10        # p-value maximum (test de permutation)
-  go_live_positive_folds_pct: 0.60  # % de folds avec Sharpe > 0 minimum
+  go_live_pvalue_max: 0.05        # was 0.10 — consensus 3 IA
+  go_live_positive_folds_pct: 0.65  # was 0.60
   correlation_threshold: 0.75
   meta_analysis_interval_days: 14  # LLM failure-pattern analysis, every N days
   meta_analysis_days: 30            # lookback window for the analysis

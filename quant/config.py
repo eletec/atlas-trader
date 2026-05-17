@@ -65,8 +65,8 @@ class QuantConfig:
     fraction_per_trade: float       = 0.0075
     stop_loss_atr_mult: float       = 2.5
     take_profit_atr_mult: float     = 3.5
-    trailing_activation_atr: float  = 1.0
-    trailing_distance_atr: float    = 1.0
+    trailing_activation_atr: float  = 1.5   # was 1.0 — consensus 3 IA : laisser les trades respirer
+    trailing_distance_atr: float    = 1.5   # was 1.0 — recommandation 1.5-2.0×ATR
     weekly_dd_kill_switch: float    = 0.08
     kill_switch_pause_days: int     = 7
 

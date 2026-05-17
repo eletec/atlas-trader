@@ -116,10 +116,15 @@ def export_config_zip() -> bytes:
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # settings.yaml
+        # settings.yaml (ou le fichier actif via SETTINGS_FILE)
         settings_path = _SETTINGS_PATH
         if settings_path.exists():
             zf.write(settings_path, arcname="settings.yaml")
+
+        # prompts.yaml — templates LLM V2
+        prompts_path = _SETTINGS_PATH.parent / "prompts.yaml"
+        if prompts_path.exists():
+            zf.write(prompts_path, arcname="prompts.yaml")
 
         # Tous les fichiers config/assets/*.yaml
         assets_dir = _SETTINGS_PATH.parent / "assets"
@@ -189,10 +194,13 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
         assets_dir.mkdir(parents=True, exist_ok=True)
 
         for name in names:
-            # Seuls settings.yaml et assets/*.yaml sont acceptés
+            # Seuls settings.yaml, prompts.yaml et assets/*.yaml sont acceptés
             p = Path(name)
             if p.name == "settings.yaml" and len(p.parts) == 1:
-                dest = config_dir / "settings.yaml"
+                # Restaurer vers le fichier actif (SETTINGS_FILE), pas settings.yaml hardcodé
+                dest = _SETTINGS_PATH
+            elif p.name == "prompts.yaml" and len(p.parts) == 1:
+                dest = config_dir / "prompts.yaml"
             elif len(p.parts) == 2 and p.parts[0] == "assets" and p.suffix == ".yaml":
                 dest = assets_dir / p.name
             else:

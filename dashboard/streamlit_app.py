@@ -2784,7 +2784,7 @@ def render_admin_panel():
             unsafe_allow_html=True,
         )
         st.info(
-            "Paramètres du pipeline quantitatif V2 — régime de marché, modèle de signal, "
+            "Paramètres du pipeline quantitatif — régime de marché, modèle de signal, "
             "seuils de décision et refit périodique."
         )
         q = settings.get("quant", {})

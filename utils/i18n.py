@@ -4150,15 +4150,15 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "Max. Drawdown", "zh": "最大回撤",
     },
     "tab_quant_v2": {
-        "fr": "Moteur Quant V2", "en": "V2 Quant Engine", "de": "Quant-Engine V2",
-        "es": "Motor Quant V2", "it": "Motore Quant V2", "pt": "Motor Quant V2",
-        "nl": "Kwant Engine V2", "zh": "量化引擎 V2",
+        "fr": "Moteur Quant", "en": "Quant Engine", "de": "Quant-Engine",
+        "es": "Motor Quant", "it": "Motore Quant", "pt": "Motor Quant",
+        "nl": "Kwant Engine", "zh": "量化引擎",
     },
     # ── Sidebar section headers ───────────────────────────────────────────────
     "admin_section_quant": {
-        "fr": "V2 Quant", "en": "V2 Quant", "de": "V2 Quant",
-        "es": "V2 Quant", "it": "V2 Quant", "pt": "V2 Quant",
-        "nl": "V2 Quant", "zh": "V2 量化",
+        "fr": "Quant", "en": "Quant", "de": "Quant",
+        "es": "Quant", "it": "Quant", "pt": "Quant",
+        "nl": "Quant", "zh": "量化",
     },
     "admin_section_system": {
         "fr": "Système", "en": "System", "de": "System",

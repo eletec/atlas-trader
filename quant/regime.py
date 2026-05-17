@@ -93,11 +93,15 @@ class RegimeDetector:
         # Labellisation post-fit — causal : stats du TRAIN uniquement
         # covariance_type="diag" → covars_[s] est de shape (n_features,)
         try:
-            logger.info(f"_fit_hmm debug — covars_ shape={hmm.covars_.shape} means_ shape={hmm.means_.shape}")
             # hmmlearn ≥ 0.3 stocke covars_ comme (n_states, n_features, n_features)
             # pour covariance_type="diag". Extraire la diagonale si nécessaire.
             _diag = lambda s: np.diag(np.asarray(hmm.covars_[s])) if np.asarray(hmm.covars_[s]).ndim == 2 else np.asarray(hmm.covars_[s])
-            variances = [float(_diag(s)[0]) for s in range(self.n_states)]
+            raw_variances = [float(_diag(s)[0]) for s in range(self.n_states)]
+            # Clamp : variance > 0.5 sur des returns en % = état dégénéré (HMM mal convergé)
+            _MAX_VAR = 0.5
+            if any(v > _MAX_VAR for v in raw_variances):
+                logger.warning(f"HMM état(s) dégénéré(s) détecté(s) — variances brutes: {[f'{v:.6f}' for v in raw_variances]} — clampées à {_MAX_VAR}")
+            variances = [min(v, _MAX_VAR) for v in raw_variances]
             means = [float(np.asarray(hmm.means_[s]).flat[0]) for s in range(self.n_states)]
         except Exception:
             logger.error("_fit_hmm post-fit labelling FAILED:\n" + traceback.format_exc())

@@ -498,7 +498,7 @@ def render_marches_admin_tab() -> None:
 }
 </style>""", unsafe_allow_html=True)
     st.markdown("**Actifs actifs**")
-    all_known = ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]
+    all_known = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XAU/USD", "XAG/USD", "WTI/USD", "EUR/USD", "GBP/USD"]
     current_active = get_active_assets()
     new_active = st.multiselect(
         "Actifs surveillés",
@@ -527,12 +527,28 @@ def render_marches_admin_tab() -> None:
         _render_asset_config_editor(asset, load_asset_config, save_asset_config)
 
 
+def _load_raw_asset_yaml(asset: str) -> dict:
+    """Charge uniquement le fichier assets/{slug}.yaml sans merge global."""
+    from pathlib import Path
+    import yaml
+    slug = asset.replace("/", "_")
+    p = Path(__file__).resolve().parent.parent / "config" / "assets" / f"{slug}.yaml"
+    if not p.exists():
+        return {"asset": asset}
+    raw = p.read_bytes()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("utf-8", errors="replace")
+    return yaml.safe_load(text) or {"asset": asset}
+
+
 def _render_asset_config_editor(
     asset: str,
     load_fn: Callable,
     save_fn: Callable,
 ) -> None:
-    """Formulaire d'édition de la config d'un actif."""
+    """Formulaire d'édition de la config V2 d'un actif (v2_risk + circuit_breaker)."""
     import streamlit as st
 
     icon = _asset_icon(asset)
@@ -540,81 +556,118 @@ def _render_asset_config_editor(
 
     with st.expander(f"{icon} **{asset}**", expanded=False):
         try:
-            cfg = load_fn(asset)
+            # Charger le fichier brut (pas le merge global) pour éditer seulement l'asset
+            cfg = _load_raw_asset_yaml(asset)
         except Exception as exc:
             st.warning(f"Config {asset} non chargée : {exc}")
             return
 
-        risk = cfg.get("risk", {})
-        agents = cfg.get("agents", {})
+        v2r = cfg.get("v2_risk", {})
+        cb  = cfg.get("circuit_breaker", {})
 
-        # Capital paper par actif
-        col0, = st.columns([1])  # ligne entière
+        # ── Capital ──────────────────────────────────────────────────────────
         paper_cap = st.number_input(
             "💰 Capital paper (USD)",
             min_value=500, max_value=1_000_000, step=500,
-            value=int(cfg.get("paper_capital_usd", 10000)),
+            value=int(cfg.get("paper_capital_usd", 10_000)),
             key=f"paper_cap_{slug}",
-            help=(
-                "Montant alloué à cet actif en mode paper trading. "
-                "En production, le solde est lu depuis l'API de l'exchange."
-            ),
+            help="Montant alloué à cet actif en mode paper trading.",
         )
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            buy_thr = st.number_input(
-                "Buy threshold",
-                min_value=30, max_value=95, step=1,
-                value=int(risk.get("buy_threshold", 62)),
-                key=f"buy_thr_{slug}",
+        # ── v2_risk — mode tendance ───────────────────────────────────────
+        st.caption("Paramètres risque V2 — mode TREND")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            sl_mult = st.number_input(
+                "SL ATR ×", min_value=0.5, max_value=10.0, step=0.25,
+                value=float(v2r.get("stop_loss_atr_mult", 2.5)),
+                key=f"sl_{slug}",
+                help="Multiplicateur ATR pour le Stop-Loss (ex : 2.5 = SL à 2.5×ATR)",
             )
-        with col2:
-            exit_thr = st.number_input(
-                "Exit threshold",
-                min_value=20, max_value=80, step=1,
-                value=int(risk.get("exit_threshold", 52)),
-                key=f"exit_thr_{slug}",
+        with c2:
+            tp_mult = st.number_input(
+                "TP ATR ×", min_value=0.5, max_value=15.0, step=0.25,
+                value=float(v2r.get("take_profit_atr_mult", 3.5)),
+                key=f"tp_{slug}",
+                help="Multiplicateur ATR pour le Take-Profit",
             )
-        with col3:
-            pos_pct = st.number_input(
-                "Position size %",
-                min_value=0.5, max_value=20.0, step=0.5,
-                value=float(risk.get("position_size_pct", 5.0)),
-                key=f"pos_pct_{slug}",
+        with c3:
+            frac = st.number_input(
+                "Fraction / trade (%)", min_value=0.05, max_value=5.0, step=0.05,
+                value=round(float(v2r.get("fraction_per_trade", 0.0075)) * 100, 4),
+                key=f"frac_{slug}",
+                format="%.3f",
+                help="Fraction du capital risquée par trade (ex : 0.750 = 0.75%)",
             )
 
-        # Agents on/off
-        st.caption("Agents")
-        agent_cols = st.columns(4)
-        agent_names = [
-            ("fundamental", "Fundamental"),
-            ("x_sentiment", "Sentiment"),
-            ("contrarian", "Contrarian"),
-            ("fear_greed", "Fear&Greed"),
-            ("polymarket", "Polymarket"),
-            ("timesfm", "TimesFM"),
-            ("market_regime", "Régime"),
-            ("bull_bear_debate", "BullBear"),
-        ]
-        agent_states: dict[str, bool] = {}
-        for i, (key, label) in enumerate(agent_names):
-            with agent_cols[i % 4]:
-                enabled = agents.get(key, {}).get("enabled", True)
-                agent_states[key] = st.checkbox(label, value=enabled, key=f"agent_{slug}_{key}")
+        c4, c5 = st.columns(2)
+        with c4:
+            max_dd = st.number_input(
+                "Max drawdown (%)", min_value=1.0, max_value=50.0, step=0.5,
+                value=float(v2r.get("max_drawdown_pct", 15.0)),
+                key=f"maxdd_{slug}",
+                help="Kill-switch hebdomadaire si le drawdown dépasse ce seuil",
+            )
+
+        # ── v2_risk — mode RANGE ─────────────────────────────────────────
+        st.caption("Paramètres risque V2 — mode RANGE (mean-revert)")
+        r1, r2, r3 = st.columns(3)
+        with r1:
+            rsl = st.number_input(
+                "SL range ATR ×", min_value=0.5, max_value=5.0, step=0.25,
+                value=float(v2r.get("range_sl_atr_mult", 1.5)),
+                key=f"rsl_{slug}",
+            )
+        with r2:
+            rtp = st.number_input(
+                "TP range ATR ×", min_value=0.5, max_value=5.0, step=0.25,
+                value=float(v2r.get("range_tp_atr_mult", 1.5)),
+                key=f"rtp_{slug}",
+            )
+        with r3:
+            rfm = st.number_input(
+                "Fraction mult range", min_value=0.1, max_value=1.0, step=0.05,
+                value=float(v2r.get("range_fraction_mult", 0.50)),
+                key=f"rfm_{slug}",
+                help="Multiplicateur du sizing en mode RANGE (< 1 = positions plus petites)",
+            )
+
+        # ── Circuit-breaker ──────────────────────────────────────────────
+        st.caption("Circuit-breaker funding rate (crypto uniquement)")
+        cb1, cb2 = st.columns(2)
+        with cb1:
+            fw = st.number_input(
+                "Funding warning", min_value=0.0, max_value=0.002, step=0.00001,
+                value=float(cb.get("funding_warning", 0.00018)),
+                key=f"fw_{slug}", format="%.5f",
+                help="Seuil de réduction du sizing (taux de funding annualisé)",
+            )
+        with cb2:
+            fb = st.number_input(
+                "Funding block", min_value=0.0, max_value=0.005, step=0.00001,
+                value=float(cb.get("funding_block", 0.00045)),
+                key=f"fb_{slug}", format="%.5f",
+                help="Seuil de blocage total des entrées",
+            )
 
         if st.button(f"💾 Sauvegarder {asset}", key=f"save_{slug}"):
-            # Reconstruire la section risk
-            cfg.setdefault("risk", {}).update({
-                "buy_threshold": buy_thr,
-                "exit_threshold": exit_thr,
-                "position_size_pct": pos_pct,
-            })
-            cfg["paper_capital_usd"] = paper_cap
-            for key, enabled in agent_states.items():
-                cfg.setdefault("agents", {}).setdefault(key, {})["enabled"] = enabled
+            cfg["paper_capital_usd"] = int(paper_cap)
+            cfg["v2_risk"] = {
+                "stop_loss_atr_mult":    round(sl_mult, 4),
+                "take_profit_atr_mult":  round(tp_mult, 4),
+                "fraction_per_trade":    round(frac / 100, 6),
+                "max_drawdown_pct":      round(max_dd, 2),
+                "range_sl_atr_mult":     round(rsl, 4),
+                "range_tp_atr_mult":     round(rtp, 4),
+                "range_fraction_mult":   round(rfm, 4),
+            }
+            cfg["circuit_breaker"] = {
+                **cb,
+                "funding_warning": round(fw, 6),
+                "funding_block":   round(fb, 6),
+            }
             try:
                 save_fn(asset, cfg)
-                st.success(f"Config {asset} sauvegardée.")
+                st.success(f"✅ Config {asset} sauvegardée.")
             except Exception as exc:
                 st.error(f"Erreur : {exc}")

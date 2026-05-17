@@ -143,8 +143,61 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
-        [data-testid="stSelectbox"] > div,
-        [data-testid="stTextInput"] > div { background-color: #ffffff !important; }
+        /* Selectbox / dropdowns BaseWeb */
+        [data-baseweb="select"] > div:first-child {
+            background-color: #ffffff !important;
+            border-color: #ced4da !important;
+        }
+        [data-baseweb="select"] span,
+        [data-baseweb="select"] div { color: #31333F !important; }
+        /* Input text/number */
+        [data-baseweb="input"],
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border-color: #ced4da !important;
+        }
+        /* Textarea */
+        textarea, [data-baseweb="textarea"] textarea {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border-color: #ced4da !important;
+        }
+        /* Number input arrows */
+        [data-testid="stNumberInput"] button {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border-color: #ced4da !important;
+        }
+        /* Selectbox dropdown menu */
+        ul[data-baseweb="menu"] {
+            background-color: #ffffff !important;
+            border-color: #dee2e6 !important;
+        }
+        ul[data-baseweb="menu"] li,
+        [data-baseweb="option"] {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            white-space: nowrap !important;
+        }
+        ul[data-baseweb="menu"] li:hover,
+        [data-baseweb="option"]:hover {
+            background-color: #f0f2f6 !important;
+        }
+        /* Form container */
+        [data-testid="stForm"] {
+            background-color: #ffffff !important;
+            border: 1px solid #dee2e6 !important;
+            border-radius: 10px !important;
+        }
+        input, input[type="text"], input[type="password"] {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border-color: #ced4da !important;
+        }
+        /* Slider labels */
+        [data-testid="stSlider"] span { color: #31333F !important; }
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
         [data-testid="stDataFrame"] * { color: #31333F !important; }
         [data-testid="stDataFrameResizable"] { background-color: #ffffff !important; }
@@ -153,10 +206,6 @@ def _inject_theme_css():
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
         /* Selectbox dropdown — min-width !important bat le style inline injecte par BaseWeb */
         [data-baseweb="popover"] { min-width: max-content !important; }
-        ul[data-baseweb="menu"] li,
-        [data-baseweb="option"] {
-            white-space: nowrap !important;
-        }
     """
 
     _DARK_CSS = """

@@ -13,7 +13,7 @@ risk:
   buy_cooldown_minutes: 120   # cooldown 2h anti-doublon (ex: trades 03:45+03:47 même signal)
   kelly_max_fraction: 0.25
   position_size_pct: 5.0
-  max_open_positions: 1       # une seule position longue à la fois par actif
+  max_open_positions: 0       # 0 = illimité (aligné sur la config globale)
   atr_multiplier_sl: 1.8
   atr_multiplier_tp: 3.0
   atr_period: 14

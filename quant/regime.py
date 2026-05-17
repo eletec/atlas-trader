@@ -12,6 +12,7 @@ Sortie : Série binaire indexée comme l'input — 1 = trending, 0 = mean-revert
 from __future__ import annotations
 
 import logging
+import traceback
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -91,8 +92,13 @@ class RegimeDetector:
         hmm.fit(x.values)
         # Labellisation post-fit — causal : stats du TRAIN uniquement
         # covariance_type="diag" → covars_[s] est de shape (n_features,)
-        variances = [float(hmm.covars_[s][0]) for s in range(self.n_states)]
-        means = [float(hmm.means_[s][0]) for s in range(self.n_states)]
+        try:
+            logger.info(f"_fit_hmm debug — covars_ shape={hmm.covars_.shape} means_ shape={hmm.means_.shape}")
+            variances = [float(np.asarray(hmm.covars_[s]).flat[0]) for s in range(self.n_states)]
+            means = [float(np.asarray(hmm.means_[s]).flat[0]) for s in range(self.n_states)]
+        except Exception:
+            logger.error("_fit_hmm post-fit labelling FAILED:\n" + traceback.format_exc())
+            raise
         stds = [np.sqrt(v) + 1e-9 for v in variances]
         sharpe_like = [abs(means[s]) / stds[s] for s in range(self.n_states)]
         # A.1 : Panic = variance max ET non-directionnel (sharpe < 0.10)

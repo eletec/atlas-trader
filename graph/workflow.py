@@ -262,11 +262,13 @@ class LiveRunner:
         # Si le signal directionnel est FLAT (pas en TREND), tenter une entrée range
         if decision.action == Action.FLAT and regime_ranging:
             qcfg = _wf_qcfg()
-            bb_pb   = feats_raw["bb_pct_b"].iloc[-1]  if "bb_pct_b"    in feats_raw.columns else None
-            vwap_d  = feats_raw["vwap_dist_20"].iloc[-1] if "vwap_dist_20" in feats_raw.columns else None
+            _bb_raw  = feats_raw["bb_pct_b"].iloc[-1]   if "bb_pct_b"    in feats_raw.columns else None
+            _vwap_raw= feats_raw["vwap_dist_20"].iloc[-1] if "vwap_dist_20" in feats_raw.columns else None
+            bb_pb    = float(_bb_raw.item()   if hasattr(_bb_raw,  'item') else _bb_raw)   if _bb_raw   is not None else None
+            vwap_d   = float(_vwap_raw.item() if hasattr(_vwap_raw,'item') else _vwap_raw) if _vwap_raw is not None else None
             decision = decide_range(
-                bb_pct_b=float(bb_pb)  if bb_pb  is not None and pd.notna(bb_pb)  else None,
-                vwap_dist=float(vwap_d) if vwap_d is not None and pd.notna(vwap_d) else None,
+                bb_pct_b=bb_pb  if bb_pb   is not None and not np.isnan(bb_pb)   else None,
+                vwap_dist=vwap_d if vwap_d is not None and not np.isnan(vwap_d) else None,
                 prob_up=prob_up,
                 bb_long_threshold=getattr(qcfg, "range_bb_long_threshold",  0.10),
                 bb_short_threshold=getattr(qcfg, "range_bb_short_threshold", 0.90),
@@ -275,9 +277,11 @@ class LiveRunner:
 
         latest_bar = ohlcv.iloc[-1]
         bar_ts = str(ohlcv.index[-1])
-        close_price = float(latest_bar["close"])
+        _close_raw = latest_bar["close"]
+        close_price = float(_close_raw.item() if hasattr(_close_raw, 'item') else _close_raw)
         atr_raw = feats_raw["atr_14"].iloc[-1]
-        atr_14 = float(atr_raw) if pd.notna(atr_raw) else None
+        _atr_scalar = atr_raw.item() if hasattr(atr_raw, 'item') else atr_raw
+        atr_14 = float(_atr_scalar) if pd.notna(_atr_scalar) else None
 
         # ── Gestion position existante ────────────────────────────────────────
         trade_result = None
@@ -364,7 +368,7 @@ class LiveRunner:
         pos = self._position
         self._persist(
             asset=self.symbol, bar_ts=bar_ts, close_price=close_price,
-            regime=int(regime_val) if pd.notna(regime_val) else None,
+            regime=int(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)) if pd.notna(regime_val) else None,
             prob_up=prob_up, action=decision.action.value, reason=decision.reason,
             atr_14=atr_14, position_side=pos.side if pos else None,
             entry_price=pos.entry_price if pos else None,
@@ -386,7 +390,7 @@ class LiveRunner:
             "bar_ts": bar_ts,
             "close_price": close_price,
             "regime_trending": regime_trending,
-            "regime": int(regime_val) if pd.notna(regime_val) else None,
+            "regime": int(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)) if pd.notna(regime_val) else None,
             "prob_up": round(prob_up, 4) if prob_up is not None else None,
             "action": decision.action.value,
             "reason": decision.reason,

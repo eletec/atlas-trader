@@ -123,7 +123,7 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
             except Exception as exc:
                 asset_errors[sym] = asset_errors.get(sym, 0) + 1
                 logger.error(f"[{sym}] Erreur cycle (tentative {asset_errors[sym]}): {exc}")
-                logger.debug(traceback.format_exc())
+                logger.error(traceback.format_exc())
                 if asset_errors[sym] == _QUARANTINE_AFTER:
                     logger.warning(f"[{sym}] Mis en quarantaine après {_QUARANTINE_AFTER} erreurs.")
 

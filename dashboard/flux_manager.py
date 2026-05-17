@@ -25,7 +25,7 @@ except ImportError:
 FLUX_DEFINITIONS = {
     "ohlcv_loader": {
         "label": "📊 OHLCV Loader",
-        "description": "CCXT — chargement OHLCV 15m (cache disque)",
+        "description": "CCXT — chargement OHLCV (timeframe configurable, cache disque)",
         "category": "data",
         "sla_latency_ms": 5000,
         "config_key": "exchange",
@@ -146,18 +146,27 @@ def load_flux_metrics(flux_name: str | None = None, hours: int = 1) -> pd.DataFr
 
 
 def _infer_v2_status() -> dict[str, dict]:
-    """Infère le statut des composants V2 depuis v2_state (V2 n'écrit pas dans flux_metrics)."""
+    """Infère le statut des composants V2 depuis v2_state (V2 n'écrit pas dans flux_metrics).
+
+    Retourne 'pending' pour tous les flux si la DB est disponible mais qu'aucun
+    cycle n'a encore écrit dans v2_state (premier démarrage).
+    """
+    _pending_all = {
+        k: {"status": "pending", "latency_ms": 0, "timestamp": "—", "items_count": 0}
+        for k in FLUX_DEFINITIONS
+    }
     try:
         from storage.database import get_v2_state
         state = get_v2_state()
     except Exception:
-        return {}
+        return {}   # DB inaccessible — laisser le caller décider
     if not state or not state.get("updated_at"):
-        return {}
+        # DB ok mais aucun cycle exécuté encore → pending (pas unknown)
+        return _pending_all
     try:
         age_s = (datetime.utcnow() - datetime.fromisoformat(state["updated_at"])).total_seconds()
     except Exception:
-        return {}
+        return _pending_all
     ts = state["updated_at"]
     has_price   = bool(state.get("close_price"))
     has_signal  = state.get("prob_up") is not None
@@ -173,7 +182,7 @@ def _infer_v2_status() -> dict[str, dict]:
         health = "unknown"
 
     def _s(has_data: bool) -> str:
-        return health if has_data else "unknown"
+        return health if has_data else "pending"
 
     return {
         "ohlcv_loader": {"status": _s(has_price),   "latency_ms": 0, "timestamp": ts, "items_count": 1},
@@ -202,11 +211,17 @@ def load_last_status_per_flux() -> dict[str, dict]:
     try:
         df = pd.read_sql_query(query, conn)
         if df.empty:
-            # V2 n'écrit pas dans flux_metrics → inférer depuis v2_state
-            return _infer_v2_status()
+            # flux_metrics vide → inférer entièrement depuis v2_state
+            return _infer_v2_status() or _generate_demo_status()
         # Filtrer aux flux V2 connus (évite les entrées V1 résiduelles)
         result = df.set_index("flux_name").to_dict("index")
-        return {k: v for k, v in result.items() if k in FLUX_DEFINITIONS}
+        known = {k: v for k, v in result.items() if k in FLUX_DEFINITIONS}
+        # Compléter les flux V2 absents de flux_metrics (ex: restes V1 paper_trader)
+        v2_inf = _infer_v2_status()
+        for flux_name in FLUX_DEFINITIONS:
+            if flux_name not in known and flux_name in v2_inf:
+                known[flux_name] = v2_inf[flux_name]
+        return known
     except Exception:
         return _infer_v2_status() or _generate_demo_status()
     finally:

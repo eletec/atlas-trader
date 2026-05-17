@@ -2792,7 +2792,7 @@ def render_admin_panel():
         col1, col2 = st.columns(2)
         with col1:
             _tf_opts = ["1m", "5m", "15m", "30m", "1h", "4h"]
-            _tf_cur = q.get("timeframe", "15m")
+            _tf_cur = q.get("timeframe", "5m")
             if _tf_cur not in _tf_opts:
                 _tf_opts.append(_tf_cur)
             q["timeframe"] = st.selectbox(
@@ -2800,6 +2800,8 @@ def render_admin_panel():
                 index=_tf_opts.index(_tf_cur),
                 help="Granularité des barres OHLCV (ccxt notation).",
             )
+            if q["timeframe"] != _tf_cur:
+                st.info("⚠️ Changement de timeframe détecté — le runner sera recréé et un refit forcé sera déclenché au prochain cycle après sauvegarde.")
             q["history_days"] = st.slider(
                 "Historique (jours)", 30, 365,
                 int(q.get("history_days", 90)), 10,
@@ -2813,7 +2815,7 @@ def render_admin_panel():
             q["horizon_bars"] = st.selectbox(
                 "Horizon (barres)", [1, 2, 4, 8, 16],
                 index=[1, 2, 4, 8, 16].index(int(q.get("horizon_bars", 4))),
-                help="Horizon de prédiction en nombre de barres (ex: 4 × 15min = 1h).",
+                help="Horizon de prédiction en barres (ex: 4 × 5min = 20min avec TF 5m).",
             )
         with col2:
             q["p_up_threshold"] = st.slider(

@@ -56,13 +56,14 @@ _TF_SECONDS = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
 class LiveRunner:
     """Gère l état continu du pipeline V2 entre les cycles."""
 
-    def __init__(self, symbol="BTC/USDT", timeframe="15m", history_days=90,
-                 train_fraction=0.70, config=None):
+    def __init__(self, symbol="BTC/USDT", timeframe="5m", history_days=90,
+                 train_fraction=0.70, config=None, refit_interval_s=None):
         self.symbol = symbol
         self.timeframe = timeframe
         self.history_days = history_days
         self.train_fraction = train_fraction
         self.cfg = config or PipelineConfig(use_hmm=False)
+        self._refit_interval_s = refit_interval_s if refit_interval_s is not None else _REFIT_INTERVAL_S
         self._ohlcv = None
         self._regime = None
         self._model = None
@@ -77,9 +78,9 @@ class LiveRunner:
         self._wins = 0
         self._peak_capital = self._capital
 
-    def ensure_fitted(self):
+    def ensure_fitted(self):  # noqa: C901
         now = time.time()
-        if self._regime is None or (now - self._last_fit_ts) > _REFIT_INTERVAL_S:
+        if self._regime is None or (now - self._last_fit_ts) > self._refit_interval_s:
             self._refit()
 
     def _refit(self):
@@ -373,31 +374,71 @@ class LiveRunner:
 _runners: dict[str, "LiveRunner"] = {}
 
 
+def _runner_fingerprint(qcfg: dict) -> tuple:
+    """Empreinte des paramètres structurels — changement → recréation du runner."""
+    return (
+        qcfg.get("timeframe", _DEFAULT_TF),
+        int(qcfg.get("history_days", _HISTORY_DAYS)),
+        bool(qcfg.get("use_hmm", False)),
+        int(qcfg.get("horizon_bars", 4)),
+        float(qcfg.get("train_fraction", _TRAIN_FRACTION)),
+    )
+
+
 def _get_runner(asset: str) -> "LiveRunner":
-    """Retourne (ou crée) le LiveRunner pour cet actif."""
+    """Retourne (ou crée) le LiveRunner pour cet actif.
+
+    Relit settings.yaml à chaque appel :
+    - paramètres *structurels* changés (timeframe, history_days, use_hmm,
+      horizon_bars, train_fraction) → recréation + refit forcé au prochain cycle
+    - seuls seuils P(up)/P(dn) ou refit_interval changés → hot-reload sans recréation.
+    """
     global _runners
-    if asset not in _runners:
-        try:
-            from utils.config import load_settings
-            cfg = load_settings()
-            qcfg = cfg.get("quant", {})
-        except Exception:
-            cfg = {}
-            qcfg = {}
-        pipe_cfg = PipelineConfig(
-            use_hmm=qcfg.get("use_hmm", False),
-            horizon_bars=qcfg.get("horizon_bars", 4),
-            p_up_threshold=qcfg.get("p_up_threshold", 0.55),
-            p_dn_threshold=qcfg.get("p_dn_threshold", 0.45),
-            initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
+    try:
+        from utils.config import load_settings
+        cfg = load_settings()
+        qcfg = cfg.get("quant", {})
+    except Exception:
+        cfg = {}
+        qcfg = {}
+
+    fp = _runner_fingerprint(qcfg)
+    existing = _runners.get(asset)
+
+    if existing is not None:
+        existing_fp = (
+            existing.timeframe,
+            int(existing.history_days),
+            bool(existing.cfg.use_hmm),
+            int(existing.cfg.horizon_bars),
+            float(existing.train_fraction),
         )
-        _runners[asset] = LiveRunner(
-            symbol=asset,
-            timeframe=qcfg.get("timeframe", "15m"),
-            history_days=qcfg.get("history_days", 90),
-            train_fraction=qcfg.get("train_fraction", 0.70),
-            config=pipe_cfg,
+        if existing_fp == fp:
+            # Hot-reload des seuils et de l'intervalle refit (aucun refit requis)
+            existing.cfg.p_up_threshold = float(qcfg.get("p_up_threshold", 0.58))
+            existing.cfg.p_dn_threshold = float(qcfg.get("p_dn_threshold", 0.42))
+            existing._refit_interval_s = int(qcfg.get("refit_interval_hours", 168)) * 3600
+            return existing
+        logger.info(
+            f"[config] Paramètres changés pour {asset} "
+            f"({existing_fp} → {fp}) — recréation du runner"
         )
+
+    pipe_cfg = PipelineConfig(
+        use_hmm=qcfg.get("use_hmm", False),
+        horizon_bars=qcfg.get("horizon_bars", 4),
+        p_up_threshold=float(qcfg.get("p_up_threshold", 0.58)),
+        p_dn_threshold=float(qcfg.get("p_dn_threshold", 0.42)),
+        initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
+    )
+    _runners[asset] = LiveRunner(
+        symbol=asset,
+        timeframe=qcfg.get("timeframe", _DEFAULT_TF),
+        history_days=qcfg.get("history_days", _HISTORY_DAYS),
+        train_fraction=qcfg.get("train_fraction", _TRAIN_FRACTION),
+        config=pipe_cfg,
+        refit_interval_s=int(qcfg.get("refit_interval_hours", 168)) * 3600,
+    )
     return _runners[asset]
 
 

@@ -29,6 +29,9 @@ def load_settings(path: str | Path | None = None) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"settings.yaml introuvable : {p.absolute()}")
 
+    with open(p, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
     """Sauvegarde un dict settings dans settings.yaml (écrasement atomique via tmp).
@@ -53,9 +56,6 @@ def save_settings(settings: dict, path: str | Path | None = None) -> None:
             tmp.unlink(missing_ok=True)
             raise
     tmp.replace(p)
-
-    with open(p, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def _asset_slug(asset: str) -> str:

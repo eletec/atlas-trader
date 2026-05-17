@@ -2796,7 +2796,7 @@ def render_admin_panel():
     _atab = st.query_params.get("_atab", "quant")
     if _atab not in _admin_keys:
         _atab = "quant"
-    _inject_custom_sidenav(_admin_items, _atab, qparam="_atab")
+    _inject_custom_sidenav(_admin_items, _atab, qparam="_atab", theme=_get_theme())
 
     if _atab == "quant":  # Quant V2 Pipeline
         st.markdown(

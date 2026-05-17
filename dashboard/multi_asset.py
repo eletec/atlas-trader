@@ -49,12 +49,13 @@ def _action_badge(action: str) -> str:
     return f'<span style="background:{color};color:#fff;border-radius:3px;padding:1px 7px;font-size:12px;">{action}</span>'
 
 
-def _score_bar(score: float) -> str:
+def _score_bar(score: float, theme: str = "dark") -> str:
     """Mini barre de progression HTML pour le score."""
     color = "#27ae60" if score >= 60 else ("#e74c3c" if score < 40 else "#f39c12")
+    track = "#e0e0e0" if theme == "light" else "#333"
     return (
         f'<div style="display:flex;align-items:center;gap:6px;">'
-        f'<div style="width:80px;height:8px;background:#333;border-radius:4px;overflow:hidden;">'
+        f'<div style="width:80px;height:8px;background:{track};border-radius:4px;overflow:hidden;">'
         f'<div style="width:{score:.0f}%;height:100%;background:{color};border-radius:4px;"></div>'
         f'</div>'
         f'<span style="font-size:13px;">{score:.0f}</span>'
@@ -108,6 +109,7 @@ def render_global_overview() -> None:
             rows.append({"asset": asset, "action": "flat", "score": None,
                          "equity": None, "timestamp": None, "result_24h": None})
 
+    theme = st.query_params.get("theme", "dark")
     st.markdown(f"### {t('global_overview_title')}")
 
     extra_hdr = "Capital V2" if is_v2 else t('col_pnl')
@@ -146,7 +148,7 @@ def render_global_overview() -> None:
             f"<tr>"
             f"<td style='padding:6px 10px;'>{icon} {asset}</td>"
             f"<td style='padding:6px 10px;'>{_action_badge(action)}</td>"
-            f"<td style='padding:6px 10px;'>{_score_bar(score)}</td>"
+            f"<td style='padding:6px 10px;'>{_score_bar(score, theme)}</td>"
             f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts}</td>"
             f"<td style='padding:6px 10px;'>{extra_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{sess_label}</td>"
@@ -155,7 +157,7 @@ def render_global_overview() -> None:
 
     st.markdown(
         f"""<table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="border-bottom:1px solid #444;font-size:12px;opacity:.6;">
+        <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:12px;opacity:.6;">
           <th style="padding:4px 10px;text-align:left;">{t('col_asset')}</th>
           <th style="padding:4px 10px;text-align:left;">{t('col_signal')}</th>
           <th style="padding:4px 10px;text-align:left;">{"Direction V2" if is_v2 else t('col_score')}</th>
@@ -272,7 +274,7 @@ def render_global_live_prices() -> None:
 # Composant 2 : Onglets par actif
 # ---------------------------------------------------------------------------
 
-def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset") -> None:
+def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset", theme: str = "dark") -> None:
     """Injecte une sidebar fixe dans le document parent (indépendante de st.sidebar).
     items  : liste de dicts {key, icon, text}
     active_key : clé de l'item actif
@@ -281,9 +283,10 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
     import json as _json
     import streamlit.components.v1 as _cv1
 
-    items_js  = _json.dumps(items)
-    active_js = _json.dumps(active_key)
-    qparam_js = _json.dumps(qparam)
+    items_js    = _json.dumps(items)
+    active_js   = _json.dumps(active_key)
+    qparam_js   = _json.dumps(qparam)
+    is_light_js = "true" if theme == "light" else "false"
 
     _cv1.html(f"""<script>
 (function(){{
@@ -335,37 +338,46 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset")
     nav.style.height = 'calc(100vh - ' + top + 'px)';
   }}
 
-  /* CSS — injecté une seule fois */
-  if (!d.getElementById('atlas-nav-css')) {{
-    var s = d.createElement('style');
-    s.id = 'atlas-nav-css';
-    s.textContent =
-      '#atlas-sidenav{{position:fixed;left:0;' +
-      'width:' + W + 'px;background:#161b22;z-index:100;' +
-      'display:flex;flex-direction:column;' +
-      'border-right:1px solid rgba(255,255,255,.12);' +
-      'transition:width .2s ease;overflow:hidden;box-sizing:border-box;}}' +
-      '#atlas-sidenav.c{{width:' + MINI + 'px;}}' +
-      '#ant{{display:flex;align-items:center;justify-content:flex-end;height:34px;' +
-      'padding:0 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.07);' +
-      'color:rgba(255,255,255,.5);font-size:17px;user-select:none;flex-shrink:0;}}' +
-      '#atlas-sidenav.c #ant{{justify-content:center;padding:0;}}' +
-      '.ans{{font-size:8px;font-weight:700;letter-spacing:1.5px;opacity:.35;' +
-      'text-transform:uppercase;padding:6px 12px 1px;color:#fff;white-space:nowrap;flex-shrink:0;}}' +
-      '#atlas-sidenav.c .ans{{display:none;}}' +
-      '.ani{{display:flex;align-items:center;gap:7px;padding:4px 8px;text-decoration:none;' +
-      'color:rgba(255,255,255,.75);font-size:12px;' +
-      'font-family:-apple-system,BlinkMacSystemFont,sans-serif;' +
-      'border-radius:5px;margin:0 4px;white-space:nowrap;transition:background .15s;}}' +
-      '#atlas-sidenav.c .ani{{justify-content:center;padding:6px 0;margin:0;border-radius:0;}}' +
-      '.ani:hover{{background:rgba(255,255,255,.08);color:#fff;}}' +
-      '.ani.a{{background:rgba(255,75,75,.22);font-weight:600;color:#fff;}}' +
-      '.ani-ic{{font-size:17px;min-width:24px;text-align:center;flex-shrink:0;line-height:1;}}' +
-      '#atlas-sidenav.c .ani-ic{{min-width:' + MINI + 'px;font-size:15px;}}' +
-      '.ani-tx{{white-space:nowrap;overflow:hidden;transition:opacity .15s;}}' +
-      '#atlas-sidenav.c .ani-tx{{opacity:0;width:0;pointer-events:none;position:absolute;}}';
-    d.head.appendChild(s);
-  }}
+  /* CSS — mis à jour à chaque rendu pour refléter le thème courant */
+  var IS_LIGHT = {is_light_js};
+  var NAV_BG     = IS_LIGHT ? '#f0f2f6'           : '#161b22';
+  var NAV_BDR    = IS_LIGHT ? 'rgba(0,0,0,.12)'   : 'rgba(255,255,255,.12)';
+  var ANT_BDR    = IS_LIGHT ? 'rgba(0,0,0,.08)'   : 'rgba(255,255,255,.07)';
+  var ANT_FG     = IS_LIGHT ? 'rgba(0,0,0,.4)'    : 'rgba(255,255,255,.5)';
+  var ANS_FG     = IS_LIGHT ? '#555'              : '#fff';
+  var ANI_FG     = IS_LIGHT ? 'rgba(0,0,0,.65)'   : 'rgba(255,255,255,.75)';
+  var ANI_HOV    = IS_LIGHT ? 'rgba(0,0,0,.06)'   : 'rgba(255,255,255,.08)';
+  var ANI_HOV_FG = IS_LIGHT ? 'rgba(0,0,0,.85)'   : '#fff';
+  var ANI_A_BG   = IS_LIGHT ? 'rgba(255,75,75,.15)' : 'rgba(255,75,75,.22)';
+  var ANI_A_FG   = IS_LIGHT ? '#c0392b'           : '#fff';
+  var navCss =
+    '#atlas-sidenav{{position:fixed;left:0;' +
+    'width:' + W + 'px;background:' + NAV_BG + ';z-index:100;' +
+    'display:flex;flex-direction:column;' +
+    'border-right:1px solid ' + NAV_BDR + ';' +
+    'transition:width .2s ease;overflow:hidden;box-sizing:border-box;}}' +
+    '#atlas-sidenav.c{{width:' + MINI + 'px;}}' +
+    '#ant{{display:flex;align-items:center;justify-content:flex-end;height:34px;' +
+    'padding:0 10px;cursor:pointer;border-bottom:1px solid ' + ANT_BDR + ';' +
+    'color:' + ANT_FG + ';font-size:17px;user-select:none;flex-shrink:0;}}' +
+    '#atlas-sidenav.c #ant{{justify-content:center;padding:0;}}' +
+    '.ans{{font-size:8px;font-weight:700;letter-spacing:1.5px;opacity:.35;' +
+    'text-transform:uppercase;padding:6px 12px 1px;color:' + ANS_FG + ';white-space:nowrap;flex-shrink:0;}}' +
+    '#atlas-sidenav.c .ans{{display:none;}}' +
+    '.ani{{display:flex;align-items:center;gap:7px;padding:4px 8px;text-decoration:none;' +
+    'color:' + ANI_FG + ';font-size:12px;' +
+    'font-family:-apple-system,BlinkMacSystemFont,sans-serif;' +
+    'border-radius:5px;margin:0 4px;white-space:nowrap;transition:background .15s;}}' +
+    '#atlas-sidenav.c .ani{{justify-content:center;padding:6px 0;margin:0;border-radius:0;}}' +
+    '.ani:hover{{background:' + ANI_HOV + ';color:' + ANI_HOV_FG + ';}}' +
+    '.ani.a{{background:' + ANI_A_BG + ';font-weight:600;color:' + ANI_A_FG + ';}}' +
+    '.ani-ic{{font-size:17px;min-width:24px;text-align:center;flex-shrink:0;line-height:1;}}' +
+    '#atlas-sidenav.c .ani-ic{{min-width:' + MINI + 'px;font-size:15px;}}' +
+    '.ani-tx{{white-space:nowrap;overflow:hidden;transition:opacity .15s;}}' +
+    '#atlas-sidenav.c .ani-tx{{opacity:0;width:0;pointer-events:none;position:absolute;}}';
+  var navCssEl = d.getElementById('atlas-nav-css');
+  if (!navCssEl) {{ navCssEl = d.createElement('style'); navCssEl.id = 'atlas-nav-css'; d.head.appendChild(navCssEl); }}
+  navCssEl.textContent = navCss;
 
   /* Construction du nav */
   var existing = d.getElementById('atlas-sidenav');
@@ -485,7 +497,7 @@ def render_asset_tabs(
         parts = lbl.split("  ", 1)
         items.append({"key": k, "icon": parts[0], "text": parts[1] if len(parts) > 1 else parts[0]})
 
-    _inject_custom_sidenav(items, selected_key)
+    _inject_custom_sidenav(items, selected_key, theme=st.query_params.get("theme", "dark"))
 
     # Rendu de la vue sélectionnée
     if selected_key == "Global":

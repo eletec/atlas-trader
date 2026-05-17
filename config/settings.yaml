@@ -398,6 +398,62 @@ post_mortem:
   min_history_for_adjustment: 10
   learning_rate: 0.05
   walk_forward_days: 7
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUANT V2 — Tous les paramètres configurables depuis l'Admin UI
+# Aucune valeur numérique ne doit être hardcodée dans le code quant/
+# ══════════════════════════════════════════════════════════════════════════════
+quant:
+  # ── Données ────────────────────────────────────────────────────────────────
+  symbol: BTC/USDT
+  timeframe: 5m                   # 1m | 3m | 5m | 15m | 1h | 4h | 1d
+  history_days: 90                # jours d'historique à charger pour le refit
+
+  # ── Pipeline ───────────────────────────────────────────────────────────────
+  horizon_bars: 4                 # horizon de prédiction (en barres)
+  norm_window_days: 30            # fenêtre de normalisation quantile (en jours, converti auto)
+  p_up_threshold: 0.58            # seuil LONG : P(up) > p_up_threshold
+  p_dn_threshold: 0.42            # seuil SHORT : P(up) < p_dn_threshold
+  train_fraction: 0.70            # fraction train/test pour le live runner
+  refit_interval_days: 7          # intervalle de re-fit du modèle
+
+  # ── Signal model ───────────────────────────────────────────────────────────
+  use_hmm: true                   # true = HMM, false = fallback ADX+vol_of_vol
+  use_lgb: false                  # true = LightGBM (expérimental), false = LogReg
+  signal_C: 1.0                   # régularisation LogReg (plus bas = plus régularisé)
+
+  # ── Régime HMM ─────────────────────────────────────────────────────────────
+  hmm_n_states: 3                 # nombre d'états HMM (2 ou 3)
+  hmm_adx_threshold: 25.0         # seuil ADX mode fallback
+
+  # ── Risk management ────────────────────────────────────────────────────────
+  fraction_per_trade: 0.0075      # fraction du capital risqué par trade (0.75%)
+  stop_loss_atr_mult: 2.5         # multiplicateur ATR pour le stop-loss
+  take_profit_atr_mult: 3.5       # multiplicateur ATR pour le take-profit (R:R 1.4)
+  trailing_activation_atr: 1.0    # activation trailing après +N ATR
+  trailing_distance_atr: 1.0      # distance du trailing stop (en ATR)
+  weekly_dd_kill_switch: 0.08     # DD hebdo déclenchant le kill-switch (8%)
+  kill_switch_pause_days: 7       # durée de pause après kill-switch
+
+  # ── Backtest ───────────────────────────────────────────────────────────────
+  initial_capital: 10000.0        # capital de départ (USD)
+  fee_rate: 0.0005                # frais taker par côté (0.05%)
+  slippage_rate: 0.0002           # slippage par côté (0.02%)
+
+  # ── Walk-forward ───────────────────────────────────────────────────────────
+  wf_train_days: 90               # durée de la fenêtre train (jours)
+  wf_test_days: 30                # durée de la fenêtre test OOS (jours)
+  wf_step_days: 30                # pas de glissement entre folds (jours)
+  wf_min_folds: 12                # nombre minimum de folds
+  wf_max_folds: 24                # nombre maximum de folds
+  wf_perm_iter: 500               # itérations pour le test de permutation
+
+  # ── Critères go-live ───────────────────────────────────────────────────────
+  go_live_sharpe_min: 0.5         # Sharpe médian OOS minimum
+  go_live_pf_min: 1.2             # Profit Factor moyen minimum
+  go_live_trades_min: 250         # nombre total de trades minimum
+  go_live_pvalue_max: 0.10        # p-value maximum (test de permutation)
+  go_live_positive_folds_pct: 0.60  # % de folds avec Sharpe > 0 minimum
   correlation_threshold: 0.75
   meta_analysis_interval_days: 14  # LLM failure-pattern analysis, every N days
   meta_analysis_days: 30            # lookback window for the analysis

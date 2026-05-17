@@ -43,13 +43,21 @@ class RegimeDetector:
     """
 
     use_hmm: bool = True
-    n_states: int = 3                    # 3 états : Trending / Ranging / Panic
-    adx_threshold: float = 25.0
+    n_states: int        = field(default_factory=lambda: _rgcfg("hmm_n_states", 3))
+    adx_threshold: float = field(default_factory=lambda: _rgcfg("hmm_adx_threshold", 25.0))
     vov_threshold: float = 0.5
     _hmm: object | None = field(default=None, init=False, repr=False)
     _trending_state: int | None = field(default=None, init=False, repr=False)
     _panic_state: int | None = field(default=None, init=False, repr=False)
     _vov_chaos_threshold: float = field(default=float("inf"), init=False, repr=False)
+
+
+def _rgcfg(key: str, fallback):
+    try:
+        from quant.config import get_quant_cfg
+        return getattr(get_quant_cfg(), key)
+    except Exception:
+        return fallback
 
     def fit(self, features: pd.DataFrame) -> "RegimeDetector":
         """Entraîne sur la fenêtre TRAIN. Aucune donnée OOS ne doit transiter ici."""
@@ -179,21 +187,18 @@ class RegimeDetector:
         """
         n_samples = len(observations)
         n_states = self._hmm.n_components
-        # Probabilités d'émission via hmmlearn interne, avec fallback scipy
-        try:
-            log_B = self._hmm._compute_log_likelihood(observations)  # (T, n_states)
-        except AttributeError:
-            from scipy.stats import multivariate_normal
-            log_B = np.zeros((n_samples, n_states))
-            for s in range(n_states):
-                cov_s = self._hmm.covars_[s]
-                if cov_s.ndim == 1:
-                    cov_s = np.diag(cov_s)  # diag → matrice pleine pour scipy
-                log_B[:, s] = multivariate_normal.logpdf(
-                    observations,
-                    mean=self._hmm.means_[s],
-                    cov=cov_s,
-                )
+        # Probabilités d'émission log — scipy en primaire (stable, pas d'API privée).
+        # covariance_type="diag" → covars_[s] shape (n_features,) = variances par feature.
+        # log P(obs | state=s) = Σ_f log N(obs_f ; mean_sf, var_sf)
+        from scipy.stats import norm as _norm
+        log_B = np.zeros((n_samples, n_states))
+        for s in range(n_states):
+            var_s  = self._hmm.covars_[s]   # (n_features,)
+            mean_s = self._hmm.means_[s]    # (n_features,)
+            log_B[:, s] = np.sum(
+                _norm.logpdf(observations, loc=mean_s, scale=np.sqrt(var_s + 1e-300)),
+                axis=1,
+            )
         log_A = np.log(self._hmm.transmat_ + 1e-300)   # (n_states, n_states)
         # α_0 : distribution filtrée initiale
         log_alpha = np.log(self._hmm.startprob_ + 1e-300) + log_B[0]

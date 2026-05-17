@@ -29,6 +29,31 @@ def load_settings(path: str | Path | None = None) -> dict:
     if not p.exists():
         raise FileNotFoundError(f"settings.yaml introuvable : {p.absolute()}")
 
+
+def save_settings(settings: dict, path: str | Path | None = None) -> None:
+    """Sauvegarde un dict settings dans settings.yaml (écrasement atomique via tmp).
+
+    Args:
+        settings: dict complet à sauvegarder
+        path: chemin du fichier (défaut : même que load_settings)
+    """
+    import stat as _stat
+    p = Path(path) if path else _SETTINGS_PATH
+    p.parent.mkdir(parents=True, exist_ok=True)
+    # Écriture atomique : tmp → rename pour éviter les fichiers tronqués
+    tmp = p.with_suffix(".yaml.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.dump(settings, f, allow_unicode=True, default_flow_style=False,
+                  sort_keys=False, width=120)
+    # Fix permissions si nécessaire
+    if p.exists() and not os.access(p, os.W_OK):
+        try:
+            p.chmod(p.stat().st_mode | _stat.S_IWUSR)
+        except PermissionError:
+            tmp.unlink(missing_ok=True)
+            raise
+    tmp.replace(p)
+
     with open(p, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 

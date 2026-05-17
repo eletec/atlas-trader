@@ -38,6 +38,16 @@ from storage.database import (
     init_db,
 )
 
+
+@st.cache_data(ttl=30)
+def _load_qcfg():
+    """Charge QuantConfig depuis settings.yaml (caché 30s)."""
+    try:
+        from quant.config import get_quant_cfg
+        return get_quant_cfg(reload=True)
+    except Exception:
+        return None
+
 # ===========================================================
 # CONFIG PAGE
 # ===========================================================
@@ -301,7 +311,7 @@ if _equity_rows:
         final = float(eq_df["equity"].iloc[-1])
         total_ret = (final - initial) / initial
         rets = eq_df["equity"].pct_change().dropna()
-        sharpe = float(rets.mean() / rets.std() * (365 * 96) ** 0.5) if rets.std() > 0 else 0.0
+        sharpe = float(rets.mean() / rets.std() * (_load_qcfg().bars_per_year if _load_qcfg() else 365 * 288) ** 0.5) if rets.std() > 0 else 0.0
         cummax = eq_df["equity"].cummax()
         max_dd = float(((eq_df["equity"] - cummax) / cummax).min())
 
@@ -359,24 +369,109 @@ with st.expander("Informations modèle V2", expanded=False):
     else:
         st.info("Aucun état disponible.")
 
-    st.markdown("""
+    st.markdown(f"""
 **Règles de décision V2 (auditables) :**
 - Trader seulement si régime **TRENDING** (HMM filtering ou ADX + vol_of_vol)
-- **LONG** si P(up) > 0.55
-- **SHORT** si P(up) < 0.45
+- **LONG** si P(up) > {_load_qcfg().p_up_threshold if _load_qcfg() else 0.58}
+- **SHORT** si P(up) < {_load_qcfg().p_dn_threshold if _load_qcfg() else 0.42}
 - **FLAT** sinon (zone morte) ou si régime ranging
 
 **Gestion du risque :**
-- Sizing : 1.5% du capital / distance_SL
-- Stop-loss : 2.5 × ATR₁₄
-- Take-profit : 3.0 × ATR₁₄ (R:R ≈ 1.2)
-- Trailing stop : activé après +1 ATR, recule de 1 ATR
-- Kill-switch : pause 7 jours si DD hebdo > 8%
+- Sizing : {(_load_qcfg().fraction_per_trade*100 if _load_qcfg() else 0.75):.2f}% du capital / distance_SL
+- Stop-loss : {_load_qcfg().stop_loss_atr_mult if _load_qcfg() else 2.5} × ATR₁₄
+- Take-profit : {_load_qcfg().take_profit_atr_mult if _load_qcfg() else 3.5} × ATR₁₄ (R:R ≈ {(_load_qcfg().take_profit_atr_mult/_load_qcfg().stop_loss_atr_mult if _load_qcfg() else 1.4):.1f})
+- Trailing stop : activé après +{_load_qcfg().trailing_activation_atr if _load_qcfg() else 1.0} ATR, recule de {_load_qcfg().trailing_distance_atr if _load_qcfg() else 1.0} ATR
+- Kill-switch : pause {_load_qcfg().kill_switch_pause_days if _load_qcfg() else 7} jours si DD hebdo > {(_load_qcfg().weekly_dd_kill_switch*100 if _load_qcfg() else 8.0):.0f}%
     """)
 
 # ===========================================================
-# FOOTER
+# SECTION 6 — ADMIN : CONFIGURATION QUANT
 # ===========================================================
+with st.expander("⚙️ Configuration Quant (Admin)", expanded=False):
+    _qcfg = _load_qcfg()
+    if _qcfg is None:
+        st.error("Impossible de charger quant/config.py. Vérifier settings.yaml.")
+    else:
+        st.caption("Tous les paramètres sont persistés dans `config/settings.yaml`. Pas de redemarrage requis.")
+
+        with st.form("admin_quant_form"):
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.subheader("Signal & Seuils")
+                p_up  = st.number_input("P(up) threshold (LONG)",  min_value=0.50, max_value=0.99, step=0.01, value=float(_qcfg.p_up_threshold),  format="%.2f")
+                p_dn  = st.number_input("P(dn) threshold (SHORT)", min_value=0.01, max_value=0.50, step=0.01, value=float(_qcfg.p_dn_threshold),  format="%.2f")
+                use_hmm = st.checkbox("Utiliser HMM",     value=bool(_qcfg.use_hmm))
+                use_lgb = st.checkbox("Utiliser LightGBM", value=bool(_qcfg.use_lgb))
+                signal_C = st.number_input("signal_C (LogReg)", min_value=0.01, max_value=100.0, step=0.1, value=float(_qcfg.signal_C), format="%.2f")
+                hmm_states = st.number_input("HMM n_states", min_value=2, max_value=6, step=1, value=int(_qcfg.hmm_n_states))
+                adx_thresh = st.number_input("ADX threshold", min_value=5.0, max_value=60.0, step=1.0, value=float(_qcfg.hmm_adx_threshold), format="%.1f")
+
+            with col2:
+                st.subheader("Risque & Sizing")
+                frac    = st.number_input("Fraction / trade (%)", min_value=0.10, max_value=5.0, step=0.05, value=float(_qcfg.fraction_per_trade * 100), format="%.2f")
+                sl_mult = st.number_input("SL ATR mult",           min_value=0.5,  max_value=10.0, step=0.1,  value=float(_qcfg.stop_loss_atr_mult),     format="%.1f")
+                tp_mult = st.number_input("TP ATR mult",           min_value=0.5,  max_value=10.0, step=0.1,  value=float(_qcfg.take_profit_atr_mult),   format="%.1f")
+                tr_act  = st.number_input("Trailing activation ATR", min_value=0.1, max_value=5.0, step=0.1, value=float(_qcfg.trailing_activation_atr), format="%.1f")
+                tr_dist = st.number_input("Trailing distance ATR",   min_value=0.1, max_value=5.0, step=0.1, value=float(_qcfg.trailing_distance_atr),   format="%.1f")
+                wdd     = st.number_input("Weekly DD kill-switch (%)", min_value=1.0, max_value=30.0, step=0.5, value=float(_qcfg.weekly_dd_kill_switch * 100), format="%.1f")
+                pause   = st.number_input("Kill-switch pause (jours)", min_value=1, max_value=30, step=1, value=int(_qcfg.kill_switch_pause_days))
+
+            with col3:
+                st.subheader("Walk-forward & Go-live")
+                wf_train = st.number_input("WF train (jours)",  min_value=30,  max_value=365, step=5,  value=int(_qcfg.wf_train_days))
+                wf_test  = st.number_input("WF test (jours)",   min_value=5,   max_value=90,  step=5,  value=int(_qcfg.wf_test_days))
+                wf_step  = st.number_input("WF step (jours)",   min_value=5,   max_value=90,  step=5,  value=int(_qcfg.wf_step_days))
+                wf_minf  = st.number_input("WF min folds",       min_value=4,   max_value=50,  step=1,  value=int(_qcfg.wf_min_folds))
+                wf_maxf  = st.number_input("WF max folds",       min_value=4,   max_value=50,  step=1,  value=int(_qcfg.wf_max_folds))
+                wf_perm  = st.number_input("Permutation iter",   min_value=100, max_value=5000, step=100, value=int(_qcfg.wf_perm_iter))
+                gl_sharpe = st.number_input("Go-live Sharpe min",       min_value=0.0, max_value=5.0, step=0.1, value=float(_qcfg.go_live_sharpe_min), format="%.2f")
+                gl_pf     = st.number_input("Go-live PF min",            min_value=1.0, max_value=3.0, step=0.05, value=float(_qcfg.go_live_pf_min),     format="%.2f")
+                gl_trades = st.number_input("Go-live trades min",        min_value=50,  max_value=2000, step=10, value=int(_qcfg.go_live_trades_min))
+                gl_pval   = st.number_input("Go-live p-value max",        min_value=0.01, max_value=0.5, step=0.01, value=float(_qcfg.go_live_pvalue_max), format="%.2f")
+                gl_folds  = st.number_input("Go-live folds positifs (%)", min_value=10.0, max_value=100.0, step=5.0, value=float(_qcfg.go_live_positive_folds_pct * 100), format="%.0f")
+
+            submitted = st.form_submit_button("💾 Sauvegarder la configuration", type="primary")
+
+        if submitted:
+            try:
+                from quant.config import QuantConfig, save_quant_cfg
+                import dataclasses
+                new_cfg = dataclasses.replace(
+                    _qcfg,
+                    p_up_threshold=float(p_up),
+                    p_dn_threshold=float(p_dn),
+                    use_hmm=bool(use_hmm),
+                    use_lgb=bool(use_lgb),
+                    signal_C=float(signal_C),
+                    hmm_n_states=int(hmm_states),
+                    hmm_adx_threshold=float(adx_thresh),
+                    fraction_per_trade=float(frac) / 100.0,
+                    stop_loss_atr_mult=float(sl_mult),
+                    take_profit_atr_mult=float(tp_mult),
+                    trailing_activation_atr=float(tr_act),
+                    trailing_distance_atr=float(tr_dist),
+                    weekly_dd_kill_switch=float(wdd) / 100.0,
+                    kill_switch_pause_days=int(pause),
+                    wf_train_days=int(wf_train),
+                    wf_test_days=int(wf_test),
+                    wf_step_days=int(wf_step),
+                    wf_min_folds=int(wf_minf),
+                    wf_max_folds=int(wf_maxf),
+                    wf_perm_iter=int(wf_perm),
+                    go_live_sharpe_min=float(gl_sharpe),
+                    go_live_pf_min=float(gl_pf),
+                    go_live_trades_min=int(gl_trades),
+                    go_live_pvalue_max=float(gl_pval),
+                    go_live_positive_folds_pct=float(gl_folds) / 100.0,
+                )
+                save_quant_cfg(new_cfg)
+                st.cache_data.clear()
+                st.success("✅ Configuration sauvegardée dans settings.yaml")
+            except Exception as _e:
+                st.error(f"Erreur sauvegarde : {_e}")
+
+
 st.markdown(
     '<div style="color:#374151; font-size:0.7rem; text-align:center; margin-top:20px">'
     f'Atlas Trader V2 — Quant Core — {datetime.utcnow().strftime("%d/%m/%Y %H:%M")} UTC'

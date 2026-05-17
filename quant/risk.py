@@ -1,30 +1,37 @@
 """
 quant/risk.py — Gestion du risque & sizing.
 
-Règles consensus 5 IA :
-- Sizing : 1.5% du capital par trade (fixe, pas de Kelly fractionnaire chaotique).
-- Stop-loss : 2.5 × ATR (en valeur absolue depuis l'entry).
-- Take-profit : 3.0 × ATR (R:R ≈ 1.2).
-- Trailing stop : actif après +1×ATR, recule de 1×ATR du plus haut/bas.
-- Kill-switch : pause de 7 jours si DD hebdo > 8%.
+Règles consensus 5 IA.
+Toutes les valeurs numériques viennent de settings.yaml → quant:
+(modifiables depuis l'Admin UI sans toucher au code).
 """
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("zeitgeist.quant.risk")
 
 
+def _rcfg(key: str, fallback):
+    """Lit une valeur dans QuantConfig, retourne fallback si impossible."""
+    try:
+        from quant.config import get_quant_cfg
+        return getattr(get_quant_cfg(), key)
+    except Exception:
+        return fallback
+
+
 @dataclass
 class RiskParams:
-    fraction_per_trade: float = 0.0075    # 0.75% du capital (réduit en phase expérimentale)
-    stop_loss_atr_mult: float = 2.5
-    take_profit_atr_mult: float = 3.5     # élevé de 3.0 → 3.5 : R:R 1.2 → 1.4 (DeepSeek)
-    trailing_activation_atr: float = 1.0
-    trailing_distance_atr: float = 1.0
-    weekly_dd_kill_switch: float = 0.08   # 8% DD/sem → pause
-    kill_switch_pause_days: int = 7
+    """Paramètres de risque chargés depuis settings.yaml → quant:"""
+    fraction_per_trade: float      = field(default_factory=lambda: _rcfg("fraction_per_trade", 0.0075))
+    stop_loss_atr_mult: float      = field(default_factory=lambda: _rcfg("stop_loss_atr_mult", 2.5))
+    take_profit_atr_mult: float    = field(default_factory=lambda: _rcfg("take_profit_atr_mult", 3.5))
+    trailing_activation_atr: float = field(default_factory=lambda: _rcfg("trailing_activation_atr", 1.0))
+    trailing_distance_atr: float   = field(default_factory=lambda: _rcfg("trailing_distance_atr", 1.0))
+    weekly_dd_kill_switch: float   = field(default_factory=lambda: _rcfg("weekly_dd_kill_switch", 0.08))
+    kill_switch_pause_days: int    = field(default_factory=lambda: int(_rcfg("kill_switch_pause_days", 7)))
 
 
 @dataclass

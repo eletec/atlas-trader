@@ -33,13 +33,31 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("zeitgeist.quant.walkforward")
 
-# ── Paramètres du protocole ───────────────────────────────────────────────────
-TRAIN_DAYS: int = 90
-TEST_DAYS:  int = 30
-STEP_DAYS:  int = 30   # pas de glissement = TEST_DAYS (aucun chevauchement OOS)
-MIN_FOLDS:  int = 12   # F.1 : 12 folds → 450j OOS pour couvrir bull+bear+chop (Grok+DeepSeek)
-MAX_FOLDS:  int = 24
-PERM_ITER:  int = 500  # 500 suffisent pour p-value ±0.02 ; mettre 1000 en prod
+
+def _wf_cfg():
+    """Charge les paramètres walk-forward depuis settings.yaml → quant: (avec cache)."""
+    try:
+        from quant.config import get_quant_cfg
+        return get_quant_cfg()
+    except Exception:
+        return None
+
+
+# Accesseurs compatibles avec le code appelant (lecture paresseuse au runtime)
+def _TRAIN_DAYS() -> int:  return getattr(_wf_cfg(), "wf_train_days", 90)
+def _TEST_DAYS()  -> int:  return getattr(_wf_cfg(), "wf_test_days",  30)
+def _STEP_DAYS()  -> int:  return getattr(_wf_cfg(), "wf_step_days",  30)
+def _MIN_FOLDS()  -> int:  return getattr(_wf_cfg(), "wf_min_folds",  12)
+def _MAX_FOLDS()  -> int:  return getattr(_wf_cfg(), "wf_max_folds",  24)
+def _PERM_ITER()  -> int:  return getattr(_wf_cfg(), "wf_perm_iter",  500)
+
+# Aliases rétro-compatibles (pour les imports existants)
+TRAIN_DAYS = property(lambda self: _TRAIN_DAYS())
+TEST_DAYS  = property(lambda self: _TEST_DAYS())
+STEP_DAYS  = property(lambda self: _STEP_DAYS())
+MIN_FOLDS  = property(lambda self: _MIN_FOLDS())
+MAX_FOLDS  = property(lambda self: _MAX_FOLDS())
+PERM_ITER  = property(lambda self: _PERM_ITER())
 
 
 @dataclass
@@ -81,7 +99,15 @@ def run_walkforward(
     """
     logger.info("=" * 60)
     logger.info(f"Walk-forward  {symbol}  {timeframe}  —  {total_days} jours historiques")
-    logger.info(f"Protocole : {TRAIN_DAYS}j train / {TEST_DAYS}j test / +{STEP_DAYS}j par fold")
+
+    # Charger les paramètres depuis settings.yaml au runtime
+    _train  = _TRAIN_DAYS()
+    _test   = _TEST_DAYS()
+    _step   = _STEP_DAYS()
+    _maxf   = _MAX_FOLDS()
+    _piter  = _PERM_ITER()
+
+    logger.info(f"Protocole : {_train}j train / {_test}j test / +{_step}j par fold")
     logger.info("=" * 60)
 
     # 1. Chargement des données historiques ───────────────────────────────────
@@ -92,7 +118,7 @@ def run_walkforward(
         logger.error(f"fetch_history échec : {exc}")
         return None
 
-    min_bars = (_bars_per_day(timeframe) * (TRAIN_DAYS + TEST_DAYS))
+    min_bars = (_bars_per_day(timeframe) * (_train + _test))
     if len(ohlcv) < min_bars:
         logger.error(f"Données insuffisantes : {len(ohlcv)} barres (min {min_bars})")
         return None
@@ -103,13 +129,13 @@ def run_walkforward(
 
     cfg = PipelineConfig()
     bpd = _bars_per_day(timeframe)
-    train_bars = TRAIN_DAYS * bpd
-    test_bars  = TEST_DAYS  * bpd
-    step_bars  = STEP_DAYS  * bpd
+    train_bars = _train * bpd
+    test_bars  = _test  * bpd
+    step_bars  = _step  * bpd
 
     fold_results: list[FoldResult] = []
 
-    for fold_idx in range(MAX_FOLDS):
+    for fold_idx in range(_maxf):
         start    = fold_idx * step_bars
         train_end = start + train_bars
         test_end  = train_end + test_bars
@@ -205,19 +231,17 @@ def run_walkforward(
     logger.info(f"  Trades / fold        : {trades_per_fold:.0f}")
     logger.info(f"  Trades total OOS     : {trades_total}")
 
-    # 4. Test de permutation — block sign randomization (GPT + DeepSeek)
-    # Block size ≈20% des folds pour préserver la dépendance temporelle (autocorrélation)
+    # 4. Test de permutation — block sign randomization
     logger.info("")
-    logger.info(f"--- Test de permutation H₀ : edge = 0 ({PERM_ITER} itérations, block bootstrap) ---")
+    logger.info(f"--- Test de permutation H₀ : edge = 0 ({_piter} itérations, block bootstrap) ---")
     rng = np.random.default_rng(42)
     sharpe_obs = sharpe_mean
-    null_dist = np.empty(PERM_ITER)
+    null_dist = np.empty(_piter)
     sharpe_vals = df["sharpe"].values.copy()
     n_folds = len(sharpe_vals)
-    block_size = max(2, n_folds // 5)   # ~20% de la série par bloc
+    block_size = max(2, n_folds // 5)
 
-    for i in range(PERM_ITER):
-        # Randomisation des signes par blocs corrélés (préserve l'autocorrélation entre folds consécutifs)
+    for i in range(_piter):
         n_blocks = (n_folds + block_size - 1) // block_size
         block_signs = rng.choice([-1.0, 1.0], size=n_blocks)
         signs = np.repeat(block_signs, block_size)[:n_folds]
@@ -229,15 +253,22 @@ def run_walkforward(
     logger.info(f"  p-value (unilatérale): {p_value:.3f}  ← {'✓ SIGNIFICATIF' if p_value < 0.10 else '✗ NON SIGNIFICATIF'}")
 
     # 5. Critères de passage en live ──────────────────────────────────────────
+    _c = _wf_cfg()
+    _sharpe_min     = getattr(_c, "go_live_sharpe_min",          0.5)
+    _pf_min         = getattr(_c, "go_live_pf_min",              1.2)
+    _trades_min     = getattr(_c, "go_live_trades_min",          250)
+    _pvalue_max     = getattr(_c, "go_live_pvalue_max",          0.10)
+    _pos_folds_pct  = getattr(_c, "go_live_positive_folds_pct",  0.60)
+
     logger.info("")
     logger.info("--- CRITÈRES DE PASSAGE EN LIVE ---")
     criteria = {
-        f"Sharpe médian OOS > 0.5  [{sharpe_med:+.3f}]":      sharpe_med      > 0.5,
-        f"% folds Sharpe>0 ≥ 60%  [{pct_positive:.0%}]":      pct_positive    >= 0.60,
-        f"Profit Factor moyen > 1.2  [{pf_mean:.2f}]":         pf_mean         > 1.2,
-        f"Max DD moyen < 20%  [{dd_mean:.1%}]":                dd_mean         < 0.20,
-        f"Trades total ≥ 250  [{trades_total}]":               trades_total    >= 250,
-        f"p-value < 0.10  [{p_value:.3f}]":                    p_value         < 0.10,
+        f"Sharpe médian OOS > {_sharpe_min}  [{sharpe_med:+.3f}]":    sharpe_med      > _sharpe_min,
+        f"% folds Sharpe>0 ≥ {_pos_folds_pct:.0%}  [{pct_positive:.0%}]": pct_positive >= _pos_folds_pct,
+        f"Profit Factor moyen > {_pf_min}  [{pf_mean:.2f}]":          pf_mean         > _pf_min,
+        f"Max DD moyen < 20%  [{dd_mean:.1%}]":                        dd_mean         < 0.20,
+        f"Trades total ≥ {_trades_min}  [{trades_total}]":            trades_total    >= _trades_min,
+        f"p-value < {_pvalue_max}  [{p_value:.3f}]":                   p_value         < _pvalue_max,
     }
     all_ok = all(criteria.values())
     for name, ok in criteria.items():

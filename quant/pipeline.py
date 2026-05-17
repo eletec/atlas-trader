@@ -14,12 +14,13 @@ from typing import Sequence
 import pandas as pd
 
 from quant.backtest import Backtester, BacktestResult, buy_and_hold
+from quant.config import QuantConfig, get_quant_cfg
 from quant.features import compute_features, make_target_direction
 from quant.normalization import normalize_features
 from quant.regime import RegimeDetector
 from quant.risk import RiskManager, RiskParams
 from quant.signal_model import SignalModel
-from quant.strategy import Action, BaselineStrategy, decide
+from quant.strategy import Action, BaselineStrategy
 
 logger = logging.getLogger("zeitgeist.quant.pipeline")
 
@@ -43,16 +44,33 @@ DEFAULT_FEATURE_COLS = [
 
 @dataclass
 class PipelineConfig:
-    horizon_bars: int = 4
-    norm_window: int = 30 * 96
-    p_up_threshold: float = 0.58    # élargi depuis 0.55 — consensus 3 IA
-    p_dn_threshold: float = 0.42    # élargi depuis 0.45
-    use_hmm: bool = True
-    use_signal_model: bool = True
+    """Paramètres du pipeline V2. Les valeurs par défaut sont chargées depuis
+    settings.yaml → quant: via get_quant_cfg(). Ne jamais hardcoder ici."""
+    horizon_bars: int           = field(default_factory=lambda: get_quant_cfg().horizon_bars)
+    norm_window: int            = field(default_factory=lambda: get_quant_cfg().norm_window_bars)
+    p_up_threshold: float       = field(default_factory=lambda: get_quant_cfg().p_up_threshold)
+    p_dn_threshold: float       = field(default_factory=lambda: get_quant_cfg().p_dn_threshold)
+    use_hmm: bool               = field(default_factory=lambda: get_quant_cfg().use_hmm)
+    use_signal_model: bool      = True
     feature_cols: Sequence[str] = field(default_factory=lambda: list(DEFAULT_FEATURE_COLS))
-    initial_capital: float = 10_000.0
-    fee_rate: float = 0.0005
-    slippage_rate: float = 0.0002
+    initial_capital: float      = field(default_factory=lambda: get_quant_cfg().initial_capital)
+    fee_rate: float             = field(default_factory=lambda: get_quant_cfg().fee_rate)
+    slippage_rate: float        = field(default_factory=lambda: get_quant_cfg().slippage_rate)
+
+    @classmethod
+    def from_quant_cfg(cls, qcfg: QuantConfig | None = None) -> "PipelineConfig":
+        """Construit explicitement depuis un QuantConfig (utile pour les tests)."""
+        c = qcfg or get_quant_cfg()
+        return cls(
+            horizon_bars=c.horizon_bars,
+            norm_window=c.norm_window_bars,
+            p_up_threshold=c.p_up_threshold,
+            p_dn_threshold=c.p_dn_threshold,
+            use_hmm=c.use_hmm,
+            initial_capital=c.initial_capital,
+            fee_rate=c.fee_rate,
+            slippage_rate=c.slippage_rate,
+        )
 
 
 @dataclass
@@ -121,16 +139,14 @@ def run_pipeline(
     else:
         proba_up.loc[:] = 0.5
 
-    # 4. Décisions barre par barre
-    actions = pd.Series(index=feats.index, dtype="object")
-    for ts in feats.index:
-        d = decide(
-            probability_up=float(proba_up.loc[ts]) if pd.notna(proba_up.loc[ts]) else None,
-            regime_trending=bool(regime_series.loc[ts] == 1.0) if pd.notna(regime_series.loc[ts]) else False,
-            upper_threshold=cfg.p_up_threshold,
-            lower_threshold=cfg.p_dn_threshold,
-        )
-        actions.loc[ts] = d.action
+    # 4. Décisions vectorisées — équivalent strict à decide() mais O(1) numpy
+    trending_mask = (regime_series == 1.0).fillna(False)
+    proba_valid   = proba_up.notna()
+    actions = pd.Series(Action.FLAT, index=feats.index, dtype="object")
+    long_mask  = trending_mask & proba_valid & (proba_up > cfg.p_up_threshold)
+    short_mask = trending_mask & proba_valid & (proba_up < cfg.p_dn_threshold)
+    actions[long_mask]  = Action.LONG
+    actions[short_mask] = Action.SHORT
 
     # 5. Backtest sur test_idx uniquement
     test_ohlcv = ohlcv.loc[test_idx]

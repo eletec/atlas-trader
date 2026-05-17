@@ -41,12 +41,30 @@ from quant.risk import Position, RiskManager, RiskParams
 from quant.signal_model import SignalModel
 from quant.strategy import Action, decide
 
-_DEFAULT_SYMBOL = "BTC/USDT"
-_DEFAULT_TF = "5m"    # settings.yaml : timeframe 5m (loop 300s)
-_HISTORY_DAYS = 90
-_TRAIN_FRACTION = 0.70
-_REFIT_INTERVAL_S = 7 * 86400
-_MAX_HISTORY_BARS = 90 * 96
+
+def _wf_qcfg():
+    try:
+        from quant.config import get_quant_cfg
+        return get_quant_cfg()
+    except Exception:
+        return None
+
+
+def _wf_attr(key, fallback):
+    return getattr(_wf_qcfg(), key, fallback)
+
+
+# Lus au runtime depuis settings.yaml via get_quant_cfg()
+def _DEFAULT_SYMBOL()     -> str:   return _wf_attr("symbol",         "BTC/USDT")
+def _DEFAULT_TF()         -> str:   return _wf_attr("timeframe",      "5m")
+def _HISTORY_DAYS()       -> int:   return _wf_attr("history_days",   90)
+def _TRAIN_FRACTION()     -> float: return _wf_attr("train_fraction", 0.70)
+def _REFIT_INTERVAL_S()   -> int:   return _wf_attr("refit_interval_days", 7) * 86400
+
+def _MAX_HISTORY_BARS()   -> int:
+    tf = _DEFAULT_TF()
+    bpd = {"1m": 1440, "3m": 480, "5m": 288, "15m": 96, "1h": 24, "4h": 6, "1d": 1}.get(tf, 288)
+    return _HISTORY_DAYS() * bpd
 
 # Durée en secondes par barre selon le timeframe
 _TF_SECONDS = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
@@ -63,7 +81,7 @@ class LiveRunner:
         self.history_days = history_days
         self.train_fraction = train_fraction
         self.cfg = config or PipelineConfig(use_hmm=False)
-        self._refit_interval_s = refit_interval_s if refit_interval_s is not None else _REFIT_INTERVAL_S
+        self._refit_interval_s = refit_interval_s if refit_interval_s is not None else _REFIT_INTERVAL_S()
         self._ohlcv = None
         self._regime = None
         self._model = None
@@ -156,8 +174,8 @@ class LiveRunner:
             new = new.iloc[:-1]  # drop barre en cours de formation
         combined = pd.concat([self._ohlcv, new])
         combined = combined[~combined.index.duplicated(keep="last")].sort_index()
-        if len(combined) > _MAX_HISTORY_BARS:
-            combined = combined.iloc[-_MAX_HISTORY_BARS:]
+        if len(combined) > _MAX_HISTORY_BARS():
+            combined = combined.iloc[-_MAX_HISTORY_BARS():]
         is_new = len(combined) > len(self._ohlcv)
         self._ohlcv = combined
         # D.1 Mise à jour des données 1h (glissement de la fenêtre)
@@ -381,11 +399,11 @@ _runners: dict[str, "LiveRunner"] = {}
 def _runner_fingerprint(qcfg: dict) -> tuple:
     """Empreinte des paramètres structurels — changement → recréation du runner."""
     return (
-        qcfg.get("timeframe", _DEFAULT_TF),
-        int(qcfg.get("history_days", _HISTORY_DAYS)),
+        qcfg.get("timeframe", _DEFAULT_TF()),
+        int(qcfg.get("history_days", _HISTORY_DAYS())),
         bool(qcfg.get("use_hmm", False)),
         int(qcfg.get("horizon_bars", 4)),
-        float(qcfg.get("train_fraction", _TRAIN_FRACTION)),
+        float(qcfg.get("train_fraction", _TRAIN_FRACTION())),
     )
 
 
@@ -437,16 +455,16 @@ def _get_runner(asset: str) -> "LiveRunner":
     )
     _runners[asset] = LiveRunner(
         symbol=asset,
-        timeframe=qcfg.get("timeframe", _DEFAULT_TF),
-        history_days=qcfg.get("history_days", _HISTORY_DAYS),
-        train_fraction=qcfg.get("train_fraction", _TRAIN_FRACTION),
+        timeframe=qcfg.get("timeframe", _DEFAULT_TF()),
+        history_days=qcfg.get("history_days", _HISTORY_DAYS()),
+        train_fraction=qcfg.get("train_fraction", _TRAIN_FRACTION()),
         config=pipe_cfg,
         refit_interval_s=int(qcfg.get("refit_interval_hours", 168)) * 3600,
     )
     return _runners[asset]
 
 
-def run_cycle(asset: str = _DEFAULT_SYMBOL, trigger: str = "scheduled") -> dict:
+def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> dict:
     """Point d'entrée principal du daemon. Appelé toutes les 15min par main.py."""
     from utils.cycle_lock import try_acquire, release as _lock_release
     acquired = try_acquire(owner=f"v2_{trigger}", asset=asset)

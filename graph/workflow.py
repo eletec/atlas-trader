@@ -555,9 +555,16 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> dict:
     """Point d'entrée principal du daemon. Appelé toutes les 15min par main.py."""
     from utils.cycle_lock import try_acquire, release as _lock_release
     acquired = try_acquire(owner=f"v2_{trigger}", asset=asset)
+    if not acquired:
+        logger.warning(f"[{asset}] Cycle déjà en cours — ignoré (trigger={trigger}).")
+        return {
+            "asset": asset, "action": "flat", "reason": "cycle_locked",
+            "errors": ["cycle_locked"],
+            "cycle_id": f"v2_skip_{int(time.time())}",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
     try:
         runner = _get_runner(asset)
         return runner.step(trigger=trigger)
     finally:
-        if acquired:
-            _lock_release(asset=asset)
+        _lock_release(asset=asset)

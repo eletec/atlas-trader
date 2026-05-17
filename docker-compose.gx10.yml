@@ -66,6 +66,7 @@ services:
       - ./dashboard:/app/dashboard:ro
       - ./agents:/app/agents:ro
       - ./graph:/app/graph:ro
+      - ./quant:/app/quant:ro
       - ./execution:/app/execution:ro
       - ./utils:/app/utils:ro
       - ./main.py:/app/main.py:ro

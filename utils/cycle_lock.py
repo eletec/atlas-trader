@@ -18,7 +18,7 @@ logger = logging.getLogger("zeitgeist.cycle_lock")
 _IN_CONTAINER = os.path.exists("/app")
 _LOCK_DIR = Path("/tmp") if _IN_CONTAINER else Path(__file__).resolve().parent.parent / "storage"
 _LOCK_FILE = _LOCK_DIR / "atlas_cycle.lock"  # global fallback (backward compat)
-_MAX_CYCLE_DURATION = 300  # seconds — stale lock threshold (cycles ~90s, 300s = ample marge)
+_MAX_CYCLE_DURATION = 900  # seconds — stale lock threshold (premier refit HMM 8 actifs ~20min)
 
 
 def _lock_path(asset: str | None = None) -> Path:

@@ -1025,7 +1025,6 @@ header[data-testid="stHeader"]{{display:none!important;}}
   <span style="flex:1;color:{nav_fg};font-weight:700;font-size:15px;
                white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
     Atlas Trader
-    <span style="font-weight:400;font-size:12px;opacity:0.5;"> &middot; Paper Trading BTC/USDT</span>
   </span>
   <span style="font-size:12px;color:{nav_fg};opacity:0.6;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;">{_fmt_utc_local(datetime.utcnow())}</span>
   <a href="{u_refresh}" style="{S_BTN}" title="{t('hbg_refresh')}" target="_self"><i class="fas fa-rotate-right"></i></a>

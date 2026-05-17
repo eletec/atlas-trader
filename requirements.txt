@@ -27,6 +27,7 @@ qrcode[pil]>=7.4.0       # génération du QR code TOTP
 
 # ---- Market Data ----
 ccxt>=4.3.0
+yfinance>=0.2.40         # forex & commodités (XAU, XAG, WTI, EUR/USD, GBP/USD)
 websocket-client>=1.8.0  # WebSocket prix temps réel (SL/TP tick-by-tick)
 
 # ---- Quant / ML (V2 pipeline) ----

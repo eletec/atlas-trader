@@ -4187,9 +4187,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "Back-up", "zh": "备份",
     },
     "tab_reset_v2": {
-        "fr": "Reset V2", "en": "Reset V2", "de": "Reset V2",
-        "es": "Reset V2", "it": "Reset V2", "pt": "Reset V2",
-        "nl": "Reset V2", "zh": "重置 V2",
+        "fr": "Reset", "en": "Reset", "de": "Reset",
+        "es": "Reset", "it": "Reset", "pt": "Reset",
+        "nl": "Reset", "zh": "Reset",
     },
     # ── Flux Manager V2 — categories ─────────────────────────────────────────
     "flux_cat_data": {

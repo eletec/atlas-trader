@@ -18,6 +18,15 @@ logger = logging.getLogger("zeitgeist.quant.data_loader")
 DEFAULT_EXCHANGE = "binance"
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "ohlcv"
 
+# Actifs non disponibles sur Binance → routés vers yfinance
+_YAHOO_SYMBOLS: dict[str, str] = {
+    "XAU/USD": "GC=F",
+    "XAG/USD": "SI=F",
+    "WTI/USD": "CL=F",
+    "EUR/USD": "EURUSD=X",
+    "GBP/USD": "GBPUSD=X",
+}
+
 
 def fetch_ohlcv(
     symbol: str = "BTC/USDT",
@@ -70,6 +79,17 @@ def fetch_history(
         except Exception as exc:
             logger.warning(f"Lecture cache échouée ({exc}) — re-fetch.")
 
+    # Routing : actifs non disponibles sur Binance → yfinance
+    if symbol in _YAHOO_SYMBOLS:
+        df = _fetch_yahoo_history(symbol, timeframe, days)
+        if cache and not df.empty:
+            try:
+                df.to_parquet(cache_file)
+                logger.info(f"Cache écrit: {cache_file.name} ({len(df)} bougies)")
+            except Exception as exc:
+                logger.warning(f"Écriture cache échouée: {exc}")
+        return df
+
     end_ms = int(time.time() * 1000)
     start_ms = end_ms - days * 24 * 3600 * 1000
     tf_minutes = _timeframe_to_minutes(timeframe)
@@ -109,6 +129,47 @@ def fetch_history(
             logger.warning(f"Écriture cache échouée: {exc}")
 
     return df
+
+
+def _fetch_yahoo_history(symbol: str, timeframe: str, days: int) -> pd.DataFrame:
+    """Récupère OHLCV via yfinance pour les actifs non disponibles sur Binance."""
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta, timezone
+
+        yahoo_sym = _YAHOO_SYMBOLS[symbol]
+        interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "1h", "1d": "1d"}
+        interval = interval_map.get(timeframe, "15m")
+        # yfinance limite les données intraday à ~60 jours
+        actual_days = min(days, 59) if interval in ("1m", "5m", "15m", "1h") else days
+
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=actual_days)
+
+        ticker = yf.Ticker(yahoo_sym)
+        hist = ticker.history(start=start, end=end, interval=interval)
+
+        if hist.empty:
+            logger.warning(f"yfinance: aucune donnée pour {symbol} ({yahoo_sym})")
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        hist = hist.reset_index()
+        ts_col = "Datetime" if "Datetime" in hist.columns else "Date"
+        hist["ts"] = pd.to_datetime(hist[ts_col], utc=True)
+        hist = hist.rename(columns={
+            "Open": "open", "High": "high", "Low": "low",
+            "Close": "close", "Volume": "volume",
+        })
+        df = hist.set_index("ts")[["open", "high", "low", "close", "volume"]].dropna()
+        df.index.name = "ts"
+        df = df[~df.index.duplicated(keep="first")].sort_index()
+        return df
+    except ImportError:
+        logger.error("yfinance non installé — pip install yfinance")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    except Exception as exc:
+        logger.error(f"yfinance fetch échoué pour {symbol}: {exc}")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 
 def _timeframe_to_minutes(timeframe: str) -> int:

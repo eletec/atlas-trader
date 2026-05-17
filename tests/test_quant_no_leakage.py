@@ -100,11 +100,12 @@ def test_decide_dead_zone():
 
 
 def test_risk_position_sizing():
-    from quant.risk import RiskManager
-    rm = RiskManager()
+    from quant.risk import RiskManager, RiskParams
+    params = RiskParams()  # fraction=0.75%, SL=2.5×ATR, TP=3.5×ATR
+    rm = RiskManager(params)
     pos = rm.compute_position(side="long", entry_price=50_000, atr_value=500, capital=10_000)
-    # risque = 150€ / stop = 1250€ → size = 0.12
-    expected_size = (10_000 * 0.015) / (2.5 * 500)
+    # risque = 75€ (0.75%) / stop = 1250€ (2.5×ATR) → size = 0.06
+    expected_size = (10_000 * params.fraction_per_trade) / (params.stop_loss_atr_mult * 500)
     assert abs(pos.size_units - expected_size) < 1e-9
-    assert pos.stop_loss == 50_000 - 2.5 * 500
-    assert pos.take_profit == 50_000 + 3.0 * 500
+    assert pos.stop_loss  == 50_000 - params.stop_loss_atr_mult   * 500
+    assert pos.take_profit == 50_000 + params.take_profit_atr_mult * 500

@@ -412,7 +412,7 @@ admin:
   session_timeout_minutes: 60
 quant:
   timeframe: "5m"            # Timeframe OHLCV (ccxt notation)
-  history_days: 90           # Historique de chargement au boot
+  history_days: 360          # 360j = 8+ folds WF possibles (90j train + 8×30j test)
   train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
   horizon_bars: 4            # Horizon de prédiction (barres forward)
   p_up_threshold: 0.55       # Seuil P(up) pour signal LONG

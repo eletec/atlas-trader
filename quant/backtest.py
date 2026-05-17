@@ -65,7 +65,7 @@ class Backtester:
     fee_rate: float = 0.0005          # 0.05% par côté
     slippage_rate: float = 0.0002     # 0.02% par côté
     risk_manager: RiskManager = field(default_factory=RiskManager)
-    bars_per_year: int = 365 * 24 * 4  # 15min → 35040
+    bars_per_year: int = 0  # 0 = auto-inféré depuis l'index des données (5m→105120, 15m→35040…)
 
     def run(
         self,
@@ -81,6 +81,14 @@ class Backtester:
             atr_series: ATR alignée (utilisé pour SL/TP à l'entrée)
         """
         idx = ohlcv.index
+        # Inférer bars_per_year depuis la fréquence réelle des données
+        _bpy = self.bars_per_year
+        if _bpy <= 0 and len(idx) >= 2:
+            bar_sec = (idx[1] - idx[0]).total_seconds()
+            if bar_sec > 0:
+                _bpy = int(365 * 24 * 3600 / bar_sec)
+        if _bpy <= 0:
+            _bpy = 365 * 24 * 12  # fallback 5min
         equity = self.initial_capital
         equity_curve = pd.Series(index=idx, dtype="float64")
         trades: list[Trade] = []
@@ -165,7 +173,7 @@ class Backtester:
         equity_curve.iloc[-1] = equity
         equity_curve = equity_curve.ffill()
 
-        metrics = self._compute_metrics(equity_curve, trades)
+        metrics = self._compute_metrics(equity_curve, trades, _bpy)
         return BacktestResult(
             equity_curve=equity_curve,
             trades=trades,
@@ -191,7 +199,7 @@ class Backtester:
         return pnl_pct, net
 
     def _compute_metrics(
-        self, equity_curve: pd.Series, trades: list[Trade]
+        self, equity_curve: pd.Series, trades: list[Trade], bars_per_year: int = 0
     ) -> dict:
         equity = equity_curve.dropna()
         if len(equity) < 2:
@@ -205,8 +213,9 @@ class Backtester:
             }
         rets = equity.pct_change().dropna()
         total_return = float(equity.iloc[-1] / equity.iloc[0] - 1.0)
+        _bpy = bars_per_year if bars_per_year > 0 else (self.bars_per_year if self.bars_per_year > 0 else 365 * 24 * 12)
         sharpe = (
-            float(rets.mean() / rets.std() * np.sqrt(self.bars_per_year))
+            float(rets.mean() / rets.std() * np.sqrt(_bpy))
             if rets.std() > 0
             else 0.0
         )

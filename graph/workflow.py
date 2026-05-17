@@ -89,6 +89,7 @@ class LiveRunner:
         self._model_fit_at = None
         self._position = None
         self._position_entry_ts = None
+        self._position_is_range: bool = False   # P1.1 : trailing RANGE vs TREND
         self._ohlcv_1h = None          # D.1 : données 1h pour filtre multi-TF
         self._risk_manager = RiskManager(RiskParams())
         self._risk_manager_range: RiskManager | None = None   # initialisé après chargement config
@@ -256,7 +257,12 @@ class LiveRunner:
         # ── Gestion position existante ────────────────────────────────────────
         trade_result = None
         if self._position is not None:
-            self._position = self._risk_manager.update_trailing(self._position, close_price)
+            _trail_mgr = (
+                self._risk_manager_range
+                if self._position_is_range and self._risk_manager_range
+                else self._risk_manager
+            )
+            self._position = _trail_mgr.update_trailing(self._position, close_price)
             exit_signal = self._risk_manager.should_exit(self._position, close_price)
             # Time-based exit conditionnel : 8 barres max ET trade en perte (B.2 — 3/3 IA)
             # Si le trade est gagnant, le laisser courir (TP/SL gèrent la sortie)
@@ -279,11 +285,14 @@ class LiveRunner:
             if exit_signal:
                 trade_result = self._close_position(close_price, exit_signal)
                 self._position = None
+                self._position_is_range = False   # P1.1 : reset après fermeture
 
         # ── Filtre multi-timeframe 1h (D.1 — 3/3 IA) ─────────────────────────────
         # Veto si tendance horaire contra-directionnelle : SMA20 vs SMA50 sur 1h
+        # P1.2 : bypass pour les trades RANGE (mean-reversion = contra-tendance par nature)
+        _is_range_signal = decision.reason.startswith("range_mean_revert")
         trend_1h_veto = False
-        if decision.action in (Action.LONG, Action.SHORT) and self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 50:
+        if not _is_range_signal and decision.action in (Action.LONG, Action.SHORT) and self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 50:
             c1h = self._ohlcv_1h["close"]
             sma20_1h = c1h.rolling(20, min_periods=20).mean().iloc[-1]
             sma50_1h = c1h.rolling(50, min_periods=50).mean().iloc[-1]
@@ -296,8 +305,10 @@ class LiveRunner:
 
         # ── Nouvelle entrée ───────────────────────────────────────────────────
         # Filtre volume : n'entrer que si volume >= 70% de la médiane des 20 dernières barres
+        # P2.3 : volume yfinance non fiable pour FX/métaux/WTI → filtre désactivé hors crypto
+        _CRYPTO_ASSETS = {"BTC/USDT", "ETH/USDT", "SOL/USDT"}
         vol_ratio = 1.0
-        if len(ohlcv) >= 21:
+        if self.symbol in _CRYPTO_ASSETS and len(ohlcv) >= 21:
             vol_med = float(ohlcv["volume"].iloc[-21:-1].median())
             vol_ratio = float(ohlcv["volume"].iloc[-1]) / (vol_med + 1e-9)
         if (self._position is None
@@ -318,6 +329,7 @@ class LiveRunner:
                 self._capital -= pos.size_units * close_price * 0.0005
                 self._position = pos
                 self._position_entry_ts = bar_ts
+                self._position_is_range = is_range_trade   # P1.1 : trailing correct
                 self._n_trades += 1
                 mode_label = "RANGE-MR" if is_range_trade else "TREND"
                 logger.info(f"ENTRÉE {side.upper()} [{mode_label}] @ {close_price:.2f} | SL={pos.stop_loss:.2f} TP={pos.take_profit:.2f}")

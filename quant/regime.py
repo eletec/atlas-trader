@@ -49,6 +49,8 @@ class RegimeDetector:
     _hmm: object | None = field(default=None, init=False, repr=False)
     _trending_state: int | None = field(default=None, init=False, repr=False)
     _panic_state: int | None = field(default=None, init=False, repr=False)
+    _prev_trending_state: int | None = field(default=None, init=False, repr=False)  # P1.4
+    _prev_panic_state: int | None = field(default=None, init=False, repr=False)     # P1.4
     _vov_chaos_threshold: float = field(default=float("inf"), init=False, repr=False)
 
 
@@ -109,6 +111,18 @@ def _rgcfg(key: str, fallback):
             if len(vov) > 50:
                 self._vov_chaos_threshold = float(vov.quantile(0.80))
         self._hmm = hmm
+        # P1.4 : détection de permutation de labels HMM entre refits consécutifs
+        if self._prev_trending_state is not None:
+            if (self._trending_state != self._prev_trending_state
+                    or self._panic_state != self._prev_panic_state):
+                logger.warning(
+                    f"HMM label permutation détectée : "
+                    f"trend {self._prev_trending_state}→{self._trending_state}, "
+                    f"panic {self._prev_panic_state}→{self._panic_state} "
+                    f"(variances={[f'{v:.6f}' for v in variances]})"
+                )
+        self._prev_trending_state = self._trending_state
+        self._prev_panic_state = self._panic_state
         labels = {s: "RANGE" for s in range(self.n_states)}
         labels[self._trending_state] = "TREND"
         labels[self._panic_state] = "PANIC"

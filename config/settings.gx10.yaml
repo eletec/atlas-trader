@@ -17,11 +17,7 @@ project:
   - BTC/USDT
   - ETH/USDT
   - SOL/USDT
-  - XAU/USD
-  - XAG/USD
-  - WTI/USD
-  - GBP/USD
-  - EUR/USD
+  # XAU/USD, XAG/USD, WTI/USD, GBP/USD, EUR/USD — non disponibles sur Binance
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo

@@ -87,6 +87,8 @@ class LiveRunner:
         self._model = None
         self._last_fit_ts = 0.0
         self._model_fit_at = None
+        self._feats_cache: pd.DataFrame | None = None  # cache feats_all post-refit
+        self._feats_cache_ohlcv_len: int = 0            # len(ohlcv) when cache was built
         self._position = None
         self._position_entry_ts = None
         self._position_is_range: bool = False   # P1.1 : trailing RANGE vs TREND
@@ -127,6 +129,8 @@ class LiveRunner:
                      "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
         )
         feats_all = pd.concat([feats_raw, feats_norm], axis=1)
+        self._feats_cache = feats_all
+        self._feats_cache_ohlcv_len = len(ohlcv)
         self._regime = RegimeDetector(use_hmm=self.cfg.use_hmm).fit(feats_all.loc[train_idx])
         y = make_target_direction(ohlcv, horizon=self.cfg.horizon_bars)
         # B.3 Warmup : exclure les premières norm_window barres pour SignalModel
@@ -203,14 +207,35 @@ class LiveRunner:
         if ohlcv is None or len(ohlcv) < 50:
             return self._empty_state(trigger, "historique_insuffisant")
 
-        feats_raw = compute_features(ohlcv)
-        feats_norm = normalize_features(
-            feats_raw, window=self.cfg.norm_window,
-            columns=["log_return_1", "log_return_4", "log_return_24",
-                     "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
-                     "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
-        )
-        feats_all = pd.concat([feats_raw, feats_norm], axis=1)
+        n_new_bars = len(ohlcv) - self._feats_cache_ohlcv_len
+        _norm_cols = ["log_return_1", "log_return_4", "log_return_24",
+                      "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
+                      "vwap_dist_20", "bb_pct_b", "obv_proxy_20"]
+        if (self._feats_cache is not None
+                and 0 < n_new_bars <= 3
+                and len(self._feats_cache) >= self.cfg.norm_window):
+            # Incremental update: recompute only for the new tail bars.
+            # ATR/ADX need ~50 bars of context; norm needs norm_window bars of context.
+            _ctx = self.cfg.norm_window + 60
+            ohlcv_tail = ohlcv.iloc[-_ctx:]
+            feats_raw_tail = compute_features(ohlcv_tail)
+            feats_norm_tail = normalize_features(
+                feats_raw_tail, window=self.cfg.norm_window, columns=_norm_cols)
+            feats_tail = pd.concat([feats_raw_tail, feats_norm_tail], axis=1)
+            # Merge: drop the tail of the cache that overlaps and append new rows
+            new_idx = feats_tail.index[-n_new_bars:]
+            feats_all = pd.concat([
+                self._feats_cache[~self._feats_cache.index.isin(new_idx)],
+                feats_tail.loc[new_idx],
+            ])
+            feats_raw = feats_all[[c for c in feats_all.columns if not c.endswith("_q")]]
+        else:
+            feats_raw = compute_features(ohlcv)
+            feats_norm = normalize_features(
+                feats_raw, window=self.cfg.norm_window, columns=_norm_cols)
+            feats_all = pd.concat([feats_raw, feats_norm], axis=1)
+        self._feats_cache = feats_all
+        self._feats_cache_ohlcv_len = len(ohlcv)
 
         regime_series = self._regime.predict(feats_all) if self._regime else pd.Series([np.nan])
         regime_val = regime_series.iloc[-1] if len(regime_series) else np.nan

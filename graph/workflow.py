@@ -141,8 +141,12 @@ class LiveRunner:
         logger.info(f"Refit OK — {split} barres train | {len(ohlcv)-split} test")
 
     def _append_latest_bar(self):
+        # Fetch assez de barres pour couvrir les éventuels gaps si le cycle
+        # tourne moins souvent que le timeframe (ex: 15m cycle + 5m TF).
+        tf_secs = _TF_SECONDS.get(self.timeframe, 300)
+        limit = max(3, 1800 // tf_secs + 2)  # couvre ~30 min de gaps
         try:
-            new = fetch_ohlcv(symbol=self.symbol, timeframe=self.timeframe, limit=2)
+            new = fetch_ohlcv(symbol=self.symbol, timeframe=self.timeframe, limit=limit)
         except Exception as exc:
             logger.warning(f"Fetch latest bar failed: {exc}")
             return False

@@ -480,7 +480,7 @@ def render_controls(settings: dict) -> dict | None:
                             "XAG/USD", "WTI/USD", "GBP/USD", "EUR/USD"],
         default=_pa_opts,
         key="flux_ctrl_active_assets",
-        help="Le daemon itère sur tous ces actifs à chaque cycle de 15 min.",
+        help="Le daemon itère sur tous ces actifs à chaque cycle (voir Intervalle cycle).",
     )
 
     st.markdown("#### Paper Trading")
@@ -490,11 +490,19 @@ def render_controls(settings: dict) -> dict | None:
 
     st.markdown("#### Paramètres pipeline")
     qcfg = settings.get("quant", {})
+    _tf_cur = qcfg.get("timeframe", "5m")
+    _tf_secs = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400}
+    _recommended_interval = _tf_secs.get(_tf_cur, 300)
     col1, col2 = st.columns(2)
     with col1:
         _ival = settings.get("project", {}).get("loop_interval_seconds", 900)
-        _ival_new = st.number_input("Intervalle cycle (s)", 60, 3600, int(_ival), 60,
-                                    key="flux_ctrl_interval")
+        _ival_new = st.number_input(
+            "Intervalle cycle (s)", 60, 3600, int(_ival), 60,
+            key="flux_ctrl_interval",
+            help=f"Fréquence de réveil du daemon. **Recommandé : {_recommended_interval}s** pour le timeframe {_tf_cur} (1 décision par barre fermée).",
+        )
+        if _ival_new != _recommended_interval:
+            st.caption(f"⚠️ Recommandé : **{_recommended_interval}s** pour TF {_tf_cur}. Valeur actuelle = {_ival_new}s — le bot agira sur {_ival_new // _recommended_interval if _recommended_interval else '?'}éme barre seulement.")
     with col2:
         _hmm = qcfg.get("use_hmm", False)
         _hmm_new = st.toggle("Utiliser HMM", value=_hmm, key="flux_ctrl_hmm",

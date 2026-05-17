@@ -12,7 +12,7 @@ project:
   name: Atlas Trader
   version: 1.0.0-MVP
   asset: BTC/USDT
-  loop_interval_seconds: 900
+  loop_interval_seconds: 300   # doit égaler timeframe en secondes (5m = 300s)
   active_assets:
   - BTC/USDT
   - ETH/USDT
@@ -410,3 +410,12 @@ monitor:
 admin:
   password_hash: ''
   session_timeout_minutes: 60
+quant:
+  timeframe: "5m"            # Timeframe OHLCV (ccxt notation)
+  history_days: 90           # Historique de chargement au boot
+  train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
+  horizon_bars: 4            # Horizon de prédiction (barres forward)
+  p_up_threshold: 0.55       # Seuil P(up) pour signal LONG
+  p_dn_threshold: 0.45       # Seuil P(dn) pour signal SHORT
+  use_hmm: true              # hmmlearn installé sur GX10
+  refit_interval_hours: 168  # Refit hebdomadaire (7 × 24h)

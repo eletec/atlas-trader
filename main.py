@@ -79,15 +79,16 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
 
+    from utils.session import MarketSession
+
     active_assets = (cfg or {}).get("project", {}).get("active_assets", [asset])
     if not active_assets:
         active_assets = [asset]
 
     logger.info(
-        f"Daemon V2 démarré — actifs={active_assets} | intervalle={interval_s}s"
+        f"Daemon V2 démarré — actifs={active_assets} | intervalle_défaut={interval_s}s"
     )
-    # Compteur d'erreurs par actif — un actif qui échoue systématiquement
-    # (ex: forex non disponible sur Binance) est mis en quarantaine.
+    # Compteur d'erreurs par actif — un actif qui échoue systématiquement est mis en quarantaine.
     asset_errors: dict[str, int] = {a: 0 for a in active_assets}
     _QUARANTINE_AFTER = 3  # erreurs consécutives → mise en quarantaine
 
@@ -95,38 +96,49 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
         t0 = time.time()
         for sym in active_assets:
             if asset_errors.get(sym, 0) >= _QUARANTINE_AFTER:
-                logger.debug(f"Actif {sym} en quarantaine ({asset_errors[sym]} erreurs) — ignoré.")
+                logger.debug(f"[{sym}] En quarantaine ({asset_errors[sym]} erreurs) — ignoré.")
                 continue
+
+            # Vérification session (forex / commodités non 24/7)
+            sess = MarketSession(sym)
+            if not sess.is_monitoring():
+                logger.debug(f"[{sym}] Marché fermé (weekend) — cycle ignoré.")
+                continue
+            if not sess.is_open():
+                logger.debug(f"[{sym}] Hors session de trading — cycle ignoré (monitoring actif).")
+                continue
+
             try:
                 result = run_single_cycle(asset=sym, trigger="scheduled")
                 asset_errors[sym] = 0  # reset sur succès
                 action = result.get("action", "flat").upper()
                 capital = result.get("capital", 0)
-                logger.info(
-                    f"Cycle OK — asset={sym} action={action} capital={capital:.0f}$"
-                )
+                logger.info(f"[{sym}] Cycle OK — action={action} capital={capital:.0f}$")
             except KeyboardInterrupt:
                 logger.info("Arrêt par KeyboardInterrupt.")
                 return
             except Exception as exc:
                 asset_errors[sym] = asset_errors.get(sym, 0) + 1
-                logger.error(
-                    f"Erreur cycle {sym} (tentative {asset_errors[sym]}): {exc}"
-                )
+                logger.error(f"[{sym}] Erreur cycle (tentative {asset_errors[sym]}): {exc}")
                 logger.debug(traceback.format_exc())
                 if asset_errors[sym] == _QUARANTINE_AFTER:
-                    logger.warning(
-                        f"Actif {sym} mis en quarantaine après {_QUARANTINE_AFTER} erreurs."
-                    )
+                    logger.warning(f"[{sym}] Mis en quarantaine après {_QUARANTINE_AFTER} erreurs.")
 
         # Arrêt si TOUS les actifs sont en quarantaine
         if all(asset_errors.get(a, 0) >= _QUARANTINE_AFTER for a in active_assets):
             logger.critical("Tous les actifs en quarantaine — arrêt daemon.")
             sys.exit(1)
 
+        # Intervalle dynamique : minimum de tous les actifs ouverts (le plus réactif gagne)
+        open_intervals = [
+            MarketSession(a).interval_seconds()
+            for a in active_assets
+            if MarketSession(a).is_open()
+        ]
+        wait_target = min(open_intervals) if open_intervals else interval_s
         elapsed = time.time() - t0
-        wait = max(0.0, interval_s - elapsed)
-        logger.debug(f"Prochain cycle dans {wait:.0f}s (durée actuelle={elapsed:.0f}s)")
+        wait = max(0.0, wait_target - elapsed)
+        logger.debug(f"Prochain cycle dans {wait:.0f}s (intervalle={wait_target}s, durée={elapsed:.0f}s)")
         time.sleep(wait)
 
 

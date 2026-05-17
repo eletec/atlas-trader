@@ -162,7 +162,7 @@ def render_global_overview() -> None:
 # ---------------------------------------------------------------------------
 
 def render_global_live_prices() -> None:
-    """Grille de prix live pour tous les actifs actifs (appel MarketDataAgent)."""
+    """Grille de prix live pour tous les actifs actifs — V2 : CCXT direct."""
     import streamlit as st
 
     assets = _active_assets()
@@ -172,8 +172,7 @@ def render_global_live_prices() -> None:
     st.markdown(f"### {t('live_prices_title')}")
 
     try:
-        from agents.market_data_agent import MarketDataAgent
-        agent = MarketDataAgent()
+        from quant.data_loader import fetch_ohlcv
     except Exception as exc:
         st.caption(f"Prix indisponibles : {exc}")
         return
@@ -182,28 +181,30 @@ def render_global_live_prices() -> None:
     for i, asset in enumerate(assets):
         icon = _asset_icon(asset)
         try:
-            ind   = agent.get_indicators(asset)
-            price = ind.get("price", 0)
-            ma50  = ind.get("ma_50", 0)
-            rsi   = ind.get("rsi_14", 50)
-            above = ind.get("above_ma50")
-            src   = ind.get("_source", "ccxt")
+            bars = fetch_ohlcv(symbol=asset, timeframe="15m", limit=52)
+            if bars is None or bars.empty:
+                raise ValueError("Aucune barre")
+            price = float(bars["close"].iloc[-1])
+            ma50  = float(bars["close"].tail(50).mean()) if len(bars) >= 50 else None
+            closes = bars["close"].values.astype(float)
+            # RSI rapide (14)
+            if len(closes) >= 15:
+                deltas = [closes[j] - closes[j-1] for j in range(1, len(closes))]
+                gains = [max(d, 0) for d in deltas[-14:]]
+                losses = [max(-d, 0) for d in deltas[-14:]]
+                avg_gain = sum(gains) / 14
+                avg_loss = sum(losses) / 14
+                rsi = 100 - 100 / (1 + avg_gain / avg_loss) if avg_loss else 100.0
+            else:
+                rsi = 50.0
+            above = price > ma50 if ma50 else None
             delta_str = None
             if ma50 and price:
                 delta_pct = (price / ma50 - 1) * 100
-                # Ne pas afficher si > ±30% : signe probable de roll de contrat (futures)
                 if abs(delta_pct) <= 30:
                     delta_str = f"{delta_pct:+.1f}% vs MA50"
-                elif src == "yahoo":
-                    delta_str = None  # roll artifact — masqué
-                else:
-                    delta_str = f"{delta_pct:+.1f}% vs MA50"
-            delta = delta_str
-            rsi_tag = (
-                "🟢" if rsi >= 60 else "🔴" if rsi <= 40 else "🟡"
-            )
+            rsi_tag = "🟢" if rsi >= 60 else "🔴" if rsi <= 40 else "🟡"
             with cols[i % len(cols)]:
-                # Format lisible selon l'ordre de grandeur
                 if price >= 1000:
                     price_str = f"{price:,.0f}"
                 elif price >= 1:
@@ -212,12 +213,11 @@ def render_global_live_prices() -> None:
                     price_str = f"{price:,.4f}"
                 else:
                     price_str = f"{price:.6f}"
-                st.metric(
-                    label=f"{icon} {asset}",
-                    value=price_str,
-                    delta=delta,
+                st.metric(label=f"{icon} {asset}", value=price_str, delta=delta_str)
+                st.caption(
+                    f"RSI {rsi_tag} {rsi:.0f} · "
+                    f"{'▲ MA50' if above else '▼ MA50' if above is not None else '—'}"
                 )
-                st.caption(f"RSI {rsi_tag} {rsi:.0f} · {'▲ MA50' if above else '▼ MA50' if above is not None else '—'}")
         except Exception:
             with cols[i % len(cols)]:
                 st.metric(f"{icon} {asset}", "—")

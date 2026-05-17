@@ -482,7 +482,163 @@ def render_marches_admin_tab() -> None:
         st.error(f"Import config échoué : {exc}")
         return
 
-    # Ajouter/retirer un actif de active_assets
+    # ── Section : Sources de données (Q11/Q12) ───────────────────────────────
+    with st.expander("🔑 **Sources de données**", expanded=False):
+        st.caption("Fournisseur de données de marché. La clé API est stockée dans `config/secrets.yaml` (gitignored).")
+
+        try:
+            from quant.config import get_twelve_data_key
+            current_key = get_twelve_data_key()
+        except Exception:
+            current_key = ""
+
+        try:
+            from utils.config import load_settings
+            _s = load_settings()
+            current_provider = _s.get("data", {}).get("provider", "auto")
+        except Exception:
+            current_provider = "auto"
+
+        provider_opts = ["auto", "twelve_data", "yahoo"]
+        provider = st.selectbox(
+            "Fournisseur de données",
+            options=provider_opts,
+            index=provider_opts.index(current_provider) if current_provider in provider_opts else 0,
+            key="data_provider_select",
+            help="auto = Twelve Data si clé disponible, sinon Yahoo Finance.",
+        )
+        api_key_input = st.text_input(
+            "Clé API Twelve Data",
+            value=current_key,
+            type="password",
+            key="twelve_data_api_key",
+            help="Clé API Twelve Data (https://twelvedata.com). Stockée dans config/secrets.yaml (gitignored).",
+        )
+
+        if st.button("💾 Sauvegarder les sources de données", key="btn_save_data_sources"):
+            try:
+                from pathlib import Path
+                import yaml as _yaml
+
+                # Sauvegarder la clé dans secrets.yaml (gitignored)
+                secrets_path = Path(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+                secrets_content = {"data": {"twelve_data_key": api_key_input.strip()}}
+                with secrets_path.open("w", encoding="utf-8") as fh:
+                    _yaml.dump(secrets_content, fh, allow_unicode=True, default_flow_style=False)
+
+                # Sauvegarder le provider dans settings.yaml
+                from utils.config import load_settings, save_settings
+                settings = load_settings()
+                settings.setdefault("data", {})["provider"] = provider
+                save_settings(settings)
+
+                st.success("✅ Sources de données sauvegardées (clé dans `config/secrets.yaml`).")
+            except Exception as exc:
+                st.error(f"Erreur sauvegarde : {exc}")
+
+    st.markdown("---")
+
+    # ── Section : Paramètres quant globaux (Q3/Q13/Q14/Q17) ─────────────────
+    with st.expander("⚙️ **Paramètres quant globaux**", expanded=False):
+        st.caption("Paramètres globaux du pipeline quant. Sauvegardés dans `settings.yaml → quant:`.")
+
+        try:
+            from quant.config import get_quant_cfg, save_quant_cfg
+            qcfg = get_quant_cfg()
+        except Exception as exc:
+            st.error(f"QuantConfig non chargé : {exc}")
+            qcfg = None
+
+        if qcfg is not None:
+            st.markdown("**Horizon de prédiction**")
+            q_horizon = st.slider(
+                "Horizon (barres forward)",
+                min_value=1, max_value=48,
+                value=int(qcfg.horizon_bars),
+                key="qcfg_horizon_bars",
+                help="Nombre de barres futures à prédire (ex. 4 = prédiction à 4×timeframe).",
+            )
+
+            # Horizon sweep (Q3)
+            st.markdown("**Sweep d'horizons (Q3)**")
+            sweep_raw = qcfg.horizon_sweep_values
+            if isinstance(sweep_raw, list):
+                sweep_default = sweep_raw
+            elif isinstance(sweep_raw, str):
+                sweep_default = [int(v.strip()) for v in sweep_raw.split(",") if v.strip()]
+            else:
+                sweep_default = [2, 4, 8, 12]
+            sweep_opts = list(range(1, 49))
+            q_sweep = st.multiselect(
+                "Horizons à tester en sweep",
+                options=sweep_opts,
+                default=[v for v in sweep_default if v in sweep_opts],
+                key="qcfg_horizon_sweep",
+                help="Horizons (en barres) testés lors de sweep_horizon(). Choisir 3-6 valeurs.",
+            )
+
+            st.markdown("**Feature DXY (Q14)**")
+            q_dxy = st.toggle(
+                "Utiliser le DXY comme feature inter-marché",
+                value=bool(qcfg.use_dxy_feature),
+                key="qcfg_use_dxy",
+                help="Active la feature US Dollar Index dans le modèle (pertinent pour XAU, EUR, GBP, WTI).",
+            )
+
+            st.markdown("**Refit adaptatif KS-test (Q17)**")
+            trigger_opts = ["schedule", "ks_test", "both"]
+            trigger_labels = {
+                "schedule": "Planifié (toujours refitter)",
+                "ks_test": "KS-test uniquement (drift détecté)",
+                "both": "Les deux (planifié + drift)",
+            }
+            q_trigger = st.selectbox(
+                "Déclencheur de refit",
+                options=trigger_opts,
+                index=trigger_opts.index(qcfg.refit_trigger) if qcfg.refit_trigger in trigger_opts else 0,
+                format_func=lambda x: trigger_labels[x],
+                key="qcfg_refit_trigger",
+                help="Quand refitter le modèle. 'ks_test' évite les refits inutiles si la distribution n'a pas changé.",
+            )
+            c_ks1, c_ks2 = st.columns(2)
+            with c_ks1:
+                q_ks_threshold = st.number_input(
+                    "Seuil p-value KS",
+                    min_value=0.01, max_value=0.20, step=0.01,
+                    value=float(qcfg.refit_ks_pvalue_threshold),
+                    key="qcfg_ks_threshold",
+                    help="p-value en dessous de laquelle un drift est détecté (refit déclenché).",
+                )
+            with c_ks2:
+                q_ks_window = st.number_input(
+                    "Fenêtre KS (jours)",
+                    min_value=3, max_value=60, step=1,
+                    value=int(qcfg.refit_ks_window_days),
+                    key="qcfg_ks_window",
+                    help="Nombre de jours de données récentes comparés à la distribution de référence.",
+                )
+
+            if st.button("💾 Sauvegarder les paramètres quant", key="btn_save_qcfg"):
+                try:
+                    from dataclasses import replace as _dc_replace
+                    updated = _dc_replace(
+                        qcfg,
+                        horizon_bars=int(q_horizon),
+                        horizon_sweep_values=sorted(q_sweep) if q_sweep else [2, 4, 8, 12],
+                        use_dxy_feature=bool(q_dxy),
+                        refit_trigger=q_trigger,
+                        refit_ks_pvalue_threshold=float(q_ks_threshold),
+                        refit_ks_window_days=int(q_ks_window),
+                    )
+                    save_quant_cfg(updated)
+                    st.success("✅ Paramètres quant sauvegardés dans `settings.yaml`.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Erreur sauvegarde quant : {exc}")
+
+    st.markdown("---")
+
+    # ── Gestion des actifs actifs ─────────────────────────────────────────────
     st.markdown("""<style>
 /* Fix troncature des tags dans le multiselect "Actifs surveillés" */
 [data-testid="stMultiSelect"] span[data-baseweb="tag"] {
@@ -564,6 +720,18 @@ def _render_asset_config_editor(
 
         v2r = cfg.get("v2_risk", {})
         cb  = cfg.get("circuit_breaker", {})
+
+        # ── Timeframe par actif (Q1/Q15) ──────────────────────────────────────
+        tf_opts = ["1m", "5m", "15m", "1h", "4h"]
+        current_tf = str(cfg.get("timeframe", "15m"))
+        tf_idx = tf_opts.index(current_tf) if current_tf in tf_opts else 2  # défaut 15m
+        asset_timeframe = st.selectbox(
+            "⏱️ Timeframe",
+            options=tf_opts,
+            index=tf_idx,
+            key=f"tf_{slug}",
+            help="Granularité OHLCV pour cet actif. Crypto: 5m recommandé. Forex/Commodités: 15m.",
+        )
 
         # ── Capital ──────────────────────────────────────────────────────────
         paper_cap = st.number_input(
@@ -651,6 +819,7 @@ def _render_asset_config_editor(
             )
 
         if st.button(f"💾 Sauvegarder {asset}", key=f"save_{slug}"):
+            cfg["timeframe"] = asset_timeframe
             cfg["paper_capital_usd"] = int(paper_cap)
             cfg["v2_risk"] = {
                 "stop_loss_atr_mult":    round(sl_mult, 4),

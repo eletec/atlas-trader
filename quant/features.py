@@ -63,11 +63,13 @@ def donchian_channels(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
     return pd.DataFrame({"donchian_high": high, "donchian_low": low})
 
 
-def compute_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_features(df: pd.DataFrame, extra_ohlcv: dict[str, pd.DataFrame] | None = None) -> pd.DataFrame:
     """Calcule l'ensemble des features causales sur un OHLCV.
 
     Args:
         df: DataFrame OHLCV indexé timestamp (open/high/low/close/volume)
+        extra_ohlcv: dictionnaire d'OHLCV supplémentaires, ex. {"dxy": dxy_df}
+                     Utilisé pour les features inter-marchés (Q14).
 
     Returns:
         DataFrame de features alignées sur le même index. Les premières lignes
@@ -140,8 +142,30 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
         out["hour_sin"] = (np.sin(2 * np.pi * hour / 24) + 1.0) / 2.0   # ∈ [0, 1]
         out["hour_cos"] = (np.cos(2 * np.pi * hour / 24) + 1.0) / 2.0   # ∈ [0, 1]
         out["is_weekend"] = (dow >= 5).astype(float)                       # 0 ou 1
+
+        # Q13 : Sessions de marché — toujours calculées (le modèle apprend les poids)
+        out["session_london"]  = ((hour >= 8)  & (hour < 17)).astype(float)
+        out["session_ny"]      = ((hour >= 13) & (hour < 22)).astype(float)
+        out["session_overlap"] = ((hour >= 13) & (hour < 17)).astype(float)  # London∩NY
+        out["session_asian"]   = (hour < 8).astype(float)
     except AttributeError:
         pass  # index non-temporel (tests unitaires)
+
+    # Q14 : Features DXY inter-marché (si données disponibles dans extra_ohlcv)
+    if extra_ohlcv and "dxy" in extra_ohlcv:
+        dxy = extra_ohlcv["dxy"]
+        if not dxy.empty:
+            try:
+                # Ré-indexer DXY sur l'index principal (forward-fill = causal)
+                dxy_close = dxy["close"].reindex(df.index, method="ffill")
+                dxy_atr = atr(dxy.reindex(df.index, method="ffill").ffill(), 14)
+
+                dxy_log = np.log(dxy_close)
+                out["dxy_return_1"]  = dxy_log.diff(1)
+                out["dxy_return_24"] = dxy_log.diff(24)
+                out["dxy_atr_pct"]   = dxy_atr / (dxy_close + 1e-9)
+            except Exception:
+                pass  # DXY incompatible avec cet index — features omises silencieusement
 
     return out
 

@@ -1,4 +1,5 @@
 asset: BTC/USDT
+timeframe: "5m"              # Q1/Q15 : timeframe par actif (éditable depuis Admin)
 exchange: binance
 testnet: true
 paper_capital_usd: 10000

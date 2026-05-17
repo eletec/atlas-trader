@@ -36,10 +36,18 @@ DEFAULT_FEATURE_COLS = [
     "vwap_dist_20_q",   # C.1 : VWAP distance / ATR (3/3 IA)
     "bb_pct_b_q",       # C.2 : Bollinger %b (GPT + DeepSeek)
     "obv_proxy_20_q",   # C.3 : OBV proxy rolling causal (Grok + DeepSeek)
-    "hour_sin",       # calendaire — déjà ∈ [0,1], pas de normalisation _q
+    "hour_sin",         # calendaire — déjà ∈ [0,1], pas de normalisation _q
     "hour_cos",
     "is_weekend",
+    # Q13 : Sessions de marché (toujours incluses — modèle apprend les poids)
+    "session_london",
+    "session_ny",
+    "session_overlap",
+    "session_asian",
 ]
+
+# Colonnes DXY ajoutées dynamiquement si use_dxy_feature = True (Q14)
+_DXY_FEATURE_COLS = ["dxy_return_1_q", "dxy_return_24_q", "dxy_atr_pct_q"]
 
 
 @dataclass
@@ -76,12 +84,15 @@ class PipelineConfig:
     def from_asset_config(cls, asset: str) -> "PipelineConfig":
         """Construit depuis ``config/assets/{slug}.yaml`` (section ``v2_risk``).
 
-        Lit les overrides propres à l'actif (SL/TP mult, fraction, capital)
+        Lit les overrides propres à l'actif (SL/TP mult, fraction, capital, timeframe)
         et fusionne avec les valeurs globales de ``settings.yaml → quant:``.
         Si le fichier YAML n'existe pas, retourne les valeurs globales.
 
         Args:
             asset: ex. ``"BTC/USDT"``, ``"XAU/USD"``
+
+        Returns:
+            PipelineConfig avec ``asset_timeframe`` renseigné (Q1/Q15).
         """
         base = cls.from_quant_cfg()
         try:
@@ -106,6 +117,8 @@ class PipelineConfig:
                                     if hasattr(base, "take_profit_atr_mult") else 3.5))
             frac = float(v2r.get("fraction_per_trade", base.fraction_per_trade
                                  if hasattr(base, "fraction_per_trade") else 0.0075))
+            # Q1/Q15 : Timeframe spécifique à l'actif (éditable depuis Admin UI)
+            asset_tf = str(raw.get("timeframe", "")).strip() or None
             # Rebuild avec overrides asset
             qcfg = get_quant_cfg()
             overridden = cls(
@@ -118,6 +131,8 @@ class PipelineConfig:
                 fee_rate=qcfg.fee_rate,
                 slippage_rate=qcfg.slippage_rate,
             )
+            # Stocker le timeframe de l'actif pour que run_walkforward() puisse le lire
+            object.__setattr__(overridden, "_asset_timeframe", asset_tf)
             return overridden
         except Exception as exc:
             logger.warning(f"from_asset_config({asset}) fallback globaux : {exc}")
@@ -139,6 +154,7 @@ def run_pipeline(
     train_idx: pd.DatetimeIndex,
     test_idx: pd.DatetimeIndex,
     config: PipelineConfig | None = None,
+    extra_ohlcv: dict[str, pd.DataFrame] | None = None,
 ) -> PipelineArtifacts:
     """Exécute pipeline sur train (fit) puis test (predict + backtest).
 
@@ -147,22 +163,51 @@ def run_pipeline(
         train_idx: index des barres d'entraînement
         test_idx: index des barres de test (OOS)
         config: configuration
+        extra_ohlcv: OHLCV supplémentaires (ex. {"dxy": dxy_df}) pour features inter-marchés (Q14)
 
     Returns:
         Artefacts pipeline + résultat backtest sur test_idx uniquement.
     """
     cfg = config or PipelineConfig()
 
+    # Préparer extra_ohlcv avec DXY si activé dans la config
+    _extra = extra_ohlcv or {}
+    if "dxy" not in _extra:
+        try:
+            qcfg = get_quant_cfg()
+            if qcfg.use_dxy_feature:
+                from quant.data_loader import fetch_dxy_history
+                days_needed = max(int((ohlcv.index[-1] - ohlcv.index[0]).days) + 10, 90)
+                tf = getattr(cfg, "_asset_timeframe", None) or qcfg.timeframe
+                dxy = fetch_dxy_history(timeframe=tf, days=days_needed)
+                if not dxy.empty:
+                    _extra = {**_extra, "dxy": dxy}
+        except Exception as exc:
+            logger.debug(f"DXY fetch ignoré : {exc}")
+
     # 1. Features (sur tout l'historique pour éviter cold start sur test)
-    feats_raw = compute_features(ohlcv)
+    feats_raw = compute_features(ohlcv, extra_ohlcv=_extra if _extra else None)
+
+    # Colonnes à normaliser (ajout DXY si présentes — Q14)
+    norm_cols = ["log_return_1", "log_return_4", "log_return_24",
+                 "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
+                 "vwap_dist_20", "bb_pct_b", "obv_proxy_20"]
+    for _dxy_col in ["dxy_return_1", "dxy_return_24", "dxy_atr_pct"]:
+        if _dxy_col in feats_raw.columns:
+            norm_cols.append(_dxy_col)
+
     feats_norm = normalize_features(
         feats_raw,
         window=cfg.norm_window,
-        columns=["log_return_1", "log_return_4", "log_return_24",
-                 "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
-                 "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
+        columns=norm_cols,
     )
     feats = pd.concat([feats_raw, feats_norm], axis=1)
+
+    # Étendre feature_cols avec DXY normalisés si disponibles (Q14)
+    active_feature_cols = list(cfg.feature_cols)
+    for _dxy_q in _DXY_FEATURE_COLS:
+        if _dxy_q in feats.columns and _dxy_q not in active_feature_cols:
+            active_feature_cols.append(_dxy_q)
 
     # 2. Détecteur de régime — FIT sur train uniquement
     regime = RegimeDetector(use_hmm=cfg.use_hmm).fit(feats.loc[train_idx])
@@ -175,15 +220,17 @@ def run_pipeline(
         # B.3 Warmup : exclure les premières norm_window barres (quantile instable — 3/3 IA)
         warmup_cutoff = feats.index[min(cfg.norm_window, len(feats) - 1)]
         sm_train_idx = train_idx[train_idx >= warmup_cutoff]
-        X_train = feats.loc[sm_train_idx, cfg.feature_cols]
+        # Utiliser active_feature_cols (inclut DXY si disponible)
+        available_cols = [c for c in active_feature_cols if c in feats.columns]
+        X_train = feats.loc[sm_train_idx, available_cols]
         y_train = y.loc[sm_train_idx]
         # Exclure les barres dont la cible n'est pas observable (fin de train)
         valid = X_train.notna().all(axis=1) & y_train.notna()
         try:
-            model = SignalModel(feature_cols=cfg.feature_cols).fit(
+            model = SignalModel(feature_cols=available_cols).fit(
                 X_train.loc[valid], y_train.loc[valid]
             )
-            proba_up = model.predict_proba(feats[cfg.feature_cols])
+            proba_up = model.predict_proba(feats[available_cols])
         except Exception as exc:
             logger.error(f"SignalModel échec ({exc}) — fallback P=0.5.")
             proba_up.loc[:] = 0.5

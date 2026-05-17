@@ -1,4 +1,5 @@
 asset: CHF/USD
+timeframe: "15m"             # Q1/Q15 : timeframe par actif (éditable depuis Admin)
 exchange: oanda          # via yfinance CHF=X en V2
 testnet: true
 paper_capital_usd: 5000

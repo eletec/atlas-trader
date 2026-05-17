@@ -10,6 +10,9 @@
 # Comptes utilisateurs (contient mots de passe hashés — ne pas versionner)
 config/users.yaml
 
+# Clés API et secrets locaux (Twelve Data, etc.)
+config/secrets.yaml
+
 # Base de données locale
 storage/*.db
 storage/*.db-shm

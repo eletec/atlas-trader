@@ -73,6 +73,7 @@ class FoldResult:
     profit_factor: float
     n_trades:     int
     error:        str | None = field(default=None)
+    ks_refit:     bool | None = field(default=None)  # Q17 : True=refit, False=réutilisé, None=N/A
 
 
 def _bars_per_day(timeframe: str) -> int:
@@ -83,6 +84,47 @@ def _bars_per_day(timeframe: str) -> int:
 def _safe_metric(metrics: dict[str, Any], key: str, default: float = 0.0) -> float:
     v = metrics.get(key, default)
     return float(v) if v is not None and not (isinstance(v, float) and np.isnan(v)) else default
+
+
+def should_refit_ks(
+    reference_returns: pd.Series,
+    recent_returns: pd.Series,
+    threshold: float = 0.05,
+) -> bool:
+    """KS-test : retourne True si le refit EST nécessaire (drift détecté).
+
+    Compare la distribution des rendements de la fenêtre de référence (train) avec
+    la fenêtre récente (test). Si les distributions diffèrent significativement
+    (p-value < threshold), le modèle doit être refitté.
+
+    Args:
+        reference_returns: rendements de la fenêtre d'entraînement précédente.
+        recent_returns: rendements récents à comparer.
+        threshold: seuil de p-value. Si p < threshold → drift → refit requis.
+
+    Returns:
+        True = refit requis (drift détecté), False = pas de drift détectable.
+    """
+    try:
+        from scipy.stats import ks_2samp
+
+        ref = reference_returns.dropna().values
+        rec = recent_returns.dropna().values
+
+        if len(ref) < 20 or len(rec) < 10:
+            return True  # Pas assez de données → refit par sécurité
+
+        _, p_value = ks_2samp(ref, rec)
+        drift = p_value < threshold
+        logger.debug(f"KS-test p={p_value:.4f} (seuil={threshold}) → drift={'OUI' if drift else 'non'}")
+        return drift
+
+    except ImportError:
+        logger.warning("scipy non disponible — KS-test ignoré, refit systématique.")
+        return True
+    except Exception as exc:
+        logger.warning(f"KS-test échoué ({exc}) — refit par sécurité.")
+        return True
 
 
 def run_walkforward(
@@ -133,7 +175,14 @@ def run_walkforward(
     test_bars  = _test  * bpd
     step_bars  = _step  * bpd
 
+    # Q17 : Paramètres du refit adaptatif
+    qcfg_full = _wf_cfg()
+    refit_trigger     = getattr(qcfg_full, "refit_trigger", "schedule")
+    ks_threshold      = getattr(qcfg_full, "refit_ks_pvalue_threshold", 0.05)
+    ks_window_days    = getattr(qcfg_full, "refit_ks_window_days", 14)
+
     fold_results: list[FoldResult] = []
+    _last_result: FoldResult | None = None         # Q17 : pour carry-forward
 
     for fold_idx in range(_maxf):
         start    = fold_idx * step_bars
@@ -147,32 +196,65 @@ def run_walkforward(
         train_idx  = fold_ohlcv.index[:train_bars]
         test_idx   = fold_ohlcv.index[train_bars:]
 
+        # Q17 : Décision de refit via KS-test ─────────────────────────────────
+        do_refit = True
+        ks_flag: bool | None = None
+        if _last_result is not None and refit_trigger in ("ks_test", "both"):
+            # Fenêtre récente = ks_window_days avant la fin du train courant
+            ks_bars = ks_window_days * bpd
+            ref_returns = fold_ohlcv["close"].iloc[:train_bars].pct_change().dropna()
+            rec_returns = fold_ohlcv["close"].iloc[max(0, train_bars - ks_bars):train_bars].pct_change().dropna()
+            ks_flag = should_refit_ks(ref_returns, rec_returns, ks_threshold)
+            if refit_trigger == "ks_test" and not ks_flag:
+                do_refit = False
+                if verbose:
+                    logger.info(f"Fold {fold_idx+1:2d}  KS-test: pas de drift → refit ignoré (carry-forward)")
+
         try:
-            artifacts = run_pipeline(
-                fold_ohlcv,
-                train_idx=train_idx,
-                test_idx=test_idx,
-                config=cfg,
-            )
-            m = artifacts.backtest.metrics
-            trades = getattr(artifacts.backtest, "trades", [])
-            n_trades = len(trades) if trades is not None else 0
+            if do_refit:
+                artifacts = run_pipeline(
+                    fold_ohlcv,
+                    train_idx=train_idx,
+                    test_idx=test_idx,
+                    config=cfg,
+                )
+                m = artifacts.backtest.metrics
+                trades = getattr(artifacts.backtest, "trades", [])
+                n_trades = len(trades) if trades is not None else 0
 
-            result = FoldResult(
-                fold=fold_idx + 1,
-                train_start=str(train_idx[0])[:10],
-                test_start=str(test_idx[0])[:10],
-                test_end=str(test_idx[-1])[:10],
-                sharpe=_safe_metric(m, "sharpe"),
-                total_return=_safe_metric(m, "total_return"),
-                max_dd=_safe_metric(m, "max_dd"),
-                win_rate=_safe_metric(m, "win_rate"),
-                profit_factor=_safe_metric(m, "profit_factor"),
-                n_trades=n_trades,
-            )
+                result = FoldResult(
+                    fold=fold_idx + 1,
+                    train_start=str(train_idx[0])[:10],
+                    test_start=str(test_idx[0])[:10],
+                    test_end=str(test_idx[-1])[:10],
+                    sharpe=_safe_metric(m, "sharpe"),
+                    total_return=_safe_metric(m, "total_return"),
+                    max_dd=_safe_metric(m, "max_dd"),
+                    win_rate=_safe_metric(m, "win_rate"),
+                    profit_factor=_safe_metric(m, "profit_factor"),
+                    n_trades=n_trades,
+                    ks_refit=ks_flag if ks_flag is not None else (None if refit_trigger == "schedule" else True),
+                )
+            else:
+                # Carry-forward : réutiliser les métriques du fold précédent (pas de drift)
+                result = FoldResult(
+                    fold=fold_idx + 1,
+                    train_start=str(train_idx[0])[:10],
+                    test_start=str(test_idx[0])[:10],
+                    test_end=str(test_idx[-1])[:10],
+                    sharpe=_last_result.sharpe,
+                    total_return=_last_result.total_return,
+                    max_dd=_last_result.max_dd,
+                    win_rate=_last_result.win_rate,
+                    profit_factor=_last_result.profit_factor,
+                    n_trades=_last_result.n_trades,
+                    ks_refit=False,
+                )
+
             fold_results.append(result)
+            _last_result = result
 
-            if verbose:
+            if verbose and do_refit:
                 _status = "✓" if result.sharpe > 0 else "✗"
                 logger.info(
                     f"Fold {fold_idx+1:2d}  [{result.test_start} → {result.test_end}]  "
@@ -183,21 +265,20 @@ def run_walkforward(
 
         except Exception as exc:
             logger.warning(f"Fold {fold_idx+1} échec : {exc}")
-            fold_results.append(
-                FoldResult(
-                    fold=fold_idx + 1,
-                    train_start=str(train_idx[0])[:10],
-                    test_start=str(test_idx[0])[:10],
-                    test_end=str(test_idx[-1])[:10],
-                    sharpe=0.0,
-                    total_return=0.0,
-                    max_dd=0.0,
-                    win_rate=0.0,
-                    profit_factor=0.0,
-                    n_trades=0,
-                    error=str(exc),
-                )
+            err_result = FoldResult(
+                fold=fold_idx + 1,
+                train_start=str(train_idx[0])[:10],
+                test_start=str(test_idx[0])[:10],
+                test_end=str(test_idx[-1])[:10],
+                sharpe=0.0,
+                total_return=0.0,
+                max_dd=0.0,
+                win_rate=0.0,
+                profit_factor=0.0,
+                n_trades=0,
+                error=str(exc),
             )
+            fold_results.append(err_result)
 
     valid_folds = [r for r in fold_results if r.error is None]
     if not valid_folds:

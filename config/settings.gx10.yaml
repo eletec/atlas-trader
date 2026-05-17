@@ -439,3 +439,22 @@ quant:
   go_live_pf_min: 1.30       # was 1.2
   go_live_pvalue_max: 0.05   # was 0.10
   go_live_positive_folds_pct: 0.65  # was 0.60
+
+  # ── Sources de données (Q11/Q12) ──────────────────────────────────────────
+  data_provider: "auto"            # "auto" | "twelve_data" | "yahoo"
+
+  # ── Features avancées (Q13/Q14) ────────────────────────────────────────────
+  use_dxy_feature: true            # Q14 : DXY comme feature inter-marché
+
+  # ── Horizon sweep (Q3) ─────────────────────────────────────────────────────
+  horizon_sweep_values: [2, 4, 8, 12]   # horizons à tester en sweep
+
+  # ── Refit adaptatif KS-test (Q17) ──────────────────────────────────────────
+  refit_trigger: "schedule"        # "schedule" | "ks_test" | "both"
+  refit_ks_pvalue_threshold: 0.05  # seuil KS-test pour déclencher le refit
+  refit_ks_window_days: 14         # fenêtre récente pour le KS-test (jours)
+
+# ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
+data:
+  provider: "auto"           # "auto" | "twelve_data" | "yahoo"
+  twelve_data_key: ""        # override local ; préférer config/secrets.yaml

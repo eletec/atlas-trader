@@ -98,6 +98,20 @@ class QuantConfig:
     go_live_pvalue_max: float        = 0.05  # was 0.10 — consensus Grok/GPT/DeepSeek
     go_live_positive_folds_pct: float = 0.65 # was 0.60
 
+    # ── Sources de données (Q11/Q12) ───────────────────────────────────────
+    data_provider: str               = "auto"  # "auto" | "twelve_data" | "yahoo"
+
+    # ── Features avancées (Q13/Q14) ────────────────────────────────────────
+    use_dxy_feature: bool            = True    # Q14 : DXY comme feature inter-marché
+
+    # ── Horizon sweep (Q3) ─────────────────────────────────────────────────
+    horizon_sweep_values: list       = field(default_factory=lambda: [2, 4, 8, 12])
+
+    # ── Refit adaptatif KS-test (Q17) ──────────────────────────────────────
+    refit_trigger: str               = "schedule"  # "schedule" | "ks_test" | "both"
+    refit_ks_pvalue_threshold: float = 0.05        # seuil KS-test
+    refit_ks_window_days: int        = 14          # fenêtre récente (jours)
+
     # ── Propriétés dérivées ────────────────────────────────────────────────
     @property
     def norm_window_bars(self) -> int:
@@ -196,3 +210,47 @@ def save_quant_cfg(cfg: QuantConfig) -> None:
     global _CACHE
     _CACHE = None
     logger.info("QuantConfig sauvegardé dans settings.yaml")
+
+
+# ─── Clé API Twelve Data ─────────────────────────────────────────────────────
+
+def get_twelve_data_key() -> str:
+    """Retourne la clé API Twelve Data (priorisé : env → secrets.yaml → "").
+
+    Ordre de recherche :
+    1. Variable d'environnement ``TWELVE_DATA_KEY``
+    2. ``config/secrets.yaml → data.twelve_data_key``
+    3. ``config/settings.yaml → data.twelve_data_key`` (override local optionnel)
+    4. Chaîne vide (provider Yahoo en fallback)
+    """
+    import os
+
+    # 1. Variable d'environnement
+    env_key = os.environ.get("TWELVE_DATA_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    # 2. config/secrets.yaml (gitignored)
+    secrets_path = Path(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+    if secrets_path.exists():
+        try:
+            import yaml
+            with secrets_path.open("r", encoding="utf-8") as fh:
+                secrets = yaml.safe_load(fh) or {}
+            key = str(secrets.get("data", {}).get("twelve_data_key", "")).strip()
+            if key:
+                return key
+        except Exception as exc:
+            logger.warning(f"Lecture config/secrets.yaml échouée : {exc}")
+
+    # 3. settings.yaml → data.twelve_data_key (override local sans la clé vraie)
+    try:
+        from utils.config import load_settings
+        raw = load_settings()
+        key = str(raw.get("data", {}).get("twelve_data_key", "")).strip()
+        if key:
+            return key
+    except Exception:
+        pass
+
+    return ""

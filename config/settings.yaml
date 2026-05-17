@@ -463,6 +463,20 @@ quant:
   correlation_threshold: 0.75
   meta_analysis_interval_days: 14  # LLM failure-pattern analysis, every N days
   meta_analysis_days: 30            # lookback window for the analysis
+
+  # ── Sources de données (Q11/Q12) ─────────────────────────────────────────
+  data_provider: "auto"            # "auto" | "twelve_data" | "yahoo"
+
+  # ── Features avancées (Q13/Q14) ──────────────────────────────────────────
+  use_dxy_feature: true            # Q14 : DXY comme feature inter-marché
+
+  # ── Horizon sweep (Q3) ───────────────────────────────────────────────────
+  horizon_sweep_values: [2, 4, 8, 12]   # horizons à tester en sweep
+
+  # ── Refit adaptatif KS-test (Q17) ────────────────────────────────────────
+  refit_trigger: "schedule"        # "schedule" | "ks_test" | "both"
+  refit_ks_pvalue_threshold: 0.05  # seuil KS-test pour déclencher le refit
+  refit_ks_window_days: 14         # fenêtre récente pour le KS-test (jours)
 monitor:
   interval_seconds: 60
   breaking_news_threshold: 0.8
@@ -471,13 +485,7 @@ admin:
   password_hash: ''
   session_timeout_minutes: 60
 
-# ── Paramètres V2 Quant Pipeline ───────────────────────────────────────────
-quant:
-  timeframe: "5m"            # Timeframe OHLCV (ccxt notation)
-  history_days: 90           # Historique de chargement au boot
-  train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
-  horizon_bars: 4            # Horizon de prédiction (barres forward)
-  p_up_threshold: 0.55       # Seuil P(up) pour signal LONG
-  p_dn_threshold: 0.45       # Seuil P(dn) pour signal SHORT  (zone morte = [0.45, 0.55])
-  use_hmm: false             # true en Docker (hmmlearn installé) ; false local (fallback ADX+vol)
-  refit_interval_hours: 168  # Refit hebdomadaire (7 * 24h)
+# ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
+data:
+  provider: "auto"           # "auto" | "twelve_data" | "yahoo"
+  twelve_data_key: ""        # override local ; préférer config/secrets.yaml

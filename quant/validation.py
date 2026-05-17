@@ -358,6 +358,92 @@ def stress_test_historical(
     return pd.DataFrame(rows)
 
 
+# ─── Q3 : Sweep des horizons de prédiction ───────────────────────────────────
+
+def sweep_horizon(
+    ohlcv: pd.DataFrame,
+    horizons: list[int] | None = None,
+    config=None,
+    min_train_bars: int = 2000,
+) -> pd.DataFrame:
+    """Évalue le pipeline sur plusieurs horizons de prédiction (Q3).
+
+    Lance ``run_pipeline()`` avec un split 70/30 pour chaque valeur d'horizon
+    et retourne un DataFrame comparatif. Permet de choisir l'horizon optimal
+    avant le walk-forward complet.
+
+    Args:
+        ohlcv: OHLCV complet (DatetimeIndex UTC).
+        horizons: liste d'horizons (barres) à tester. Si None → lire depuis
+                  ``settings.yaml → quant.horizon_sweep_values``.
+        config: PipelineConfig de base (None = défauts). L'horizon est
+                overridé pour chaque itération.
+        min_train_bars: barres minimales pour un split 70/30 valide.
+
+    Returns:
+        DataFrame avec colonnes : horizon, sharpe, profit_factor, max_dd,
+        n_trades, win_rate, total_return.
+    """
+    from quant.pipeline import run_pipeline, PipelineConfig
+    from dataclasses import replace as dc_replace
+    import numpy as np
+
+    # Récupérer horizons depuis config si non fournis
+    if horizons is None:
+        try:
+            from quant.config import get_quant_cfg
+            sweep_val = get_quant_cfg().horizon_sweep_values
+            if isinstance(sweep_val, list):
+                horizons = [int(v) for v in sweep_val]
+            elif isinstance(sweep_val, str):
+                horizons = [int(v.strip()) for v in sweep_val.split(",") if v.strip()]
+            else:
+                horizons = [2, 4, 8, 12]
+        except Exception:
+            horizons = [2, 4, 8, 12]
+
+    if len(ohlcv) < min_train_bars:
+        logger.warning(f"sweep_horizon: {len(ohlcv)} barres < {min_train_bars} min — abandon.")
+        return pd.DataFrame()
+
+    base_cfg = config or PipelineConfig()
+    split = int(len(ohlcv) * 0.70)
+    train_idx = ohlcv.index[:split]
+    test_idx = ohlcv.index[split:]
+
+    rows = []
+    for h in horizons:
+        # Créer une config avec l'horizon overridé
+        try:
+            iter_cfg = dc_replace(base_cfg, horizon_bars=h)
+        except Exception:
+            # Fallback si dc_replace échoue (dataclass avec field_factory)
+            iter_cfg = PipelineConfig()
+            object.__setattr__(iter_cfg, "horizon_bars", h)
+
+        try:
+            arts = run_pipeline(ohlcv, train_idx, test_idx, iter_cfg)
+            m = arts.backtest.metrics
+            rows.append({
+                "horizon": h,
+                "sharpe": round(float(m.get("sharpe", 0.0)), 3),
+                "profit_factor": round(float(m.get("profit_factor", 0.0)), 3),
+                "max_dd": round(float(m.get("max_dd", 0.0)), 4),
+                "n_trades": len(arts.backtest.trades) if arts.backtest.trades else 0,
+                "win_rate": round(float(m.get("win_rate", 0.0)), 3),
+                "total_return": round(float(m.get("total_return", 0.0)), 4),
+            })
+            logger.info(
+                f"sweep_horizon h={h}b → Sharpe={rows[-1]['sharpe']:+.2f} "
+                f"PF={rows[-1]['profit_factor']:.2f} DD={rows[-1]['max_dd']:.1%}"
+            )
+        except Exception as exc:
+            logger.error(f"sweep_horizon h={h} échoué : {exc}")
+            rows.append({"horizon": h, "sharpe": np.nan, "error": str(exc)})
+
+    return pd.DataFrame(rows)
+
+
 # ─── Phase 4 orchestrateur complet ───────────────────────────────────────────
 
 def run_full_validation(

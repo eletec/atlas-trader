@@ -25,6 +25,18 @@ _YAHOO_SYMBOLS: dict[str, str] = {
     "WTI/USD": "CL=F",
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
+    "CHF/USD": "CHF=X",
+}
+
+# Symboles Twelve Data (même actifs + DXY)
+_TWELVE_DATA_SYMBOLS: dict[str, str] = {
+    "XAU/USD": "XAU/USD",
+    "XAG/USD": "XAG/USD",
+    "WTI/USD": "USOIL",
+    "EUR/USD": "EUR/USD",
+    "GBP/USD": "GBP/USD",
+    "CHF/USD": "CHF/USD",
+    "DXY":     "DX-Y.NYB",
 }
 
 
@@ -65,7 +77,13 @@ def fetch_history(
     exchange_name: str = DEFAULT_EXCHANGE,
     cache: bool = True,
 ) -> pd.DataFrame:
-    """Récupère un historique de N jours en paginant les requêtes."""
+    """Récupère un historique de N jours en paginant les requêtes.
+
+    Routing :
+    - Crypto (Binance) → ccxt
+    - Forex/Commodities → Twelve Data si clé disponible et provider != "yahoo",
+      sinon fallback yfinance (limité à 59j intraday)
+    """
     cache_dir = DEFAULT_CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{symbol.replace('/', '')}_{timeframe}_{days}d.parquet"
@@ -79,9 +97,27 @@ def fetch_history(
         except Exception as exc:
             logger.warning(f"Lecture cache échouée ({exc}) — re-fetch.")
 
-    # Routing : actifs non disponibles sur Binance → yfinance
+    # Routing : actifs non disponibles sur Binance → Twelve Data ou yfinance
     if symbol in _YAHOO_SYMBOLS:
-        df = _fetch_yahoo_history(symbol, timeframe, days)
+        # Choisir le provider
+        try:
+            from quant.config import get_quant_cfg, get_twelve_data_key
+            cfg_provider = get_quant_cfg().data_provider
+        except Exception:
+            cfg_provider = "auto"
+            get_twelve_data_key = lambda: ""  # type: ignore[assignment]
+
+        td_key = get_twelve_data_key()
+        use_td = td_key and cfg_provider != "yahoo"
+
+        if use_td:
+            df = _fetch_twelve_data_history(symbol, timeframe, days, td_key)
+            if df.empty:
+                logger.warning(f"Twelve Data vide pour {symbol} — fallback yfinance")
+                df = _fetch_yahoo_history(symbol, timeframe, days)
+        else:
+            df = _fetch_yahoo_history(symbol, timeframe, days)
+
         if cache and not df.empty:
             try:
                 df.to_parquet(cache_file)
@@ -169,6 +205,129 @@ def _fetch_yahoo_history(symbol: str, timeframe: str, days: int) -> pd.DataFrame
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     except Exception as exc:
         logger.error(f"yfinance fetch échoué pour {symbol}: {exc}")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+
+def _fetch_twelve_data_history(
+    symbol: str,
+    timeframe: str,
+    days: int,
+    api_key: str,
+) -> pd.DataFrame:
+    """Récupère OHLCV via l'API REST Twelve Data (jusqu'à 5000 barres/call).
+
+    Avantages vs yfinance :
+    - Pas de limite 59j sur les données intraday
+    - Données plus stables (pas de splits/dividendes parasites)
+    - Forex/commodités en temps réel
+
+    Args:
+        symbol: ex. "XAU/USD", "EUR/USD"
+        timeframe: ex. "15m", "1h"
+        days: nombre de jours d'historique voulus
+        api_key: clé API Twelve Data
+
+    Returns:
+        DataFrame OHLCV standard ou vide en cas d'erreur.
+    """
+    try:
+        import requests
+
+        td_sym = _TWELVE_DATA_SYMBOLS.get(symbol, symbol.replace("/", "_"))
+        # Mapping timeframe ccxt → Twelve Data
+        tf_map = {"1m": "1min", "5m": "5min", "15m": "15min", "1h": "1h", "4h": "4h", "1d": "1day"}
+        td_tf = tf_map.get(timeframe, "15min")
+
+        # Twelve Data : max 5000 barres par requête (plan gratuit : 800/j)
+        outputsize = min(5000, days * 96)  # 96 = barres 15min/jour
+        url = "https://api.twelvedata.com/time_series"
+        params = {
+            "symbol": td_sym,
+            "interval": td_tf,
+            "outputsize": outputsize,
+            "apikey": api_key,
+            "format": "JSON",
+            "timezone": "UTC",
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("status") == "error":
+            logger.warning(f"Twelve Data erreur [{symbol}]: {data.get('message', '?')}")
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        values = data.get("values", [])
+        if not values:
+            logger.warning(f"Twelve Data: aucune donnée pour {symbol}")
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        df = pd.DataFrame(values)
+        df["ts"] = pd.to_datetime(df["datetime"], utc=True)
+        df = df.set_index("ts").sort_index()
+        df = df.rename(columns={"open": "open", "high": "high", "low": "low",
+                                 "close": "close", "volume": "volume"})
+        for col in ["open", "high", "low", "close"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        # Le volume peut être absent pour le forex/commodités (= 0 dans TD)
+        if "volume" in df.columns:
+            df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0.0)
+        else:
+            df["volume"] = 1.0  # proxy pour les actifs sans volume réel
+
+        df = df[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
+        df = df[~df.index.duplicated(keep="first")]
+        logger.info(f"Twelve Data: {len(df)} barres pour {symbol} ({timeframe}, {days}j)")
+        return df
+
+    except Exception as exc:
+        logger.error(f"Twelve Data fetch échoué pour {symbol}: {exc}")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+
+def fetch_dxy_history(timeframe: str = "15m", days: int = 90) -> pd.DataFrame:
+    """Récupère l'historique DXY (US Dollar Index) — Q14 feature inter-marché.
+
+    Tente Twelve Data d'abord (meilleure fiabilité), sinon yfinance (DX-Y.NYB).
+
+    Returns:
+        DataFrame OHLCV DXY ou DataFrame vide si indisponible.
+    """
+    from quant.config import get_twelve_data_key
+    td_key = get_twelve_data_key()
+    if td_key:
+        df = _fetch_twelve_data_history("DXY", timeframe, days, td_key)
+        if not df.empty:
+            return df
+
+    # Fallback yfinance
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta, timezone
+
+        tf_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "1h", "1d": "1d"}
+        interval = tf_map.get(timeframe, "15m")
+        actual_days = min(days, 59) if interval in ("1m", "5m", "15m", "1h") else days
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=actual_days)
+
+        ticker = yf.Ticker("DX-Y.NYB")
+        hist = ticker.history(start=start, end=end, interval=interval)
+        if hist.empty:
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        hist = hist.reset_index()
+        ts_col = "Datetime" if "Datetime" in hist.columns else "Date"
+        hist["ts"] = pd.to_datetime(hist[ts_col], utc=True)
+        hist = hist.rename(columns={"Open": "open", "High": "high", "Low": "low",
+                                     "Close": "close", "Volume": "volume"})
+        df = hist.set_index("ts")[["open", "high", "low", "close", "volume"]].dropna()
+        df["volume"] = df["volume"].fillna(1.0)
+        df = df[~df.index.duplicated(keep="first")].sort_index()
+        logger.info(f"DXY (yfinance): {len(df)} barres")
+        return df
+    except Exception as exc:
+        logger.warning(f"DXY fetch échoué (yfinance): {exc}")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 

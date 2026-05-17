@@ -172,14 +172,45 @@ def render_global_live_prices() -> None:
     st.markdown(f"### {t('live_prices_title')}")
 
     try:
-        from quant.data_loader import fetch_ohlcv
+        from quant.data_loader import fetch_ohlcv, _YAHOO_SYMBOLS as _NON_BINANCE
     except Exception as exc:
         st.caption(f"Prix indisponibles : {exc}")
         return
 
+    # Prix en DB pour les actifs non-Binance (forex/commodités) — non-bloquant
+    _db_prices: dict[str, float] = {}
+    try:
+        from storage.database import get_v2_assets_summary
+        for _row in get_v2_assets_summary():
+            if _row.get("close_price"):
+                _db_prices[_row["asset"]] = float(_row["close_price"])
+    except Exception:
+        pass
+
     cols = st.columns(min(len(assets), 5))
     for i, asset in enumerate(assets):
         icon = _asset_icon(asset)
+
+        # Actifs non-Binance (forex/commodités) → prix depuis DB (mis à jour par le daemon)
+        if asset in _NON_BINANCE:
+            price = _db_prices.get(asset)
+            with cols[i % len(cols)]:
+                if price and price > 0:
+                    if price >= 1000:
+                        price_str = f"{price:,.0f}"
+                    elif price >= 1:
+                        price_str = f"{price:,.2f}"
+                    elif price >= 0.001:
+                        price_str = f"{price:,.4f}"
+                    else:
+                        price_str = f"{price:.6f}"
+                    st.metric(label=f"{icon} {asset}", value=price_str)
+                    st.caption("Dernier prix connu")
+                else:
+                    st.metric(label=f"{icon} {asset}", value="—")
+                    st.caption("En attente du cycle")
+            continue
+
         try:
             bars = fetch_ohlcv(symbol=asset, timeframe="15m", limit=52)
             if bars is None or bars.empty:
@@ -712,8 +743,8 @@ def _render_asset_config_editor(
 
     with st.expander(f"{icon} **{asset}**", expanded=False):
         try:
-            # Charger le fichier brut (pas le merge global) pour éditer seulement l'asset
-            cfg = _load_raw_asset_yaml(asset)
+            # Charger la config fusionnée (globale + asset) pour afficher les vraies valeurs
+            cfg = load_fn(asset)
         except Exception as exc:
             st.warning(f"Config {asset} non chargée : {exc}")
             return
@@ -819,9 +850,13 @@ def _render_asset_config_editor(
             )
 
         if st.button(f"💾 Sauvegarder {asset}", key=f"save_{slug}"):
-            cfg["timeframe"] = asset_timeframe
-            cfg["paper_capital_usd"] = int(paper_cap)
-            cfg["v2_risk"] = {
+            # Ne sauvegarder que les champs propres à l'actif (pas les globaux du merge)
+            asset_overrides: dict = {
+                "asset": asset,
+                "timeframe": asset_timeframe,
+                "paper_capital_usd": int(paper_cap),
+            }
+            asset_overrides["v2_risk"] = {
                 "stop_loss_atr_mult":    round(sl_mult, 4),
                 "take_profit_atr_mult":  round(tp_mult, 4),
                 "fraction_per_trade":    round(frac / 100, 6),
@@ -830,13 +865,13 @@ def _render_asset_config_editor(
                 "range_tp_atr_mult":     round(rtp, 4),
                 "range_fraction_mult":   round(rfm, 4),
             }
-            cfg["circuit_breaker"] = {
-                **cb,
+            asset_overrides["circuit_breaker"] = {
+                **cfg.get("circuit_breaker", {}),
                 "funding_warning": round(fw, 6),
                 "funding_block":   round(fb, 6),
             }
             try:
-                save_fn(asset, cfg)
+                save_fn(asset, asset_overrides)
                 st.success(f"✅ Config {asset} sauvegardée.")
             except Exception as exc:
                 st.error(f"Erreur : {exc}")

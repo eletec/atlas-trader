@@ -36,7 +36,7 @@ _TWELVE_DATA_SYMBOLS: dict[str, str] = {
     "EUR/USD": "EUR/USD",
     "GBP/USD": "GBP/USD",
     "CHF/USD": "CHF/USD",
-    "DXY":     "DX-Y.NYB",
+    "DXY":     "DXY",     # symbole natif Twelve Data (pas le ticker Yahoo "DX-Y.NYB")
 }
 
 
@@ -183,7 +183,7 @@ def _fetch_yahoo_history(symbol: str, timeframe: str, days: int) -> pd.DataFrame
         start = end - timedelta(days=actual_days)
 
         ticker = yf.Ticker(yahoo_sym)
-        hist = ticker.history(start=start, end=end, interval=interval)
+        hist = ticker.history(start=start, end=end, interval=interval, timeout=15)
 
         if hist.empty:
             logger.warning(f"yfinance: aucune donnée pour {symbol} ({yahoo_sym})")
@@ -312,7 +312,7 @@ def fetch_dxy_history(timeframe: str = "15m", days: int = 90) -> pd.DataFrame:
         start = end - timedelta(days=actual_days)
 
         ticker = yf.Ticker("DX-Y.NYB")
-        hist = ticker.history(start=start, end=end, interval=interval)
+        hist = ticker.history(start=start, end=end, interval=interval, timeout=15)
         if hist.empty:
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 

@@ -80,7 +80,15 @@ class PaperTrader:
         status = "executed"
 
         # Actifs non-crypto (forex, commodités) → simulation pure sans CCXT
-        from agents.market_data_agent import _YAHOO_SYMBOLS
+        _YAHOO_SYMBOLS: dict[str, str] = {
+            "XAU/USD": "GC=F",
+            "XAG/USD": "SI=F",
+            "WTI/USD": "CL=F",
+            "EUR/USD": "EURUSD=X",
+            "GBP/USD": "GBPUSD=X",
+            "USD/JPY": "JPY=X",
+            "AUD/USD": "AUDUSD=X",
+        }
         symbol = decision.get("symbol", "BTC/USDT")
         is_non_crypto = symbol in _YAHOO_SYMBOLS
         if is_non_crypto:

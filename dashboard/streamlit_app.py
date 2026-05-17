@@ -2480,8 +2480,8 @@ def render_agent_scores_chart(asset: str):
                     key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
 
 
-def render_live_logs(key: str = "global"):
-    """Affiche tous les logs avec pagination (100 lignes par page)."""
+def render_live_logs(key: str = "global", asset: str | None = None):
+    """Affiche les logs avec pagination (100 lignes par page). Si asset est fourni, filtre sur cet actif."""
     col_title, col_del = st.columns([5, 1])
     with col_title:
         st.markdown(
@@ -2506,11 +2506,26 @@ def render_live_logs(key: str = "global"):
     try:
         from storage.database import get_connection
         with get_connection() as conn:
-            total_rows = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
-            all_rows = conn.execute(
-                "SELECT timestamp, level, module, message FROM logs "
-                "ORDER BY timestamp DESC"
-            ).fetchall()
+            if asset:
+                # Filtrer sur le symbole (ex: "BTC/USDT") et sa forme sans slash ("BTCUSDT")
+                _slug = asset.replace("/", "")
+                _pat1, _pat2 = f"%{asset}%", f"%{_slug}%"
+                total_rows = conn.execute(
+                    "SELECT COUNT(*) FROM logs WHERE message LIKE ? OR message LIKE ?",
+                    (_pat1, _pat2),
+                ).fetchone()[0]
+                all_rows = conn.execute(
+                    "SELECT timestamp, level, module, message FROM logs "
+                    "WHERE message LIKE ? OR message LIKE ? "
+                    "ORDER BY timestamp DESC",
+                    (_pat1, _pat2),
+                ).fetchall()
+            else:
+                total_rows = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+                all_rows = conn.execute(
+                    "SELECT timestamp, level, module, message FROM logs "
+                    "ORDER BY timestamp DESC"
+                ).fetchall()
     except Exception:
         st.info(t("logs_unavailable"))
         return
@@ -3426,7 +3441,7 @@ def main():
                 render_trades_list(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_chart(asset)
-                render_live_logs(key=asset.replace('/', '_'))
+                render_live_logs(key=asset.replace('/', '_'), asset=asset)
 
             def _render_portfolio_first():
                 """Portefeuille global — affiché en tête de la vue Global."""

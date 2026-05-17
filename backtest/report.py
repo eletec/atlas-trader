@@ -42,8 +42,7 @@ def _badge(text: str, color: str) -> str:
 
 # ── Courbe P&L cumulé (inline SVG sparkline) ─────────────────────────────
 
-def _pnl_sparkline(trades: list[SimTrade], width: int = 400, height: int = 80) -> str:
-    active = [t for t in trades if t.action in ("BUY", "SELL") and t.result_24h is not None]
+    active = [t for t in trades if t.action in ("LONG", "SHORT") and t.result_24h is not None]
     if not active:
         return "<em>Aucune transaction active</em>"
 
@@ -81,8 +80,7 @@ def _pnl_sparkline(trades: list[SimTrade], width: int = 400, height: int = 80) -
 
 # ── Tableau des top trades ────────────────────────────────────────────────
 
-def _top_trades_table(trades: list[SimTrade], n: int = 10, best: bool = True) -> str:
-    active = [t for t in trades if t.action in ("BUY", "SELL") and t.result_24h is not None]
+    active = [t for t in trades if t.action in ("LONG", "SHORT") and t.result_24h is not None]
     if not active:
         return "<em>Aucune transaction</em>"
 
@@ -92,7 +90,7 @@ def _top_trades_table(trades: list[SimTrade], n: int = 10, best: bool = True) ->
     rows = ""
     for t in sorted_trades:
         ts = t.timestamp.strftime("%Y-%m-%d %H:%M") if t.timestamp else "?"
-        action_badge = _badge(t.action, "#27ae60" if t.action == "BUY" else "#e74c3c")
+        action_badge = _badge(t.action, "#27ae60" if t.action == "LONG" else "#e74c3c")
         rows += f"""<tr>
             <td>{t.asset}</td>
             <td>{ts}</td>
@@ -130,7 +128,7 @@ def _asset_card(symbol: str, trades: list[SimTrade], metrics: dict) -> str:
         <h3>{symbol}</h3>
         <div class="metrics-grid">
             <div class="metric"><div class="metric-label">Cycles</div><div class="metric-value">{metrics['total_cycles']}</div></div>
-            <div class="metric"><div class="metric-label">BUY / SELL / HOLD</div><div class="metric-value">{metrics['n_buy']} / {metrics['n_sell']} / {metrics['n_hold']}</div></div>
+            <div class="metric"><div class="metric-label">LONG / SHORT / FLAT</div><div class="metric-value">{metrics['n_buy']} / {metrics['n_sell']} / {metrics['n_hold']}</div></div>
             <div class="metric"><div class="metric-label">Win Rate</div><div class="metric-value">{_fmt_pct(metrics['win_rate'])}</div></div>
             <div class="metric"><div class="metric-label">P&amp;L Total</div><div class="metric-value" style="color:{pnl_color}">${metrics['total_pnl']:+.2f}</div></div>
             <div class="metric"><div class="metric-label">Sharpe (annualisé)</div><div class="metric-value">{metrics['sharpe']:.3f}</div></div>
@@ -190,10 +188,10 @@ def generate_report(
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     # Métriques globales agrégées
-    all_active = [t for t in trades if t.action in ("BUY", "SELL") and t.result_24h is not None]
+    all_active = [t for t in trades if t.action in ("LONG", "SHORT") and t.result_24h is not None]
     total_pnl = sum(t.result_24h for t in all_active)
     total_cycles = len(trades)
-    total_buy = sum(1 for t in trades if t.action == "BUY")
+    total_buy = sum(1 for t in trades if t.action == "LONG")
     avg_win_rate = (
         sum(m["win_rate"] for m in metrics_by_symbol.values()) / len(metrics_by_symbol)
         if metrics_by_symbol else 0.0

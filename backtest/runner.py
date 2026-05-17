@@ -58,12 +58,10 @@ DEFAULT_TIMEFRAME = "15m"
 DEFAULT_DB = _BACKTEST_DIR / "backtest_results.sqlite"
 DEFAULT_REPORT = _BACKTEST_DIR / "backtest_report.html"
 
-# Grille de sweep (optimisation paramétrique)
+# Grille de sweep (optimisation paramétrique V2)
 SWEEP_GRID: dict[str, list] = {
-    "buy_threshold":    [58, 62, 65, 68, 72],
-    "exit_threshold":   [40, 43, 46, 50],
-    "atr_multiplier_sl": [1.5, 2.0, 2.5],
-    "atr_multiplier_tp": [2.5, 3.0, 4.0],
+    "p_up_threshold": [0.55, 0.58, 0.62, 0.65],
+    "p_dn_threshold": [0.35, 0.38, 0.42, 0.45],
 }
 
 
@@ -175,10 +173,10 @@ def save_metrics(conn: sqlite3.Connection, run_id: str, asset: str, metrics: dic
 # ── Calcul des métriques ─────────────────────────────────────────────────
 
 def compute_metrics(trades: list[SimTrade]) -> dict:
-    active = [t for t in trades if t.action in ("BUY", "SELL") and t.result_24h is not None]
-    n_buy = sum(1 for t in trades if t.action == "BUY")
-    n_sell = sum(1 for t in trades if t.action == "SELL")
-    n_hold = sum(1 for t in trades if t.action == "HOLD")
+    active = [t for t in trades if t.action in ("LONG", "SHORT") and t.result_24h is not None]
+    n_buy = sum(1 for t in trades if t.action == "LONG")
+    n_sell = sum(1 for t in trades if t.action == "SHORT")
+    n_hold = sum(1 for t in trades if t.action == "FLAT")
 
     if not active:
         return {
@@ -247,20 +245,11 @@ def run_backtest(
     run_id = datetime.now(timezone.utc).strftime("run_%Y%m%d_%H%M%S")
     config = config_override or {}
 
-    engine_config: dict[str, Any] = {}
+    engine_config: dict = {}
     if config:
-        risk_override = {
-            k: config[k]
-            for k in ("buy_threshold", "exit_threshold", "atr_multiplier_sl", "atr_multiplier_tp")
-            if k in config
-        }
-        engine_config = {"risk": {
-            "buy_threshold": 62, "exit_threshold": 45,
-            "position_size_pct": 5.0, "kelly_max_fraction": 0.25,
-            "atr_multiplier_sl": 2.0, "atr_multiplier_tp": 3.0,
-            "paper_capital_usd": 10000,
-            **risk_override,
-        }, "scoring": {"weights": {"mirofish": 0.12, "market": 0.50, "agents": 0.20, "contrarian": 0.18}}}
+        for k in ("p_up_threshold", "p_dn_threshold"):
+            if k in config:
+                engine_config[k] = config[k]
 
     if db_conn:
         save_run(db_conn, run_id, symbols, days, timeframe, config)
@@ -305,7 +294,7 @@ def run_backtest(
 def _log_metrics_summary(symbol: str, m: dict) -> None:
     logger.info(
         f"\n  {symbol} — Résultats:\n"
-        f"  Cycles: {m['total_cycles']} | BUY: {m['n_buy']} | SELL: {m['n_sell']} | HOLD: {m['n_hold']}\n"
+        f"  Cycles: {m['total_cycles']} | LONG: {m['n_buy']} | SHORT: {m['n_sell']} | FLAT: {m['n_hold']}\n"
         f"  Win rate: {m['win_rate']*100:.1f}% | P&L total: ${m['total_pnl']:+.2f}\n"
         f"  Sharpe: {m['sharpe']:.3f} | Max DD: ${m['max_drawdown']:.2f} | Profit factor: {m['profit_factor']:.2f}"
     )
@@ -347,18 +336,9 @@ def run_sweep(
         run_id = f"sweep_{datetime.now(timezone.utc).strftime('%H%M%S%f')}_{idx}"
         save_run(db_conn, run_id, symbols, days, timeframe, config_override)
 
-        risk = {
-            "buy_threshold": params["buy_threshold"],
-            "exit_threshold": params["exit_threshold"],
-            "atr_multiplier_sl": params["atr_multiplier_sl"],
-            "atr_multiplier_tp": params["atr_multiplier_tp"],
-            "position_size_pct": 5.0,
-            "kelly_max_fraction": 0.25,
-            "paper_capital_usd": 10_000,
-        }
         engine_config = {
-            "risk": risk,
-            "scoring": {"weights": {"mirofish": 0.12, "market": 0.50, "agents": 0.20, "contrarian": 0.18}},
+            "p_up_threshold": params["p_up_threshold"],
+            "p_dn_threshold": params["p_dn_threshold"],
         }
         engine = SimEngine(config=engine_config)
 

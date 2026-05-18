@@ -233,7 +233,6 @@ def _inject_theme_css():
         [data-testid="stRadio"] label,
         [data-testid="stRadio"] span,
         [data-testid="stRadio"] div { color: #31333F !important; }
-        [data-baseweb="radio"] div { background-color: transparent !important; }
         /* ── Checkbox ── */
         [data-testid="stCheckbox"] label,
         [data-testid="stCheckbox"] span { color: #31333F !important; }

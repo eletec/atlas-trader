@@ -272,12 +272,19 @@ def _inject_theme_css():
             background-color: #ffffff !important;
         }
         /* ── File uploader ── */
-        [data-testid="stFileUploader"] {
+        [data-testid="stFileUploader"],
+        [data-testid="stFileUploadDropzone"],
+        [data-baseweb="file-uploader"] {
             background-color: #ffffff !important;
             border: 1px dashed #ced4da !important;
+            color: #31333F !important;
         }
+        [data-testid="stFileUploadDropzone"] button,
+        [data-testid="stFileUploadDropzone"] span,
+        [data-testid="stFileUploadDropzone"] p,
         [data-testid="stFileUploader"] label,
-        [data-testid="stFileUploader"] span { color: #31333F !important; }
+        [data-testid="stFileUploader"] span,
+        [data-testid="stFileUploader"] small { color: #31333F !important; }
         /* ── Table st.table ── */
         [data-testid="stTable"] table {
             background-color: #ffffff !important;

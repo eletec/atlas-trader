@@ -461,6 +461,41 @@ class LiveRunner:
                      kwargs.get("atr_14"), round(self._capital, 2), self._model_fit_at)
                 )
                 _conn.commit()
+                # v2_decisions : historique complet par cycle
+                _conn.execute("""
+                    CREATE TABLE IF NOT EXISTS v2_decisions (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts           TEXT    NOT NULL,
+                        asset        TEXT    NOT NULL,
+                        bar_ts       TEXT,
+                        close_price  REAL,
+                        regime       TEXT,
+                        prob_up      REAL,
+                        action       TEXT,
+                        reason       TEXT,
+                        atr_14       REAL,
+                        sl_price     REAL,
+                        tp_price     REAL,
+                        capital      REAL,
+                        model_fit_at TEXT
+                    )
+                """)
+                _regime_int = kwargs.get("regime")
+                _regime_txt = "TREND" if _regime_int == 1 else ("RANGE" if _regime_int == 0 else "PANIC")
+                _conn.execute(
+                    """INSERT INTO v2_decisions
+                       (ts, asset, bar_ts, close_price, regime, prob_up, action, reason,
+                        atr_14, sl_price, tp_price, capital, model_fit_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (_dt.utcnow().isoformat(), _asset,
+                     kwargs.get("bar_ts"), kwargs.get("close_price"),
+                     _regime_txt, kwargs.get("prob_up"),
+                     kwargs.get("action"), kwargs.get("reason"),
+                     kwargs.get("atr_14"),
+                     kwargs.get("sl_price"), kwargs.get("tp_price"),
+                     round(self._capital, 2), self._model_fit_at)
+                )
+                _conn.commit()
         except Exception as exc:
             logger.warning(f"Persist V2 state failed: {exc}")
 

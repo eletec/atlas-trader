@@ -2977,6 +2977,9 @@ def render_admin_panel():
         ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
         ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
         ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
+        # ── Historique ────────────────────────────────────────────────────
+        (None, None,      "Historique"),
+        ('<i class="fas fa-history"></i>',         "historique", "Historique"),
         # ── Sauvegarde ──────────────────────────────────────────────────
         (None, None,      t("admin_section_backup")),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",   t("tab_backup")),
@@ -3485,13 +3488,109 @@ def render_admin_panel():
         with _col_r4:
             st.caption("Après reset V2, relancer le daemon pour repartir d'un capital et d'un modèle propres.")
 
-    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde et Reset)
-    if _atab not in ("backup", "flux", "peractif", "reset"):
+    elif _atab == "historique":  # Historique des décisions V2
+        st.markdown(
+            '<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'
+            ' Historique des Décisions V2</h4>',
+            unsafe_allow_html=True,
+        )
+        try:
+            from storage.database import get_connection as _hget_conn
+            _h_col1, _h_col2, _h_col3, _h_col4 = st.columns([2, 1, 1, 1])
+            _h_assets_raw = settings.get("project", {}).get("active_assets", [])
+            _h_assets_list = ["Tous"] + (list(_h_assets_raw) if _h_assets_raw else ["BTC/USDT"])
+            with _h_col1:
+                _h_asset = st.selectbox("Actif", _h_assets_list, key="hist_asset")
+            with _h_col2:
+                _h_action = st.selectbox("Action", ["Toutes", "long", "short", "flat"], key="hist_action")
+            with _h_col3:
+                _h_regime = st.selectbox("Régime", ["Tous", "TREND", "RANGE", "PANIC"], key="hist_regime")
+            with _h_col4:
+                _h_n = int(st.number_input("Lignes max", 50, 5000, 500, 50, key="hist_n"))
+
+            _h_where, _h_params = [], []
+            if _h_asset != "Tous":
+                _h_where.append("asset = ?"); _h_params.append(_h_asset)
+            if _h_action != "Toutes":
+                _h_where.append("action = ?"); _h_params.append(_h_action)
+            if _h_regime != "Tous":
+                _h_where.append("regime = ?"); _h_params.append(_h_regime)
+            _h_where_sql = ("WHERE " + " AND ".join(_h_where)) if _h_where else ""
+
+            with _hget_conn() as _hconn:
+                _tbl_exists = _hconn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='v2_decisions'"
+                ).fetchone()
+                if not _tbl_exists:
+                    st.info("📊 La table d'historique sera créée automatiquement au prochain cycle du trader.")
+                else:
+                    _h_stats = _hconn.execute(
+                        f"""SELECT COUNT(*) as total,
+                               SUM(CASE WHEN action='long'  THEN 1 ELSE 0 END) as n_long,
+                               SUM(CASE WHEN action='short' THEN 1 ELSE 0 END) as n_short,
+                               SUM(CASE WHEN action='flat'  THEN 1 ELSE 0 END) as n_flat,
+                               SUM(CASE WHEN regime='TREND' THEN 1 ELSE 0 END) as n_trend,
+                               SUM(CASE WHEN regime='RANGE' THEN 1 ELSE 0 END) as n_range,
+                               SUM(CASE WHEN regime='PANIC' THEN 1 ELSE 0 END) as n_panic
+                           FROM v2_decisions {_h_where_sql}""",
+                        _h_params,
+                    ).fetchone()
+                    if _h_stats and _h_stats[0] > 0:
+                        _h_total = _h_stats[0]
+                        _hc1, _hc2, _hc3, _hc4, _hc5, _hc6, _hc7 = st.columns(7)
+                        _hc1.metric("Total cycles", _h_total)
+                        _hc2.metric("LONG",  f"{_h_stats[1]} ({_h_stats[1]/_h_total*100:.0f}%)")
+                        _hc3.metric("SHORT", f"{_h_stats[2]} ({_h_stats[2]/_h_total*100:.0f}%)")
+                        _hc4.metric("FLAT",  f"{_h_stats[3]} ({_h_stats[3]/_h_total*100:.0f}%)")
+                        _hc5.metric("TREND", f"{_h_stats[4]} ({_h_stats[4]/_h_total*100:.0f}%)")
+                        _hc6.metric("RANGE", f"{_h_stats[5]} ({_h_stats[5]/_h_total*100:.0f}%)")
+                        _hc7.metric("PANIC", f"{_h_stats[6]} ({_h_stats[6]/_h_total*100:.0f}%)")
+                        st.markdown("---")
+                        _h_rows = _hconn.execute(
+                            f"""SELECT ts, asset, bar_ts, close_price, regime, prob_up,
+                                       action, reason, atr_14, sl_price, tp_price, capital
+                                FROM v2_decisions {_h_where_sql}
+                                ORDER BY ts DESC LIMIT ?""",
+                            _h_params + [_h_n],
+                        ).fetchall()
+                        import pandas as _hpd
+                        _h_df = _hpd.DataFrame(
+                            _h_rows,
+                            columns=["Horodatage", "Actif", "Barre", "Prix", "Régime",
+                                     "P(up)", "Action", "Raison", "ATR", "SL", "TP", "Capital"],
+                        )
+                        _h_df["Horodatage"] = _h_df["Horodatage"].apply(lambda x: x[:19] if x else "")
+                        _h_df["Barre"]      = _h_df["Barre"].apply(lambda x: x[:16] if x else "")
+                        _h_df["P(up)"]      = _h_df["P(up)"].apply(lambda x: f"{x:.3f}" if x is not None else "N/A")
+                        _h_df["Prix"]       = _h_df["Prix"].apply(lambda x: f"{x:.4f}" if x else "—")
+                        _h_df["ATR"]        = _h_df["ATR"].apply(lambda x: f"{x:.6f}" if x else "—")
+                        _h_df["SL"]         = _h_df["SL"].apply(lambda x: f"{x:.4f}" if x else "—")
+                        _h_df["TP"]         = _h_df["TP"].apply(lambda x: f"{x:.4f}" if x else "—")
+                        _h_df["Capital"]    = _h_df["Capital"].apply(lambda x: f"{x:.2f}$" if x else "—")
+                        st.dataframe(_h_df, use_container_width=True, hide_index=True)
+                        # Export CSV
+                        _h_csv = _h_df.to_csv(index=False).encode("utf-8")
+                        st.download_button(
+                            "⬇️ Exporter CSV",
+                            _h_csv,
+                            file_name="v2_decisions.csv",
+                            mime="text/csv",
+                            key="hist_dl_csv",
+                        )
+                    else:
+                        st.info("Aucune décision enregistrée avec ces filtres.")
+        except Exception as _he:
+            st.error(f"Erreur lecture historique : {_he}")
+
+    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset et Historique)
+    if _atab not in ("backup", "flux", "peractif", "reset", "historique"):
         st.markdown("---")
     if _atab == "backup":
         pass  # pas de bouton save_settings pour l'onglet backup
     elif _atab == "reset":
         pass  # le panneau reset gère ses propres boutons
+    elif _atab == "historique":
+        pass  # le panneau historique gère son propre affichage
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")

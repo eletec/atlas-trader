@@ -49,6 +49,10 @@ def fetch_ohlcv(
 ) -> pd.DataFrame:
     """Récupère un lot de bougies OHLCV depuis l'exchange.
 
+    Routing :
+    - Crypto → Binance ccxt
+    - Forex/Commodités (XAU, XAG, WTI, EUR, GBP) → yfinance (dernières barres)
+
     Args:
         symbol: paire ex. "BTC/USDT"
         timeframe: "1m", "5m", "15m", "1h", "4h", "1d"
@@ -59,6 +63,10 @@ def fetch_ohlcv(
     Returns:
         DataFrame [open, high, low, close, volume] indexé timestamp UTC
     """
+    # Routing : actifs non disponibles sur Binance → yfinance
+    if symbol in _YAHOO_SYMBOLS:
+        return _fetch_yahoo_latest(symbol, timeframe, limit)
+
     exchange = getattr(ccxt, exchange_name)({"enableRateLimit": True})
     raw = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=limit)
     if not raw:
@@ -68,6 +76,53 @@ def fetch_ohlcv(
     df = df.set_index("ts").sort_index()
     df = df[~df.index.duplicated(keep="first")]
     return df
+
+
+def _fetch_yahoo_latest(symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
+    """Récupère les dernières `limit` barres via yfinance pour les actifs non-Binance."""
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta, timezone
+
+        yahoo_sym = _YAHOO_SYMBOLS[symbol]
+        interval_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "1h", "1d": "1d"}
+        interval = interval_map.get(timeframe, "15m")
+
+        # Fenêtre : assez large pour couvrir `limit` barres + gaps weekend
+        tf_minutes_map = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+        tf_min = tf_minutes_map.get(timeframe, 15)
+        # Pour les TF intraday, yfinance limite à 59j ; on prend 5 jours pour les barres récentes
+        fetch_days = max(5, (limit * tf_min) // (60 * 16) + 2)  # +2j de marge
+        fetch_days = min(fetch_days, 59)
+
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=fetch_days)
+
+        ticker = yf.Ticker(yahoo_sym)
+        hist = ticker.history(start=start, end=end, interval=interval, timeout=15)
+
+        if hist.empty:
+            logger.warning(f"yfinance latest: aucune donnée pour {symbol} ({yahoo_sym})")
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+        hist = hist.reset_index()
+        ts_col = "Datetime" if "Datetime" in hist.columns else "Date"
+        hist["ts"] = pd.to_datetime(hist[ts_col], utc=True)
+        hist = hist.rename(columns={
+            "Open": "open", "High": "high", "Low": "low",
+            "Close": "close", "Volume": "volume",
+        })
+        df = hist.set_index("ts")[["open", "high", "low", "close", "volume"]].dropna()
+        df.index.name = "ts"
+        df = df[~df.index.duplicated(keep="first")].sort_index()
+        # Retourner uniquement les `limit` dernières barres
+        return df.iloc[-limit:] if len(df) > limit else df
+    except ImportError:
+        logger.error("yfinance non installé — pip install yfinance")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    except Exception as exc:
+        logger.error(f"yfinance latest fetch échoué pour {symbol}: {exc}")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 
 def fetch_history(

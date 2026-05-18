@@ -229,17 +229,28 @@ def _inject_theme_css():
         [data-baseweb="input"] button svg {
             fill: #31333F !important;
         }
-        /* ── Radio buttons ── */
+        /* ── Radio buttons — texte sombre, cercle gris (pas noir) ── */
         [data-testid="stRadio"] label,
-        [data-testid="stRadio"] span,
-        [data-testid="stRadio"] div { color: #31333F !important; }
-        /* ── Checkbox ── */
-        [data-testid="stCheckbox"] label,
-        [data-testid="stCheckbox"] span { color: #31333F !important; }
-        /* ── Toggle ── */
+        [data-testid="stRadio"] p { color: #31333F !important; }
+        /* Le cercle utilise currentColor comme border/fill → on le met gris pour éviter noir plein */
+        [data-baseweb="radio"] { color: rgba(49,51,63,0.45) !important; }
+        [data-baseweb="radio"][aria-checked="true"],
+        [data-baseweb="radio"][data-checked="true"] { color: #ff4b4b !important; }
+        /* ── Toggle — piste OFF visible + piste ON rouge ── */
         [data-testid="stToggle"] label,
-        [data-testid="stToggle"] span,
         [data-testid="stToggle"] p { color: #31333F !important; }
+        /* Piste du toggle : plusieurs sélecteurs pour couvrir les versions Streamlit */
+        [data-testid="stToggle"] [role="checkbox"],
+        [data-testid="stToggle"] label > div:first-child,
+        [data-baseweb="toggle"] {
+            background-color: #ced4da !important;
+            border-color: #adb5bd !important;
+        }
+        [data-testid="stToggle"] [role="checkbox"][aria-checked="true"],
+        [data-baseweb="toggle"][aria-checked="true"] {
+            background-color: #ff4b4b !important;
+            border-color: #ff4b4b !important;
+        }
         /* ── Tabs ── */
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background-color: #f8f9fa !important;

@@ -342,8 +342,16 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Selectbox dropdown — min-width !important bat le style inline injecte par BaseWeb */
+        /* Selectbox dropdown — min-width + fond blanc sur popover ET liste */
         [data-baseweb="popover"] { min-width: max-content !important; }
+        [data-baseweb="popover"],
+        [data-baseweb="popover"] > div,
+        [data-baseweb="popover"] [data-baseweb="block"],
+        [data-baseweb="list"],
+        [role="listbox"] {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+        }
     """
 
     _DARK_CSS = """

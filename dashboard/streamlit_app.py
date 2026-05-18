@@ -198,6 +198,127 @@ def _inject_theme_css():
         }
         /* Slider labels */
         [data-testid="stSlider"] span { color: #31333F !important; }
+        /* ── Tous les boutons (stBaseButton couvre télécharger, upload, etc.) ── */
+        .stButton > button,
+        .stButton button,
+        button[data-testid^="stBaseButton"],
+        [data-testid="stFormSubmitButton"] button,
+        [data-testid="stDownloadButton"] button,
+        [data-testid="stFileUploaderDeleteBtn"] button {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border: 1px solid #ced4da !important;
+        }
+        button[data-testid="stBaseButton-primary"],
+        [data-testid="stFormSubmitButton"] button[kind="primary"] {
+            background-color: #ff4b4b !important;
+            color: #ffffff !important;
+            border: none !important;
+        }
+        /* Boutons internes inputs (œil password, etc.) */
+        [data-testid="stTextInput"] button,
+        [data-testid="stPasswordInput"] button,
+        [data-baseweb="input"] button {
+            background-color: transparent !important;
+            color: #31333F !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        [data-testid="stTextInput"] button svg,
+        [data-testid="stPasswordInput"] button svg,
+        [data-baseweb="input"] button svg {
+            fill: #31333F !important;
+        }
+        /* ── Radio buttons ── */
+        [data-testid="stRadio"] label,
+        [data-testid="stRadio"] span,
+        [data-testid="stRadio"] div { color: #31333F !important; }
+        [data-baseweb="radio"] div { background-color: transparent !important; }
+        /* ── Checkbox ── */
+        [data-testid="stCheckbox"] label,
+        [data-testid="stCheckbox"] span { color: #31333F !important; }
+        /* ── Toggle ── */
+        [data-testid="stToggle"] label,
+        [data-testid="stToggle"] span,
+        [data-testid="stToggle"] p { color: #31333F !important; }
+        /* ── Tabs ── */
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            background-color: #f8f9fa !important;
+            border-bottom: 1px solid #dee2e6 !important;
+            box-shadow: none !important;
+        }
+        [data-testid="stTabs"] button[role="tab"] {
+            color: rgba(49,51,63,0.6) !important;
+            background-color: transparent !important;
+        }
+        [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+            color: #31333F !important;
+            border-bottom-color: #ff4b4b !important;
+        }
+        [data-testid="stTabs"] [data-baseweb="tab-panel"] {
+            background-color: transparent !important;
+        }
+        /* ── Expanders ── */
+        [data-testid="stExpander"] {
+            background-color: #ffffff !important;
+            border: 1px solid #dee2e6 !important;
+        }
+        [data-testid="stExpanderHeader"],
+        [data-testid="stExpander"] summary {
+            background-color: #f0f2f6 !important;
+            color: #31333F !important;
+        }
+        [data-testid="stExpanderDetails"] {
+            background-color: #ffffff !important;
+        }
+        /* ── File uploader ── */
+        [data-testid="stFileUploader"] {
+            background-color: #ffffff !important;
+            border: 1px dashed #ced4da !important;
+        }
+        [data-testid="stFileUploader"] label,
+        [data-testid="stFileUploader"] span { color: #31333F !important; }
+        /* ── Table st.table ── */
+        [data-testid="stTable"] table {
+            background-color: #ffffff !important;
+            border-collapse: collapse !important;
+            width: 100% !important;
+        }
+        [data-testid="stTable"] thead th {
+            background-color: #f0f2f6 !important;
+            color: #31333F !important;
+            border-bottom: 1px solid #dee2e6 !important;
+            padding: 8px 12px !important;
+        }
+        [data-testid="stTable"] tbody td {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border-bottom: 1px solid #f0f2f6 !important;
+            padding: 6px 12px !important;
+        }
+        [data-testid="stTable"] tbody tr:hover td {
+            background-color: #f8f9fa !important;
+        }
+        /* ── Dialog modal ── */
+        div[role="dialog"],
+        [data-baseweb="dialog"] {
+            background-color: #ffffff !important;
+            border: 1px solid #dee2e6 !important;
+            max-width: 560px !important;
+        }
+        div[role="dialog"] p,
+        div[role="dialog"] label { color: #31333F !important; }
+        div[role="dialog"] button[aria-label="Close"],
+        div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"] {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        div[role="dialog"] button[aria-label="Close"] svg,
+        div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"] svg {
+            fill: rgba(49,51,63,0.7) !important;
+        }
+        /* ── DataFrames ── */
         [data-testid="stDataFrame"], .stDataFrame { background-color: #ffffff !important; }
         [data-testid="stDataFrame"] * { color: #31333F !important; }
         [data-testid="stDataFrameResizable"] { background-color: #ffffff !important; }

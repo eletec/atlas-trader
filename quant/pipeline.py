@@ -196,9 +196,30 @@ def run_pipeline(
         if _dxy_col in feats_raw.columns:
             norm_cols.append(_dxy_col)
 
+    # Auto-adapter norm_window au timeframe réel des données.
+    # cfg.norm_window est calculé pour le TF du config (ex: 5m → 8640 bars/30j).
+    # Si les données sont à un TF différent (ex: 1h → 720 bars/30j), la fenêtre
+    # rolling dépasse la taille du train et toutes les features _q restent NaN.
+    _effective_norm_window = cfg.norm_window
+    if len(ohlcv) > 1:
+        try:
+            _freq_s = (ohlcv.index[1] - ohlcv.index[0]).total_seconds()
+            _actual_bpd = max(1, round(86400 / max(_freq_s, 60)))
+            _norm_days = get_quant_cfg().norm_window_days
+            _effective_norm_window = _norm_days * _actual_bpd
+            # Cap de sécurité : jamais plus de 1/3 du dataset total
+            _effective_norm_window = min(_effective_norm_window, max(1, len(ohlcv) // 3))
+            if _effective_norm_window != cfg.norm_window:
+                logger.debug(
+                    f"norm_window adapté au TF réel : {cfg.norm_window}→{_effective_norm_window} "
+                    f"({_actual_bpd} bars/j × {_norm_days}j)"
+                )
+        except Exception:
+            pass
+
     feats_norm = normalize_features(
         feats_raw,
-        window=cfg.norm_window,
+        window=_effective_norm_window,
         columns=norm_cols,
     )
     feats = pd.concat([feats_raw, feats_norm], axis=1)
@@ -218,9 +239,8 @@ def run_pipeline(
     if cfg.use_signal_model:
         y = make_target_direction(ohlcv, horizon=cfg.horizon_bars)
         # B.3 Warmup : exclure les premières norm_window barres (quantile instable — 3/3 IA)
-        # Cap : ne jamais sacrifier plus de 50% du train (évite le problème norm_window > train_size
-        # qui survient quand le timeframe réel diffère du timeframe configuré, ex. 1h vs 5m)
-        _safe_warmup = min(cfg.norm_window, max(0, len(train_idx) - 200))
+        # Utilise _effective_norm_window (adapté au TF réel) pour ne pas vider le train.
+        _safe_warmup = min(_effective_norm_window, max(0, len(train_idx) - 200))
         warmup_cutoff = feats.index[min(_safe_warmup, len(feats) - 1)]
         sm_train_idx = train_idx[train_idx >= warmup_cutoff]
         # Utiliser active_feature_cols (inclut DXY si disponible)

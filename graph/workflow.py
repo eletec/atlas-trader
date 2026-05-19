@@ -427,13 +427,15 @@ class LiveRunner:
             gross = (pos.entry_price - price) * pos.size_units
         fees = pos.size_units * price * 0.0005
         net = gross - fees
+        _capital_before = self._capital   # capture avant maj pour KS portfolio-relatif
         self._capital += net
         self._peak_capital = max(self._peak_capital, self._capital)
-        pnl_pct = net / (pos.entry_price * pos.size_units)
+        pnl_pct = net / (pos.entry_price * pos.size_units)   # position-relative (display)
+        ks_pnl_pct = net / _capital_before if _capital_before > 0 else pnl_pct  # portfolio-relative (KS)
         if net > 0:
             self._wins += 1
         self._position_entry_ts = None   # reset après fermeture
-        self._risk_manager.record_trade_pnl_pct(pnl_pct, time.time())
+        self._risk_manager.record_trade_pnl_pct(ks_pnl_pct, time.time())
         logger.info(f"SORTIE {reason} @ {price:.2f} | PnL={net:+.2f}$ ({pnl_pct:+.2%})")
         return {"exit_price": price, "pnl_abs": round(net, 2),
                 "pnl_pct": round(pnl_pct, 4), "exit_reason": reason}

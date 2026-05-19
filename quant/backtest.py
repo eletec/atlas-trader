@@ -129,6 +129,10 @@ class Backtester:
 
                 if exit_reason is not None and exit_price is not None:
                     pnl_pct, pnl_abs = self._close_position(position, exit_price)
+                    # Kill-switch : DD portefeuille (net/capital), pas position-relative.
+                    # Position-relative (net/notional) ≈ -5-7% par SL BTC → KS sur 2 pertes.
+                    # Portfolio-relative ≈ -0.75% par SL → KS sur ~10 pertes consécutives.
+                    ks_pnl_pct = pnl_abs / equity if equity > 0 else pnl_pct
                     equity += pnl_abs
                     trades.append(
                         Trade(
@@ -143,7 +147,7 @@ class Backtester:
                             exit_reason=exit_reason,
                         )
                     )
-                    self.risk_manager.record_trade_pnl_pct(pnl_pct, next_ts.timestamp())
+                    self.risk_manager.record_trade_pnl_pct(ks_pnl_pct, next_ts.timestamp())
                     position = None
                     entry_ts = None
 

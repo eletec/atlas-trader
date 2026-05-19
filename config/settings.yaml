@@ -415,7 +415,7 @@ quant:
   # ── Pipeline ───────────────────────────────────────────────────────────────
   horizon_bars: 4                 # horizon de prédiction (en barres)
   norm_window_days: 30            # fenêtre de normalisation quantile (en jours, converti auto)
-  p_up_threshold: 0.58            # seuil LONG : P(up) > p_up_threshold
+  p_up_threshold: 0.55            # seuil LONG (was 0.58 — trop restrictif BTC/ETH)
   p_dn_threshold: 0.42            # seuil SHORT : P(up) < p_dn_threshold
   train_fraction: 0.70            # fraction train/test pour le live runner
   refit_interval_days: 7          # intervalle de re-fit du modèle
@@ -431,10 +431,10 @@ quant:
 
   # ── Risk management ────────────────────────────────────────────────────────
   fraction_per_trade: 0.0075      # fraction du capital risqué par trade (0.75%)
-  stop_loss_atr_mult: 2.5         # multiplicateur ATR pour le stop-loss
-  take_profit_atr_mult: 3.5       # multiplicateur ATR pour le take-profit (R:R 1.4)
-  trailing_activation_atr: 1.5    # was 1.0 — trop agressif, coupe les winners tôt (Q16 IA)
-  trailing_distance_atr: 1.5      # was 1.0 — recommandation consensus 3 IA : 1.5-2.0
+  stop_loss_atr_mult: 2.0         # multiplicateur ATR pour le stop-loss (was 2.5)
+  take_profit_atr_mult: 4.0       # multiplicateur ATR pour le take-profit (R:R 2.0, was 3.5/1.4)
+  trailing_activation_atr: 2.0    # activation trailing à 2×ATR (was 1.5 — coupait winners avant TP)
+  trailing_distance_atr: 2.0      # trail distance 2×ATR (was 1.5 — trop serré sur 1d crypto)
   weekly_dd_kill_switch: 0.08     # DD hebdo déclenchant le kill-switch (8%)
   kill_switch_pause_days: 7       # durée de pause après kill-switch
 

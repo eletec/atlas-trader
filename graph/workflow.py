@@ -102,7 +102,11 @@ class LiveRunner:
 
     def ensure_fitted(self):  # noqa: C901
         now = time.time()
-        if self._regime is None or (now - self._last_fit_ts) > self._refit_interval_s:
+        # Refit si : jamais fitté | interval hebdo dépassé | SignalModel absent (retry 1h)
+        _model_retry = (self._model is None
+                        and self._regime is not None
+                        and (now - self._last_fit_ts) > 3600)
+        if self._regime is None or _model_retry or (now - self._last_fit_ts) > self._refit_interval_s:
             self._refit()
 
     def _refit(self):
@@ -142,6 +146,12 @@ class LiveRunner:
         valid = X_train.notna().all(axis=1) & y_train.notna()
         if valid.sum() < 100:
             logger.warning("Données insuffisantes pour SignalModel — P(up)=0.5 fixe.")
+            self._model = None
+        elif y_train.loc[valid].nunique() < 2:
+            logger.warning(
+                f"SignalModel: y_train a une seule classe "
+                f"({y_train.loc[valid].unique()}) — signal directionnel indisponible."
+            )
             self._model = None
         else:
             try:

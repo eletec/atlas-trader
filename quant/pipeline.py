@@ -287,11 +287,14 @@ def run_pipeline(
     # Diagnostic régime + signal sur la fenêtre de test (aide au debug 5m)
     _rc = regime_series.loc[test_idx].value_counts()
     _pu_test = proba_up.loc[test_idx]
+    _tm_test = trending_mask.loc[test_idx]
     logger.info(
         f"[Diag] Régime test: TREND={_rc.get(1.0,0)} RANGE={_rc.get(0.5,0)} PANIC={_rc.get(0.0,0)} "
-        f"| P_up: mean={_pu_test.mean():.3f} max={_pu_test.max():.3f} "
+        f"| P_up: mean={_pu_test.mean():.3f} min={_pu_test.min():.3f} max={_pu_test.max():.3f} "
         f">0.58={((_pu_test > 0.58).sum())} >0.55={((_pu_test > 0.55).sum())} >0.52={((_pu_test > 0.52).sum())} "
-        f"| notPANIC∩signal={(trending_mask.loc[test_idx] & (_pu_test > cfg.p_up_threshold)).sum()}"
+        f"<0.42={((_pu_test < 0.42).sum())} <0.45={((_pu_test < 0.45).sum())} <0.48={((_pu_test < 0.48).sum())} "
+        f"| notPANIC∩LONG={(_tm_test & (_pu_test > cfg.p_up_threshold)).sum()} "
+        f"notPANIC∩SHORT={(_tm_test & (_pu_test < cfg.p_dn_threshold)).sum()}"
     )
     actions = pd.Series(Action.FLAT, index=feats.index, dtype="object")
     long_mask  = trending_mask & proba_valid & (proba_up > cfg.p_up_threshold)

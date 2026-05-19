@@ -6,8 +6,6 @@ project:
   active_assets:
   - BTC/USDT
   - XAU/USD
-  - XAG/USD
-  - GBP/USD
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo

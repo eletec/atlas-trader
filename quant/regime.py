@@ -119,7 +119,12 @@ class RegimeDetector:
             if negative_mean_candidates:
                 self._panic_state = max(negative_mean_candidates, key=lambda s: variances[s])
             else:
-                self._panic_state = max(panic_candidates, key=lambda s: variances[s])
+                # Tous les états ont mean > 0 : pas de vrai état PANIC bearish.
+                # Ex: XAU 1d 5ans — HMM voit 3 états tous haussiers sur long terme.
+                # Assigner PANIC à l'état le plus haussier bloquerait 50% des barres
+                # avec un signal correct. Gate PANIC désactivé pour cet actif/période.
+                self._panic_state = None
+                logger.info("HMM: aucun état à mean négatif — gate PANIC désactivé (marché structurellement haussier).")
         else:
             self._panic_state = int(np.argmax(variances))  # fallback : variance max
         # TREND = état non-PANIC avec la moyenne (return) la plus élevée (signée).
@@ -154,7 +159,8 @@ class RegimeDetector:
         self._prev_panic_state = self._panic_state
         labels = {s: "RANGE" for s in range(self.n_states)}
         labels[self._trending_state] = "TREND"
-        labels[self._panic_state] = "PANIC"
+        if self._panic_state is not None:
+            labels[self._panic_state] = "PANIC"
         logger.info(
             "HMM %d états fit OK — " % self.n_states
             + " | ".join(
@@ -213,7 +219,11 @@ class RegimeDetector:
         # Forward filtering pur — P(state_t | obs_1:t), strictement causal (Phase 0.1)
         filtered = self._forward_filter(x.values)          # (T, n_states)
         trend_probs = filtered[:, self._trending_state]
-        panic_probs = filtered[:, self._panic_state]
+        panic_probs = (
+            filtered[:, self._panic_state]
+            if self._panic_state is not None
+            else np.zeros(len(filtered))  # gate PANIC désactivé
+        )
         # Hysteresis : évite les transitions trop rapides (GPT + Grok)
         # Seuils adaptatifs au nombre d'états : avec n états, la probabilité "neutre"
         # est 1/n. Les seuils sont calibrés par rapport à cette baseline.

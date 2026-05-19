@@ -211,7 +211,7 @@ def run_pipeline(
             # Cap de sécurité : jamais plus de 1/3 du dataset total
             _effective_norm_window = min(_effective_norm_window, max(1, len(ohlcv) // 3))
             if _effective_norm_window != cfg.norm_window:
-                logger.debug(
+                logger.warning(
                     f"norm_window adapté au TF réel : {cfg.norm_window}→{_effective_norm_window} "
                     f"({_actual_bpd} bars/j × {_norm_days}j)"
                 )
@@ -259,6 +259,14 @@ def run_pipeline(
             X_train = X_train[available_cols]
         # Exclure les barres dont la cible n'est pas observable (fin de train)
         valid = X_train.notna().all(axis=1) & y_train.notna()
+        # Diagnostic : log si valid est vide pour aider au debug
+        if valid.sum() < 100:
+            _partial_nan = {c: int(X_train[c].isna().sum()) for c in available_cols if X_train[c].isna().any()}
+            logger.warning(
+                f"SignalModel: valid={valid.sum()} / {len(X_train)} lignes "
+                f"| sm_train={len(sm_train_idx)} warmup={_safe_warmup} norm_w={_effective_norm_window} "
+                f"| cols_avec_NaN={_partial_nan}"
+            )
         try:
             model = SignalModel(feature_cols=available_cols).fit(
                 X_train.loc[valid], y_train.loc[valid]

@@ -8,9 +8,7 @@ project:
   - ETH/USDT
   - XAU/USD
   - XAG/USD
-  - WTI/USD
   - GBP/USD
-  - EUR/USD
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo

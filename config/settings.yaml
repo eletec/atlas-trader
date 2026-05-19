@@ -450,10 +450,9 @@ quant:
   # Les actifs non listés utilisent les seuils globaux ci-dessus.
   asset_thresholds:
     EUR/USD:
-      p_up_threshold: 0.58        # EUR/USD : 88 faux LONGs à 0.55 (41.7% WR) → filtrer vers 0.58
-      p_dn_threshold: 0.40        # SHORT plus accessible pour EUR trending baissier
-    ETH/USDT:
-      p_dn_threshold: 0.45        # ETH : min P_up=0.437, débloque shorts potentiels
+      p_up_threshold: 0.62        # EUR/USD : max P_up=0.614 → 0 trades (marché RANGE pur, trend-following inefficace)
+      p_dn_threshold: 0.40        # SHORT plus accessible si EUR devient bearish trending
+    # ETH/USDT : p_dn=0.45 ajoutait 2 SHORTs perdants (-$110) → revenu au défaut 0.42 (0 SHORTs)
   # ── Walk-forward ───────────────────────────────────────────────────────────
   wf_train_days: 90               # durée de la fenêtre train (jours)
   wf_test_days: 30                # durée de la fenêtre test OOS (jours)

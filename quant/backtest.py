@@ -240,6 +240,25 @@ class Backtester:
                 f"entrée_atr_nan={_diag['short_entry_atr_nan']}"
             )
 
+        # Clôturer la position ouverte en fin de test (mark-to-market)
+        if position is not None and entry_ts is not None:
+            last_close = float(ohlcv.iloc[-1]["close"])
+            pnl_pct, pnl_abs = self._close_position(position, last_close)
+            equity += pnl_abs
+            trades.append(Trade(
+                entry_ts=entry_ts,
+                exit_ts=idx[-1],
+                side=position.side,
+                entry_price=position.entry_price,
+                exit_price=last_close,
+                size_units=position.size_units,
+                pnl_pct=pnl_pct,
+                pnl_abs=pnl_abs,
+                exit_reason="end_of_test",
+            ))
+            logger.debug(f"Fin de test : position {position.side} clôturée @ {last_close:.4f} (pnl={pnl_abs:+.2f})")
+            position = None
+
         # Marque à market la dernière bougie
         equity_curve.iloc[-1] = equity
         equity_curve = equity_curve.ffill()

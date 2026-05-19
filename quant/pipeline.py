@@ -178,8 +178,9 @@ def run_pipeline(
             if qcfg.use_dxy_feature:
                 from quant.data_loader import fetch_dxy_history
                 days_needed = max(int((ohlcv.index[-1] - ohlcv.index[0]).days) + 10, 90)
-                tf = getattr(cfg, "_asset_timeframe", None) or qcfg.timeframe
-                dxy = fetch_dxy_history(timeframe=tf, days=days_needed)
+                # Toujours télécharger DXY en 1d (pas de limite 59j des intraday yfinance).
+                # features.py fait le forward-fill vers le TF réel de l'OHLCV.
+                dxy = fetch_dxy_history(timeframe="1d", days=days_needed)
                 if not dxy.empty:
                     _extra = {**_extra, "dxy": dxy}
         except Exception as exc:
@@ -247,6 +248,15 @@ def run_pipeline(
         available_cols = [c for c in active_feature_cols if c in feats.columns]
         X_train = feats.loc[sm_train_idx, available_cols]
         y_train = y.loc[sm_train_idx]
+        # Garde défensif : supprimer les colonnes 100% NaN dans la fenêtre train
+        # (ex. DXY hors-plage si train >> 59j, ou mismatch timezone résiduel)
+        _nan_cols = [c for c in available_cols if X_train[c].isna().all()]
+        if _nan_cols:
+            logger.warning(
+                f"run_pipeline: {len(_nan_cols)} feature(s) 100% NaN ignorée(s): {_nan_cols}"
+            )
+            available_cols = [c for c in available_cols if c not in _nan_cols]
+            X_train = X_train[available_cols]
         # Exclure les barres dont la cible n'est pas observable (fin de train)
         valid = X_train.notna().all(axis=1) & y_train.notna()
         try:

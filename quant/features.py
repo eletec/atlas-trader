@@ -157,8 +157,20 @@ def compute_features(df: pd.DataFrame, extra_ohlcv: dict[str, pd.DataFrame] | No
         if not dxy.empty:
             try:
                 # Ré-indexer DXY sur l'index principal (forward-fill = causal)
-                dxy_close = dxy["close"].reindex(df.index, method="ffill")
-                dxy_atr = atr(dxy.reindex(df.index, method="ffill").ffill(), 14)
+                # Normaliser les timezones avant reindex (Binance UTC-aware vs yfinance naive)
+                _target_idx = df.index
+                _dxy_close = dxy["close"].copy()
+                if _target_idx.tz is not None and _dxy_close.index.tz is None:
+                    _dxy_close.index = _dxy_close.index.tz_localize("UTC")
+                elif _target_idx.tz is None and _dxy_close.index.tz is not None:
+                    _dxy_close.index = _dxy_close.index.tz_localize(None)
+                dxy_close = _dxy_close.reindex(_target_idx, method="ffill")
+                _dxy_ohlcv = dxy.copy()
+                if _target_idx.tz is not None and _dxy_ohlcv.index.tz is None:
+                    _dxy_ohlcv.index = _dxy_ohlcv.index.tz_localize("UTC")
+                elif _target_idx.tz is None and _dxy_ohlcv.index.tz is not None:
+                    _dxy_ohlcv.index = _dxy_ohlcv.index.tz_localize(None)
+                dxy_atr = atr(_dxy_ohlcv.reindex(_target_idx, method="ffill").ffill(), 14)
 
                 dxy_log = np.log(dxy_close)
                 out["dxy_return_1"]  = dxy_log.diff(1)

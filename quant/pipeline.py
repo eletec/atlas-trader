@@ -281,6 +281,15 @@ def run_pipeline(
     # 4. Décisions vectorisées — équivalent strict à decide() mais O(1) numpy
     trending_mask = (regime_series == 1.0).fillna(False)
     proba_valid   = proba_up.notna()
+    # Diagnostic régime + signal sur la fenêtre de test (aide au debug 5m)
+    _rc = regime_series.loc[test_idx].value_counts()
+    _pu_test = proba_up.loc[test_idx]
+    logger.info(
+        f"[Diag] Régime test: TREND={_rc.get(1.0,0)} RANGE={_rc.get(0.5,0)} PANIC={_rc.get(0.0,0)} "
+        f"| P_up: mean={_pu_test.mean():.3f} max={_pu_test.max():.3f} "
+        f">threshold={((_pu_test > cfg.p_up_threshold).sum())} "
+        f"| trending∩signal={(trending_mask.loc[test_idx] & (_pu_test > cfg.p_up_threshold)).sum()}"
+    )
     actions = pd.Series(Action.FLAT, index=feats.index, dtype="object")
     long_mask  = trending_mask & proba_valid & (proba_up > cfg.p_up_threshold)
     short_mask = trending_mask & proba_valid & (proba_up < cfg.p_dn_threshold)

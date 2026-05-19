@@ -206,19 +206,30 @@ class RegimeDetector:
         trend_probs = filtered[:, self._trending_state]
         panic_probs = filtered[:, self._panic_state]
         # Hysteresis : évite les transitions trop rapides (GPT + Grok)
+        # Seuils adaptatifs au nombre d'états : avec n états, la probabilité "neutre"
+        # est 1/n. Les seuils sont calibrés par rapport à cette baseline.
+        # n=3: base=0.333 → trend_hi=0.45, trend_lo=0.27, panic_hi=0.55
+        # n=2: base=0.500 → trend_hi=0.62, trend_lo=0.40, panic_hi=0.62
+        _base = 1.0 / max(self.n_states, 2)
+        _trend_hi  = round(_base + 0.12, 3)   # seuil entrée TREND
+        _trend_lo  = round(_base - 0.07, 3)   # seuil sortie TREND → RANGE
+        _panic_hi  = round(_base + 0.22, 3)   # seuil entrée PANIC (plus strict)
+        logger.debug(
+            f"Hysteresis seuils: trend_hi={_trend_hi} trend_lo={_trend_lo} panic_hi={_panic_hi} (n_states={self.n_states})"
+        )
         # États : 1.0=TREND, 0.5=RANGE (mean-reverting possible), 0.0=PANIC
         states = np.empty(len(x), dtype=float)
         prev = 0.5      # boot en RANGE (pas PANIC) — conservateur mais pas bloquant
         for i in range(len(trend_probs)):
             pp = panic_probs[i]
             tp = trend_probs[i]
-            if pp > 0.60:
+            if pp > _panic_hi:
                 prev = 0.0      # PANIC confirmé → pas de trading
-            elif tp > 0.65:
+            elif tp > _trend_hi:
                 prev = 1.0      # TREND confirmé → stratégie directionnelle
-            elif tp < 0.35:
+            elif tp < _trend_lo:
                 prev = 0.5      # RANGE confirmé → stratégie mean-reverting
-            # zone [0.35, 0.65] → inertie (maintient l'état précédent)
+            # zone [_trend_lo, _trend_hi] → inertie (maintient l'état précédent)
             states[i] = prev
         out = pd.Series(np.nan, index=features.index, dtype="float64")
         out.loc[valid_mask] = states

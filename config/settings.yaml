@@ -452,7 +452,8 @@ quant:
     EUR/USD:
       p_up_threshold: 0.62        # EUR/USD : max P_up=0.614 → 0 trades (marché RANGE pur, trend-following inefficace)
       p_dn_threshold: 0.40        # SHORT plus accessible si EUR devient bearish trending
-    # ETH/USDT : p_dn=0.45 ajoutait 2 SHORTs perdants (-$110) → revenu au défaut 0.42 (0 SHORTs)
+    ETH/USDT:
+      p_up_threshold: 0.60        # ETH : filtrage haute conviction (>0.58=10 signaux) → limiter faux LONGs
   # ── Walk-forward ───────────────────────────────────────────────────────────
   wf_train_days: 90               # durée de la fenêtre train (jours)
   wf_test_days: 30                # durée de la fenêtre test OOS (jours)

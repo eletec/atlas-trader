@@ -453,7 +453,9 @@ quant:
       p_up_threshold: 0.62        # EUR/USD : max P_up=0.614 → 0 trades (marché RANGE pur, trend-following inefficace)
       p_dn_threshold: 0.40        # SHORT plus accessible si EUR devient bearish trending
     ETH/USDT:
-      p_up_threshold: 0.60        # ETH : filtrage haute conviction (>0.58=10 signaux) → limiter faux LONGs
+      p_up_threshold: 0.60        # ETH : max notPANIC∩LONG=0 à 0.60 (signaux >0.58 tous en PANIC)
+    SOL/USDT:
+      p_up_threshold: 0.58        # SOL : max P_up=0.573 sur 5y → 0 trades (no edge à 1d, besoin features on-chain)
   # ── Walk-forward ───────────────────────────────────────────────────────────
   wf_train_days: 90               # durée de la fenêtre train (jours)
   wf_test_days: 30                # durée de la fenêtre test OOS (jours)

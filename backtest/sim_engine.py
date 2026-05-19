@@ -78,7 +78,7 @@ class SimEngine:
         """
         from quant.pipeline import PipelineConfig, run_pipeline
 
-        if ohlcv_df.empty or len(ohlcv_df) < 500:
+        if ohlcv_df.empty or len(ohlcv_df) < 300:
             logger.warning(f"{symbol}: données insuffisantes ({len(ohlcv_df)} barres)")
             return []
 

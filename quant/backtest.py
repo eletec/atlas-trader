@@ -105,7 +105,11 @@ class Backtester:
             low = float(bar_next["low"])
             open_next = float(bar_next["open"])
 
+            # Lire le signal de la barre courante (utilisé pour entrée ET flip)
+            action = signals.iloc[i] if i < len(signals) else Action.FLAT
+
             # Gestion position ouverte sur la bougie suivante
+            flip_side: str | None = None  # côté de la position à ouvrir après flip
             if position is not None:
                 position = self.risk_manager.update_trailing(position, high if position.side == "long" else low)
                 exit_reason: str | None = None
@@ -126,6 +130,17 @@ class Backtester:
                     elif low <= position.take_profit:
                         exit_reason = "take_profit"
                         exit_price = position.take_profit
+
+                # Position flip : signal inverse fort → sortir + inverser à l'open suivant
+                if exit_reason is None:
+                    if position.side == "long" and action == Action.SHORT:
+                        exit_reason = "flip"
+                        exit_price = open_next
+                        flip_side = "short"
+                    elif position.side == "short" and action == Action.LONG:
+                        exit_reason = "flip"
+                        exit_price = open_next
+                        flip_side = "long"
 
                 if exit_reason is not None and exit_price is not None:
                     pnl_pct, pnl_abs = self._close_position(position, exit_price)
@@ -151,9 +166,26 @@ class Backtester:
                     position = None
                     entry_ts = None
 
+                    # Ouvrir immédiatement la position inverse (flip) au même open_next
+                    if flip_side and not self.risk_manager.is_paused(next_ts.timestamp()):
+                        atr_val_flip = float(atr_series.iloc[i]) if i < len(atr_series) else np.nan
+                        if np.isfinite(atr_val_flip) and atr_val_flip > 0:
+                            slipped_flip = open_next * (1 + self.slippage_rate) if flip_side == "long" else open_next * (1 - self.slippage_rate)
+                            try:
+                                position = self.risk_manager.compute_position(
+                                    side=flip_side,
+                                    entry_price=slipped_flip,
+                                    atr_value=atr_val_flip,
+                                    capital=equity,
+                                )
+                                entry_ts = next_ts
+                                equity -= position.size_units * slipped_flip * self.fee_rate
+                                logger.debug(f"Flip {flip_side} @ {slipped_flip:.4f} (equity={equity:.2f})")
+                            except ValueError as exc:
+                                logger.debug(f"Skip flip {flip_side}: {exc}")
+
             # Pas de pyramiding : nouveau signal traité seulement si flat
             if position is None and not self.risk_manager.is_paused(next_ts.timestamp()):
-                action = signals.iloc[i] if i < len(signals) else Action.FLAT
                 if action in (Action.LONG, Action.SHORT):
                     atr_val = float(atr_series.iloc[i]) if i < len(atr_series) else np.nan
                     if np.isfinite(atr_val) and atr_val > 0:

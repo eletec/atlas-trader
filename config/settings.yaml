@@ -445,7 +445,15 @@ quant:
   initial_capital: 10000.0        # capital de départ (USD)
   fee_rate: 0.0005                # frais taker par côté (0.05%)
   slippage_rate: 0.0002           # slippage par côté (0.02%)
-
+  # ── Seuils par actif (override p_up / p_dn pour certains actifs) ──────────
+  # Format: symbol: {p_up_threshold: X, p_dn_threshold: Y}
+  # Les actifs non listés utilisent les seuils globaux ci-dessus.
+  asset_thresholds:
+    EUR/USD:
+      p_up_threshold: 0.58        # EUR/USD : 88 faux LONGs à 0.55 (41.7% WR) → filtrer vers 0.58
+      p_dn_threshold: 0.40        # SHORT plus accessible pour EUR trending baissier
+    ETH/USDT:
+      p_dn_threshold: 0.45        # ETH : min P_up=0.437, débloque shorts potentiels
   # ── Walk-forward ───────────────────────────────────────────────────────────
   wf_train_days: 90               # durée de la fenêtre train (jours)
   wf_test_days: 30                # durée de la fenêtre test OOS (jours)

@@ -107,6 +107,19 @@ class SimEngine:
         if "p_dn_threshold" in self.config:
             cfg.p_dn_threshold = float(self.config["p_dn_threshold"])
 
+        # Override par actif depuis settings.yaml → quant.asset_thresholds
+        try:
+            from utils.config import load_settings
+            _asset_thr = load_settings().get("quant", {}).get("asset_thresholds", {})
+            if symbol in _asset_thr:
+                _thr = _asset_thr[symbol]
+                if "p_up_threshold" in _thr:
+                    cfg.p_up_threshold = float(_thr["p_up_threshold"])
+                if "p_dn_threshold" in _thr:
+                    cfg.p_dn_threshold = float(_thr["p_dn_threshold"])
+        except Exception:
+            pass
+
         if show_progress:
             logger.info(
                 f"{symbol}: pipeline V2 | train={len(train_idx)}b test={len(test_idx)}b "

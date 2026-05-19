@@ -53,6 +53,7 @@ class RiskManager:
         self.params = params or RiskParams()
         self._weekly_pnl_pct: float = 0.0
         self._pause_until: float = 0.0    # timestamp epoch
+        self._current_week_key: int = -1  # clé ISO semaine pour reset hebdo
 
     def compute_position(
         self, side: str, entry_price: float, atr_value: float, capital: float
@@ -120,6 +121,16 @@ class RiskManager:
 
     # ---- Kill-switch ----
     def record_trade_pnl_pct(self, pnl_pct: float, now_ts: float) -> None:
+        # Reset hebdomadaire : le kill-switch mesure la DD SUR LA SEMAINE EN COURS,
+        # pas le cumul total depuis le début (qui rendait le KS permanent après 2 pertes).
+        import datetime as _dt
+        _week_key = _dt.datetime.utcfromtimestamp(now_ts).isocalendar()[1]  # numéro ISO de semaine
+        if _week_key != self._current_week_key:
+            if self._current_week_key >= 0:
+                logger.debug(f"Kill-switch reset hebdo : semaine {self._current_week_key}→{_week_key} "
+                             f"(pnl hebdo précédent : {self._weekly_pnl_pct:.2%})")
+            self._weekly_pnl_pct = 0.0
+            self._current_week_key = _week_key
         self._weekly_pnl_pct += pnl_pct
         if self._weekly_pnl_pct <= -self.params.weekly_dd_kill_switch:
             self._pause_until = now_ts + self.params.kill_switch_pause_days * 86400

@@ -279,7 +279,10 @@ def run_pipeline(
         proba_up.loc[:] = 0.5
 
     # 4. Décisions vectorisées — équivalent strict à decide() mais O(1) numpy
-    trending_mask = (regime_series == 1.0).fillna(False)
+    # Masque régime : bloquer uniquement PANIC (0.0) — RANGE (0.5) et TREND (1.0) autorisés.
+    # Rationale : à 5m le marché est souvent en RANGE (60-74 % des barres) ; restreindre
+    # au seul TREND élimine quasiment toutes les opportunités (TREND∩signal = 0 observé).
+    trending_mask = (regime_series != 0.0).fillna(False)
     proba_valid   = proba_up.notna()
     # Diagnostic régime + signal sur la fenêtre de test (aide au debug 5m)
     _rc = regime_series.loc[test_idx].value_counts()
@@ -287,8 +290,8 @@ def run_pipeline(
     logger.info(
         f"[Diag] Régime test: TREND={_rc.get(1.0,0)} RANGE={_rc.get(0.5,0)} PANIC={_rc.get(0.0,0)} "
         f"| P_up: mean={_pu_test.mean():.3f} max={_pu_test.max():.3f} "
-        f">threshold={((_pu_test > cfg.p_up_threshold).sum())} "
-        f"| trending∩signal={(trending_mask.loc[test_idx] & (_pu_test > cfg.p_up_threshold)).sum()}"
+        f">0.58={((_pu_test > 0.58).sum())} >0.55={((_pu_test > 0.55).sum())} >0.52={((_pu_test > 0.52).sum())} "
+        f"| notPANIC∩signal={(trending_mask.loc[test_idx] & (_pu_test > cfg.p_up_threshold)).sum()}"
     )
     actions = pd.Series(Action.FLAT, index=feats.index, dtype="object")
     long_mask  = trending_mask & proba_valid & (proba_up > cfg.p_up_threshold)

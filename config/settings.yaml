@@ -6,7 +6,6 @@ project:
   active_assets:
   - BTC/USDT
   - ETH/USDT
-  - SOL/USDT
   - XAU/USD
   - XAG/USD
   - WTI/USD

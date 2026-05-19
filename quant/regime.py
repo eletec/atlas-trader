@@ -122,9 +122,18 @@ class RegimeDetector:
                 self._panic_state = max(panic_candidates, key=lambda s: variances[s])
         else:
             self._panic_state = int(np.argmax(variances))  # fallback : variance max
-        # Trending = non-Panic avec Sharpe-like maximal
+        # TREND = état non-PANIC avec la moyenne (return) la plus élevée (signée).
+        # Ne pas utiliser abs(mean)/std : un état bearish fort (ex: WTI mean=-0.011)
+        # peut avoir un Sharpe-abs élevé et voler le label TREND à tort.
+        # De même, un état flat très stable (EUR/USD var=0.000056) peut avoir un
+        # Sharpe-abs > états plus volatils mais réellement directionnels.
         non_panic = [s for s in range(self.n_states) if s != self._panic_state]
-        self._trending_state = max(non_panic, key=lambda s: sharpe_like[s])
+        positive_non_panic = [s for s in non_panic if means[s] > 0]
+        if positive_non_panic:
+            self._trending_state = max(positive_non_panic, key=lambda s: means[s])
+        else:
+            # Marché structurellement baissier — prend le moins bearish
+            self._trending_state = max(non_panic, key=lambda s: means[s])
         # Seuil chaos vol_of_vol calibré sur le TRAIN (causal)
         if "vol_of_vol_20" in features.columns:
             vov = features["vol_of_vol_20"].dropna()

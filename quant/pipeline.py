@@ -218,7 +218,10 @@ def run_pipeline(
     if cfg.use_signal_model:
         y = make_target_direction(ohlcv, horizon=cfg.horizon_bars)
         # B.3 Warmup : exclure les premières norm_window barres (quantile instable — 3/3 IA)
-        warmup_cutoff = feats.index[min(cfg.norm_window, len(feats) - 1)]
+        # Cap : ne jamais sacrifier plus de 50% du train (évite le problème norm_window > train_size
+        # qui survient quand le timeframe réel diffère du timeframe configuré, ex. 1h vs 5m)
+        _safe_warmup = min(cfg.norm_window, max(0, len(train_idx) - 200))
+        warmup_cutoff = feats.index[min(_safe_warmup, len(feats) - 1)]
         sm_train_idx = train_idx[train_idx >= warmup_cutoff]
         # Utiliser active_feature_cols (inclut DXY si disponible)
         available_cols = [c for c in active_feature_cols if c in feats.columns]

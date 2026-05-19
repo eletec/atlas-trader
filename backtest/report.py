@@ -42,6 +42,7 @@ def _badge(text: str, color: str) -> str:
 
 # ── Courbe P&L cumulé (inline SVG sparkline) ─────────────────────────────
 
+def _pnl_sparkline(trades: list, width: int = 300, height: int = 80) -> str:
     active = [t for t in trades if t.action in ("LONG", "SHORT") and t.result_24h is not None]
     if not active:
         return "<em>Aucune transaction active</em>"
@@ -80,6 +81,7 @@ def _badge(text: str, color: str) -> str:
 
 # ── Tableau des top trades ────────────────────────────────────────────────
 
+def _top_trades_table(trades: list, n: int = 5, best: bool = True) -> str:
     active = [t for t in trades if t.action in ("LONG", "SHORT") and t.result_24h is not None]
     if not active:
         return "<em>Aucune transaction</em>"

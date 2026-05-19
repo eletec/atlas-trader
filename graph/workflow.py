@@ -351,6 +351,7 @@ class LiveRunner:
             vol_med = float(ohlcv["volume"].iloc[-21:-1].median())
             vol_ratio = float(ohlcv["volume"].iloc[-1]) / (vol_med + 1e-9)
         if (self._position is None
+                and trigger != "monitor"          # pas d'entrée en mode monitoring
                 and not self._risk_manager.is_paused(time.time())
                 and decision.action in (Action.LONG, Action.SHORT)
                 and atr_14 and atr_14 > 0

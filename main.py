@@ -107,12 +107,11 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
             if not sess.is_monitoring():
                 logger.debug(f"[{sym}] Marché fermé (weekend) — cycle ignoré.")
                 continue
-            if not sess.is_open():
-                logger.debug(f"[{sym}] Hors session de trading — cycle ignoré (monitoring actif).")
-                continue
+            # Hors session : cycle "monitor" (analyse + historique, pas d'entrée)
+            _trigger = "scheduled" if sess.is_open() else "monitor"
 
             try:
-                result = run_single_cycle(asset=sym, trigger="scheduled")
+                result = run_single_cycle(asset=sym, trigger=_trigger)
                 asset_errors[sym] = 0  # reset sur succès
                 action = result.get("action", "flat").upper()
                 capital = result.get("capital", 0)

@@ -193,12 +193,26 @@ def compute_metrics(trades: list[SimTrade]) -> dict:
     total_pnl = sum(pnls)
 
     # Sharpe ratio annualisé (basé sur les cycles)
+    # Annualisation basée sur la fréquence réelle observée (pas hardcodée 5m)
     import numpy as np
     pnl_arr = np.array(pnls)
-    mean_pnl = float(np.mean(pnl_arr))
-    std_pnl = float(np.std(pnl_arr)) if len(pnl_arr) > 1 else 1.0
-    cycles_per_year = 365 * 4  # 4 cycles/jour en moyenne
-    sharpe = (mean_pnl / std_pnl * (cycles_per_year ** 0.5)) if std_pnl > 0 else 0.0
+    if len(pnl_arr) <= 1:
+        sharpe = 0.0  # 0-1 trade : Sharpe non interprétable
+    else:
+        mean_pnl = float(np.mean(pnl_arr))
+        std_pnl = float(np.std(pnl_arr))
+        if std_pnl > 0:
+            # Dériver cycles/an depuis les timestamps réels des trades
+            timestamps = [t.timestamp for t in active if t.timestamp is not None]
+            if len(timestamps) >= 2:
+                span_sec = (max(timestamps) - min(timestamps)).total_seconds()
+                span_years = span_sec / (365.25 * 24 * 3600) if span_sec > 0 else 1.0 / 365
+                cycles_per_year = len(active) / max(span_years, 1.0 / 365)
+            else:
+                cycles_per_year = 365  # fallback daily
+            sharpe = mean_pnl / std_pnl * (cycles_per_year ** 0.5)
+        else:
+            sharpe = 0.0
 
     # Max drawdown (sur le P&L cumulé)
     cum_pnl = list(itertools.accumulate(pnls))

@@ -110,9 +110,16 @@ class RegimeDetector:
         sharpe_like = [abs(means[s]) / stds[s] for s in range(self.n_states)]
         # A.1 : Panic = variance max ET non-directionnel (sharpe < 0.10)
         # Évite de classer un crash directionnel baissier comme Panic → raterait les SHORTs
+        # Correction : parmi les candidats Panic, préférer les états à mean négatif (vrai sell-off).
+        # Quand le marché est bruité (5m, tous sharpe < 0.10), cela évite d'assigner PANIC
+        # à l'état le plus haussier (variance max ≠ vrai panic si mean > 0).
         panic_candidates = [s for s in range(self.n_states) if sharpe_like[s] < 0.10]
         if panic_candidates:
-            self._panic_state = max(panic_candidates, key=lambda s: variances[s])
+            negative_mean_candidates = [s for s in panic_candidates if means[s] < 0]
+            if negative_mean_candidates:
+                self._panic_state = max(negative_mean_candidates, key=lambda s: variances[s])
+            else:
+                self._panic_state = max(panic_candidates, key=lambda s: variances[s])
         else:
             self._panic_state = int(np.argmax(variances))  # fallback : variance max
         # Trending = non-Panic avec Sharpe-like maximal

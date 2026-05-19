@@ -5,7 +5,6 @@ project:
   loop_interval_seconds: 300
   active_assets:
   - BTC/USDT
-  - ETH/USDT
   - XAU/USD
   - XAG/USD
   - GBP/USD

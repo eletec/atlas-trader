@@ -95,6 +95,11 @@ class Backtester:
         position: Position | None = None
         entry_ts: pd.Timestamp | None = None
 
+        # Compteurs de diagnostic
+        _diag = {"short_sig": 0, "long_sig": 0,
+                 "short_blocked_pos": 0, "short_flip_ok": 0, "short_flip_atr_nan": 0, "short_flip_paused": 0,
+                 "short_entry_ok": 0, "short_entry_paused": 0, "short_entry_atr_nan": 0}
+
         for i in range(len(idx) - 1):
             ts = idx[i]
             next_ts = idx[i + 1]
@@ -107,6 +112,10 @@ class Backtester:
 
             # Lire le signal de la barre courante (utilisé pour entrée ET flip)
             action = signals.iloc[i] if i < len(signals) else Action.FLAT
+            if action == Action.SHORT:
+                _diag["short_sig"] += 1
+            elif action == Action.LONG:
+                _diag["long_sig"] += 1
 
             # Gestion position ouverte sur la bougie suivante
             flip_side: str | None = None  # côté de la position à ouvrir après flip
@@ -141,6 +150,9 @@ class Backtester:
                         exit_reason = "flip"
                         exit_price = open_next
                         flip_side = "long"
+                elif action == Action.SHORT and position.side == "long":
+                    # SL/TP déjà déclenché au même bar → SHORT bloqué
+                    _diag["short_blocked_pos"] += 1
 
                 if exit_reason is not None and exit_price is not None:
                     pnl_pct, pnl_abs = self._close_position(position, exit_price)
@@ -181,8 +193,15 @@ class Backtester:
                                 entry_ts = next_ts
                                 equity -= position.size_units * slipped_flip * self.fee_rate
                                 logger.debug(f"Flip {flip_side} @ {slipped_flip:.4f} (equity={equity:.2f})")
+                                if flip_side == "short":
+                                    _diag["short_flip_ok"] += 1
                             except ValueError as exc:
                                 logger.debug(f"Skip flip {flip_side}: {exc}")
+                        else:
+                            if flip_side == "short":
+                                _diag["short_flip_atr_nan"] += 1
+                    elif flip_side == "short":
+                        _diag["short_flip_paused"] += 1
 
             # Pas de pyramiding : nouveau signal traité seulement si flat
             if position is None and not self.risk_manager.is_paused(next_ts.timestamp()):
@@ -202,8 +221,24 @@ class Backtester:
                             entry_ts = next_ts
                             # Frais d'entrée
                             equity -= position.size_units * slipped_entry * self.fee_rate
+                            if side == "short":
+                                _diag["short_entry_ok"] += 1
                         except ValueError as exc:
                             logger.debug(f"Skip entrée: {exc}")
+                    elif action == Action.SHORT:
+                        _diag["short_entry_atr_nan"] += 1
+            elif action == Action.SHORT and position is None:
+                _diag["short_entry_paused"] += 1
+
+        # Log diagnostic des signaux SHORT
+        if _diag["short_sig"] > 0:
+            logger.info(
+                f"[Diag SHORT] signaux={_diag['short_sig']} | "
+                f"entrée_ok={_diag['short_entry_ok']} flip_ok={_diag['short_flip_ok']} | "
+                f"bloqué_pos={_diag['short_blocked_pos']} flip_atr_nan={_diag['short_flip_atr_nan']} "
+                f"flip_paused={_diag['short_flip_paused']} entrée_paused={_diag['short_entry_paused']} "
+                f"entrée_atr_nan={_diag['short_entry_atr_nan']}"
+            )
 
         # Marque à market la dernière bougie
         equity_curve.iloc[-1] = equity

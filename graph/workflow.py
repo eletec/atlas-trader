@@ -108,6 +108,23 @@ class LiveRunner:
                         and self._regime is not None
                         and (now - self._last_fit_ts) > 3600)
         if self._regime is None or _model_retry or (now - self._last_fit_ts) > self._refit_interval_s:
+            if _model_retry:
+                # Recharger asset_config pour appliquer le bon timeframe avant le retry
+                try:
+                    from utils.config import load_settings
+                    _qc = load_settings().get("quant", {})
+                    _ac = _qc.get("asset_config", {}).get(self.symbol, {})
+                    if _ac:
+                        _new_tf = str(_ac.get("timeframe", self.timeframe))
+                        _new_hd = int(_ac.get("history_days", self.history_days))
+                        if _new_tf != self.timeframe or _new_hd != self.history_days:
+                            logger.info(f"[config] _model_retry {self.symbol}: "
+                                        f"timeframe {self.timeframe}→{_new_tf}, "
+                                        f"history {self.history_days}→{_new_hd}")
+                            self.timeframe = _new_tf
+                            self.history_days = _new_hd
+                except Exception as exc:
+                    logger.warning(f"[config] _model_retry reload failed: {exc}")
             self._refit()
 
     def _refit(self):
@@ -587,7 +604,11 @@ def _get_runner(asset: str) -> "LiveRunner":
         from utils.config import load_settings
         cfg = load_settings()
         qcfg = cfg.get("quant", {})
-    except Exception:
+        _ac_debug = qcfg.get("asset_config", {})
+        if not _ac_debug:
+            logger.warning(f"[_get_runner] asset_config manquant dans quant (keys={list(qcfg.keys())[:8]})")
+    except Exception as exc:
+        logger.warning(f"[_get_runner] load_settings failed: {exc}")
         cfg = {}
         qcfg = {}
 

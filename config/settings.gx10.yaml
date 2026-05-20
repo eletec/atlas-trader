@@ -454,6 +454,34 @@ quant:
   refit_ks_pvalue_threshold: 0.05  # seuil KS-test pour déclencher le refit
   refit_ks_window_days: 14         # fenêtre récente pour le KS-test (jours)
 
+  # ── Seuils p_up/p_dn par actif (override du global) ──────────────────────
+  asset_thresholds:
+    EUR/USD:
+      p_up_threshold: 0.62   # max P_up=0.614 sur 5y → désactive les LONG
+      p_dn_threshold: 0.40
+    ETH/USDT:
+      p_up_threshold: 0.60   # régime PANIC dominant → désactive les LONG
+    SOL/USDT:
+      p_up_threshold: 0.58   # max P_up=0.573 sur 5y → 0 trades trend
+
+  # ── Config par actif (timeframe et historique live) ───────────────────────
+  asset_config:
+    XAU/USD:
+      timeframe: 1d
+      history_days: 1825
+    XAG/USD:
+      timeframe: 1d
+      history_days: 1825
+    WTI/USD:
+      timeframe: 1d
+      history_days: 1825
+    GBP/USD:
+      timeframe: 1d
+      history_days: 1825
+    EUR/USD:
+      timeframe: 1d
+      history_days: 1825
+
 # ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
 data:
   provider: "auto"           # "auto" | "twelve_data" | "yahoo"

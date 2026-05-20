@@ -607,8 +607,9 @@ def _get_runner(asset: str) -> "LiveRunner":
         )
         if existing_fp == fp:
             # Hot-reload des seuils et de l'intervalle refit (aucun refit requis)
-            existing.cfg.p_up_threshold = float(qcfg.get("p_up_threshold", 0.58))
-            existing.cfg.p_dn_threshold = float(qcfg.get("p_dn_threshold", 0.42))
+            _thr_ov = qcfg.get("asset_thresholds", {}).get(asset, {})
+            existing.cfg.p_up_threshold = float(_thr_ov.get("p_up_threshold", qcfg.get("p_up_threshold", 0.58)))
+            existing.cfg.p_dn_threshold = float(_thr_ov.get("p_dn_threshold", qcfg.get("p_dn_threshold", 0.42)))
             existing._refit_interval_s = int(qcfg.get("refit_interval_hours", 168)) * 3600
             return existing
         logger.info(
@@ -616,11 +617,12 @@ def _get_runner(asset: str) -> "LiveRunner":
             f"({existing_fp} → {fp}) — recréation du runner"
         )
 
+    _thr_ov = qcfg.get("asset_thresholds", {}).get(asset, {})
     pipe_cfg = PipelineConfig(
         use_hmm=qcfg.get("use_hmm", False),
         horizon_bars=qcfg.get("horizon_bars", 4),
-        p_up_threshold=float(qcfg.get("p_up_threshold", 0.58)),
-        p_dn_threshold=float(qcfg.get("p_dn_threshold", 0.42)),
+        p_up_threshold=float(_thr_ov.get("p_up_threshold", qcfg.get("p_up_threshold", 0.58))),
+        p_dn_threshold=float(_thr_ov.get("p_dn_threshold", qcfg.get("p_dn_threshold", 0.42))),
         initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
     )
     runner = LiveRunner(

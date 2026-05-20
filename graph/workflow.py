@@ -89,6 +89,7 @@ class LiveRunner:
         self._model_fit_at = None
         self._feats_cache: pd.DataFrame | None = None  # cache feats_all post-refit
         self._feats_cache_ohlcv_len: int = 0            # len(ohlcv) when cache was built
+        self._active_feature_cols: list = list(self.cfg.feature_cols)  # updated after refit (NaN cols dropped)
         self._position = None
         self._position_entry_ts = None
         self._position_is_range: bool = False   # P1.1 : trailing RANGE vs TREND
@@ -142,6 +143,14 @@ class LiveRunner:
         warmup_cutoff = feats_all.index[min(self.cfg.norm_window, len(feats_all) - 1)]
         train_sm_idx = train_idx[train_idx >= warmup_cutoff]
         X_train = feats_all.loc[train_sm_idx, list(self.cfg.feature_cols)]
+        # Drop colonnes 100% NaN (ex: volume_z_20_q pour métaux/forex sans données de volume)
+        _nan_cols = [c for c in X_train.columns if X_train[c].isna().all()]
+        if _nan_cols:
+            logger.warning(f"_refit: {len(_nan_cols)} feature(s) 100% NaN ignorée(s): {_nan_cols}")
+            X_train = X_train.drop(columns=_nan_cols)
+            self._active_feature_cols = [c for c in self.cfg.feature_cols if c not in _nan_cols]
+        else:
+            self._active_feature_cols = list(self.cfg.feature_cols)
         y_train = y.loc[train_sm_idx]
         valid = X_train.notna().all(axis=1) & y_train.notna()
         if valid.sum() < 100:
@@ -155,7 +164,7 @@ class LiveRunner:
             self._model = None
         else:
             try:
-                self._model = SignalModel(feature_cols=list(self.cfg.feature_cols)).fit(
+                self._model = SignalModel(feature_cols=list(self._active_feature_cols)).fit(
                     X_train.loc[valid], y_train.loc[valid]
                 )
             except Exception as exc:
@@ -255,7 +264,7 @@ class LiveRunner:
         prob_up = None
         if self._model is not None:
             try:
-                ps = self._model.predict_proba(feats_all[list(self.cfg.feature_cols)])
+                ps = self._model.predict_proba(feats_all[self._active_feature_cols])
                 v = ps.iloc[-1]
                 prob_up = float(v) if pd.notna(v) else None
             except Exception:
@@ -494,7 +503,7 @@ class LiveRunner:
                     )
                 """)
                 _regime_int = kwargs.get("regime")
-                _regime_txt = "TREND" if _regime_int == 1 else ("RANGE" if _regime_int == 0 else "PANIC")
+                _regime_txt = "TREND" if _regime_int == 1.0 else ("PANIC" if _regime_int == 0.0 else "RANGE")
                 _conn.execute(
                     """INSERT INTO v2_decisions
                        (ts, asset, bar_ts, close_price, regime, prob_up, action, reason,
@@ -582,7 +591,10 @@ def _get_runner(asset: str) -> "LiveRunner":
         cfg = {}
         qcfg = {}
 
-    fp = _runner_fingerprint(qcfg)
+    # Merge per-asset quant overrides (timeframe, history_days)
+    _asset_qcfg = qcfg.get("asset_config", {}).get(asset, {})
+    _merged_qcfg = {**qcfg, **_asset_qcfg}
+    fp = _runner_fingerprint(_merged_qcfg)
     existing = _runners.get(asset)
 
     if existing is not None:
@@ -613,11 +625,11 @@ def _get_runner(asset: str) -> "LiveRunner":
     )
     runner = LiveRunner(
         symbol=asset,
-        timeframe=qcfg.get("timeframe", _DEFAULT_TF()),
-        history_days=qcfg.get("history_days", _HISTORY_DAYS()),
-        train_fraction=qcfg.get("train_fraction", _TRAIN_FRACTION()),
+        timeframe=_merged_qcfg.get("timeframe", _DEFAULT_TF()),
+        history_days=_merged_qcfg.get("history_days", _HISTORY_DAYS()),
+        train_fraction=_merged_qcfg.get("train_fraction", _TRAIN_FRACTION()),
         config=pipe_cfg,
-        refit_interval_s=int(qcfg.get("refit_interval_hours", 168)) * 3600,
+        refit_interval_s=int(_merged_qcfg.get("refit_interval_hours", 168)) * 3600,
     )
 
     # Override des paramètres risk par actif depuis config/assets/{slug}.yaml → v2_risk:

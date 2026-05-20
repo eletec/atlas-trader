@@ -123,6 +123,12 @@ class LiveRunner:
                                         f"history {self.history_days}→{_new_hd}")
                             self.timeframe = _new_tf
                             self.history_days = _new_hd
+                            # Recalculer norm_window pour le nouveau timeframe
+                            from quant.config import bars_per_day as _bpd2
+                            _new_nw = int(_qc.get("norm_window_days", 30)) * _bpd2(_new_tf)
+                            if _new_nw != self.cfg.norm_window:
+                                logger.info(f"[config] _model_retry {self.symbol}: norm_window {self.cfg.norm_window}→{_new_nw}")
+                                self.cfg.norm_window = _new_nw
                 except Exception as exc:
                     logger.warning(f"[config] _model_retry reload failed: {exc}")
             self._refit()
@@ -606,7 +612,7 @@ def _get_runner(asset: str) -> "LiveRunner":
         qcfg = cfg.get("quant", {})
         _ac_debug = qcfg.get("asset_config", {})
         if not _ac_debug:
-            logger.warning(f"[_get_runner] asset_config manquant dans quant (keys={list(qcfg.keys())[:8]})")
+            logger.warning(f"[_get_runner] asset_config manquant dans quant (keys={list(qcfg.keys())})")
     except Exception as exc:
         logger.warning(f"[_get_runner] load_settings failed: {exc}")
         cfg = {}
@@ -639,9 +645,15 @@ def _get_runner(asset: str) -> "LiveRunner":
         )
 
     _thr_ov = qcfg.get("asset_thresholds", {}).get(asset, {})
+    # Calculer norm_window en fonction du timeframe RÉEL de l'asset (pas le global 5m)
+    _asset_tf = _merged_qcfg.get("timeframe", _DEFAULT_TF())
+    _norm_window_days = qcfg.get("norm_window_days", 30)
+    from quant.config import bars_per_day as _bpd
+    _norm_window = _norm_window_days * _bpd(_asset_tf)
     pipe_cfg = PipelineConfig(
         use_hmm=qcfg.get("use_hmm", False),
         horizon_bars=qcfg.get("horizon_bars", 4),
+        norm_window=_norm_window,
         p_up_threshold=float(_thr_ov.get("p_up_threshold", qcfg.get("p_up_threshold", 0.58))),
         p_dn_threshold=float(_thr_ov.get("p_dn_threshold", qcfg.get("p_dn_threshold", 0.42))),
         initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),

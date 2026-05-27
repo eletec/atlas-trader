@@ -667,6 +667,23 @@ def _get_runner(asset: str) -> "LiveRunner":
         refit_interval_s=int(_merged_qcfg.get("refit_interval_hours", 168)) * 3600,
     )
 
+    # Restaurer le capital live depuis la dernière equity persistée (si disponible)
+    # pour éviter un reset à 10_000$ après restart du process/container.
+    try:
+        from storage.database import get_connection
+        with get_connection() as _conn:
+            _row = _conn.execute(
+                "SELECT equity FROM v2_equity WHERE asset = ? ORDER BY id DESC LIMIT 1",
+                (asset,),
+            ).fetchone()
+        if _row and _row["equity"] is not None:
+            _restored_cap = float(_row["equity"])
+            runner._capital = _restored_cap
+            runner._peak_capital = max(runner._peak_capital, _restored_cap)
+            logger.info(f"[state] {asset} capital restauré depuis DB: {_restored_cap:.2f}$")
+    except Exception as exc:
+        logger.warning(f"[state] restore capital failed for {asset}: {exc}")
+
     # Override des paramètres risk par actif depuis config/assets/{slug}.yaml → v2_risk:
     asset_v2 = _load_asset_v2_config(asset)
     if asset_v2:

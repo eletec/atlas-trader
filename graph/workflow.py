@@ -419,7 +419,8 @@ class LiveRunner:
             sl_price=pos.stop_loss if pos else None,
             tp_price=pos.take_profit if pos else None,
             position_size_usd=(trade_result.get("position_size_usd") if trade_result else None)
-                or ((pre_close_position.entry_price * pre_close_position.size_units) if pre_close_position else None),
+                or ((pre_close_position.entry_price * pre_close_position.size_units) if pre_close_position else None)
+                or ((pos.entry_price * pos.size_units) if pos else None),
             realized_pnl=trade_result.get("pnl_abs") if trade_result else None,
         )
 

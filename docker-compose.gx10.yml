@@ -70,6 +70,10 @@ services:
       - ./execution:/app/execution:ro
       - ./utils:/app/utils:ro
       - ./main.py:/app/main.py:ro
+      # storage/*.py en bind-mount pour rester à jour via git pull
+      # (atlas_storage_gx10 monte /app/storage mais ne suit pas les git pull)
+      - ./storage/database.py:/app/storage/database.py:ro
+      - ./storage/__init__.py:/app/storage/__init__.py:ro
     networks:
       - atlas_net
     healthcheck:

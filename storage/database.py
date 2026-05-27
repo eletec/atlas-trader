@@ -646,7 +646,11 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         NULL AS position_size,
                         sl_price,
                         tp_price,
-                        ROUND(COALESCE(pnl_step, 0.0), 2) AS result_24h,
+                        CASE
+                            WHEN pnl_step IS NULL THEN NULL
+                            WHEN ABS(pnl_step) > 500 THEN NULL
+                            ELSE ROUND(pnl_step, 2)
+                        END AS result_24h,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
                         reason,
                         NULL AS decision_context
@@ -687,7 +691,11 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         NULL AS position_size,
                         sl_price,
                         tp_price,
-                        ROUND(COALESCE(pnl_step, 0.0), 2) AS result_24h,
+                        CASE
+                            WHEN pnl_step IS NULL THEN NULL
+                            WHEN ABS(pnl_step) > 500 THEN NULL
+                            ELSE ROUND(pnl_step, 2)
+                        END AS result_24h,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
                         reason,
                         NULL AS decision_context

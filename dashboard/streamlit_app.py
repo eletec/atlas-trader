@@ -2396,7 +2396,7 @@ def render_trades_list_sortable(trades: list[dict]):
             col_action: action,
             "Signal":   _sig_detail,
             col_entry:  trade.get("entry_price"),
-            col_size:   trade.get("position_size"),
+            col_size:   (f"${float(trade.get('position_size')):,.0f}" if trade.get("position_size") is not None else "—"),
             "SL":       trade.get("sl_price"),
             "TP":       trade.get("tp_price"),
             col_pnl:    pnl,
@@ -2441,7 +2441,7 @@ def render_trades_list_sortable(trades: list[dict]):
         selection_mode="single-row",
         column_config={
             col_entry: st.column_config.NumberColumn(format="$%.2f"),
-            col_size:  st.column_config.NumberColumn(format="$%.0f"),
+            col_size:  st.column_config.TextColumn(),
             "SL":      st.column_config.NumberColumn(format="$%.2f"),
             "TP":      st.column_config.NumberColumn(format="$%.2f"),
             col_pnl:   st.column_config.NumberColumn(format="$%.2f"),

@@ -18,7 +18,19 @@ class PaperTrader:
         cfg = load_settings()
         exchange_cfg = cfg.get("exchange", {})
         self.exchange_name: str = exchange_cfg.get("name", "binance")
-        self.capital: float = exchange_cfg.get("paper_capital_usd", 10000.0)
+        # Capital global = somme des capitaux par actif (asset_config.capital_usd)
+        # ou fallback sur paper_capital_usd si aucun actif configuré
+        _default_cap = float(exchange_cfg.get("paper_capital_usd", 10000.0))
+        try:
+            _active = cfg.get("project", {}).get("active_assets", [])
+            _acfg = cfg.get("quant", {}).get("asset_config", {})
+            _per_asset_sum = sum(
+                float(_acfg.get(a, {}).get("capital_usd") or _default_cap)
+                for a in _active
+            ) if _active else 0.0
+            self.capital = _per_asset_sum if _per_asset_sum > 0 else _default_cap
+        except Exception:
+            self.capital = _default_cap
         self.testnet: bool = exchange_cfg.get("testnet", True)
         # Offset Maker : on poste un ordre limite légèrement meilleur que le cours
         # BUY  → limit à prix * (1 - offset)  → on attend que le marché descende vers nous
@@ -397,7 +409,14 @@ class PaperTrader:
             }
 
     def _get_asset_capital(self, asset: str) -> float:
-        """Lit paper_capital_usd depuis config/assets/{slug}.yaml, fallback settings."""
+        """Lit capital dédié : quant.asset_config > config/assets/{slug}.yaml > paper_capital_usd."""
+        try:
+            from utils.config import load_settings as _ls_ac
+            _ac = _ls_ac().get("quant", {}).get("asset_config", {}).get(asset, {})
+            if _ac.get("capital_usd"):
+                return float(_ac["capital_usd"])
+        except Exception:
+            pass
         try:
             from utils.config import load_asset_config
             cfg = load_asset_config(asset)

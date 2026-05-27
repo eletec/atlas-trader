@@ -234,10 +234,30 @@ class PaperTrader:
                     total_pnl = float(_st.get("total_pnl", current_value - capital) or 0.0)
                     n_trades = int(_st.get("n_trades", n_trades) or 0)
                 else:
-                    # Fallback V1: somme des résultats post-mortem (result_24h)
-                    pnl_rows = get_pnl_history()
-                    total_pnl = sum((r.get("result_24h", 0) or 0) for r in pnl_rows if r.get("asset") == asset)
-                    current_value = capital + total_pnl
+                    # Fallback V2 bis: dériver depuis v2_decisions.capital
+                    try:
+                        with get_connection() as conn:
+                            _first = conn.execute(
+                                "SELECT capital FROM v2_decisions WHERE asset = ? ORDER BY id ASC LIMIT 1",
+                                (asset,),
+                            ).fetchone()
+                            _last = conn.execute(
+                                "SELECT capital FROM v2_decisions WHERE asset = ? ORDER BY id DESC LIMIT 1",
+                                (asset,),
+                            ).fetchone()
+                        if _first and _last and _first["capital"] is not None and _last["capital"] is not None:
+                            capital = float(_first["capital"])
+                            current_value = float(_last["capital"])
+                            total_pnl = current_value - capital
+                        else:
+                            # Fallback V1: somme des résultats post-mortem (result_24h)
+                            pnl_rows = get_pnl_history()
+                            total_pnl = sum((r.get("result_24h", 0) or 0) for r in pnl_rows if r.get("asset") == asset)
+                            current_value = capital + total_pnl
+                    except Exception:
+                        pnl_rows = get_pnl_history()
+                        total_pnl = sum((r.get("result_24h", 0) or 0) for r in pnl_rows if r.get("asset") == asset)
+                        current_value = capital + total_pnl
             else:
                 n_trades = _ct()
                 # Priorité V2 multi-actifs: somme des dernières equity par actif
@@ -284,10 +304,79 @@ class PaperTrader:
                     total_pnl = float(_st.get("total_pnl", current_value - capital) or 0.0)
                     n_trades = int(_st.get("n_trades", n_trades) or 0)
                 else:
-                    # Fallback V1
-                    pnl_rows = get_pnl_history()
-                    total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
-                    current_value = capital + total_pnl
+                    # Fallback V2 bis: dériver depuis v2_decisions.capital par actif
+                    try:
+                        from utils.config import load_settings as _ls
+                        _active_assets = ((_ls().get("project", {}) or {}).get("active_assets", []) or [])
+                        with get_connection() as conn:
+                            if _active_assets:
+                                _ph = ",".join(["?"] * len(_active_assets))
+                                _first_rows = conn.execute(
+                                    f"""
+                                    SELECT d.asset, d.capital
+                                    FROM v2_decisions d
+                                    INNER JOIN (
+                                        SELECT asset, MIN(id) AS min_id
+                                        FROM v2_decisions
+                                        WHERE asset IN ({_ph})
+                                        GROUP BY asset
+                                    ) m ON d.asset = m.asset AND d.id = m.min_id
+                                    """,
+                                    tuple(_active_assets),
+                                ).fetchall()
+                                _last_rows = conn.execute(
+                                    f"""
+                                    SELECT d.asset, d.capital
+                                    FROM v2_decisions d
+                                    INNER JOIN (
+                                        SELECT asset, MAX(id) AS max_id
+                                        FROM v2_decisions
+                                        WHERE asset IN ({_ph})
+                                        GROUP BY asset
+                                    ) m ON d.asset = m.asset AND d.id = m.max_id
+                                    """,
+                                    tuple(_active_assets),
+                                ).fetchall()
+                            else:
+                                _first_rows = conn.execute(
+                                    """
+                                    SELECT d.asset, d.capital
+                                    FROM v2_decisions d
+                                    INNER JOIN (
+                                        SELECT asset, MIN(id) AS min_id
+                                        FROM v2_decisions
+                                        GROUP BY asset
+                                    ) m ON d.asset = m.asset AND d.id = m.min_id
+                                    """
+                                ).fetchall()
+                                _last_rows = conn.execute(
+                                    """
+                                    SELECT d.asset, d.capital
+                                    FROM v2_decisions d
+                                    INNER JOIN (
+                                        SELECT asset, MAX(id) AS max_id
+                                        FROM v2_decisions
+                                        GROUP BY asset
+                                    ) m ON d.asset = m.asset AND d.id = m.max_id
+                                    """
+                                ).fetchall()
+
+                        _first_map = {str(r["asset"]): float(r["capital"]) for r in _first_rows if r["capital"] is not None}
+                        _last_map = {str(r["asset"]): float(r["capital"]) for r in _last_rows if r["capital"] is not None}
+                        if _first_map and _last_map:
+                            common = sorted(set(_first_map.keys()) & set(_last_map.keys()))
+                            capital = sum(_first_map[a] for a in common)
+                            current_value = sum(_last_map[a] for a in common)
+                            total_pnl = current_value - capital
+                        else:
+                            pnl_rows = get_pnl_history()
+                            total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
+                            current_value = capital + total_pnl
+                    except Exception:
+                        # Fallback V1
+                        pnl_rows = get_pnl_history()
+                        total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
+                        current_value = capital + total_pnl
 
             return {
                 "capital":       capital,

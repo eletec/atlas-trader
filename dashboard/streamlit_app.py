@@ -3522,13 +3522,13 @@ def render_admin_panel():
                 if _ok_db:
                     try:
                         _res2 = _sp2.run(
-                            ["supervisorctl", "restart", "trader"],
+                            ["supervisorctl", "-s", "unix:///tmp/supervisor.sock", "restart", "trader"],
                             capture_output=True, text=True, timeout=15,
                         )
                         if _res2.returncode == 0:
                             st.success("✅ Daemon trader redémarré — capital initial propre au prochain cycle.")
                         else:
-                            st.warning(f"DB purgée mais redémarrage échoué (rc={_res2.returncode}) — relancez manuellement.")
+                            st.warning(f"DB purgée mais redémarrage échoué (rc={_res2.returncode}) : {_res2.stderr or _res2.stdout}")
                     except Exception as _re_ex2:
                         st.warning(f"DB purgée mais redémarrage échoué : {_re_ex2}")
         with _col_r8:
@@ -3543,7 +3543,7 @@ def render_admin_panel():
                 import subprocess as _sp
                 try:
                     _res = _sp.run(
-                        ["supervisorctl", "restart", "trader"],
+                        ["supervisorctl", "-s", "unix:///tmp/supervisor.sock", "restart", "trader"],
                         capture_output=True, text=True, timeout=15,
                     )
                     if _res.returncode == 0:

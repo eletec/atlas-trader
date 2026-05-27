@@ -202,23 +202,48 @@ class PaperTrader:
 
         # ── Mode PAPER/TESTNET : calcul depuis l'historique SQLite ────────
         try:
-            from storage.database import get_recent_decisions, get_pnl_history
+            from storage.database import (
+                get_pnl_history,
+                count_trades as _ct,
+                get_v2_assets_summary,
+                get_v2_equity_curve,
+            )
 
             if asset:
                 # P&L filtré sur l'actif
-                from storage.database import get_recent_trades as _grt, count_trades as _ct
-                trades = _grt(1000, asset=asset)
-                total_pnl = sum(t.get("result_24h", 0) or 0 for t in trades)
                 n_trades = _ct(asset=asset)
+                # Priorité V2: equity live (cohérent avec les décisions long/short V2)
+                v2_curve = get_v2_equity_curve(n=1, asset=asset)
+                if v2_curve:
+                    current_value = float(v2_curve[-1].get("equity") or capital)
+                    total_pnl = current_value - capital
+                else:
+                    # Fallback V1: somme des résultats post-mortem (result_24h)
+                    pnl_rows = get_pnl_history()
+                    total_pnl = sum((r.get("result_24h", 0) or 0) for r in pnl_rows if r.get("asset") == asset)
+                    current_value = capital + total_pnl
             else:
-                pnl_rows = get_pnl_history()
-                total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
-                from storage.database import count_trades as _ct
                 n_trades = _ct()
+                # Priorité V2 multi-actifs: somme des dernières equity par actif
+                v2_assets = get_v2_assets_summary()
+                if v2_assets:
+                    base_capital = 0.0
+                    current_value = 0.0
+                    for row in v2_assets:
+                        _a = str(row.get("asset") or "")
+                        base_capital += self._get_asset_capital(_a)
+                        current_value += float(row.get("equity") or self._get_asset_capital(_a))
+                    capital = base_capital if base_capital > 0 else capital
+                    total_pnl = current_value - capital
+                else:
+                    # Fallback V1
+                    pnl_rows = get_pnl_history()
+                    total_pnl = sum(p.get("result_24h", 0) or 0 for p in pnl_rows)
+                    current_value = capital + total_pnl
 
             return {
                 "capital":       capital,
-                "current_value": round(capital + total_pnl, 2),
+                "current_value": round(current_value, 2),
                 "total_pnl":     round(total_pnl, 2),
                 "total_pnl_pct": round(total_pnl / capital * 100, 2) if capital else 0.0,
                 "n_trades":      n_trades,

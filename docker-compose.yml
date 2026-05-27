@@ -92,9 +92,7 @@ services:
       - ./execution:/app/execution:ro
       - ./utils:/app/utils:ro
       - ./main.py:/app/main.py:ro
-      - ./decision_engine.py:/app/decision_engine.py:ro
       - ./run_v2.py:/app/run_v2.py:ro
-      - ./decision_engine.py:/app/decision_engine.py:ro
       - ./docker/supervisord.conf:/app/docker/supervisord.conf:ro
       - ./docker/watchdog.sh:/app/docker/watchdog.sh:ro
     networks:

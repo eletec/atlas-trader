@@ -294,24 +294,19 @@ class PaperTrader:
 
                     _rows = list(_by_asset.values())
                     _assets = [str(r.get("asset") or "") for r in _rows if str(r.get("asset") or "")]
-                    base_capital = 0.0
+                    # Capital initial = toujours la somme config (self.capital),
+                    # indépendamment du nombre d'assets ayant déjà tourné.
+                    # Évite que le "Capital initial" passe de 20k à 45k au fil des premiers cycles.
+                    capital = self.capital
                     current_value = 0.0
                     for row in _rows:
-                        _a = str(row.get("asset") or "")
                         _cur_eq = float(row.get("equity") or 0.0)
                         current_value += _cur_eq
-                        # Base de référence = première equity V2 par actif.
-                        try:
-                            with get_connection() as conn:
-                                _r0 = conn.execute(
-                                    "SELECT equity FROM v2_equity WHERE asset = ? ORDER BY ts ASC LIMIT 1",
-                                    (_a,),
-                                ).fetchone()
-                            _base_eq = float(_r0["equity"]) if (_r0 and _r0["equity"] is not None) else self.capital
-                        except Exception:
-                            _base_eq = self.capital
-                        base_capital += _base_eq
-                    capital = base_capital if base_capital > 0 else capital
+                    # Ajouter le capital des actifs qui n'ont pas encore de ligne equity
+                    _started_assets = set(_by_asset.keys())
+                    for _a in (_active_assets or []):
+                        if _a not in _started_assets:
+                            current_value += self._get_asset_capital(_a)
                     _st = get_v2_realized_stats(assets=_assets)
                     # P&L cumulé robuste (ignore les sauts de reset)
                     total_pnl = float(get_v2_cumulative_pnl(assets=_assets))

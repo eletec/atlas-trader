@@ -2027,3 +2027,48 @@ def get_v2_recent_trades(n: int = 50, asset: str = "BTC/USDT") -> list[dict]:
             return [dict(r) for r in rows]
     except Exception:
         return []
+
+
+def get_v2_realized_stats(asset: str | None = None, assets: list[str] | None = None) -> dict:
+    """Calcule PnL réalisé et nb de trades clôturés depuis v2_equity.
+
+    Un trade clôturé est estimé par un changement d'equity entre deux points
+    consécutifs d'un même actif.
+    """
+    try:
+        with get_connection() as conn:
+            if asset:
+                rows = conn.execute(
+                    "SELECT asset, ts, equity FROM v2_equity WHERE asset = ? ORDER BY asset, ts ASC",
+                    (asset,),
+                ).fetchall()
+            elif assets:
+                placeholders = ",".join(["?"] * len(assets))
+                rows = conn.execute(
+                    f"SELECT asset, ts, equity FROM v2_equity WHERE asset IN ({placeholders}) ORDER BY asset, ts ASC",
+                    tuple(assets),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT asset, ts, equity FROM v2_equity ORDER BY asset, ts ASC"
+                ).fetchall()
+
+        prev_by_asset: dict[str, float] = {}
+        realized_pnl = 0.0
+        n_closed = 0
+        for r in rows:
+            a = str(r["asset"])
+            eq = float(r["equity"])
+            if a not in prev_by_asset:
+                prev_by_asset[a] = eq
+                continue
+            delta = eq - prev_by_asset[a]
+            prev_by_asset[a] = eq
+            if abs(delta) < 1e-12:
+                continue
+            realized_pnl += delta
+            n_closed += 1
+
+        return {"total_pnl": round(realized_pnl, 2), "n_trades": n_closed}
+    except Exception:
+        return {"total_pnl": 0.0, "n_trades": 0}

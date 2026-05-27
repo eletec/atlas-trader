@@ -207,6 +207,7 @@ class PaperTrader:
                 count_trades as _ct,
                 get_v2_assets_summary,
                 get_v2_equity_curve,
+                get_v2_realized_stats,
                 get_connection,
             )
 
@@ -229,7 +230,9 @@ class PaperTrader:
                             capital = float(_r0["equity"])
                     except Exception:
                         pass
-                    total_pnl = current_value - capital
+                    _st = get_v2_realized_stats(asset=asset)
+                    total_pnl = float(_st.get("total_pnl", current_value - capital) or 0.0)
+                    n_trades = int(_st.get("n_trades", n_trades) or 0)
                 else:
                     # Fallback V1: somme des résultats post-mortem (result_24h)
                     pnl_rows = get_pnl_history()
@@ -258,6 +261,7 @@ class PaperTrader:
                         _by_asset[_asset] = row
 
                     _rows = list(_by_asset.values())
+                    _assets = [str(r.get("asset") or "") for r in _rows if str(r.get("asset") or "")]
                     base_capital = 0.0
                     current_value = 0.0
                     for row in _rows:
@@ -276,7 +280,9 @@ class PaperTrader:
                             _base_eq = self.capital
                         base_capital += _base_eq
                     capital = base_capital if base_capital > 0 else capital
-                    total_pnl = current_value - capital
+                    _st = get_v2_realized_stats(assets=_assets)
+                    total_pnl = float(_st.get("total_pnl", current_value - capital) or 0.0)
+                    n_trades = int(_st.get("n_trades", n_trades) or 0)
                 else:
                     # Fallback V1
                     pnl_rows = get_pnl_history()

@@ -3492,6 +3492,28 @@ def render_admin_panel():
         with _col_r4:
             st.caption("Après reset V2, relancer le daemon pour repartir d'un capital et d'un modèle propres.")
 
+        st.markdown("---")
+        st.markdown("#### Redémarrage du daemon trader")
+        _col_r5, _col_r6 = st.columns(2)
+        with _col_r5:
+            if st.button("🔄 Redémarrer le daemon", type="primary", use_container_width=True, key="restart_trader"):
+                import subprocess as _sp
+                try:
+                    _res = _sp.run(
+                        ["supervisorctl", "restart", "trader"],
+                        capture_output=True, text=True, timeout=15,
+                    )
+                    if _res.returncode == 0:
+                        st.success("✅ Daemon trader redémarré.")
+                    else:
+                        st.error(f"Erreur supervisorctl (rc={_res.returncode}) : {_res.stderr or _res.stdout}")
+                except FileNotFoundError:
+                    st.error("supervisorctl introuvable — vérifier que le container utilise supervisord.")
+                except Exception as _re_ex:
+                    st.error(f"Erreur : {_re_ex}")
+        with _col_r6:
+            st.caption("Redémarre uniquement le processus trader (le dashboard reste actif). Idéal après un reset des données V2.")
+
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(
             '<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'

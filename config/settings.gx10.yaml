@@ -466,23 +466,34 @@ quant:
       p_up_threshold: 0.60   # réduit les faux signaux trend
       p_dn_threshold: 0.40
 
-  # ── Config par actif (timeframe et historique live) ───────────────────────
+  # ── Config par actif (timeframe, historique, capital dédié) ────────────────
   asset_config:
+    BTC/USDT:
+      capital_usd: 10000
+    ETH/USDT:
+      capital_usd: 5000
+    SOL/USDT:
+      capital_usd: 5000
     XAU/USD:
       timeframe: 1d
       history_days: 1825
+      capital_usd: 5000
     XAG/USD:
       timeframe: 1d
       history_days: 1825
+      capital_usd: 5000
     WTI/USD:
       timeframe: 1d
       history_days: 1825
+      capital_usd: 5000
     GBP/USD:
       timeframe: 1d
       history_days: 1825
+      capital_usd: 5000
     EUR/USD:
       timeframe: 1d
       history_days: 1825
+      capital_usd: 5000
 
 # ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
 data:

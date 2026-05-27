@@ -98,8 +98,12 @@ class LiveRunner:
         self._risk_manager_range: RiskManager | None = None   # initialisé après chargement config
         try:
             from utils.config import load_settings as _ls_wf
+            _cfg_wf = _ls_wf()
+            # Priorité : quant.asset_config.<symbol>.capital_usd > exchange.paper_capital_usd
+            _ac_wf = _cfg_wf.get("quant", {}).get("asset_config", {}).get(self.symbol, {})
             self._capital = float(
-                _ls_wf().get("exchange", {}).get("paper_capital_usd", 10_000.0)
+                _ac_wf.get("capital_usd")
+                or _cfg_wf.get("exchange", {}).get("paper_capital_usd", 10_000.0)
             )
         except Exception:
             self._capital = 10_000.0

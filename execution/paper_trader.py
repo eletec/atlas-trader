@@ -207,6 +207,7 @@ class PaperTrader:
                 count_trades as _ct,
                 get_v2_assets_summary,
                 get_v2_equity_curve,
+                get_connection,
             )
 
             if asset:
@@ -216,6 +217,18 @@ class PaperTrader:
                 v2_curve = get_v2_equity_curve(n=1, asset=asset)
                 if v2_curve:
                     current_value = float(v2_curve[-1].get("equity") or capital)
+                    # Base de référence = première equity V2 de l'actif (pas le config asset)
+                    # -> évite les incohérences si paper_capital_usd diffère du moteur V2.
+                    try:
+                        with get_connection() as conn:
+                            _r0 = conn.execute(
+                                "SELECT equity FROM v2_equity WHERE asset = ? ORDER BY ts ASC LIMIT 1",
+                                (asset,),
+                            ).fetchone()
+                        if _r0 and _r0["equity"] is not None:
+                            capital = float(_r0["equity"])
+                    except Exception:
+                        pass
                     total_pnl = current_value - capital
                 else:
                     # Fallback V1: somme des résultats post-mortem (result_24h)
@@ -249,8 +262,19 @@ class PaperTrader:
                     current_value = 0.0
                     for row in _rows:
                         _a = str(row.get("asset") or "")
-                        base_capital += self._get_asset_capital(_a)
-                        current_value += float(row.get("equity") or self._get_asset_capital(_a))
+                        _cur_eq = float(row.get("equity") or 0.0)
+                        current_value += _cur_eq
+                        # Base de référence = première equity V2 par actif.
+                        try:
+                            with get_connection() as conn:
+                                _r0 = conn.execute(
+                                    "SELECT equity FROM v2_equity WHERE asset = ? ORDER BY ts ASC LIMIT 1",
+                                    (_a,),
+                                ).fetchone()
+                            _base_eq = float(_r0["equity"]) if (_r0 and _r0["equity"] is not None) else self.capital
+                        except Exception:
+                            _base_eq = self.capital
+                        base_capital += _base_eq
                     capital = base_capital if base_capital > 0 else capital
                     total_pnl = current_value - capital
                 else:

@@ -226,6 +226,7 @@ class PaperTrader:
                 "live_mode":     False,
             }
         except Exception:
+            logger.exception("get_portfolio fallback to zeros")
             return {
                 "capital": capital, "current_value": capital,
                 "total_pnl": 0, "total_pnl_pct": 0, "n_trades": 0,

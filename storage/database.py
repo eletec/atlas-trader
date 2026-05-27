@@ -15,8 +15,9 @@ from typing import Any
 
 logger = logging.getLogger("zeitgeist.db")
 
-# Chemin de la DB (configurable)
-_DB_PATH = Path("storage/zeitgeist.db")
+# Chemin de la DB (configurable) : ancré sur le dossier du module,
+# indépendant du répertoire courant (dashboard, daemon, tests, etc.).
+_DB_PATH = Path(__file__).resolve().parent / "zeitgeist.db"
 _lock = threading.RLock()  # RLock (réentrant) — évite le deadlock si logger appelle get_connection()
 
 

@@ -1978,10 +1978,10 @@ def get_v2_assets_summary() -> list[dict]:
                 SELECT e.asset, e.action, e.equity, e.close_price, e.ts
                 FROM v2_equity e
                 INNER JOIN (
-                    SELECT asset, MAX(ts) AS max_ts
+                    SELECT asset, MAX(id) AS max_id
                     FROM v2_equity
                     GROUP BY asset
-                ) latest ON e.asset = latest.asset AND e.ts = latest.max_ts
+                ) latest ON e.asset = latest.asset AND e.id = latest.max_id
                 ORDER BY e.asset
                 """
             ).fetchall()
@@ -2006,7 +2006,7 @@ def get_v2_equity_curve(n: int = 2000, asset: str = "BTC/USDT") -> list[dict]:
         with get_connection() as conn:
             rows = conn.execute(
                 "SELECT ts, equity, action, close_price FROM v2_equity "
-                "WHERE asset = ? ORDER BY ts DESC LIMIT ?",
+                "WHERE asset = ? ORDER BY id DESC LIMIT ?",
                 (asset, n),
             ).fetchall()
             return list(reversed([dict(r) for r in rows]))
@@ -2021,7 +2021,7 @@ def get_v2_recent_trades(n: int = 50, asset: str = "BTC/USDT") -> list[dict]:
             rows = conn.execute(
                 "SELECT ts, equity, action, close_price FROM v2_equity "
                 "WHERE asset = ? AND action IN ('long', 'short') "
-                "ORDER BY ts DESC LIMIT ?",
+                "ORDER BY id DESC LIMIT ?",
                 (asset, n),
             ).fetchall()
             return [dict(r) for r in rows]
@@ -2039,18 +2039,18 @@ def get_v2_realized_stats(asset: str | None = None, assets: list[str] | None = N
         with get_connection() as conn:
             if asset:
                 rows = conn.execute(
-                    "SELECT asset, ts, equity FROM v2_equity WHERE asset = ? ORDER BY asset, ts ASC",
+                    "SELECT asset, id, equity FROM v2_equity WHERE asset = ? ORDER BY asset, id ASC",
                     (asset,),
                 ).fetchall()
             elif assets:
                 placeholders = ",".join(["?"] * len(assets))
                 rows = conn.execute(
-                    f"SELECT asset, ts, equity FROM v2_equity WHERE asset IN ({placeholders}) ORDER BY asset, ts ASC",
+                    f"SELECT asset, id, equity FROM v2_equity WHERE asset IN ({placeholders}) ORDER BY asset, id ASC",
                     tuple(assets),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT asset, ts, equity FROM v2_equity ORDER BY asset, ts ASC"
+                    "SELECT asset, id, equity FROM v2_equity ORDER BY asset, id ASC"
                 ).fetchall()
 
         prev_by_asset: dict[str, float] = {}

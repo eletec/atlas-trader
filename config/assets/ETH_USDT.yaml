@@ -8,11 +8,11 @@ paper_capital_usd: 5000
 v2_risk:
   stop_loss_atr_mult: 2.5
   take_profit_atr_mult: 3.5
-  fraction_per_trade: 0.0060    # sizing légèrement réduit vs BTC (beta élevé ETH)
+  fraction_per_trade: 0.0045    # mode défensif
   max_drawdown_pct: 18.0
   range_sl_atr_mult: 1.5
   range_tp_atr_mult: 1.5
-  range_fraction_mult: 0.50
+  range_fraction_mult: 0.25
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045

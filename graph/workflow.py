@@ -96,7 +96,13 @@ class LiveRunner:
         self._ohlcv_1h = None          # D.1 : données 1h pour filtre multi-TF
         self._risk_manager = RiskManager(RiskParams())
         self._risk_manager_range: RiskManager | None = None   # initialisé après chargement config
-        self._capital = 10_000.0
+        try:
+            from utils.config import load_settings as _ls_wf
+            self._capital = float(
+                _ls_wf().get("exchange", {}).get("paper_capital_usd", 10_000.0)
+            )
+        except Exception:
+            self._capital = 10_000.0
         self._n_trades = 0
         self._wins = 0
         self._peak_capital = self._capital

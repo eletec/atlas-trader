@@ -3474,10 +3474,12 @@ def render_admin_panel():
         )
         st.warning("⚠️ Ces opérations sont irréversibles. Utilisez l'onglet Sauvegarde avant toute purge.")
 
-        st.markdown("#### Données V2 (état + equity curve)")
+        # ── Reset partiel ─────────────────────────────────────────────────
+        st.markdown("#### Reset partiel — état live uniquement")
+        st.caption("Vide `v2_equity` et `v2_state`. Conserve l'historique des décisions.")
         _col_r3, _col_r4 = st.columns(2)
         with _col_r3:
-            if st.button("🗑️ Reset état + equity V2", type="secondary", use_container_width=True, key="reset_v2_all"):
+            if st.button("🗑️ Reset état + equity V2", type="secondary", use_container_width=True, key="reset_v2_partial"):
                 try:
                     import sqlite3 as _sq3
                     from utils.config import load_settings as _ls_r
@@ -3490,13 +3492,54 @@ def render_admin_panel():
                 except Exception as _re_r:
                     st.error(f"Erreur : {_re_r}")
         with _col_r4:
-            st.caption("Après reset V2, relancer le daemon pour repartir d'un capital et d'un modèle propres.")
+            st.caption("⚠️ Le tableau de bord affichera encore les anciennes métriques tant que `v2_decisions` n'est pas aussi purgée.")
 
+        # ── Reset complet ─────────────────────────────────────────────────
         st.markdown("---")
-        st.markdown("#### Redémarrage du daemon trader")
+        st.markdown("#### Reset COMPLET — repartir de zéro")
+        st.caption("Vide `v2_equity`, `v2_state` **et** `v2_decisions`. Le dashboard affichera 0 trade / capital initial propre.")
+        _confirm_full = st.checkbox("✅ Je confirme vouloir effacer tout l'historique des trades V2", key="confirm_full_reset")
+        _col_r7, _col_r8 = st.columns(2)
+        with _col_r7:
+            if st.button("💣 Reset COMPLET V2 + redémarrer", type="primary",
+                         use_container_width=True, key="reset_v2_full",
+                         disabled=not _confirm_full):
+                import subprocess as _sp2
+                import sqlite3 as _sq3b
+                _ok_db = False
+                try:
+                    from utils.config import load_settings as _ls_r2
+                    _db_r2 = _ls_r2().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3b.connect(_db_r2) as _con_r2:
+                        _con_r2.execute("DELETE FROM v2_equity")
+                        _con_r2.execute("DELETE FROM v2_state")
+                        _con_r2.execute("DELETE FROM v2_decisions")
+                        _con_r2.commit()
+                    st.success("✅ Tables `v2_equity`, `v2_state` et `v2_decisions` vidées.")
+                    _ok_db = True
+                except Exception as _re_r2:
+                    st.error(f"Erreur DB : {_re_r2}")
+                if _ok_db:
+                    try:
+                        _res2 = _sp2.run(
+                            ["supervisorctl", "restart", "trader"],
+                            capture_output=True, text=True, timeout=15,
+                        )
+                        if _res2.returncode == 0:
+                            st.success("✅ Daemon trader redémarré — capital initial propre au prochain cycle.")
+                        else:
+                            st.warning(f"DB purgée mais redémarrage échoué (rc={_res2.returncode}) — relancez manuellement.")
+                    except Exception as _re_ex2:
+                        st.warning(f"DB purgée mais redémarrage échoué : {_re_ex2}")
+        with _col_r8:
+            st.caption("Après le reset complet, le daemon repart avec le capital initial défini dans `settings.yaml` (`paper_capital_usd`).")
+
+        # ── Redémarrage seul ──────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### Redémarrage du daemon uniquement")
         _col_r5, _col_r6 = st.columns(2)
         with _col_r5:
-            if st.button("🔄 Redémarrer le daemon", type="primary", use_container_width=True, key="restart_trader"):
+            if st.button("🔄 Redémarrer le daemon", type="secondary", use_container_width=True, key="restart_trader"):
                 import subprocess as _sp
                 try:
                     _res = _sp.run(
@@ -3512,7 +3555,7 @@ def render_admin_panel():
                 except Exception as _re_ex:
                     st.error(f"Erreur : {_re_ex}")
         with _col_r6:
-            st.caption("Redémarre uniquement le processus trader (le dashboard reste actif). Idéal après un reset des données V2.")
+            st.caption("Redémarre uniquement le processus trader (le dashboard reste actif).")
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

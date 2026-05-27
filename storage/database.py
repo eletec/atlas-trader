@@ -618,6 +618,22 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
             if asset:
                 rows_v2 = conn.execute(
                     """
+                    WITH v2m AS (
+                        SELECT
+                            id,
+                            ts,
+                            asset,
+                            action,
+                            close_price,
+                            sl_price,
+                            tp_price,
+                            prob_up,
+                            reason,
+                            capital,
+                            capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
+                        FROM v2_decisions
+                        WHERE LOWER(action) IN ('long','short') AND asset = ?
+                    )
                     SELECT
                         ts AS timestamp,
                         asset,
@@ -630,13 +646,12 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         NULL AS position_size,
                         sl_price,
                         tp_price,
-                        NULL AS result_24h,
+                        ROUND(COALESCE(pnl_step, 0.0), 2) AS result_24h,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
                         reason,
                         NULL AS decision_context
-                    FROM v2_decisions
-                    WHERE LOWER(action) IN ('long','short') AND asset = ?
-                    ORDER BY ts DESC
+                    FROM v2m
+                    ORDER BY id DESC
                     LIMIT ?
                     """,
                     (asset, n),
@@ -644,6 +659,22 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
             else:
                 rows_v2 = conn.execute(
                     """
+                    WITH v2m AS (
+                        SELECT
+                            id,
+                            ts,
+                            asset,
+                            action,
+                            close_price,
+                            sl_price,
+                            tp_price,
+                            prob_up,
+                            reason,
+                            capital,
+                            capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
+                        FROM v2_decisions
+                        WHERE LOWER(action) IN ('long','short')
+                    )
                     SELECT
                         ts AS timestamp,
                         asset,
@@ -656,13 +687,12 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         NULL AS position_size,
                         sl_price,
                         tp_price,
-                        NULL AS result_24h,
+                        ROUND(COALESCE(pnl_step, 0.0), 2) AS result_24h,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
                         reason,
                         NULL AS decision_context
-                    FROM v2_decisions
-                    WHERE LOWER(action) IN ('long','short')
-                    ORDER BY ts DESC
+                    FROM v2m
+                    ORDER BY id DESC
                     LIMIT ?
                     """,
                     (n,),

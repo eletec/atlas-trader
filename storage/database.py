@@ -570,7 +570,28 @@ def count_trades(asset: str | None = None) -> int:
             row = conn.execute(
                 "SELECT COUNT(*) as n FROM decisions WHERE action IN ('BUY','SELL')"
             ).fetchone()
-    return int(row["n"]) if row else 0
+    n = int(row["n"]) if row else 0
+    if n > 0:
+        return n
+
+    # Fallback V2: les décisions live V2 sont historisées dans v2_decisions
+    # avec action {long, short, flat}.
+    with get_connection() as conn:
+        try:
+            if asset:
+                row_v2 = conn.execute(
+                    "SELECT COUNT(*) as n FROM v2_decisions "
+                    "WHERE LOWER(action) IN ('long','short') AND asset = ?",
+                    (asset,),
+                ).fetchone()
+            else:
+                row_v2 = conn.execute(
+                    "SELECT COUNT(*) as n FROM v2_decisions "
+                    "WHERE LOWER(action) IN ('long','short')"
+                ).fetchone()
+            return int(row_v2["n"]) if row_v2 else 0
+        except sqlite3.Error:
+            return 0
 
 
 def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
@@ -586,7 +607,69 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 "SELECT * FROM decisions WHERE action IN ('BUY', 'SELL') "
                 "ORDER BY timestamp DESC LIMIT ?", (n,)
             ).fetchall()
-    return [dict(row) for row in rows]
+    trades = [dict(row) for row in rows]
+    if trades:
+        return trades
+
+    # Fallback V2: mapper v2_decisions vers le schéma historique attendu
+    # par le dashboard (timestamp/action/entry_price/SL/TP/result_24h/score).
+    with get_connection() as conn:
+        try:
+            if asset:
+                rows_v2 = conn.execute(
+                    """
+                    SELECT
+                        ts AS timestamp,
+                        asset,
+                        CASE
+                            WHEN LOWER(action) = 'long'  THEN 'BUY'
+                            WHEN LOWER(action) = 'short' THEN 'SELL'
+                            ELSE UPPER(action)
+                        END AS action,
+                        close_price AS entry_price,
+                        NULL AS position_size,
+                        sl_price,
+                        tp_price,
+                        NULL AS result_24h,
+                        ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
+                        reason,
+                        NULL AS decision_context
+                    FROM v2_decisions
+                    WHERE LOWER(action) IN ('long','short') AND asset = ?
+                    ORDER BY ts DESC
+                    LIMIT ?
+                    """,
+                    (asset, n),
+                ).fetchall()
+            else:
+                rows_v2 = conn.execute(
+                    """
+                    SELECT
+                        ts AS timestamp,
+                        asset,
+                        CASE
+                            WHEN LOWER(action) = 'long'  THEN 'BUY'
+                            WHEN LOWER(action) = 'short' THEN 'SELL'
+                            ELSE UPPER(action)
+                        END AS action,
+                        close_price AS entry_price,
+                        NULL AS position_size,
+                        sl_price,
+                        tp_price,
+                        NULL AS result_24h,
+                        ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
+                        reason,
+                        NULL AS decision_context
+                    FROM v2_decisions
+                    WHERE LOWER(action) IN ('long','short')
+                    ORDER BY ts DESC
+                    LIMIT ?
+                    """,
+                    (n,),
+                ).fetchall()
+            return [dict(row) for row in rows_v2]
+        except sqlite3.Error:
+            return []
 
 
 def get_assets_summary() -> list[dict]:

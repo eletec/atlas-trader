@@ -227,9 +227,27 @@ class PaperTrader:
                 # Priorité V2 multi-actifs: somme des dernières equity par actif
                 v2_assets = get_v2_assets_summary()
                 if v2_assets:
+                    # Filtrer aux actifs réellement actifs dans la config daemon.
+                    try:
+                        from utils.config import load_settings as _ls
+                        _active_assets = set((_ls().get("project", {}) or {}).get("active_assets", []) or [])
+                    except Exception:
+                        _active_assets = set()
+
+                    # Dédupliquer robustement par actif (sécurité si source duplique une ligne).
+                    _by_asset: dict[str, dict] = {}
+                    for row in v2_assets:
+                        _asset = str(row.get("asset") or "")
+                        if not _asset:
+                            continue
+                        if _active_assets and _asset not in _active_assets:
+                            continue
+                        _by_asset[_asset] = row
+
+                    _rows = list(_by_asset.values())
                     base_capital = 0.0
                     current_value = 0.0
-                    for row in v2_assets:
+                    for row in _rows:
                         _a = str(row.get("asset") or "")
                         base_capital += self._get_asset_capital(_a)
                         current_value += float(row.get("equity") or self._get_asset_capital(_a))

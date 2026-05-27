@@ -649,6 +649,7 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         CASE
                             WHEN pnl_step IS NULL THEN NULL
                             WHEN ABS(pnl_step) > 500 THEN NULL
+                            WHEN ABS(pnl_step) < 0.01 THEN NULL
                             ELSE ROUND(pnl_step, 2)
                         END AS result_24h,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
@@ -694,6 +695,7 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         CASE
                             WHEN pnl_step IS NULL THEN NULL
                             WHEN ABS(pnl_step) > 500 THEN NULL
+                            WHEN ABS(pnl_step) < 0.01 THEN NULL
                             ELSE ROUND(pnl_step, 2)
                         END AS result_24h,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,

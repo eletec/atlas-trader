@@ -208,6 +208,7 @@ class PaperTrader:
                 get_v2_assets_summary,
                 get_v2_equity_curve,
                 get_v2_realized_stats,
+                get_v2_cumulative_pnl,
                 get_connection,
             )
 
@@ -230,9 +231,8 @@ class PaperTrader:
                             capital = float(_r0["equity"])
                     except Exception:
                         pass
-                    _st = get_v2_realized_stats(asset=asset)
-                    total_pnl = float(_st.get("total_pnl", current_value - capital) or 0.0)
-                    n_trades = int(_st.get("n_trades", n_trades) or 0)
+                    total_pnl = float(get_v2_cumulative_pnl(asset=asset))
+                    current_value = capital + total_pnl
                 else:
                     # Fallback V2 bis: dériver depuis v2_decisions.capital
                     try:
@@ -301,8 +301,9 @@ class PaperTrader:
                         base_capital += _base_eq
                     capital = base_capital if base_capital > 0 else capital
                     _st = get_v2_realized_stats(assets=_assets)
-                    total_pnl = float(_st.get("total_pnl", current_value - capital) or 0.0)
-                    n_trades = int(_st.get("n_trades", n_trades) or 0)
+                    # P&L cumulé robuste (ignore les sauts de reset)
+                    total_pnl = float(get_v2_cumulative_pnl(assets=_assets))
+                    current_value = capital + total_pnl
                 else:
                     # Fallback V2 bis: dériver depuis v2_decisions.capital par actif
                     try:

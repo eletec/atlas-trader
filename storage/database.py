@@ -2102,3 +2102,53 @@ def get_v2_realized_stats(asset: str | None = None, assets: list[str] | None = N
         return {"total_pnl": round(realized_pnl, 2), "n_trades": n_closed}
     except Exception:
         return {"total_pnl": 0.0, "n_trades": 0}
+
+
+def get_v2_cumulative_pnl(asset: str | None = None, assets: list[str] | None = None,
+                          reset_jump_abs: float = 500.0) -> float:
+    """P&L cumulé V2 basé sur les deltas de capital dans v2_decisions.
+
+    Ignore les sauts anormaux (reset/restart) au-delà de `reset_jump_abs`.
+    """
+    try:
+        with get_connection() as conn:
+            if asset:
+                rows = conn.execute(
+                    "SELECT asset, id, capital FROM v2_decisions WHERE asset = ? ORDER BY asset, id ASC",
+                    (asset,),
+                ).fetchall()
+            elif assets:
+                placeholders = ",".join(["?"] * len(assets))
+                rows = conn.execute(
+                    f"SELECT asset, id, capital FROM v2_decisions "
+                    f"WHERE asset IN ({placeholders}) ORDER BY asset, id ASC",
+                    tuple(assets),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT asset, id, capital FROM v2_decisions ORDER BY asset, id ASC"
+                ).fetchall()
+
+        prev_by_asset: dict[str, float] = {}
+        total = 0.0
+        for r in rows:
+            a = str(r["asset"])
+            cap = r["capital"]
+            if cap is None:
+                continue
+            cap = float(cap)
+            if a not in prev_by_asset:
+                prev_by_asset[a] = cap
+                continue
+
+            delta = cap - prev_by_asset[a]
+            prev_by_asset[a] = cap
+
+            # Ignore les resets/restarts (sauts brutaux non-trade)
+            if abs(delta) > reset_jump_abs:
+                continue
+            total += delta
+
+        return round(total, 2)
+    except Exception:
+        return 0.0

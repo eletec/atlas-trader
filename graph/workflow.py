@@ -327,6 +327,7 @@ class LiveRunner:
 
         # ── Gestion position existante ────────────────────────────────────────
         trade_result = None
+        pre_close_position = self._position
         if self._position is not None:
             _trail_mgr = (
                 self._risk_manager_range
@@ -417,6 +418,9 @@ class LiveRunner:
             entry_price=pos.entry_price if pos else None,
             sl_price=pos.stop_loss if pos else None,
             tp_price=pos.take_profit if pos else None,
+            position_size_usd=(trade_result.get("position_size_usd") if trade_result else None)
+                or ((pre_close_position.entry_price * pre_close_position.size_units) if pre_close_position else None),
+            realized_pnl=trade_result.get("pnl_abs") if trade_result else None,
         )
 
         cycle_ms = int((time.time() - t0) * 1000)
@@ -453,6 +457,7 @@ class LiveRunner:
         pos = self._position
         if pos is None:
             return {}
+        position_size_usd = pos.entry_price * pos.size_units
         if pos.side == "long":
             gross = (price - pos.entry_price) * pos.size_units
         else:
@@ -470,14 +475,30 @@ class LiveRunner:
         self._risk_manager.record_trade_pnl_pct(ks_pnl_pct, time.time())
         logger.info(f"SORTIE {reason} @ {price:.2f} | PnL={net:+.2f}$ ({pnl_pct:+.2%})")
         return {"exit_price": price, "pnl_abs": round(net, 2),
-                "pnl_pct": round(pnl_pct, 4), "exit_reason": reason}
+            "pnl_pct": round(pnl_pct, 4), "exit_reason": reason,
+            "entry_price": pos.entry_price, "position_size_usd": round(position_size_usd, 2),
+            "side": pos.side}
 
     def _persist(self, **kwargs):
         try:
             from storage.database import write_v2_state, append_v2_equity, get_connection
             from datetime import datetime as _dt
-            write_v2_state(**kwargs, capital=round(self._capital, 2),
-                           model_fit_at=self._model_fit_at)
+            write_v2_state(
+                asset=kwargs["asset"],
+                bar_ts=kwargs["bar_ts"],
+                close_price=kwargs["close_price"],
+                regime=kwargs.get("regime"),
+                prob_up=kwargs.get("prob_up"),
+                action=kwargs["action"],
+                reason=kwargs["reason"],
+                atr_14=kwargs.get("atr_14"),
+                position_side=kwargs.get("position_side"),
+                entry_price=kwargs.get("entry_price"),
+                sl_price=kwargs.get("sl_price"),
+                tp_price=kwargs.get("tp_price"),
+                capital=round(self._capital, 2),
+                model_fit_at=self._model_fit_at,
+            )
             append_v2_equity(ts=kwargs["bar_ts"], asset=kwargs["asset"],
                              equity=round(self._capital, 2), action=kwargs["action"],
                              close_price=kwargs["close_price"])
@@ -522,23 +543,32 @@ class LiveRunner:
                         sl_price     REAL,
                         tp_price     REAL,
                         capital      REAL,
-                        model_fit_at TEXT
+                        model_fit_at TEXT,
+                        position_size_usd REAL,
+                        realized_pnl REAL
                     )
                 """)
+                _v2_cols = {row[1] for row in _conn.execute("PRAGMA table_info(v2_decisions)")}
+                if "position_size_usd" not in _v2_cols:
+                    _conn.execute("ALTER TABLE v2_decisions ADD COLUMN position_size_usd REAL")
+                if "realized_pnl" not in _v2_cols:
+                    _conn.execute("ALTER TABLE v2_decisions ADD COLUMN realized_pnl REAL")
                 _regime_int = kwargs.get("regime")
                 _regime_txt = "TREND" if _regime_int == 1.0 else ("PANIC" if _regime_int == 0.0 else "RANGE")
                 _conn.execute(
                     """INSERT INTO v2_decisions
                        (ts, asset, bar_ts, close_price, regime, prob_up, action, reason,
-                        atr_14, sl_price, tp_price, capital, model_fit_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        atr_14, sl_price, tp_price, capital, model_fit_at,
+                        position_size_usd, realized_pnl)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (_dt.utcnow().isoformat(), _asset,
                      kwargs.get("bar_ts"), kwargs.get("close_price"),
                      _regime_txt, kwargs.get("prob_up"),
                      kwargs.get("action"), kwargs.get("reason"),
                      kwargs.get("atr_14"),
                      kwargs.get("sl_price"), kwargs.get("tp_price"),
-                     round(self._capital, 2), self._model_fit_at)
+                     round(self._capital, 2), self._model_fit_at,
+                     kwargs.get("position_size_usd"), kwargs.get("realized_pnl"))
                 )
                 _conn.commit()
         except Exception as exc:

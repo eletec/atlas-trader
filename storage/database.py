@@ -630,6 +630,8 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                             prob_up,
                             reason,
                             capital,
+                            position_size_usd,
+                            realized_pnl,
                             capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
                         FROM v2_decisions
                         WHERE LOWER(action) IN ('long','short') AND asset = ?
@@ -647,11 +649,13 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         sl_price,
                         tp_price,
                         CASE
+                            WHEN realized_pnl IS NOT NULL THEN ROUND(realized_pnl, 2)
                             WHEN pnl_step IS NULL THEN NULL
                             WHEN ABS(pnl_step) > 500 THEN NULL
                             WHEN ABS(pnl_step) < 0.01 THEN NULL
                             ELSE ROUND(pnl_step, 2)
                         END AS result_24h,
+                        position_size_usd,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
                         reason,
                         NULL AS decision_context
@@ -676,6 +680,8 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                             prob_up,
                             reason,
                             capital,
+                            position_size_usd,
+                            realized_pnl,
                             capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
                         FROM v2_decisions
                         WHERE LOWER(action) IN ('long','short')
@@ -693,11 +699,13 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                         sl_price,
                         tp_price,
                         CASE
+                            WHEN realized_pnl IS NOT NULL THEN ROUND(realized_pnl, 2)
                             WHEN pnl_step IS NULL THEN NULL
                             WHEN ABS(pnl_step) > 500 THEN NULL
                             WHEN ABS(pnl_step) < 0.01 THEN NULL
                             ELSE ROUND(pnl_step, 2)
                         END AS result_24h,
+                        position_size_usd,
                         ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
                         reason,
                         NULL AS decision_context
@@ -709,7 +717,102 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 ).fetchall()
             return [dict(row) for row in rows_v2]
         except sqlite3.Error:
-            return []
+            try:
+                if asset:
+                    rows_v2 = conn.execute(
+                        """
+                        WITH v2m AS (
+                            SELECT
+                                id,
+                                ts,
+                                asset,
+                                action,
+                                close_price,
+                                sl_price,
+                                tp_price,
+                                prob_up,
+                                reason,
+                                capital,
+                                capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
+                            FROM v2_decisions
+                            WHERE LOWER(action) IN ('long','short') AND asset = ?
+                        )
+                        SELECT
+                            ts AS timestamp,
+                            asset,
+                            CASE
+                                WHEN LOWER(action) = 'long'  THEN 'BUY'
+                                WHEN LOWER(action) = 'short' THEN 'SELL'
+                                ELSE UPPER(action)
+                            END AS action,
+                            close_price AS entry_price,
+                            NULL AS position_size,
+                            sl_price,
+                            tp_price,
+                            CASE
+                                WHEN pnl_step IS NULL THEN NULL
+                                WHEN ABS(pnl_step) > 500 THEN NULL
+                                WHEN ABS(pnl_step) < 0.01 THEN NULL
+                                ELSE ROUND(pnl_step, 2)
+                            END AS result_24h,
+                            ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
+                            reason,
+                            NULL AS decision_context
+                        FROM v2m
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (asset, n),
+                    ).fetchall()
+                else:
+                    rows_v2 = conn.execute(
+                        """
+                        WITH v2m AS (
+                            SELECT
+                                id,
+                                ts,
+                                asset,
+                                action,
+                                close_price,
+                                sl_price,
+                                tp_price,
+                                prob_up,
+                                reason,
+                                capital,
+                                capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
+                            FROM v2_decisions
+                            WHERE LOWER(action) IN ('long','short')
+                        )
+                        SELECT
+                            ts AS timestamp,
+                            asset,
+                            CASE
+                                WHEN LOWER(action) = 'long'  THEN 'BUY'
+                                WHEN LOWER(action) = 'short' THEN 'SELL'
+                                ELSE UPPER(action)
+                            END AS action,
+                            close_price AS entry_price,
+                            NULL AS position_size,
+                            sl_price,
+                            tp_price,
+                            CASE
+                                WHEN pnl_step IS NULL THEN NULL
+                                WHEN ABS(pnl_step) > 500 THEN NULL
+                                WHEN ABS(pnl_step) < 0.01 THEN NULL
+                                ELSE ROUND(pnl_step, 2)
+                            END AS result_24h,
+                            ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
+                            reason,
+                            NULL AS decision_context
+                        FROM v2m
+                        ORDER BY id DESC
+                        LIMIT ?
+                        """,
+                        (n,),
+                    ).fetchall()
+                return [dict(row) for row in rows_v2]
+            except sqlite3.Error:
+                return []
 
 
 def get_assets_summary() -> list[dict]:

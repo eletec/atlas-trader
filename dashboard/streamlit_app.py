@@ -1727,6 +1727,9 @@ def _show_trade_detail_dialog(trade: dict) -> None:
     # ── Header compact ──────────────────────────────────────────────────────────
     parts = [f"<b style='color:{color}'>{icon} {action}</b>", asset, ts + " UTC"]
     if entry:         parts.append(f"Entry <b>${float(entry):,.2f}</b>")
+    size = trade.get("position_size_usd") or trade.get("position_size")
+    if size is not None:
+        parts.append(f"Size <b>${float(size):,.0f}</b>")
     if pnl is not None: parts.append(f"P&L <b style='color:{color}'>${float(pnl):+.2f}</b>")
     if score is not None: parts.append(f"Score <b>{float(score):.0f}/100</b>")
     st.markdown(
@@ -2333,7 +2336,8 @@ def render_trades_list(trades: list[dict]):
             trade.get("timestamp", "")[:16].replace("T", " "),
             f'<span style="color:{action_color};font-weight:600;">{action}</span>',
             f'${trade.get("entry_price", 0):,.2f}' if trade.get("entry_price") else "—",
-            f'${trade.get("position_size", 0):,.0f}' if trade.get("position_size") else "—",
+            f'${(trade.get("position_size_usd") if trade.get("position_size_usd") is not None else trade.get("position_size", 0)):,.0f}'
+                if (trade.get("position_size_usd") is not None or trade.get("position_size")) else "—",
             f'${trade.get("sl_price", 0):,.2f}'    if trade.get("sl_price")    else "—",
             f'${trade.get("tp_price", 0):,.2f}'    if trade.get("tp_price")    else "—",
             pnl_str,
@@ -2396,7 +2400,7 @@ def render_trades_list_sortable(trades: list[dict]):
             col_action: action,
             "Signal":   _sig_detail,
             col_entry:  trade.get("entry_price"),
-            col_size:   (f"${float(trade.get('position_size')):,.0f}" if trade.get("position_size") is not None else "—"),
+            col_size:   trade.get("position_size_usd") if trade.get("position_size_usd") is not None else trade.get("position_size"),
             "SL":       trade.get("sl_price"),
             "TP":       trade.get("tp_price"),
             col_pnl:    pnl,
@@ -2441,7 +2445,7 @@ def render_trades_list_sortable(trades: list[dict]):
         selection_mode="single-row",
         column_config={
             col_entry: st.column_config.NumberColumn(format="$%.2f"),
-            col_size:  st.column_config.TextColumn(),
+            col_size:  st.column_config.NumberColumn(format="$%.0f"),
             "SL":      st.column_config.NumberColumn(format="$%.2f"),
             "TP":      st.column_config.NumberColumn(format="$%.2f"),
             col_pnl:   st.column_config.NumberColumn(format="$%.2f"),

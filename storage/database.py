@@ -618,49 +618,44 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
             if asset:
                 rows_v2 = conn.execute(
                     """
-                    WITH v2m AS (
+                    WITH entries AS (
                         SELECT
-                            id,
-                            ts,
-                            asset,
-                            action,
-                            close_price,
-                            sl_price,
-                            tp_price,
-                            prob_up,
-                            reason,
-                            capital,
-                            position_size_usd,
-                            realized_pnl,
-                            capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
+                            id, ts, asset, action, close_price,
+                            sl_price, tp_price, prob_up, reason, capital,
+                            position_size_usd, realized_pnl
                         FROM v2_decisions
                         WHERE LOWER(action) IN ('long','short') AND asset = ?
                     )
                     SELECT
-                        ts AS timestamp,
-                        asset,
+                        e.ts AS timestamp,
+                        e.asset,
                         CASE
-                            WHEN LOWER(action) = 'long'  THEN 'BUY'
-                            WHEN LOWER(action) = 'short' THEN 'SELL'
-                            ELSE UPPER(action)
+                            WHEN LOWER(e.action) = 'long'  THEN 'BUY'
+                            WHEN LOWER(e.action) = 'short' THEN 'SELL'
+                            ELSE UPPER(e.action)
                         END AS action,
-                        close_price AS entry_price,
+                        e.close_price AS entry_price,
                         NULL AS position_size,
-                        sl_price,
-                        tp_price,
-                        CASE
-                            WHEN realized_pnl IS NOT NULL THEN ROUND(realized_pnl, 2)
-                            WHEN pnl_step IS NULL THEN NULL
-                            WHEN ABS(pnl_step) > 500 THEN NULL
-                            WHEN ABS(pnl_step) < 0.01 THEN NULL
-                            ELSE ROUND(pnl_step, 2)
-                        END AS result_24h,
-                        position_size_usd,
-                        ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
-                        reason,
+                        e.sl_price,
+                        e.tp_price,
+                        ROUND(COALESCE(
+                            e.realized_pnl,
+                            (
+                                SELECT d2.realized_pnl
+                                FROM v2_decisions d2
+                                WHERE d2.asset = e.asset
+                                  AND d2.id > e.id
+                                  AND d2.realized_pnl IS NOT NULL
+                                ORDER BY d2.id ASC
+                                LIMIT 1
+                            )
+                        ), 2) AS result_24h,
+                        e.position_size_usd,
+                        ROUND(COALESCE(e.prob_up, 0) * 100.0, 1) AS score,
+                        e.reason,
                         NULL AS decision_context
-                    FROM v2m
-                    ORDER BY id DESC
+                    FROM entries e
+                    ORDER BY e.id DESC
                     LIMIT ?
                     """,
                     (asset, n),
@@ -668,46 +663,48 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
             else:
                 rows_v2 = conn.execute(
                     """
-                    WITH v2m AS (
+                    WITH entries AS (
                         SELECT
-                            id,
-                            ts,
-                            asset,
-                            action,
-                            close_price,
-                            sl_price,
-                            tp_price,
-                            prob_up,
-                            reason,
-                            capital,
-                            position_size_usd,
-                            realized_pnl,
-                            capital - LAG(capital) OVER (PARTITION BY asset ORDER BY id) AS pnl_step
+                            id, ts, asset, action, close_price,
+                            sl_price, tp_price, prob_up, reason, capital,
+                            position_size_usd, realized_pnl
                         FROM v2_decisions
                         WHERE LOWER(action) IN ('long','short')
                     )
                     SELECT
-                        ts AS timestamp,
-                        asset,
+                        e.ts AS timestamp,
+                        e.asset,
                         CASE
-                            WHEN LOWER(action) = 'long'  THEN 'BUY'
-                            WHEN LOWER(action) = 'short' THEN 'SELL'
-                            ELSE UPPER(action)
+                            WHEN LOWER(e.action) = 'long'  THEN 'BUY'
+                            WHEN LOWER(e.action) = 'short' THEN 'SELL'
+                            ELSE UPPER(e.action)
                         END AS action,
-                        close_price AS entry_price,
+                        e.close_price AS entry_price,
                         NULL AS position_size,
-                        sl_price,
-                        tp_price,
-                        CASE
-                            WHEN realized_pnl IS NOT NULL THEN ROUND(realized_pnl, 2)
-                            WHEN pnl_step IS NULL THEN NULL
-                            WHEN ABS(pnl_step) > 500 THEN NULL
-                            WHEN ABS(pnl_step) < 0.01 THEN NULL
-                            ELSE ROUND(pnl_step, 2)
-                        END AS result_24h,
-                        position_size_usd,
-                        ROUND(COALESCE(prob_up, 0) * 100.0, 1) AS score,
-                        reason,
+                        e.sl_price,
+                        e.tp_price,
+                        ROUND(COALESCE(
+                            e.realized_pnl,
+                            (
+                                SELECT d2.realized_pnl
+                                FROM v2_decisions d2
+                                WHERE d2.asset = e.asset
+                                  AND d2.id > e.id
+                                  AND d2.realized_pnl IS NOT NULL
+                                ORDER BY d2.id ASC
+                                LIMIT 1
+                            )
+                        ), 2) AS result_24h,
+                        e.position_size_usd,
+                        ROUND(COALESCE(e.prob_up, 0) * 100.0, 1) AS score,
+                        e.reason,
+                        NULL AS decision_context
+                    FROM entries e
+                    ORDER BY e.id DESC
+                    LIMIT ?
+                    """,
+                    (n,),
+                ).fetchall()
                         NULL AS decision_context
                     FROM v2m
                     ORDER BY id DESC

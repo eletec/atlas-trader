@@ -393,6 +393,7 @@ class LiveRunner:
         if self.symbol in _CRYPTO_ASSETS and len(ohlcv) >= 21:
             vol_med = float(ohlcv["volume"].iloc[-21:-1].median())
             vol_ratio = float(ohlcv["volume"].iloc[-1]) / (vol_med + 1e-9)
+        _entry_opened_this_cycle = False
         if (self._position is None
                 and trigger != "monitor"          # pas d'entrée en mode monitoring
                 and not self._risk_manager.is_paused(time.time())
@@ -414,16 +415,22 @@ class LiveRunner:
                 self._position_entry_ts = bar_ts
                 self._position_is_range = is_range_trade   # P1.1 : trailing correct
                 self._n_trades += 1
+                _entry_opened_this_cycle = True
                 mode_label = "RANGE-MR" if is_range_trade else "TREND"
                 logger.info(f"ENTRÉE {side.upper()} [{mode_label}] @ {close_price:.2f} | SL={pos.stop_loss:.2f} TP={pos.take_profit:.2f}")
             except Exception as exc:
                 logger.warning(f"Entrée ignorée: {exc}")
 
         pos = self._position
+        # Cycle de maintenance : position déjà ouverte, pas de nouvelle entrée, pas de sortie
+        # → stocker action='hold' pour ne pas polluer le tableau des trades du dashboard
+        _persist_action = decision.action.value
+        if (pos is not None and not _entry_opened_this_cycle and trade_result is None):
+            _persist_action = "hold"
         self._persist(
             asset=self.symbol, bar_ts=bar_ts, close_price=close_price,
             regime=int(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)) if pd.notna(regime_val) else None,
-            prob_up=prob_up, action=decision.action.value, reason=decision.reason,
+            prob_up=prob_up, action=_persist_action, reason=decision.reason,
             atr_14=atr_14, position_side=pos.side if pos else None,
             entry_price=pos.entry_price if pos else None,
             sl_price=pos.stop_loss if pos else None,

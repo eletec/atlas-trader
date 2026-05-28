@@ -84,6 +84,7 @@ class QuantConfig:
     wf_perm_iter: int       = 500
 
     # ── Mean-reverting RANGE trading ───────────────────────────────────────
+    range_enabled: bool            = True   # False → désactive tout le range trading (audit 3 IA)
     range_sl_atr_mult: float       = 1.5    # SL en régime RANGE (plus serré qu'en TREND)
     range_tp_atr_mult: float       = 1.5    # TP symétrique → R:R = 1.0
     range_fraction_mult: float     = 0.50   # fraction du sizing TREND (50% par défaut)

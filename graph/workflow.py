@@ -450,6 +450,11 @@ class LiveRunner:
         _persist_action = decision.action.value
         if (pos is not None and not _entry_opened_this_cycle and trade_result is None):
             _persist_action = "hold"
+        elif (not _entry_opened_this_cycle and pos is None
+              and decision.action in (Action.LONG, Action.SHORT)):
+            # Signal généré mais entrée bloquée par un filtre (1h veto, vol, corr, range_disabled)
+            # Ne pas stocker "long"/"short" : aucune position ouverte → dashboard trompeur
+            _persist_action = "flat"
         self._persist(
             asset=self.symbol, bar_ts=bar_ts, close_price=close_price,
             regime=round(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)*2)/2.0 if pd.notna(regime_val) else None,

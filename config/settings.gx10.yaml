@@ -17,11 +17,8 @@ project:
   - BTC/USDT
   - ETH/USDT
   - SOL/USDT
-  - XAU/USD
-  - XAG/USD
-  - WTI/USD
-  - GBP/USD
-  - EUR/USD
+  # XAU/XAG/WTI/GBP/EUR désactivés — audit 3 IA : pipeline 5m incompatible avec daily (volume NaN, features intraday inutiles, HMM dégénéré)
+  # Réactiver quand un pipeline dédié daily sera validé en backtest
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo
@@ -417,7 +414,7 @@ quant:
   horizon_bars: 12           # Horizon de prédiction (1h sur 5m — consensus 3 IA : 20min trop bruité)
   p_up_threshold: 0.57       # plus sélectif (réduit sur-trading)
   p_dn_threshold: 0.43       # plus sélectif côté short
-  use_hmm: true              # hmmlearn installé sur GX10
+  use_hmm: false             # Audit 3 IA : HMM instable sur 5m (variance dégénérée XAU, permutations) → règles ADX+vol_of_vol
   refit_interval_hours: 168  # Refit hebdomadaire (7 × 24h)
   # ── Trailing stop (Q16 consensus 3 IA — was 1.0×1.0, trop agressif) ──────────
   trailing_activation_atr: 1.5   # was 1.0 — laisse la position respirer

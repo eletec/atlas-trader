@@ -310,9 +310,11 @@ class LiveRunner:
             lower_threshold=self.cfg.p_dn_threshold,
         )
 
-        # Stratégie mean-reverting en régime RANGE (consensus 3 IA)
-        # Si le signal directionnel est FLAT (pas en TREND), tenter une entrée range
-        if decision.action == Action.FLAT and regime_ranging:
+        # Stratégie mean-reverting en régime RANGE
+        # Désactivée si range_enabled: false (consensus 3 IA : R:R=1.0 = EV négative après frais)
+        _qcfg_range = _wf_qcfg()
+        _range_enabled = getattr(_qcfg_range, "range_enabled", True)
+        if decision.action == Action.FLAT and regime_ranging and _range_enabled:
             qcfg = _wf_qcfg()
             _bb_raw  = feats_raw["bb_pct_b"].iloc[-1]   if "bb_pct_b"    in feats_raw.columns else None
             _vwap_raw= feats_raw["vwap_dist_20"].iloc[-1] if "vwap_dist_20" in feats_raw.columns else None
@@ -394,6 +396,25 @@ class LiveRunner:
         if self.symbol in _CRYPTO_ASSETS and len(ohlcv) >= 21:
             vol_med = float(ohlcv["volume"].iloc[-21:-1].median())
             vol_ratio = float(ohlcv["volume"].iloc[-1]) / (vol_med + 1e-9)
+        # ── Filtre corrélation crypto (consensus Grok + GPT + DeepSeek) ──────────────
+        # BTC/ETH/SOL corrélation >0.85 — si déjà un crypto ouvert dans la même direction,
+        # bloquer l'entrée. Maxim 1 position crypto par direction simultanément.
+        _crypto_corr_veto = False
+        if self.symbol in _CRYPTO_ASSETS and decision.action in (Action.LONG, Action.SHORT):
+            _open_same_dir = sum(
+                1 for _sym, _r in _runners.items()
+                if _sym != self.symbol
+                and _sym in _CRYPTO_ASSETS
+                and _r._position is not None
+                and _r._position.side == decision.action.value
+            )
+            if _open_same_dir >= 1:
+                _crypto_corr_veto = True
+                logger.info(
+                    f"[{self.symbol}] crypto corr veto — "
+                    f"{decision.action.value.upper()} bloqué : position corrélée déjà ouverte"
+                )
+
         _entry_opened_this_cycle = False
         if (self._position is None
                 and trigger != "monitor"          # pas d'entrée en mode monitoring
@@ -401,7 +422,8 @@ class LiveRunner:
                 and decision.action in (Action.LONG, Action.SHORT)
                 and atr_14 and atr_14 > 0
                 and vol_ratio >= 0.70
-                and not trend_1h_veto):   # D.1 filtre 1h
+                and not trend_1h_veto            # D.1 filtre 1h
+                and not _crypto_corr_veto):      # B — filtre corrélation crypto
             side = decision.action.value
             is_range_trade = decision.reason.startswith("range_mean_revert")
             # Utiliser le RiskManager range (SL/TP/fraction réduits) pour les trades mean-reverting

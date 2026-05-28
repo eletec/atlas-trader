@@ -414,7 +414,7 @@ quant:
   timeframe: "5m"            # Timeframe OHLCV (ccxt notation)
   history_days: 90           # 90j = fenêtre live (360j trop lent sur 5m — normalize O(N×window))
   train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
-  horizon_bars: 4            # Horizon de prédiction (barres forward)
+  horizon_bars: 12           # Horizon de prédiction (1h sur 5m — consensus 3 IA : 20min trop bruité)
   p_up_threshold: 0.57       # plus sélectif (réduit sur-trading)
   p_dn_threshold: 0.43       # plus sélectif côté short
   use_hmm: true              # hmmlearn installé sur GX10
@@ -422,7 +422,8 @@ quant:
   # ── Trailing stop (Q16 consensus 3 IA — was 1.0×1.0, trop agressif) ──────────
   trailing_activation_atr: 1.5   # was 1.0 — laisse la position respirer
   trailing_distance_atr: 1.5     # was 1.0 — recommandation 1.5-2.0×ATR
-  # ── Mean-reverting RANGE (activé depuis consensus 3 IA) ─────────────────
+  # ── Mean-reverting RANGE (désactivé — consensus 3 IA : R:R=1.0 = EV négative après frais) ───
+  range_enabled: false       # Audit 3 IA : range trading EV<0 sur crypto HF → désactivé
   range_sl_atr_mult: 1.5     # SL plus serré en range (vs 2.5 en trend)
   range_tp_atr_mult: 1.5     # TP symétrique → R:R = 1.0
   range_fraction_mult: 0.35  # réduit le sizing mean-reversion

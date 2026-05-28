@@ -371,19 +371,20 @@ class LiveRunner:
 
         # ── Filtre multi-timeframe 1h (D.1 — 3/3 IA) ─────────────────────────────
         # Veto si tendance horaire contra-directionnelle : SMA20 vs SMA50 sur 1h
-        # P1.2 : bypass pour les trades RANGE (mean-reversion = contra-tendance par nature)
+        # Appliqué à TOUS les signaux : trend ET range (mean-reversion sur tendance
+        # baissière = continuer à perdre → filtre directionnel obligatoire)
         _is_range_signal = decision.reason.startswith("range_mean_revert")
         trend_1h_veto = False
-        if not _is_range_signal and decision.action in (Action.LONG, Action.SHORT) and self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 50:
+        if decision.action in (Action.LONG, Action.SHORT) and self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 50:
             c1h = self._ohlcv_1h["close"]
             sma20_1h = c1h.rolling(20, min_periods=20).mean().iloc[-1]
             sma50_1h = c1h.rolling(50, min_periods=50).mean().iloc[-1]
             if pd.notna(sma20_1h) and pd.notna(sma50_1h):
                 trend_1h_up = bool(sma20_1h > sma50_1h)
                 if decision.action == Action.LONG and not trend_1h_up:
-                    trend_1h_veto = True   # signal LONG rejeté : tendance 1h baissière
+                    trend_1h_veto = True   # LONG rejeté : tendance 1h baissière (trend ET range)
                 elif decision.action == Action.SHORT and trend_1h_up:
-                    trend_1h_veto = True   # signal SHORT rejeté : tendance 1h hausse
+                    trend_1h_veto = True   # SHORT rejeté : tendance 1h haussière (trend ET range)
 
         # ── Nouvelle entrée ───────────────────────────────────────────────────
         # Filtre volume : n'entrer que si volume >= 70% de la médiane des 20 dernières barres
@@ -429,7 +430,7 @@ class LiveRunner:
             _persist_action = "hold"
         self._persist(
             asset=self.symbol, bar_ts=bar_ts, close_price=close_price,
-            regime=int(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)) if pd.notna(regime_val) else None,
+            regime=round(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)*2)/2.0 if pd.notna(regime_val) else None,
             prob_up=prob_up, action=_persist_action, reason=decision.reason,
             atr_14=atr_14, position_side=pos.side if pos else None,
             entry_price=pos.entry_price if pos else None,
@@ -455,7 +456,7 @@ class LiveRunner:
             "bar_ts": bar_ts,
             "close_price": close_price,
             "regime_trending": regime_trending,
-            "regime": int(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)) if pd.notna(regime_val) else None,
+            "regime": round(float(regime_val.item() if hasattr(regime_val, 'item') else regime_val)*2)/2.0 if pd.notna(regime_val) else None,
             "prob_up": round(prob_up, 4) if prob_up is not None else None,
             "action": decision.action.value,
             "reason": decision.reason,

@@ -1439,16 +1439,18 @@ def render_v2_quant_state(asset: str | None = None):
 
     # ── Cartes : Régime / P(up) / Décision V2 / Capital V2 ───────────────────
     regime_val = state.get("regime")
-    regime_trending = (regime_val == 1)
     if regime_val is None:
         regime_label = "N/A"
         regime_color = "#888"
-    elif regime_trending:
+    elif regime_val in (1, 1.0):
         regime_label = "TRENDING"
         regime_color = "#2ecc71"
-    else:
+    elif regime_val == 0.5:
         regime_label = "RANGING"
         regime_color = "#f39c12"
+    else:
+        regime_label = "PANIC"
+        regime_color = "#e74c3c"
 
     prob_up = state.get("prob_up")
     if prob_up is not None:
@@ -1608,7 +1610,7 @@ def _render_v2_monitoring(state: dict, theme: str, bg: str, bdr: str, txt: str, 
 
     # 3. Ratio régime TRENDING (depuis l'état courant uniquement)
     regime_current = state.get("regime")
-    regime_label = "TRENDING" if regime_current == 1 else "RANGING" if regime_current is not None else "N/A"
+    regime_label = "TRENDING" if regime_current in (1, 1.0) else ("RANGING" if regime_current == 0.5 else ("PANIC" if regime_current is not None else "N/A"))
 
     # 4. Profit Factor rolling sur les 50 dernières actions
     actions_50 = eq_df["action"].iloc[-50:] if "action" in eq_df.columns else _pd.Series([], dtype=str)
@@ -2496,7 +2498,7 @@ def render_last_decision(last_cycle: dict | None):
 
     prob_up    = state.get("prob_up")
     regime_raw = state.get("regime")
-    regime_str = "TREND" if regime_raw == 1 else ("RANGE" if regime_raw == 0 else "—")
+    regime_str = "TREND" if regime_raw in (1, 1.0) else ("RANGE" if regime_raw == 0.5 else ("PANIC" if regime_raw is not None else "—"))
     close_price = state.get("close_price")
     atr_14      = state.get("atr_14")
     model_fit_at = state.get("model_fit_at")
@@ -3119,7 +3121,7 @@ def render_admin_panel():
             if _qs:
                 _qa, _qb = st.columns(2)
                 _qa.metric("Dernier refit", str(_qs.get("model_fit_at", "—"))[:16])
-                _qa.metric("Régime courant", "TRENDING" if _qs.get("regime") == 1 else "RANGING")
+                _qa.metric("Régime courant", "TRENDING" if _qs.get("regime") in (1, 1.0) else ("RANGING" if _qs.get("regime") == 0.5 else "PANIC"))
                 _qb.metric("P(up)", f"{_qs.get('prob_up', 0):.1%}" if _qs.get("prob_up") else "—")
                 _qb.metric("Décision", str(_qs.get("action", "—")).upper())
             else:

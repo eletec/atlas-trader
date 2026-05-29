@@ -17,8 +17,14 @@ project:
   - BTC/USDT
   - ETH/USDT
   - SOL/USDT
-  # XAU/XAG/WTI/GBP/EUR désactivés — audit 3 IA : pipeline 5m incompatible avec daily (volume NaN, features intraday inutiles, HMM dégénéré)
-  # Réactiver quand un pipeline dédié daily sera validé en backtest
+  # XAU/XAG/WTI/GBP/EUR désactivés du pipeline 5m — pipeline daily dédié ci-dessous
+  daily_active_assets:
+  - XAU/USD
+  - XAG/USD
+  - WTI/USD
+  - GBP/USD
+  - EUR/USD
+  daily_execution_hour_utc: 18   # 18h UTC = après clôture NYSE (16h30 ET)
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo
@@ -452,6 +458,21 @@ quant:
   refit_ks_pvalue_threshold: 0.05  # seuil KS-test pour déclencher le refit
   refit_ks_window_days: 14         # fenêtre récente pour le KS-test (jours)
 
+  # ── Pipeline DAILY (FX/métaux) ──────────────────────────────────────────────
+  daily_active_assets:
+  - XAU/USD
+  - XAG/USD
+  - WTI/USD
+  - GBP/USD
+  - EUR/USD
+  daily_history_days: 1825          # 5 ans (> 200 bar MA + warmup)
+  daily_horizon_bars: 5             # prédire direction dans 5 jours (1 semaine)
+  daily_norm_window_days: 252       # 1 an boursier pour rolling normalization
+  daily_refit_interval_days: 7      # refit hebdomadaire
+  daily_execution_hour_utc: 18      # 18h UTC (clôture NYSE 16h30 ET + 1h30 buffer)
+  daily_p_up_threshold: 0.57        # seuil global LONG daily
+  daily_p_dn_threshold: 0.43        # seuil global SHORT daily
+
   # ── Seuils p_up/p_dn par actif (override du global) ──────────────────────
   asset_thresholds:
     EUR/USD:
@@ -473,25 +494,25 @@ quant:
     SOL/USDT:
       capital_usd: 5000
     XAU/USD:
-      timeframe: 1d
-      history_days: 1825
       capital_usd: 5000
+      p_up_threshold: 0.57
+      p_dn_threshold: 0.43
     XAG/USD:
-      timeframe: 1d
-      history_days: 1825
-      capital_usd: 5000
+      capital_usd: 3000
+      p_up_threshold: 0.58
+      p_dn_threshold: 0.43
     WTI/USD:
-      timeframe: 1d
-      history_days: 1825
-      capital_usd: 5000
+      capital_usd: 3000
+      p_up_threshold: 0.58
+      p_dn_threshold: 0.42
     GBP/USD:
-      timeframe: 1d
-      history_days: 1825
       capital_usd: 5000
+      p_up_threshold: 0.58
+      p_dn_threshold: 0.42
     EUR/USD:
-      timeframe: 1d
-      history_days: 1825
       capital_usd: 5000
+      p_up_threshold: 0.60
+      p_dn_threshold: 0.42
 
 # ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
 data:

@@ -113,6 +113,16 @@ class QuantConfig:
     refit_ks_pvalue_threshold: float = 0.05        # seuil KS-test
     refit_ks_window_days: int        = 14          # fenêtre récente (jours)
 
+    # ── Pipeline DAILY (FX/métaux) ─────────────────────────────────────────
+    daily_active_assets: list        = field(default_factory=list)
+    daily_history_days: int          = 1825   # ~5 ans de données journalières
+    daily_horizon_bars: int          = 5      # direction dans 5 jours (1 semaine)
+    daily_norm_window_days: int      = 252    # 1 an boursier pour normalisation
+    daily_refit_interval_days: int   = 7      # refit hebdomadaire
+    daily_execution_hour_utc: int    = 18     # heure d'exécution (18h UTC = clôture US)
+    daily_p_up_threshold: float      = 0.57
+    daily_p_dn_threshold: float      = 0.43
+
     # ── Propriétés dérivées ────────────────────────────────────────────────
     @property
     def norm_window_bars(self) -> int:

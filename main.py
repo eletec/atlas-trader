@@ -73,6 +73,54 @@ def run_single_cycle(asset: str, trigger: str = "scheduled") -> dict:
     return run_cycle(asset=asset, trigger=trigger)
 
 
+def _run_daily_assets(cfg: dict, daily_errors: dict) -> None:
+    """Exécute les actifs daily si l'heure d'exécution est atteinte.
+
+    Appelé à chaque tour de la boucle principale ; les guards internes de
+    DailyRunner empêchent une double exécution le même jour UTC.
+    """
+    from graph.workflow_daily import (
+        run_daily_cycle,
+        get_daily_active_assets,
+        should_run_daily,
+    )
+
+    daily_assets = (
+        cfg.get("quant", {}).get("daily_active_assets", [])
+        or get_daily_active_assets()
+    )
+    if not daily_assets:
+        return
+
+    execution_hour = (
+        cfg.get("quant", {}).get("daily_execution_hour_utc")
+        or cfg.get("project", {}).get("daily_execution_hour_utc", 18)
+    )
+    if not should_run_daily(int(execution_hour)):
+        return
+
+    _QUARANTINE_AFTER = 3
+    for sym in daily_assets:
+        if daily_errors.get(sym, 0) >= _QUARANTINE_AFTER:
+            logger.debug(f"[daily/{sym}] En quarantaine — ignoré.")
+            continue
+        try:
+            result = run_daily_cycle(asset=sym, trigger="scheduled")
+            daily_errors[sym] = 0
+            action  = result.get("action", "flat").upper()
+            capital = result.get("capital", 0)
+            logger.info(
+                f"[daily/{sym}] Cycle OK — action={action} capital={capital:.0f}$ "
+                f"regime={result.get('regime','?')} prob_up={result.get('prob_up')}"
+            )
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            daily_errors[sym] = daily_errors.get(sym, 0) + 1
+            logger.error(f"[daily/{sym}] Erreur ({daily_errors[sym]}): {exc}")
+            logger.error(traceback.format_exc())
+
+
 def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
     """Boucle principale : cycle quant toutes les interval_s secondes.
 
@@ -93,6 +141,7 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
     )
     # Compteur d'erreurs par actif — un actif qui échoue systématiquement est mis en quarantaine.
     asset_errors: dict[str, int] = {a: 0 for a in active_assets}
+    daily_errors: dict[str, int] = {}          # erreurs actifs daily
     _QUARANTINE_AFTER = 3  # erreurs consécutives → mise en quarantaine
 
     while True:
@@ -130,6 +179,9 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
         if all(asset_errors.get(a, 0) >= _QUARANTINE_AFTER for a in active_assets):
             logger.critical("Tous les actifs en quarantaine — arrêt daemon.")
             sys.exit(1)
+
+        # ── Pipeline daily (FX/métaux) ─────────────────────────────────────
+        _run_daily_assets(cfg or {}, daily_errors)
 
         # Intervalle dynamique : minimum de tous les actifs ouverts (le plus réactif gagne)
         open_intervals = [

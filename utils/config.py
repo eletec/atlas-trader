@@ -312,13 +312,18 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def get_active_assets() -> list[str]:
-    """Retourne la liste des actifs actifs depuis project.active_assets (ou [project.asset])."""
+    """Retourne la liste complète des actifs actifs :
+    project.active_assets (crypto 5m) + quant.daily_active_assets (FX/métaux daily).
+    """
     cfg = load_settings()
-    assets = cfg.get("project", {}).get("active_assets", [])
-    if not assets:
+    intraday = list(cfg.get("project", {}).get("active_assets", []))
+    daily = list(cfg.get("quant", {}).get("daily_active_assets", [])
+                 or cfg.get("project", {}).get("daily_active_assets", []))
+    combined = intraday + [a for a in daily if a not in intraday]
+    if not combined:
         fallback = cfg.get("project", {}).get("asset", "BTC/USDT")
         return [fallback]
-    return list(assets)
+    return combined
 
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:

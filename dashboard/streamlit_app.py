@@ -3568,7 +3568,11 @@ def render_admin_panel():
         try:
             from storage.database import get_connection as _hget_conn
             _h_col1, _h_col2, _h_col3, _h_col4 = st.columns([2, 1, 1, 1])
-            _h_assets_raw = settings.get("project", {}).get("active_assets", [])
+            try:
+                from utils.config import get_active_assets as _h_get_all
+                _h_assets_raw = _h_get_all()
+            except Exception:
+                _h_assets_raw = settings.get("project", {}).get("active_assets", [])
             _h_assets_list = ["Tous"] + (list(_h_assets_raw) if _h_assets_raw else ["BTC/USDT"])
             with _h_col1:
                 _h_asset = st.selectbox("Actif", _h_assets_list, key="hist_asset")

@@ -705,13 +705,6 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                     """,
                     (n,),
                 ).fetchall()
-                        NULL AS decision_context
-                    FROM v2m
-                    ORDER BY id DESC
-                    LIMIT ?
-                    """,
-                    (n,),
-                ).fetchall()
             return [dict(row) for row in rows_v2]
         except sqlite3.Error:
             try:

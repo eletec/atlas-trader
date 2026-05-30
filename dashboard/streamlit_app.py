@@ -3234,15 +3234,25 @@ def render_admin_panel():
 
         # Clé API — affichée seulement si le provider en a besoin
         _key_name = _key_field.get(_new_provider)
-        _new_key = _llm.get(_key_name, "") if _key_name else ""
+        _existing_key = _llm.get(_key_name, "") if _key_name else ""
+        _new_key = _existing_key
         if _key_name:
             _new_key = st.text_input(
                 t("ai_api_key"),
-                value=_new_key,
+                value="",
+                placeholder="Laisser vide pour conserver la clé actuelle",
                 type="password",
                 key="ai_api_key_input",
                 help=t("ai_api_key_help"),
             )
+            if _existing_key:
+                _masked = "sk-" + "*" * (len(_existing_key) - 7) + _existing_key[-4:]
+                st.caption(f"🔑 Clé actuelle : `{_masked}`")
+            else:
+                st.caption("⚠️ Aucune clé API configurée.")
+            # Si l'utilisateur laisse vide → conserver l'ancienne clé
+            if not _new_key:
+                _new_key = _existing_key
         else:
             st.caption(f"ℹ️ {_new_provider} — pas de clé API requise (local).")
 

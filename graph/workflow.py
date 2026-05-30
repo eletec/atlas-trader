@@ -743,10 +743,11 @@ def _get_runner(asset: str) -> "LiveRunner":
         p_up_threshold=float(_thr_ov.get("p_up_threshold", qcfg.get("p_up_threshold", 0.58))),
         p_dn_threshold=float(_thr_ov.get("p_dn_threshold", qcfg.get("p_dn_threshold", 0.42))),
         initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
-        signal_model_C=float(qcfg.get("signal_model_C", 5.0)),
-        signal_model_cv_folds=int(qcfg.get("signal_model_cv_folds", 3)),
-        signal_model_calibrate=bool(qcfg.get("signal_model_calibrate", True)),
     )
+    # signal_model params — injectés via setattr pour compatibilité si champs absents du dataclass
+    pipe_cfg.signal_model_C        = float(qcfg.get("signal_model_C", 5.0))
+    pipe_cfg.signal_model_cv_folds = int(qcfg.get("signal_model_cv_folds", 3))
+    pipe_cfg.signal_model_calibrate = bool(qcfg.get("signal_model_calibrate", False))
     runner = LiveRunner(
         symbol=asset,
         timeframe=_merged_qcfg.get("timeframe", _DEFAULT_TF()),

@@ -418,14 +418,14 @@ quant:
   history_days: 90           # 90j = fenêtre live (360j trop lent sur 5m — normalize O(N×window))
   train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
   horizon_bars: 4            # Horizon de prédiction (20min sur 5m) — 12 barres (1h) = P(up) mort dans [0.43-0.57]
-  p_up_threshold: 0.57       # plus sélectif (réduit sur-trading)
-  p_dn_threshold: 0.43       # plus sélectif côté short
+  p_up_threshold: 0.54       # abaissé (0.57 jamais atteint avec features faibles — max observé 0.542)
+  p_dn_threshold: 0.46       # symétrique
   use_hmm: false             # Audit 3 IA : HMM instable sur 5m (variance dégénérée XAU, permutations) → règles ADX+vol_of_vol
   refit_interval_hours: 168  # Refit hebdomadaire (7 × 24h)
   # ── Signal model LogReg — paramètres calibration ────────────────────────
   signal_model_C: 5.0        # C=1.0 → sorties compressées [0.47-0.53], jamais de trade. C=5.0 = moins régularisé
   signal_model_cv_folds: 3   # 5 folds lissait trop les proba → 3 folds (moins de réduction vers 0.5)
-  signal_model_calibrate: true
+  signal_model_calibrate: false  # Platt calibration désactivée : récalibre vers 0.5 par construction → sigmoid brut LogReg
   # ── Trailing stop (Q16 consensus 3 IA — was 1.0×1.0, trop agressif) ──────────
   trailing_activation_atr: 1.5   # was 1.0 — laisse la position respirer
   trailing_distance_atr: 1.5     # was 1.0 — recommandation 1.5-2.0×ATR
@@ -474,18 +474,18 @@ quant:
   daily_norm_window_days: 252       # 1 an boursier pour rolling normalization
   daily_refit_interval_days: 7      # refit hebdomadaire
   daily_execution_hour_utc: 18      # 18h UTC (clôture NYSE 16h30 ET + 1h30 buffer)
-  daily_p_up_threshold: 0.57        # seuil global LONG daily
-  daily_p_dn_threshold: 0.43        # seuil global SHORT daily
+  daily_p_up_threshold: 0.54        # seuil global LONG daily
+  daily_p_dn_threshold: 0.46        # seuil global SHORT daily
 
   # ── Seuils p_up/p_dn par actif (override du global) ──────────────────────
   asset_thresholds:
     # EUR/USD supprimé ici — seuils dans asset_config.EUR/USD (évite le conflit 0.62 vs 0.60)
     ETH/USDT:
-      p_up_threshold: 0.57   # était 0.62 : P(up) max ETH = 0.526 → LONG impossible → ramené au global
-      p_dn_threshold: 0.40
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
     SOL/USDT:
-      p_up_threshold: 0.60   # réduit les faux signaux trend
-      p_dn_threshold: 0.40
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
 
   # ── Config par actif (timeframe, historique, capital dédié) ────────────────
   asset_config:
@@ -497,24 +497,24 @@ quant:
       capital_usd: 5000
     XAU/USD:
       capital_usd: 5000
-      p_up_threshold: 0.57
-      p_dn_threshold: 0.43
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
     XAG/USD:
       capital_usd: 3000
-      p_up_threshold: 0.58
-      p_dn_threshold: 0.43
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
     WTI/USD:
       capital_usd: 3000
-      p_up_threshold: 0.58
-      p_dn_threshold: 0.42
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
     GBP/USD:
       capital_usd: 5000
-      p_up_threshold: 0.58
-      p_dn_threshold: 0.42
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
     EUR/USD:
       capital_usd: 5000
-      p_up_threshold: 0.60
-      p_dn_threshold: 0.42
+      p_up_threshold: 0.54
+      p_dn_threshold: 0.46
 
 # ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
 data:

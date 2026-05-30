@@ -34,28 +34,34 @@ def load_settings(path: str | Path | None = None) -> dict:
 
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
-    """Sauvegarde un dict settings dans settings.yaml (écrasement atomique via tmp).
+    """Sauvegarde un dict settings dans settings.yaml.
 
-    Args:
-        settings: dict complet à sauvegarder
-        path: chemin du fichier (défaut : même que load_settings)
+    Sur bind-mount Docker, os.rename() inter-filesystem échoue.
+    On écrit donc via un buffer en mémoire → write direct sur la cible.
     """
     import stat as _stat
     p = Path(path) if path else _SETTINGS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
-    # Écriture atomique : tmp → rename pour éviter les fichiers tronqués
-    tmp = p.with_suffix(".yaml.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        yaml.dump(settings, f, allow_unicode=True, default_flow_style=False,
-                  sort_keys=False, width=120)
-    # Fix permissions si nécessaire
+
+    # Sérialiser en mémoire d'abord
+    import io
+    buf = io.StringIO()
+    yaml.dump(settings, buf, allow_unicode=True, default_flow_style=False,
+              sort_keys=False, width=120)
+    content = buf.getvalue()
+
+    # Fix permissions si le fichier existe mais n'est pas writable
     if p.exists() and not os.access(p, os.W_OK):
         try:
-            p.chmod(p.stat().st_mode | _stat.S_IWUSR)
+            p.chmod(p.stat().st_mode | _stat.S_IWUSR | _stat.S_IWGRP | _stat.S_IWOTH)
         except PermissionError:
-            tmp.unlink(missing_ok=True)
-            raise
-    tmp.replace(p)
+            raise PermissionError(
+                f"Impossible d'écrire dans {p} (permission refusée).\n"
+                f"Sur GX10, corrigez avec : chmod 666 {p}"
+            )
+
+    # Écriture directe (compatible bind-mount Docker — pas de rename inter-fs)
+    p.write_text(content, encoding="utf-8")
 
 
 def _asset_slug(asset: str) -> str:

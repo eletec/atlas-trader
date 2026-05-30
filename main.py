@@ -14,18 +14,37 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import time
 import traceback
 from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger("atlas.main")
 
 
 def _signal_handler(sig, frame):
-    logger.info("Signal recu — arret propre en cours...")
+    logger.info(f"Signal recu (sig={sig}) — arret propre en cours...")
     sys.exit(0)
+
+
+def _sigusr1_handler(sig, frame):
+    """SIGUSR1 — dump du stack (déclenché par le watchdog avant restart)."""
+    import faulthandler
+    logger.warning("[WATCHDOG] SIGUSR1 reçu — dump stack dans stderr")
+    faulthandler.dump_traceback()
+
+
+def _write_heartbeat(asset: str) -> None:
+    """Écrit le fichier heartbeat pour cet actif (surveillé par le watchdog)."""
+    try:
+        Path(f"/tmp/atlas_heartbeat_{asset.replace('/', '_')}").write_text(
+            str(time.time()), encoding="utf-8"
+        )
+    except OSError:
+        pass  # /tmp inexistant en dehors du container — ignorer silencieusement
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,6 +148,7 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
     """
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGUSR1, _sigusr1_handler)
 
     from utils.session import MarketSession
 
@@ -165,6 +185,7 @@ def daemon_loop(asset: str, interval_s: int, cfg: dict | None = None) -> None:
                 action = result.get("action", "flat").upper()
                 capital = result.get("capital", 0)
                 logger.info(f"[{sym}] Cycle OK — action={action} capital={capital:.0f}$")
+                _write_heartbeat(sym)
             except KeyboardInterrupt:
                 logger.info("Arrêt par KeyboardInterrupt.")
                 return

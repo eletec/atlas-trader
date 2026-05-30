@@ -30,7 +30,7 @@ crawler:
   fallback_provider: duckduckgo
   n_themes: 10
   max_pages_per_theme: 10
-  frequency: per_cycle
+  frequency: per_hour      # per_cycle = 28 800 pages/jour → throttling DuckDuckGo
   llm_summarizer_model: claude-3-5-haiku-20241022
   request_timeout_seconds: 15
 
@@ -272,24 +272,24 @@ mirofish:
   seed_news_weight: 0.6
   air_du_temps_weight: 0.4
   inject_custom_vars: {}
-  async_mode: false
+  async_mode: true          # false bloque le cycle principal jusqu'à 2 min sur CPU
   timeout_seconds: 120
 agents:
   market_data:
     enabled: true
     weight_in_scoring: 1.0
   fundamental:
-    enabled: true
-    weight_in_scoring: 0.0   # Brier 0.303, WR 40.4% — neutralisé (input contrarian uniquement)
+    enabled: false           # Brier 0.303, WR 40.4% — neutralisé → désactivé (économie CPU)
+    weight_in_scoring: 0.0
   x_sentiment:
-    enabled: true
-    weight_in_scoring: 0.0   # Brier 0.413, WR 36.2%, avg_score 77 (perma-haussier) — neutralisé
+    enabled: false           # Brier 0.413, WR 36.2%, perma-haussier → désactivé (économie CPU)
+    weight_in_scoring: 0.0
   contrarian:
     enabled: true
     weight_in_scoring: 0.9
   fear_greed:
-    enabled: true
-    weight_in_scoring: 0.0   # Brier 0.476, WR 29.8%, avg_score 73 (perma-haussier) — neutralisé
+    enabled: false           # Brier 0.476, WR 29.8%, perma-haussier → désactivé (économie CPU)
+    weight_in_scoring: 0.0
   polymarket:
     enabled: true
     weight_in_scoring: 0.55  # Brier 0.244 — bon calibrage
@@ -396,7 +396,7 @@ llm:
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
-  deepseek_api_key: REDACTED_COMPROMISED_KEY
+  deepseek_api_key: ""  # DÉPLACÉ dans config/secrets.yaml — NE PAS COMMITTER LA CLÉ
 post_mortem:
   enabled: true
   delay_hours: 24
@@ -475,11 +475,9 @@ quant:
 
   # ── Seuils p_up/p_dn par actif (override du global) ──────────────────────
   asset_thresholds:
-    EUR/USD:
-      p_up_threshold: 0.62   # max P_up=0.614 sur 5y → désactive les LONG
-      p_dn_threshold: 0.40
+    # EUR/USD supprimé ici — seuils dans asset_config.EUR/USD (évite le conflit 0.62 vs 0.60)
     ETH/USDT:
-      p_up_threshold: 0.62   # encore plus sélectif en tendance
+      p_up_threshold: 0.57   # était 0.62 : P(up) max ETH = 0.526 → LONG impossible → ramené au global
       p_dn_threshold: 0.40
     SOL/USDT:
       p_up_threshold: 0.60   # réduit les faux signaux trend

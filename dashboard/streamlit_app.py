@@ -3202,46 +3202,15 @@ def render_admin_panel():
         )
         st.info(t("pa_info"))
 
-        # ── Actifs surveillés (anciennement onglet Marchés) ───────────────────
-        st.markdown("""<style>
-[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-    min-width:90px!important;max-width:none!important;
-    padding-left:10px!important;padding-right:10px!important;
-}
-[data-testid="stMultiSelect"] span[data-baseweb="tag"] span:first-child {
-    overflow:visible!important;white-space:nowrap!important;text-overflow:unset!important;
-}
-</style>""", unsafe_allow_html=True)
-        # Découverte dynamique depuis les fichiers config/assets/*.yaml
-        try:
-            from pathlib import Path as _PKPath
-            _pk_dir = _PKPath(__file__).parent.parent / "config" / "assets"
-            _pa_known = sorted([
-                p.stem.replace("_", "/", 1)
-                for p in _pk_dir.glob("*.yaml")
-            ])
-        except Exception:
-            _pa_known = ["BTC/USDT", "ETH/USDT", "XAU/USD", "EUR/USD", "GBP/USD"]
-        _pa_current_active = list(settings.get("project", {}).get("active_assets", _pa_known))
-        # S'assurer que tous les actifs actifs sont dans les options
-        _pa_options = sorted(set(_pa_known) | set(_pa_current_active))
-        _pa_new_active = st.multiselect(
-            t("pa_assets_watched"),
-            options=_pa_options,
-            default=_pa_current_active,
-            help=t("pa_assets_help"),
-            key="pa_active_assets",
+        # ── Actifs — liste combinée intraday + daily (lecture seule ici) ────────
+        st.caption("📋 Pour ajouter ou retirer des actifs, utilisez l'onglet **Flux Manager**.")
+        _pa_intraday = list(settings.get("project", {}).get("active_assets", ["BTC/USDT"]))
+        _pa_daily = list(
+            settings.get("project", {}).get("daily_active_assets")
+            or settings.get("quant", {}).get("daily_active_assets")
+            or []
         )
-        if st.button(t("pa_save_assets_btn"), key="btn_save_active_assets"):
-            try:
-                settings.setdefault("project", {})["active_assets"] = _pa_new_active
-                if _save_settings(settings):
-                    st.success(t("pa_assets_saved").format(assets=', '.join(_pa_new_active)))
-                else:
-                    st.error(t("pa_assets_save_error"))
-            except Exception as _exc_aa:
-                st.error(f"{t('err_generic')} : {_exc_aa}")
-        _pa_all = _pa_new_active or _pa_current_active
+        _pa_all = list(dict.fromkeys(_pa_intraday + _pa_daily))
 
         st.markdown("---")
         import yaml as _pa_yaml

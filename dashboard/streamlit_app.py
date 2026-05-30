@@ -3036,10 +3036,13 @@ def render_admin_panel():
                 float(q.get("train_fraction", 0.70)), 0.05,
                 help="Fraction des données utilisées pour l'entraînement.",
             )
+            _hz_options = [1, 2, 4, 8, 12, 16, 24]
+            _hz_val = int(q.get("horizon_bars", 4))
+            _hz_idx = _hz_options.index(_hz_val) if _hz_val in _hz_options else 0
             q["horizon_bars"] = st.selectbox(
-                "Horizon (barres)", [1, 2, 4, 8, 16],
-                index=[1, 2, 4, 8, 16].index(int(q.get("horizon_bars", 4))),
-                help="Horizon de prédiction en barres (ex: 4 × 5min = 20min avec TF 5m).",
+                "Horizon (barres)", _hz_options,
+                index=_hz_idx,
+                help="Horizon de prédiction en barres (ex: 12 × 5min = 1h avec TF 5m).",
             )
         with col2:
             q["p_up_threshold"] = st.slider(

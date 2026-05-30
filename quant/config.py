@@ -56,6 +56,9 @@ class QuantConfig:
     use_hmm: bool          = True
     use_lgb: bool          = False
     signal_C: float        = 1.0
+    signal_model_C: float          = 5.0   # régularisation LogReg (C↑ = moins régularisé = sorties plus étalées)
+    signal_model_cv_folds: int     = 3     # folds TimeSeriesSplit (3 au lieu de 5 = moins de lissage)
+    signal_model_calibrate: bool   = True  # Platt calibration ON
 
     # ── Régime HMM ─────────────────────────────────────────────────────────
     hmm_n_states: int      = 3

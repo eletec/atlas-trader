@@ -197,9 +197,16 @@ class LiveRunner:
             self._model = None
         else:
             try:
-                self._model = SignalModel(feature_cols=list(self._active_feature_cols)).fit(
-                    X_train.loc[valid], y_train.loc[valid]
-                )
+                _sm_cfg = self.cfg.__dict__ if hasattr(self.cfg, '__dict__') else {}
+                _sm_C       = float(getattr(self.cfg, 'signal_model_C',       5.0))
+                _sm_cvfolds = int(getattr(self.cfg, 'signal_model_cv_folds',  3))
+                _sm_calib   = bool(getattr(self.cfg, 'signal_model_calibrate', True))
+                self._model = SignalModel(
+                    feature_cols=list(self._active_feature_cols),
+                    C=_sm_C,
+                    cv_folds=_sm_cvfolds,
+                    use_calibration=_sm_calib,
+                ).fit(X_train.loc[valid], y_train.loc[valid])
             except Exception as exc:
                 logger.error(f"SignalModel fit failed: {exc}")
                 self._model = None
@@ -714,6 +721,9 @@ def _get_runner(asset: str) -> "LiveRunner":
             existing.cfg.p_up_threshold = float(_thr_ov.get("p_up_threshold", qcfg.get("p_up_threshold", 0.58)))
             existing.cfg.p_dn_threshold = float(_thr_ov.get("p_dn_threshold", qcfg.get("p_dn_threshold", 0.42)))
             existing._refit_interval_s = int(qcfg.get("refit_interval_hours", 168)) * 3600
+            existing.cfg.signal_model_C = float(qcfg.get("signal_model_C", 5.0))
+            existing.cfg.signal_model_cv_folds = int(qcfg.get("signal_model_cv_folds", 3))
+            existing.cfg.signal_model_calibrate = bool(qcfg.get("signal_model_calibrate", True))
             return existing
         logger.info(
             f"[config] Paramètres changés pour {asset} "
@@ -733,6 +743,9 @@ def _get_runner(asset: str) -> "LiveRunner":
         p_up_threshold=float(_thr_ov.get("p_up_threshold", qcfg.get("p_up_threshold", 0.58))),
         p_dn_threshold=float(_thr_ov.get("p_dn_threshold", qcfg.get("p_dn_threshold", 0.42))),
         initial_capital=cfg.get("exchange", {}).get("paper_capital_usd", 10_000.0),
+        signal_model_C=float(qcfg.get("signal_model_C", 5.0)),
+        signal_model_cv_folds=int(qcfg.get("signal_model_cv_folds", 3)),
+        signal_model_calibrate=bool(qcfg.get("signal_model_calibrate", True)),
     )
     runner = LiveRunner(
         symbol=asset,

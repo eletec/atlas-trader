@@ -390,14 +390,14 @@ logging:
   alert_score_threshold: 85
 llm:
   provider: deepseek
-  model: deepseek-chat
+  model: deepseek-v4-pro
   temperature: 0.3
   max_tokens: 4096
   request_timeout_seconds: 60
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
-  deepseek_api_key: REDACTED_COMPROMISED_KEY
+  deepseek_api_key: ""  # clé dans config/secrets.yaml — NE PAS COMMITTER
 post_mortem:
   enabled: true
   delay_hours: 24

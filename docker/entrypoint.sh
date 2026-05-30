@@ -83,6 +83,16 @@ log_info "======================================================"
 
 check_env
 init_dirs
+
+# ── Injection des fichiers Python storage (masqués par le volume nommé) ──────
+# Le volume atlas_storage_gx10 monte /app/storage et masque les .py copiés
+# dans l'image au build. On les copie depuis le staging /app/_storage_src/
+# à chaque démarrage pour que git pull + rebuild soient toujours reflétés.
+if [ -d /app/_storage_src ]; then
+    cp -f /app/_storage_src/*.py /app/storage/ 2>/dev/null || true
+    log_info "storage/*.py injectés depuis _storage_src ($(ls /app/_storage_src/*.py 2>/dev/null | wc -l) fichiers)"
+fi
+
 init_db
 
 case "${MODE}" in

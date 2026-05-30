@@ -74,6 +74,9 @@ COPY --chown=atlas:atlas execution/        ./execution/
 COPY --chown=atlas:atlas graph/            ./graph/
 COPY --chown=atlas:atlas quant/            ./quant/
 COPY --chown=atlas:atlas storage/          ./storage/
+# Copie de staging pour les fichiers Python de storage — injectés dans le volume
+# au démarrage par l'entrypoint (le volume named masquerait sinon les .py de l'image)
+COPY --chown=atlas:atlas storage/*.py      ./_storage_src/
 COPY --chown=atlas:atlas utils/            ./utils/
 COPY --chown=atlas:atlas main.py ./
 

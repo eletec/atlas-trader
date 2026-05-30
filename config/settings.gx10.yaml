@@ -417,7 +417,7 @@ quant:
   timeframe: "5m"            # Timeframe OHLCV (ccxt notation)
   history_days: 90           # 90j = fenêtre live (360j trop lent sur 5m — normalize O(N×window))
   train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
-  horizon_bars: 4            # Horizon de prédiction (20min sur 5m) — 12 barres (1h) = P(up) mort dans [0.43-0.57]
+  horizon_bars: 48           # 4h sur 5m — corr=0.063 vs corr=0.011 à 20min (session_overlap domine)
   p_up_threshold: 0.54       # abaissé (0.57 jamais atteint avec features faibles — max observé 0.542)
   p_dn_threshold: 0.46       # symétrique
   use_hmm: false             # Audit 3 IA : HMM instable sur 5m (variance dégénérée XAU, permutations) → règles ADX+vol_of_vol

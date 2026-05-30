@@ -22,7 +22,9 @@ class PaperTrader:
         # ou fallback sur paper_capital_usd si aucun actif configuré
         _default_cap = float(exchange_cfg.get("paper_capital_usd", 10000.0))
         try:
-            _active = cfg.get("project", {}).get("active_assets", [])
+            _proj = cfg.get("project", {})
+            _active = list(_proj.get("active_assets", []) or [])
+            _active += list(_proj.get("daily_active_assets", []) or [])
             _acfg = cfg.get("quant", {}).get("asset_config", {})
             _per_asset_sum = sum(
                 float(_acfg.get(a, {}).get("capital_usd") or _default_cap)
@@ -278,7 +280,8 @@ class PaperTrader:
                     # Filtrer aux actifs réellement actifs dans la config daemon.
                     try:
                         from utils.config import load_settings as _ls
-                        _active_assets = set((_ls().get("project", {}) or {}).get("active_assets", []) or [])
+                        _proj = (_ls().get("project", {}) or {})
+                        _active_assets = set(list(_proj.get("active_assets", []) or []) + list(_proj.get("daily_active_assets", []) or []))
                     except Exception:
                         _active_assets = set()
 
@@ -315,7 +318,8 @@ class PaperTrader:
                     # Fallback V2 bis: dériver depuis v2_decisions.capital par actif
                     try:
                         from utils.config import load_settings as _ls
-                        _active_assets = ((_ls().get("project", {}) or {}).get("active_assets", []) or [])
+                        _proj2 = (_ls().get("project", {}) or {})
+                        _active_assets = list(_proj2.get("active_assets", []) or []) + list(_proj2.get("daily_active_assets", []) or [])
                         with get_connection() as conn:
                             if _active_assets:
                                 _ph = ",".join(["?"] * len(_active_assets))

@@ -22,6 +22,8 @@ volumes:
     driver: local
   atlas_logs_gx10:
     driver: local
+  atlas_data_gx10:
+    driver: local
   atlas_letsencrypt:
     driver: local
   atlas_certbot_www:
@@ -58,6 +60,7 @@ services:
       # Persistance des données
       - atlas_storage_gx10:/app/storage
       - atlas_logs_gx10:/app/logs
+      - atlas_data_gx10:/app/data        # cache parquet OHLCV (évite re-fetch après rebuild)
       # Config GX10 — timesfm activé (override du settings.yaml de prod)
       - ./config/settings.gx10.yaml:/app/config/settings.yaml:rw
       - ./config/prompts.yaml:/app/config/prompts.yaml:ro

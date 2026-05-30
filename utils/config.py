@@ -36,19 +36,32 @@ def load_settings(path: str | Path | None = None) -> dict:
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
     """Sauvegarde un dict settings dans settings.yaml.
 
+    Stratégie : lecture du fichier disque + deep-merge avec les nouvelles valeurs.
+    Cela préserve les clés non gérées par le dashboard (ex: corrections manuelles,
+    clés ajoutées par git pull pendant que le dashboard tourne).
+
     Sur bind-mount Docker, os.rename() inter-filesystem échoue.
     On écrit donc via un buffer en mémoire → write direct sur la cible.
     """
+    import io
     import stat as _stat
+
     p = Path(path) if path else _SETTINGS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
 
-    # Sérialiser en mémoire d'abord, puis tenter l'écriture directe.
-    # Si le fichier n'est pas writable, tenter chmod ; si chmod échoue (not owner),
-    # la seule solution est de lancer le container en root ou d'utiliser docker exec -u root.
+    # Lire le fichier courant sur disque et merger — préserve les clés non touchées
+    if p.exists():
+        try:
+            on_disk = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception:
+            on_disk = {}
+        merged = _deep_merge(copy.deepcopy(on_disk), settings)
+    else:
+        merged = settings
+
     import io
     buf = io.StringIO()
-    yaml.dump(settings, buf, allow_unicode=True, default_flow_style=False,
+    yaml.dump(merged, buf, allow_unicode=True, default_flow_style=False,
               sort_keys=False, width=120)
     content = buf.getvalue()
 

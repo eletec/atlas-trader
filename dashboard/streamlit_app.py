@@ -2981,6 +2981,7 @@ def render_admin_panel():
         (None, None,      t("admin_section_system")),
         ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
         ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
+        ('<i class="fas fa-robot"></i>',           "aimodel",  t("tab_ai_model")),
         ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
         ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
         # ── Historique ────────────────────────────────────────────────────
@@ -3180,6 +3181,90 @@ def render_admin_panel():
         log_cfg["telegram_enabled"] = st.toggle("Telegram", log_cfg.get("telegram_enabled", False))
         log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
         settings["logging"] = log_cfg
+
+    elif _atab == "aimodel":  # Modèle IA
+        st.markdown(
+            '<h4><i class="fas fa-robot" style="margin-right:7px;color:#7986cb;"></i>'
+            f'{t("tab_ai_model")}</h4>',
+            unsafe_allow_html=True,
+        )
+        st.info(t("ai_model_info"))
+
+        _llm = dict(settings.get("llm", {}))
+
+        _providers = ["deepseek", "openai", "anthropic", "groq", "mistral", "ollama"]
+        _provider_models = {
+            "deepseek":  ["deepseek-chat", "deepseek-reasoner"],
+            "openai":    ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
+            "anthropic": ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-opus-4-5"],
+            "groq":      ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
+            "mistral":   ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
+            "ollama":    ["llama3", "mistral", "phi3"],
+        }
+        _key_field = {
+            "deepseek":  "deepseek_api_key",
+            "openai":    "openai_api_key",
+            "anthropic": "anthropic_api_key",
+            "groq":      "groq_api_key",
+            "mistral":   "mistral_api_key",
+            "ollama":    None,
+        }
+
+        _cur_provider = _llm.get("provider", "deepseek")
+        if _cur_provider not in _providers:
+            _providers.append(_cur_provider)
+
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            _new_provider = st.selectbox(
+                t("ai_provider"), _providers,
+                index=_providers.index(_cur_provider),
+                key="ai_provider_sel",
+            )
+        _model_opts = _provider_models.get(_new_provider, [_llm.get("model", "")])
+        _cur_model = _llm.get("model", _model_opts[0] if _model_opts else "")
+        if _cur_model not in _model_opts:
+            _model_opts = [_cur_model] + _model_opts
+        with _c2:
+            _new_model = st.selectbox(
+                t("ai_model"), _model_opts,
+                index=_model_opts.index(_cur_model),
+                key="ai_model_sel",
+            )
+
+        # Clé API — affichée seulement si le provider en a besoin
+        _key_name = _key_field.get(_new_provider)
+        _new_key = _llm.get(_key_name, "") if _key_name else ""
+        if _key_name:
+            _new_key = st.text_input(
+                t("ai_api_key"),
+                value=_new_key,
+                type="password",
+                key="ai_api_key_input",
+                help=t("ai_api_key_help"),
+            )
+        else:
+            st.caption(f"ℹ️ {_new_provider} — pas de clé API requise (local).")
+
+        _c3, _c4 = st.columns(2)
+        with _c3:
+            _llm["temperature"] = st.slider(
+                t("ai_temperature"), 0.0, 1.0,
+                float(_llm.get("temperature", 0.3)), 0.05,
+                key="ai_temp_sl",
+            )
+        with _c4:
+            _llm["max_tokens"] = st.number_input(
+                t("ai_max_tokens"), 256, 32000,
+                int(_llm.get("max_tokens", 4096)), 256,
+                key="ai_maxtok_ni",
+            )
+
+        _llm["provider"] = _new_provider
+        _llm["model"]    = _new_model
+        if _key_name and _new_key:
+            _llm[_key_name] = _new_key
+        settings["llm"] = _llm
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)

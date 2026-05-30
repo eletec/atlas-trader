@@ -485,14 +485,34 @@ def render_controls(settings: dict) -> dict | None:
     # Actifs actifs — seul vrai contrôle V2 ici
     st.markdown("#### Actifs surveillés")
     proj = settings.get("project", {})
+
+    # --- Pipeline intraday (5m) ---
     _pa_opts = proj.get("active_assets", ["BTC/USDT"])
     _pa_new = st.multiselect(
-        "Actifs actifs (pipeline V2)",
-        options=_pa_opts + ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XAU/USD",
-                            "XAG/USD", "WTI/USD", "GBP/USD", "EUR/USD"],
+        "Actifs actifs — pipeline intraday (5m, crypto)",
+        options=list(dict.fromkeys(_pa_opts + ["BTC/USDT", "ETH/USDT", "SOL/USDT",
+                                               "XAU/USD", "XAG/USD", "WTI/USD",
+                                               "GBP/USD", "EUR/USD"])),
         default=_pa_opts,
         key="flux_ctrl_active_assets",
-        help="Le daemon itère sur tous ces actifs à chaque cycle (voir Intervalle cycle).",
+        help="Le daemon itère sur ces actifs à chaque cycle (5 min). Réservé aux assets avec OHLCV intraday (CCXT).",
+    )
+
+    # --- Pipeline daily (1d) — FX / métaux ---
+    _daily_opts_default = ["XAU/USD", "XAG/USD", "WTI/USD", "GBP/USD", "EUR/USD"]
+    _da_current = (
+        proj.get("daily_active_assets")
+        or settings.get("quant", {}).get("daily_active_assets")
+        or []
+    )
+    _da_new = st.multiselect(
+        "Actifs actifs — pipeline daily (1d, FX / métaux)",
+        options=list(dict.fromkeys(_da_current + _daily_opts_default
+                                   + ["XAU/USD", "XAG/USD", "WTI/USD",
+                                      "GBP/USD", "EUR/USD", "BTC/USDT"])),
+        default=_da_current,
+        key="flux_ctrl_daily_assets",
+        help="Exécution une fois/jour à l'heure UTC configurée (daily_execution_hour_utc). Pipeline DailyRunner indépendant.",
     )
 
     st.markdown("#### Paper Trading")
@@ -522,6 +542,7 @@ def render_controls(settings: dict) -> dict | None:
 
     changed = (
         set(_pa_new) != set(_pa_opts)
+        or set(_da_new) != set(_da_current)
         or _testnet != exch.get("testnet", True)
         or _ival_new != _ival
         or _hmm_new != _hmm
@@ -531,6 +552,8 @@ def render_controls(settings: dict) -> dict | None:
 
     updated = dict(settings)
     updated.setdefault("project", {})["active_assets"] = _pa_new
+    updated.setdefault("project", {})["daily_active_assets"] = _da_new
+    updated.setdefault("quant", {})["daily_active_assets"] = _da_new
     updated.setdefault("exchange", {})["testnet"] = _testnet
     updated.setdefault("project", {})["loop_interval_seconds"] = int(_ival_new)
     updated.setdefault("quant", {})["use_hmm"] = _hmm_new

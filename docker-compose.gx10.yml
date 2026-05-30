@@ -40,6 +40,7 @@ services:
       target: runtime
     image: atlas-trader:gx10
     container_name: atlas-trader-gx10
+    user: "0"    # root — entrypoint.sh fixe les permissions bind-mount puis lance supervisord
     command: all
     restart: unless-stopped
     env_file:

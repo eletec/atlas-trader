@@ -43,25 +43,33 @@ def save_settings(settings: dict, path: str | Path | None = None) -> None:
     p = Path(path) if path else _SETTINGS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
 
-    # Sérialiser en mémoire d'abord
+    # Sérialiser en mémoire d'abord, puis tenter l'écriture directe.
+    # Si le fichier n'est pas writable, tenter chmod ; si chmod échoue (not owner),
+    # la seule solution est de lancer le container en root ou d'utiliser docker exec -u root.
     import io
     buf = io.StringIO()
     yaml.dump(settings, buf, allow_unicode=True, default_flow_style=False,
               sort_keys=False, width=120)
     content = buf.getvalue()
 
-    # Fix permissions si le fichier existe mais n'est pas writable
-    if p.exists() and not os.access(p, os.W_OK):
-        try:
-            p.chmod(p.stat().st_mode | _stat.S_IWUSR | _stat.S_IWGRP | _stat.S_IWOTH)
-        except PermissionError:
-            raise PermissionError(
-                f"Impossible d'écrire dans {p} (permission refusée).\n"
-                f"Sur GX10, corrigez avec : chmod 666 {p}"
-            )
+    # Tentative d'écriture directe (sans passer par os.access qui peut mentir sur bind-mounts)
+    try:
+        p.write_text(content, encoding="utf-8")
+        return
+    except PermissionError:
+        pass
 
-    # Écriture directe (compatible bind-mount Docker — pas de rename inter-fs)
-    p.write_text(content, encoding="utf-8")
+    # Écriture échoue → tenter chmod self-service (ne fonctionne que si on est owner ou root)
+    try:
+        p.chmod(p.stat().st_mode | _stat.S_IWUSR | _stat.S_IWGRP | _stat.S_IWOTH)
+        p.write_text(content, encoding="utf-8")
+        return
+    except (PermissionError, OSError):
+        raise PermissionError(
+            f"Impossible d'écrire dans {p} (permission refusée).\n"
+            f"Sur GX10 : docker exec -u root atlas-trader-gx10 chmod 666 /app/config/settings.yaml\n"
+            f"Puis redémarrez le container avec 'user: \"0\"' dans docker-compose.gx10.yml."
+        )
 
 
 def _asset_slug(asset: str) -> str:

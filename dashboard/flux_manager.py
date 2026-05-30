@@ -515,37 +515,34 @@ def render_controls(settings: dict) -> dict | None:
         help="Exécution une fois/jour à l'heure UTC configurée (daily_execution_hour_utc). Pipeline DailyRunner indépendant.",
     )
 
-    st.markdown("#### Paper Trading")
-    exch = settings.get("exchange", {})
-    _testnet = st.toggle("Mode testnet", value=exch.get("testnet", True),
-                         key="flux_ctrl_testnet")
-
-    st.markdown("#### Paramètres pipeline")
     qcfg = settings.get("quant", {})
     _tf_cur = qcfg.get("timeframe", "5m")
     _tf_secs = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400}
     _recommended_interval = _tf_secs.get(_tf_cur, 300)
-    col1, col2 = st.columns(2)
-    with col1:
-        _ival = settings.get("project", {}).get("loop_interval_seconds", 900)
-        _ival_new = st.number_input(
-            "Intervalle cycle (s)", 60, 3600, int(_ival), 60,
-            key="flux_ctrl_interval",
-            help=f"Fréquence de réveil du daemon. **Recommandé : {_recommended_interval}s** pour le timeframe {_tf_cur} (1 décision par barre fermée).",
-        )
-        if _ival_new != _recommended_interval:
-            st.caption(f"⚠️ Recommandé : **{_recommended_interval}s** pour TF {_tf_cur}. Valeur actuelle = {_ival_new}s — le bot agira sur {_ival_new // _recommended_interval if _recommended_interval else '?'}éme barre seulement.")
-    with col2:
-        _hmm = qcfg.get("use_hmm", False)
-        _hmm_new = st.toggle("Utiliser HMM", value=_hmm, key="flux_ctrl_hmm",
-                             help="Active le filtre HMM (hmmlearn requis).")
+
+    st.markdown("#### Intervalle cycle")
+    st.caption(
+        f"Timeframe actif : **{_tf_cur}** → intervalle recommandé : **{_recommended_interval}s**. "
+        "Configurable ici ou dans **Moteur Quant** (timeframe) et **Par Actif** (intervalle)."
+    )
+    _ival = settings.get("project", {}).get("loop_interval_seconds", 900)
+    _ival_new = st.number_input(
+        "Intervalle cycle (s)", 60, 3600, int(_ival), 60,
+        key="flux_ctrl_interval",
+        help=f"Fréquence de réveil du daemon. Recommandé : {_recommended_interval}s pour TF {_tf_cur}.",
+    )
+    if _ival_new != _recommended_interval:
+        st.caption(f"⚠️ Valeur actuelle ({_ival_new}s) ≠ recommandée ({_recommended_interval}s) — le bot n'agira pas à chaque barre.")
+
+    st.info(
+        "⚙️ **Mode testnet** → onglet **Risk** | "
+        "**Utiliser HMM** → onglet **Moteur Quant**"
+    )
 
     changed = (
         set(_pa_new) != set(_pa_opts)
         or set(_da_new) != set(_da_current)
-        or _testnet != exch.get("testnet", True)
         or _ival_new != _ival
-        or _hmm_new != _hmm
     )
     if not changed:
         return None
@@ -554,9 +551,7 @@ def render_controls(settings: dict) -> dict | None:
     updated.setdefault("project", {})["active_assets"] = _pa_new
     updated.setdefault("project", {})["daily_active_assets"] = _da_new
     updated.setdefault("quant", {})["daily_active_assets"] = _da_new
-    updated.setdefault("exchange", {})["testnet"] = _testnet
     updated.setdefault("project", {})["loop_interval_seconds"] = int(_ival_new)
-    updated.setdefault("quant", {})["use_hmm"] = _hmm_new
     return updated
 
 

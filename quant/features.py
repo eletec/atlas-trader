@@ -208,11 +208,17 @@ def compute_features(df: pd.DataFrame, extra_ohlcv: dict[str, pd.DataFrame] | No
             except Exception:
                 pass  # DXY incompatible avec cet index — features omises silencieusement
 
-    # Q15 : Features d'order flow (funding rate + open interest + CVD)
-    # Données passées via extra_ohlcv["funding"] et extra_ohlcv["oi"]
-    _funding = extra_ohlcv.get("funding") if extra_ohlcv else None
-    _oi      = extra_ohlcv.get("oi")      if extra_ohlcv else None
-    add_order_flow_features(out, df, _funding, _oi)
+    # Q15 : Features d'order flow (CVD + funding rate + open interest)
+    # Désactivées si use_order_flow_features=False dans la config (ex: grid search)
+    try:
+        from quant.config import get_quant_cfg as _get_qcfg
+        _of_enabled = getattr(_get_qcfg(), 'use_order_flow_features', True)
+    except Exception:
+        _of_enabled = True
+    if _of_enabled:
+        _funding = extra_ohlcv.get("funding") if extra_ohlcv else None
+        _oi      = extra_ohlcv.get("oi")      if extra_ohlcv else None
+        add_order_flow_features(out, df, _funding, _oi)
 
     return out
 

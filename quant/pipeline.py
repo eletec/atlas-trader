@@ -277,7 +277,13 @@ def run_pipeline(
                 f"| cols_avec_NaN={_partial_nan}"
             )
         try:
-            model = SignalModel(feature_cols=available_cols).fit(
+            model = SignalModel(
+                feature_cols=available_cols,
+                use_lgb=qcfg.use_lgb,
+                C=qcfg.signal_model_C,
+                cv_folds=qcfg.signal_model_cv_folds,
+                use_calibration=qcfg.signal_model_calibrate,
+            ).fit(
                 X_train.loc[valid], y_train.loc[valid]
             )
             proba_up = model.predict_proba(feats[available_cols])

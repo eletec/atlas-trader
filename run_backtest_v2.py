@@ -169,6 +169,10 @@ def main() -> None:
         help="Override p_dn_threshold (ex: 0.48 pour abaisser le seuil SHORT)",
     )
     parser.add_argument(
+        "--lgb", action="store_true",
+        help="Utiliser LightGBM au lieu de LogisticRegression (use_lgb=True)",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true",
         help="Affichage détaillé (DEBUG)",
     )
@@ -189,6 +193,8 @@ def main() -> None:
         _overrides["p_up_threshold"] = args.p_up
     if args.p_dn is not None:
         _overrides["p_dn_threshold"] = args.p_dn
+    if args.lgb:
+        _overrides["use_lgb"] = True
 
     if _overrides:
         try:

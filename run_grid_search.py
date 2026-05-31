@@ -245,13 +245,13 @@ def _fetch_order_flow_cached(
         if not fr.empty:
             result["funding"] = fr
     except Exception as exc:
-        logger.debug(f"funding {symbol}: {exc}")
+        logger.warning(f"funding fetch {symbol}: {exc}")
     try:
         oi = fetch_open_interest_history(symbol, days=days)
         if not oi.empty:
             result["oi"] = oi
     except Exception as exc:
-        logger.debug(f"OI {symbol}: {exc}")
+        logger.warning(f"OI fetch {symbol}: {exc}")
 
     cache[key] = result
     return result

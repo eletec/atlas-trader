@@ -242,8 +242,8 @@ def fetch_funding_history(symbol: str = "BTC/USDT", days: int = 730, force_refre
     logger.info(f"[fetch] Funding rate historique {symbol}...")
     try:
         import ccxt
-        exchange = ccxt.binance({"enableRateLimit": True})
-        futures_symbol = symbol.replace("/", "")  # "BTCUSDT"
+        # Futures USDM uniquement (pas Binance spot)
+        exchange = ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30000})
 
         since_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
         all_rates: list = []
@@ -254,7 +254,8 @@ def fetch_funding_history(symbol: str = "BTC/USDT", days: int = 730, force_refre
                 rates = exchange.fetch_funding_rate_history(
                     symbol, since=current_since, limit=1000
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Funding batch {symbol}: {e}")
                 break
             if not rates:
                 break
@@ -307,8 +308,8 @@ def fetch_open_interest_history(symbol: str = "BTC/USDT", days: int = 730, force
     logger.info(f"[fetch] Open Interest historique {symbol}...")
     try:
         import ccxt
-        exchange = ccxt.binance({"enableRateLimit": True})
-        futures_symbol = symbol.replace("/", "")  # "BTCUSDT"
+        # Futures USDM uniquement
+        exchange = ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30000})
 
         since_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
         all_oi: list = []

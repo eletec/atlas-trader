@@ -79,6 +79,7 @@ services:
       # Scripts racine backtestables — bind-montés pour que git pull suffit (restart seul)
       - ./run_backtest_v2.py:/app/run_backtest_v2.py:ro
       - ./run_v2.py:/app/run_v2.py:ro
+      - ./run_grid_search.py:/app/run_grid_search.py:ro
       # main.py et storage/*.py : pas de mount fichier individuel — copiés dans l'image
       # au build. Après git pull touchant ces fichiers : docker compose up -d --build atlas.
     networks:

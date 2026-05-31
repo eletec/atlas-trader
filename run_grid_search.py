@@ -320,14 +320,11 @@ def main() -> None:
 
     try:
         for symbol in symbols:
-            # Pre-fetch funding + OI une seule fois par symbol (toutes fenêtres couvrent ≤180j)
-            max_days = max(params["days"] for params in combos)
-            of_cache: dict = {}
-            extra_of = _fetch_order_flow_cached(symbol, max_days + 5, of_cache)
-            if extra_of:
-                logger.info(f"{symbol}: order flow pré-fetché ({list(extra_of.keys())})")
-            else:
-                logger.info(f"{symbol}: pas de données order flow (non-USDT ou erreur)")
+            # Order flow désactivé dans le grid search :
+            # - OI limité à 29j (Binance) → NaN pendant le train (≥60j) → importance=0
+            # - Funding (8h→1h ffill) → step function artificielle → overfitting OOS
+            # Ces features restent actives dans le pipeline de production live.
+            extra_of: dict = {}
 
             for params in combos:
                 done += 1

@@ -116,27 +116,36 @@ def _run_one(
 ) -> RunResult | None:
     """Exécute le pipeline V2 pour un jeu de paramètres donné."""
     import numpy as np
+    import pandas as pd
     import quant.config as _qcfg_mod
     from quant.config import get_quant_cfg
     from quant.pipeline import PipelineConfig, run_pipeline
 
     t0 = time.perf_counter()
 
+    # ── Même traitement que sim_engine.py : timestamp → DatetimeIndex ────
+    ohlcv = ohlcv_df.copy()
+    if "timestamp" in ohlcv.columns and not isinstance(ohlcv.index, pd.DatetimeIndex):
+        ohlcv = ohlcv.set_index(pd.DatetimeIndex(ohlcv["timestamp"]))
+    elif not isinstance(ohlcv.index, pd.DatetimeIndex):
+        logger.warning("OHLCV sans DatetimeIndex — ignoré")
+        return None
+
     # Override QuantConfig
     qcfg = get_quant_cfg(reload=True)
-    qcfg.horizon_bars       = params["horizon"]
-    qcfg.stop_loss_atr_mult = params["sl_mult"]
+    qcfg.horizon_bars         = params["horizon"]
+    qcfg.stop_loss_atr_mult   = params["sl_mult"]
     qcfg.take_profit_atr_mult = params["tp_mult"]
-    qcfg.p_up_threshold     = params["p_up"]
-    qcfg.p_dn_threshold     = params["p_dn"]
-    qcfg.walk_fwd_every     = 0   # désactivé dans la grille
-    qcfg.use_barrier_label  = False
+    qcfg.p_up_threshold       = params["p_up"]
+    qcfg.p_dn_threshold       = params["p_dn"]
+    qcfg.walk_fwd_every       = 0   # désactivé dans la grille
+    qcfg.use_barrier_label    = False
     _qcfg_mod._CACHE = qcfg
 
-    n_total = len(ohlcv_df)
+    n_total = len(ohlcv)
     split   = int(n_total * params["train_frac"])
-    train_idx = ohlcv_df.index[:split]
-    test_idx  = ohlcv_df.index[split:]
+    train_idx = ohlcv.index[:split]
+    test_idx  = ohlcv.index[split:]
 
     if len(train_idx) < 200 or len(test_idx) < 50:
         return None
@@ -147,7 +156,7 @@ def _run_one(
     cfg.horizon_bars   = params["horizon"]
 
     try:
-        arts = run_pipeline(ohlcv_df, train_idx, test_idx, cfg)
+        arts = run_pipeline(ohlcv, train_idx, test_idx, cfg)
     except Exception as exc:
         logger.debug(f"run_pipeline échec: {exc}")
         return None

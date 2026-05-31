@@ -26,7 +26,8 @@ from quant.signal_model import SignalModel
 
 logger = logging.getLogger("zeitgeist.quant.signal_model_v3")
 
-MIN_SAMPLES_PER_REGIME = 80  # Minimum pour fit un expert — sinon fallback global
+MIN_SAMPLES_PER_REGIME = 120  # Minimum pour fit un expert — doit dépasser le seuil interne SignalModel (100)
+                              # + marge pour CalibratedClassifierCV sur séries temporelles
 
 
 @dataclass
@@ -49,9 +50,12 @@ class MixtureSignalModel:
     _regime_counts: dict[float, int] = field(default_factory=dict, init=False, repr=False)
 
     def _make_expert(self) -> SignalModel:
+        # Pas de calibration Platt par expert : trop peu de samples par régime
+        # (~1/3 du train total) → TimeSeriesSplit instable. La calibration globale
+        # est assurée par l'expert global (fallback).
         return SignalModel(
             feature_cols=self.feature_cols,
-            use_calibration=self.use_calibration,
+            use_calibration=False,   # désactivé intentionnellement par régime
             use_lgb=self.use_lgb,
             C=self.C,
             cv_folds=self.cv_folds,
@@ -102,6 +106,10 @@ class MixtureSignalModel:
             f"MixtureSignalModel: {len(self._experts)}/{len(states)} experts actifs "
             f"| régimes: {self._regime_counts}"
         )
+        # Affiche aussi sur stdout pour grid search (loggers quant silencés à CRITICAL)
+        _active = {f"{s:.0f}": n for s, n in self._regime_counts.items()}
+        _ok     = [f"{s:.0f}" for s in self._experts]
+        print(f"  [V3] experts={_ok} counts={_active}", flush=True)
         return self
 
     def predict_proba(

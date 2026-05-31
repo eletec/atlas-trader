@@ -24,8 +24,25 @@ import pandas as pd
 
 logger = logging.getLogger("backtest.data_fetcher")
 
-CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
+# Cache dir : préférer /app/data/backtest_cache/ (volume Docker persistant writable)
+# si le dossier local backtest/cache/ n'est pas accessible en écriture (bind-mount :ro).
+_LOCAL_CACHE = Path(__file__).parent / "cache"
+_DOCKER_CACHE = Path("/app/data/backtest_cache")
+
+def _resolve_cache_dir() -> Path:
+    try:
+        _LOCAL_CACHE.mkdir(exist_ok=True)
+        # Vérifier l'accès en écriture
+        _test = _LOCAL_CACHE / ".writable"
+        _test.touch()
+        _test.unlink()
+        return _LOCAL_CACHE
+    except OSError:
+        _DOCKER_CACHE.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Cache backtest redirigé vers {_DOCKER_CACHE} (backtest/ en lecture seule)")
+        return _DOCKER_CACHE
+
+CACHE_DIR = _resolve_cache_dir()
 
 # Actifs routés vers yfinance (pas sur Binance spot/futures)
 _YAHOO_SYMBOLS: dict[str, str] = {

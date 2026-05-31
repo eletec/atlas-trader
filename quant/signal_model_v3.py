@@ -87,7 +87,10 @@ class MixtureSignalModel:
                 f"MixtureSignalModel: train={len(y)} < {MIN_TOTAL_FOR_SPLIT} "
                 f"→ expert global uniquement (pas de split par régime)"
             )
-            print(f"  [V3] global-only (train={len(y)} < {MIN_TOTAL_FOR_SPLIT})", flush=True)
+            _msg = f"  [V3] global-only (train={len(y)} < {MIN_TOTAL_FOR_SPLIT})"
+            if not hasattr(MixtureSignalModel, '_last_summary') or MixtureSignalModel._last_summary != _msg:
+                MixtureSignalModel._last_summary = _msg  # type: ignore[attr-defined]
+                print(_msg, flush=True)
             return self
 
         # Expert par régime

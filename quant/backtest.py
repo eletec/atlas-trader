@@ -66,6 +66,7 @@ class Backtester:
     slippage_rate: float = 0.0002     # 0.02% par côté
     risk_manager: RiskManager = field(default_factory=RiskManager)
     bars_per_year: int = 0  # 0 = auto-inféré depuis l'index des données (5m→105120, 15m→35040…)
+    horizon_bars: int = 0  # 0 = désactivé ; >0 = fermeture forcée au close de T+horizon
 
     def run(
         self,
@@ -94,6 +95,7 @@ class Backtester:
         trades: list[Trade] = []
         position: Position | None = None
         entry_ts: pd.Timestamp | None = None
+        entry_i: int | None = None  # index de barre du signal d'entrée (pour expiry horizon)
 
         # Compteurs de diagnostic
         _diag = {"short_sig": 0, "long_sig": 0,
@@ -140,6 +142,12 @@ class Backtester:
                         exit_reason = "take_profit"
                         exit_price = position.take_profit
 
+                # Expiry horizon : fermeture forcée au close de T+horizon_bars
+                if exit_reason is None and self.horizon_bars > 0 and entry_i is not None:
+                    if i >= entry_i + self.horizon_bars - 1:
+                        exit_reason = "horizon"
+                        exit_price = float(ohlcv.iloc[i + 1]["close"])
+
                 # Position flip : signal inverse fort → sortir + inverser à l'open suivant
                 if exit_reason is None:
                     if position.side == "long" and action == Action.SHORT:
@@ -177,6 +185,7 @@ class Backtester:
                     self.risk_manager.record_trade_pnl_pct(ks_pnl_pct, next_ts.timestamp())
                     position = None
                     entry_ts = None
+                    entry_i = None
 
                     # Ouvrir immédiatement la position inverse (flip) au même open_next
                     if flip_side and not self.risk_manager.is_paused(next_ts.timestamp()):
@@ -191,6 +200,7 @@ class Backtester:
                                     capital=equity,
                                 )
                                 entry_ts = next_ts
+                                entry_i = i + 1
                                 equity -= position.size_units * slipped_flip * self.fee_rate
                                 logger.debug(f"Flip {flip_side} @ {slipped_flip:.4f} (equity={equity:.2f})")
                                 if flip_side == "short":
@@ -219,6 +229,7 @@ class Backtester:
                                 capital=equity,
                             )
                             entry_ts = next_ts
+                            entry_i = i
                             # Frais d'entrée
                             equity -= position.size_units * slipped_entry * self.fee_rate
                             if side == "short":

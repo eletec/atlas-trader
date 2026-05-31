@@ -327,6 +327,7 @@ def run_pipeline(
         fee_rate=cfg.fee_rate,
         slippage_rate=cfg.slippage_rate,
         risk_manager=RiskManager(RiskParams()),
+        horizon_bars=qcfg.horizon_bars,
     )
     result = bt.run(test_ohlcv, test_actions, test_atr)
 

@@ -310,8 +310,12 @@ def run_pipeline(
     proba_up = pd.Series(index=feats.index, dtype="float64")
     if cfg.use_signal_model:
         if qcfg.use_barrier_label:
+            # Fusionner ohlcv (close/high/low) + atr_14 depuis feats_raw
+            _barrier_df = ohlcv[["open", "high", "low", "close"]].copy()
+            if "atr_14" in feats_raw.columns:
+                _barrier_df["atr_14"] = feats_raw["atr_14"]
             y = make_barrier_label(
-                feats_raw,
+                _barrier_df,
                 sl_mult=qcfg.stop_loss_atr_mult,
                 tp_mult=qcfg.take_profit_atr_mult,
                 max_horizon=qcfg.horizon_bars if qcfg.horizon_bars > 0 else 48,

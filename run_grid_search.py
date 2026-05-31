@@ -120,6 +120,7 @@ def _run_one(
     symbol: str,
     ohlcv_df: "pd.DataFrame",
     params: dict,
+    extra_of: dict | None = None,
 ) -> RunResult | None:
     """Exécute le pipeline V2 pour un jeu de paramètres donné."""
     import numpy as np
@@ -140,14 +141,15 @@ def _run_one(
 
     # Override QuantConfig
     qcfg = get_quant_cfg(reload=True)
-    qcfg.horizon_bars         = params["horizon"]
-    qcfg.stop_loss_atr_mult   = params["sl_mult"]
-    qcfg.take_profit_atr_mult = params["tp_mult"]
-    qcfg.p_up_threshold       = params["p_up"]
-    qcfg.p_dn_threshold       = params["p_dn"]
-    qcfg.walk_fwd_every       = 0   # désactivé dans la grille
-    qcfg.use_barrier_label    = False
-    qcfg.use_dxy_feature      = False  # pas d'appel API Twelve Data × 432
+    qcfg.horizon_bars              = params["horizon"]
+    qcfg.stop_loss_atr_mult        = params["sl_mult"]
+    qcfg.take_profit_atr_mult      = params["tp_mult"]
+    qcfg.p_up_threshold            = params["p_up"]
+    qcfg.p_dn_threshold            = params["p_dn"]
+    qcfg.walk_fwd_every            = 0     # désactivé dans la grille
+    qcfg.use_barrier_label         = False
+    qcfg.use_dxy_feature           = False  # pas d'appel API Twelve Data × N
+    qcfg.use_order_flow_features   = False  # pré-fetché manuellement via ohlcv_cache
     _qcfg_mod._CACHE = qcfg
 
     n_total = len(ohlcv)
@@ -164,7 +166,7 @@ def _run_one(
     cfg.horizon_bars   = params["horizon"]
 
     try:
-        arts = run_pipeline(ohlcv, train_idx, test_idx, cfg)
+        arts = run_pipeline(ohlcv, train_idx, test_idx, cfg, extra_ohlcv=extra_of)
     except Exception as exc:
         logger.debug(f"run_pipeline échec: {exc}")
         return None
@@ -220,6 +222,39 @@ def _fetch_ohlcv_cached(
     except Exception as exc:
         logger.warning(f"fetch_ohlcv {symbol} {days}j {timeframe}: {exc}")
         return None
+
+
+def _fetch_order_flow_cached(
+    symbol: str,
+    days: int,
+    cache: dict,
+) -> dict:
+    """Retourne {"funding": df, "oi": df} pour le symbol, mis en cache."""
+    key = ("of", symbol, days)
+    if key in cache:
+        return cache[key]
+
+    result: dict = {}
+    if not symbol.endswith("/USDT"):
+        cache[key] = result
+        return result
+
+    from backtest.data_fetcher import fetch_funding_history, fetch_open_interest_history
+    try:
+        fr = fetch_funding_history(symbol, days=days)
+        if not fr.empty:
+            result["funding"] = fr
+    except Exception as exc:
+        logger.debug(f"funding {symbol}: {exc}")
+    try:
+        oi = fetch_open_interest_history(symbol, days=days)
+        if not oi.empty:
+            result["oi"] = oi
+    except Exception as exc:
+        logger.debug(f"OI {symbol}: {exc}")
+
+    cache[key] = result
+    return result
 
 
 def _print_top(results: list[RunResult], top: int = 20) -> None:
@@ -283,6 +318,15 @@ def main() -> None:
 
     try:
         for symbol in symbols:
+            # Pre-fetch funding + OI une seule fois par symbol (toutes fenêtres couvrent ≤180j)
+            max_days = max(params["days"] for params in combos)
+            of_cache: dict = {}
+            extra_of = _fetch_order_flow_cached(symbol, max_days + 5, of_cache)
+            if extra_of:
+                logger.info(f"{symbol}: order flow pré-fetché ({list(extra_of.keys())})")
+            else:
+                logger.info(f"{symbol}: pas de données order flow (non-USDT ou erreur)")
+
             for params in combos:
                 done += 1
                 ohlcv = _fetch_ohlcv_cached(symbol, args.timeframe, params["days"], ohlcv_cache)
@@ -290,7 +334,7 @@ def main() -> None:
                     print(f"[{done}/{total_runs}] SKIP {symbol} {params['days']}j — pas de données")
                     continue
 
-                result = _run_one(symbol, ohlcv, params)
+                result = _run_one(symbol, ohlcv, params, extra_of=extra_of or None)
 
                 if result is None or result.n_trades < args.min_trades:
                     pf_str = "—"

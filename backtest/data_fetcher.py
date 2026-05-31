@@ -269,6 +269,77 @@ def fetch_funding_history(symbol: str = "BTC/USDT", days: int = 730, force_refre
 
 # ── Lookup helpers ────────────────────────────────────────────────────────────
 
+# ── Open Interest historique ─────────────────────────────────────────────────
+
+def fetch_open_interest_history(symbol: str = "BTC/USDT", days: int = 730, force_refresh: bool = False) -> pd.DataFrame:
+    """
+    Retourne un DataFrame avec colonnes: timestamp (UTC), open_interest.
+    Open interest en unités de contrat (Binance Futures).
+    Résolution : 1h. Uniquement pour paires *USDT perpetual futures.
+    """
+    slug = symbol.replace("/", "_")
+    cache_file = _cache_path(f"oi_{slug}_{days}d")
+
+    if not force_refresh and cache_file.exists() and _is_fresh(cache_file, max_age_hours=8):
+        logger.info(f"[cache] OI {symbol}")
+        return pd.read_parquet(cache_file)
+
+    if not symbol.endswith("/USDT"):
+        return pd.DataFrame(columns=["timestamp", "open_interest"])
+
+    logger.info(f"[fetch] Open Interest historique {symbol}...")
+    try:
+        import ccxt
+        exchange = ccxt.binance({"enableRateLimit": True})
+        futures_symbol = symbol.replace("/", "")  # "BTCUSDT"
+
+        since_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+        all_oi: list = []
+        current_since = since_ms
+
+        while True:
+            try:
+                # fetch_open_interest_history: interval 1h, limit 500 par batch
+                batch = exchange.fetch_open_interest_history(
+                    futures_symbol, "1h", since=current_since, limit=500
+                )
+            except Exception as e:
+                logger.debug(f"OI fetch batch {symbol}: {e}")
+                break
+            if not batch:
+                break
+            all_oi.extend(batch)
+            if len(batch) < 500:
+                break
+            current_since = batch[-1]["timestamp"] + 1
+            time.sleep(0.3)
+
+        if not all_oi:
+            return pd.DataFrame(columns=["timestamp", "open_interest"])
+
+        rows = []
+        for r in all_oi:
+            ts = r.get("timestamp") or r.get("time")
+            oi = r.get("openInterestAmount") or r.get("openInterest") or 0
+            if ts and oi:
+                rows.append({
+                    "timestamp": pd.Timestamp(ts, unit="ms", tz="UTC"),
+                    "open_interest": float(oi),
+                })
+
+        if not rows:
+            return pd.DataFrame(columns=["timestamp", "open_interest"])
+
+        df = pd.DataFrame(rows).drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
+        df.to_parquet(cache_file, index=False)
+        logger.info(f"[fetch] OI {symbol}: {len(df)} entrées")
+        return df
+
+    except Exception as e:
+        logger.warning(f"Open Interest history {symbol}: {e}")
+        return pd.DataFrame(columns=["timestamp", "open_interest"])
+
+
 def get_fng_at_date(fng_df: pd.DataFrame, dt: datetime) -> int:
     """Retourne la valeur Fear & Greed au jour dt (approximation par le dernier connu)."""
     if fng_df.empty:

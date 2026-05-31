@@ -111,8 +111,9 @@ class QuantConfig:
     # ── Sources de données (Q11/Q12) ───────────────────────────────────────
     data_provider: str               = "auto"  # "auto" | "twelve_data" | "yahoo"
 
-    # ── Features avancées (Q13/Q14) ────────────────────────────────────────
+    # ── Features avancées (Q13/Q14/Q15) ───────────────────────────────────
     use_dxy_feature: bool            = True    # Q14 : DXY comme feature inter-marché
+    use_order_flow_features: bool    = True    # Q15 : funding rate + open interest + CVD
 
     # ── Horizon sweep (Q3) ─────────────────────────────────────────────────
     horizon_sweep_values: list       = field(default_factory=lambda: [2, 4, 8, 12])

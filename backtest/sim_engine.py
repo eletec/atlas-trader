@@ -135,7 +135,9 @@ class SimEngine:
             )
 
         try:
-            artifacts = run_pipeline(ohlcv, train_idx, test_idx, cfg)
+            # Passer le symbol pour que run_pipeline puisse fetcher funding/OI (Q15)
+            artifacts = run_pipeline(ohlcv, train_idx, test_idx, cfg,
+                                     extra_ohlcv={"_symbol": symbol})
         except Exception as exc:
             logger.error(f"{symbol}: run_pipeline échec — {exc}", exc_info=True)
             return []

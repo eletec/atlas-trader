@@ -51,10 +51,23 @@ DEFAULT_FEATURE_COLS = [
     "session_ny",
     "session_overlap",
     "session_asian",
+    # ── Order flow (Q15) — ajoutées dynamiquement si données dispo ────────
+    # "cvd_20_q", "funding_rate_q", "funding_mom_3_q", "oi_change_pct_q",
+    # "oi_z_20_q", "funding_oi_signal_q"  ← activées via _OF_FEATURE_COLS
 ]
 
 # Colonnes DXY ajoutées dynamiquement si use_dxy_feature = True (Q14)
 _DXY_FEATURE_COLS = ["dxy_return_1_q", "dxy_return_24_q", "dxy_atr_pct_q"]
+
+# Colonnes order flow ajoutées dynamiquement si données dispo (Q15)
+_OF_FEATURE_COLS = [
+    "cvd_20_q",
+    "funding_rate_q",
+    "funding_mom_3_q",
+    "oi_change_pct_q",
+    "oi_z_20_q",
+    "funding_oi_signal_q",
+]
 
 
 @dataclass
@@ -239,11 +252,11 @@ def run_pipeline(
     """
     cfg = config or PipelineConfig()
 
-    # Préparer extra_ohlcv avec DXY si activé dans la config
+    # Préparer extra_ohlcv avec DXY + order flow si activés dans la config
     _extra = extra_ohlcv or {}
+    qcfg = get_quant_cfg()
     if "dxy" not in _extra:
         try:
-            qcfg = get_quant_cfg()
             if qcfg.use_dxy_feature:
                 from quant.data_loader import fetch_dxy_history
                 days_needed = max(int((ohlcv.index[-1] - ohlcv.index[0]).days) + 10, 90)
@@ -255,10 +268,30 @@ def run_pipeline(
         except Exception as exc:
             logger.debug(f"DXY fetch ignoré : {exc}")
 
+    # Q15 : Funding rate + Open Interest (Binance Futures, crypto USDT uniquement)
+    _symbol = getattr(ohlcv, '_symbol', None)  # injecté optionnellement par l'appelant
+    if "funding" not in _extra or "oi" not in _extra:
+        try:
+            if getattr(qcfg, 'use_order_flow_features', True):
+                from backtest.data_fetcher import fetch_funding_history, fetch_open_interest_history
+                _of_symbol = _extra.get('_symbol') or _symbol
+                if _of_symbol and str(_of_symbol).endswith('/USDT'):
+                    days_needed_of = max(int((ohlcv.index[-1] - ohlcv.index[0]).days) + 5, 30)
+                    if "funding" not in _extra:
+                        _fr = fetch_funding_history(_of_symbol, days=days_needed_of)
+                        if not _fr.empty:
+                            _extra = {**_extra, "funding": _fr}
+                    if "oi" not in _extra:
+                        _oi = fetch_open_interest_history(_of_symbol, days=days_needed_of)
+                        if not _oi.empty:
+                            _extra = {**_extra, "oi": _oi}
+        except Exception as exc:
+            logger.debug(f"Order flow fetch ignoré : {exc}")
+
     # 1. Features (sur tout l'historique pour éviter cold start sur test)
     feats_raw = compute_features(ohlcv, extra_ohlcv=_extra if _extra else None)
 
-    # Colonnes à normaliser (ajout DXY si présentes — Q14)
+    # Colonnes à normaliser (ajout DXY si présentes — Q14, order flow — Q15)
     norm_cols = ["log_return_1", "log_return_4", "log_return_24", "log_return_96",
                  "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
                  "vwap_dist_20", "bb_pct_b", "obv_proxy_20",
@@ -267,6 +300,10 @@ def run_pipeline(
     for _dxy_col in ["dxy_return_1", "dxy_return_24", "dxy_atr_pct"]:
         if _dxy_col in feats_raw.columns:
             norm_cols.append(_dxy_col)
+    # Q15 : order flow — normalisation quantile (même régime que les autres)
+    for _of_col in ["cvd_20", "funding_rate", "funding_mom_3", "oi_change_pct", "oi_z_20", "funding_oi_signal"]:
+        if _of_col in feats_raw.columns:
+            norm_cols.append(_of_col)
 
     # Auto-adapter norm_window au timeframe réel des données.
     # cfg.norm_window est calculé pour le TF du config (ex: 5m → 8640 bars/30j).
@@ -301,6 +338,10 @@ def run_pipeline(
     for _dxy_q in _DXY_FEATURE_COLS:
         if _dxy_q in feats.columns and _dxy_q not in active_feature_cols:
             active_feature_cols.append(_dxy_q)
+    # Étendre avec order flow normalisés si disponibles (Q15)
+    for _of_q in _OF_FEATURE_COLS:
+        if _of_q in feats.columns and _of_q not in active_feature_cols:
+            active_feature_cols.append(_of_q)
 
     # 2. Détecteur de régime — FIT sur train uniquement
     regime = RegimeDetector(use_hmm=cfg.use_hmm).fit(feats.loc[train_idx])

@@ -77,7 +77,8 @@ def compute_features(df: pd.DataFrame, extra_ohlcv: dict[str, pd.DataFrame] | No
 
     Args:
         df: DataFrame OHLCV indexé timestamp (open/high/low/close/volume)
-        extra_ohlcv: dictionnaire d'OHLCV supplémentaires, ex. {"dxy": dxy_df}
+        extra_ohlcv: dictionnaire d'OHLCV supplémentaires, ex. {"dxy": dxy_df,
+                     "funding": funding_df, "oi": oi_df}
                      Utilisé pour les features inter-marchés (Q14).
 
     Returns:
@@ -207,7 +208,86 @@ def compute_features(df: pd.DataFrame, extra_ohlcv: dict[str, pd.DataFrame] | No
             except Exception:
                 pass  # DXY incompatible avec cet index — features omises silencieusement
 
+    # Q15 : Features d'order flow (funding rate + open interest + CVD)
+    # Données passées via extra_ohlcv["funding"] et extra_ohlcv["oi"]
+    _funding = extra_ohlcv.get("funding") if extra_ohlcv else None
+    _oi      = extra_ohlcv.get("oi")      if extra_ohlcv else None
+    add_order_flow_features(out, df, _funding, _oi)
+
     return out
+
+
+# ── Order flow features (funding rate + open interest) ────────────────────────
+
+def _align_series_to_index(
+    series: "pd.Series",
+    target_idx: "pd.Index",
+) -> "pd.Series":
+    """Ré-aligne une série sur target_idx avec forward-fill causal.
+
+    Gère les mismatches timezone (Binance UTC-aware vs index naive).
+    """
+    s = series.copy()
+    if target_idx.tz is not None and s.index.tz is None:
+        s.index = s.index.tz_localize("UTC")
+    elif target_idx.tz is None and s.index.tz is not None:
+        s.index = s.index.tz_localize(None)
+    return s.reindex(target_idx, method="ffill")
+
+
+def add_order_flow_features(
+    out: "pd.DataFrame",
+    df: "pd.DataFrame",
+    funding_df: "pd.DataFrame | None",
+    oi_df: "pd.DataFrame | None",
+) -> None:
+    """Ajoute les features d'order flow en place dans `out`.
+
+    Features produites (toutes causales — shift(1) ou données publiées avant t) :
+    - cvd_20            : Cumulative Volume Delta rolling 20h (dérivé OHLCV)
+    - funding_rate      : taux de funding aligné (toutes les 8h, ffill → 1h)
+    - funding_mom_3     : variation du funding sur 3 périodes (tendance sentiment)
+    - oi_change_pct     : variation % de l'Open Interest sur 1 barre
+    - oi_z_20           : z-score de l'OI rolling 20h (anomalie positionnement)
+    - funding_oi_signal : funding_rate × oi_change_pct (liquidation imminente)
+    """
+    # ── CVD rolling 20h (causal — depuis volume OHLCV) ────────────────────
+    # Approx causal : close > open = buy pressure, < = sell pressure
+    bar_delta = df["volume"] * np.where(df["close"] >= df["open"], 1.0, -1.0)
+    out["cvd_20"] = (
+        bar_delta.shift(1).rolling(20, min_periods=10).sum()
+        / (df["volume"].shift(1).rolling(20, min_periods=10).sum() + 1e-9)
+    )  # ∈ [-1, 1] approx
+
+    # ── Funding rate aligné ────────────────────────────────────────────────
+    if funding_df is not None and not funding_df.empty and "funding_rate" in funding_df.columns:
+        try:
+            fr_series = funding_df.set_index("timestamp")["funding_rate"] \
+                if "timestamp" in funding_df.columns else funding_df["funding_rate"]
+            fr_aligned = _align_series_to_index(fr_series, df.index)
+            # Décalage d'1 barre pour causalité stricte
+            out["funding_rate"]  = fr_aligned.shift(1)
+            out["funding_mom_3"] = fr_aligned.diff(3).shift(1)  # tendance sur 24h (3×8h)
+        except Exception:
+            pass  # données funding incompatibles — features omises
+
+    # ── Open Interest ──────────────────────────────────────────────────────
+    if oi_df is not None and not oi_df.empty and "open_interest" in oi_df.columns:
+        try:
+            oi_series = oi_df.set_index("timestamp")["open_interest"] \
+                if "timestamp" in oi_df.columns else oi_df["open_interest"]
+            oi_aligned = _align_series_to_index(oi_series, df.index)
+            oi_shifted = oi_aligned.shift(1)  # causal
+            out["oi_change_pct"] = oi_shifted.pct_change(1)  # variation % 1h
+            oi_mean = oi_shifted.rolling(20, min_periods=10).mean()
+            oi_std  = oi_shifted.rolling(20, min_periods=10).std()
+            out["oi_z_20"] = (oi_shifted - oi_mean) / (oi_std + 1e-9)
+        except Exception:
+            pass
+
+    # ── Signal combiné funding × oi_change ────────────────────────────────
+    if "funding_rate" in out.columns and "oi_change_pct" in out.columns:
+        out["funding_oi_signal"] = out["funding_rate"] * out["oi_change_pct"]
 
 
 def make_target_direction(df: pd.DataFrame, horizon: int = 4) -> pd.Series:

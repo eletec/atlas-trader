@@ -76,8 +76,11 @@ services:
       - ./quant:/app/quant:ro
       - ./execution:/app/execution:ro
       - ./utils:/app/utils:ro
+      # Scripts racine backtestables — bind-montés pour que git pull suffit (restart seul)
+      - ./run_backtest_v2.py:/app/run_backtest_v2.py:ro
+      - ./run_v2.py:/app/run_v2.py:ro
       # main.py et storage/*.py : pas de mount fichier individuel — copiés dans l'image
-      # au build. Après git pull touchant ces fichiers : docker compose restart atlas.
+      # au build. Après git pull touchant ces fichiers : docker compose up -d --build atlas.
     networks:
       - atlas_net
     healthcheck:

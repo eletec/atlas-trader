@@ -153,6 +153,22 @@ def main() -> None:
         help="Override horizon_bars (barres à prédire en avance). Ex: --horizon 4 sur 1h = prédire 4h",
     )
     parser.add_argument(
+        "--sl-mult", type=float, default=None, metavar="X",
+        help="Override stop_loss_atr_mult (ex: 5.0 pour horizon 4h avec ATR_1h, car √4×2.5=5.0)",
+    )
+    parser.add_argument(
+        "--tp-mult", type=float, default=None, metavar="X",
+        help="Override take_profit_atr_mult (ex: 7.0 pour horizon 4h avec ATR_1h, car √4×3.5=7.0)",
+    )
+    parser.add_argument(
+        "--p-up", type=float, default=None, metavar="P",
+        help="Override p_up_threshold (ex: 0.52 pour abaisser le seuil LONG)",
+    )
+    parser.add_argument(
+        "--p-dn", type=float, default=None, metavar="P",
+        help="Override p_dn_threshold (ex: 0.48 pour abaisser le seuil SHORT)",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true",
         help="Affichage détaillé (DEBUG)",
     )
@@ -161,17 +177,30 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Override horizon_bars si --horizon fourni
+    # Override des paramètres quant si fournis en CLI
+    _overrides: dict = {}
     if args.horizon is not None:
+        _overrides["horizon_bars"] = args.horizon
+    if args.sl_mult is not None:
+        _overrides["stop_loss_atr_mult"] = args.sl_mult
+    if args.tp_mult is not None:
+        _overrides["take_profit_atr_mult"] = args.tp_mult
+    if args.p_up is not None:
+        _overrides["p_up_threshold"] = args.p_up
+    if args.p_dn is not None:
+        _overrides["p_dn_threshold"] = args.p_dn
+
+    if _overrides:
         try:
             from quant.config import get_quant_cfg
-            _cfg = get_quant_cfg(reload=True)
-            _cfg.horizon_bars = args.horizon
             import quant.config as _qcfg_mod
+            _cfg = get_quant_cfg(reload=True)
+            for _k, _v in _overrides.items():
+                setattr(_cfg, _k, _v)
             _qcfg_mod._CACHE = _cfg
-            logger.info(f"horizon_bars overridé → {args.horizon} barres")
+            logger.info(f"Paramètres overridés → {_overrides}")
         except Exception as exc:
-            logger.warning(f"Impossible d'overrider horizon_bars : {exc}")
+            logger.warning(f"Impossible d'overrider les paramètres : {exc}")
 
     # ── Infos de démarrage ─────────────────────────────────────────────────
     logger.info("=" * 60)

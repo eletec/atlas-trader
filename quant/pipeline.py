@@ -197,9 +197,11 @@ def run_pipeline(
     feats_raw = compute_features(ohlcv, extra_ohlcv=_extra if _extra else None)
 
     # Colonnes à normaliser (ajout DXY si présentes — Q14)
-    norm_cols = ["log_return_1", "log_return_4", "log_return_24",
+    norm_cols = ["log_return_1", "log_return_4", "log_return_24", "log_return_96",
                  "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
-                 "vwap_dist_20", "bb_pct_b", "obv_proxy_20"]
+                 "vwap_dist_20", "bb_pct_b", "obv_proxy_20",
+                 # features directionnelles — ajoutées pour corriger le biais SHORT
+                 "rsi_14", "macd_hist", "ema_cross", "roc_12"]
     for _dxy_col in ["dxy_return_1", "dxy_return_24", "dxy_atr_pct"]:
         if _dxy_col in feats_raw.columns:
             norm_cols.append(_dxy_col)

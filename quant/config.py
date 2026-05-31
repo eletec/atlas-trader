@@ -78,7 +78,11 @@ class QuantConfig:
     fee_rate: float         = 0.0005
     slippage_rate: float    = 0.0002
 
-    # ── Walk-forward ───────────────────────────────────────────────────────
+    # ── Walk-forward refit continu (pipeline rolling) ──────────────────────
+    walk_fwd_every: int     = 0    # 0 = désactivé ; >0 = refit tous les N bars de test
+    walk_fwd_window: int    = 720  # taille de la fenêtre train glissante en bars (défaut: 30j×24h)
+
+    # ── Walk-forward (évaluation périodique legacy) ─────────────────────────
     wf_train_days: int      = 90
     wf_test_days: int       = 30
     wf_step_days: int       = 30

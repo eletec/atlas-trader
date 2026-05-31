@@ -156,6 +156,68 @@ class PipelineArtifacts:
     backtest: BacktestResult
 
 
+def _walk_forward_proba(
+    feats: pd.DataFrame,
+    y: pd.Series,
+    available_cols: list,
+    test_start_pos: int,
+    refit_every: int,
+    train_window: int,
+    qcfg: "QuantConfig",
+) -> pd.Series:
+    """Génère proba_up par refit glissant sur la période de test.
+
+    Pour chaque fenêtre de ``refit_every`` barres dans le test :
+      - entraîne sur les ``train_window`` barres précédentes
+      - prédit sur la fenêtre courante
+    """
+    import numpy as np
+
+    proba_up = pd.Series(np.nan, index=feats.index)
+    n = len(feats)
+    pos = test_start_pos
+    n_refits = 0
+
+    while pos < n - 1:
+        train_start = max(0, pos - train_window)
+        train_slice = feats.index[train_start:pos]
+        X_tr = feats.loc[train_slice, available_cols]
+        y_tr = y.loc[train_slice]
+        valid = X_tr.notna().all(axis=1) & y_tr.notna()
+
+        if valid.sum() < 50:
+            logger.warning(
+                f"Walk-fwd pos={pos}: {valid.sum()} échantillons valides — fenêtre sautée"
+            )
+            pos += refit_every
+            continue
+
+        try:
+            model = SignalModel(
+                feature_cols=available_cols,
+                use_lgb=qcfg.use_lgb,
+                C=qcfg.signal_model_C,
+                cv_folds=qcfg.signal_model_cv_folds,
+                use_calibration=qcfg.signal_model_calibrate,
+            ).fit(X_tr.loc[valid], y_tr.loc[valid])
+
+            pred_end = min(pos + refit_every, n)
+            pred_slice = feats.index[pos:pred_end]
+            proba_up.loc[pred_slice] = model.predict_proba(feats.loc[pred_slice, available_cols])
+            n_refits += 1
+        except Exception as exc:
+            logger.warning(f"Walk-fwd refit échec à pos={pos}: {exc}")
+
+        pos += refit_every
+
+    logger.info(
+        f"Walk-forward terminé : {n_refits} refits "
+        f"(every={refit_every}b, window={train_window}b, "
+        f"test_bars={n - test_start_pos})"
+    )
+    return proba_up
+
+
 def run_pipeline(
     ohlcv: pd.DataFrame,
     train_idx: pd.DatetimeIndex,
@@ -277,16 +339,29 @@ def run_pipeline(
                 f"| cols_avec_NaN={_partial_nan}"
             )
         try:
-            model = SignalModel(
-                feature_cols=available_cols,
-                use_lgb=qcfg.use_lgb,
-                C=qcfg.signal_model_C,
-                cv_folds=qcfg.signal_model_cv_folds,
-                use_calibration=qcfg.signal_model_calibrate,
-            ).fit(
-                X_train.loc[valid], y_train.loc[valid]
-            )
-            proba_up = model.predict_proba(feats[available_cols])
+            if qcfg.walk_fwd_every > 0:
+                # Walk-forward : refit glissant sur la période de test
+                test_start_pos = feats.index.searchsorted(test_idx[0])
+                proba_up = _walk_forward_proba(
+                    feats=feats,
+                    y=y,
+                    available_cols=available_cols,
+                    test_start_pos=test_start_pos,
+                    refit_every=qcfg.walk_fwd_every,
+                    train_window=qcfg.walk_fwd_window,
+                    qcfg=qcfg,
+                )
+            else:
+                model = SignalModel(
+                    feature_cols=available_cols,
+                    use_lgb=qcfg.use_lgb,
+                    C=qcfg.signal_model_C,
+                    cv_folds=qcfg.signal_model_cv_folds,
+                    use_calibration=qcfg.signal_model_calibrate,
+                ).fit(
+                    X_train.loc[valid], y_train.loc[valid]
+                )
+                proba_up = model.predict_proba(feats[available_cols])
         except Exception as exc:
             logger.error(f"SignalModel échec ({exc}) — fallback P=0.5.")
             proba_up.loc[:] = 0.5

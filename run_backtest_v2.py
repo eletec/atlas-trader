@@ -173,6 +173,14 @@ def main() -> None:
         help="Utiliser LightGBM au lieu de LogisticRegression (use_lgb=True)",
     )
     parser.add_argument(
+        "--walk-fwd", type=int, default=None, metavar="N",
+        help="Walk-forward: refit du modèle tous les N bars de test. Ex: 168 = refit hebdo sur 1h",
+    )
+    parser.add_argument(
+        "--walk-fwd-window", type=int, default=None, metavar="N",
+        help="Walk-forward: taille de la fenêtre train glissante en bars (défaut: 720 = 30j×24h)",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true",
         help="Affichage détaillé (DEBUG)",
     )
@@ -195,6 +203,11 @@ def main() -> None:
         _overrides["p_dn_threshold"] = args.p_dn
     if args.lgb:
         _overrides["use_lgb"] = True
+    if args.walk_fwd is not None:
+        _overrides["walk_fwd_every"] = args.walk_fwd
+    if args.walk_fwd_window is not None:
+        _overrides["walk_fwd_window"] = args.walk_fwd_window
+    # train_fraction est lu directement depuis args.train_frac par sim_engine
 
     if _overrides:
         try:

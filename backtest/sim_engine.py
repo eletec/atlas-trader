@@ -91,6 +91,14 @@ class SimEngine:
             return []
 
         split = int(len(ohlcv) * train_fraction)
+        # Lire train_fraction depuis QuantConfig si disponible (override CLI --train-frac)
+        try:
+            from quant.config import get_quant_cfg as _gcfg
+            _qc = _gcfg()
+            if hasattr(_qc, "train_fraction") and _qc.train_fraction != 0.70:
+                split = int(len(ohlcv) * _qc.train_fraction)
+        except Exception:
+            pass
         train_idx = ohlcv.index[:split]
         test_idx = ohlcv.index[split:]
 

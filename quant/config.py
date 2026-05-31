@@ -59,6 +59,7 @@ class QuantConfig:
     signal_model_C: float          = 5.0   # régularisation LogReg (C↑ = moins régularisé = sorties plus étalées)
     signal_model_cv_folds: int     = 3     # folds TimeSeriesSplit (3 au lieu de 5 = moins de lissage)
     signal_model_calibrate: bool   = True  # Platt calibration ON
+    use_barrier_label: bool        = False  # True → label TP/SL barrier (aligne signal + trade mgmt)
 
     # ── Régime HMM ─────────────────────────────────────────────────────────
     hmm_n_states: int      = 3

@@ -15,7 +15,7 @@ import pandas as pd
 
 from quant.backtest import Backtester, BacktestResult, buy_and_hold
 from quant.config import QuantConfig, get_quant_cfg
-from quant.features import compute_features, make_target_direction
+from quant.features import compute_features, make_target_direction, make_barrier_label
 from quant.normalization import normalize_features
 from quant.regime import RegimeDetector
 from quant.risk import RiskManager, RiskParams
@@ -309,7 +309,20 @@ def run_pipeline(
     # 3. Modèle de signal — FIT sur train uniquement
     proba_up = pd.Series(index=feats.index, dtype="float64")
     if cfg.use_signal_model:
-        y = make_target_direction(ohlcv, horizon=cfg.horizon_bars)
+        if qcfg.use_barrier_label:
+            y = make_barrier_label(
+                feats_raw,
+                sl_mult=qcfg.stop_loss_atr_mult,
+                tp_mult=qcfg.take_profit_atr_mult,
+                max_horizon=qcfg.horizon_bars if qcfg.horizon_bars > 0 else 48,
+            )
+            logger.info(
+                f"Label barrière: TP={qcfg.take_profit_atr_mult}×ATR SL={qcfg.stop_loss_atr_mult}×ATR "
+                f"max_horizon={qcfg.horizon_bars if qcfg.horizon_bars > 0 else 48}b "
+                f"base_rate={y.mean():.1%}"
+            )
+        else:
+            y = make_target_direction(ohlcv, horizon=cfg.horizon_bars)
         # B.3 Warmup : exclure les premières norm_window barres (quantile instable — 3/3 IA)
         # Utilise _effective_norm_window (adapté au TF réel) pour ne pas vider le train.
         _safe_warmup = min(_effective_norm_window, max(0, len(train_idx) - 200))

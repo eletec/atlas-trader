@@ -218,3 +218,53 @@ def make_target_direction(df: pd.DataFrame, horizon: int = 4) -> pd.Series:
     """
     fwd_return = df["close"].shift(-horizon) / df["close"] - 1.0
     return (fwd_return > 0).astype("float").where(fwd_return.notna())
+
+
+def make_barrier_label(
+    df: pd.DataFrame,
+    sl_mult: float = 2.5,
+    tp_mult: float = 3.5,
+    max_horizon: int = 48,
+    atr_col: str = "atr_14",
+) -> pd.Series:
+    """Label à barrière : 1 si TP touché avant SL dans la fenêtre, 0 sinon.
+
+    Pour chaque barre t :
+      - SL_price = close[t] - sl_mult × ATR[t]   (barrier basse)
+      - TP_price = close[t] + tp_mult × ATR[t]   (barrier haute)
+      - On cherche la 1ère barre dans [t+1, t+max_horizon] où high >= TP ou low <= SL.
+      - y = 1 si TP touché en premier (ou en même bar avec hypothèse pessimiste SL avant TP).
+      - y = 0 si SL touché en premier ou si aucune barrière touchée dans max_horizon bars.
+
+    Ce label aligne directement l'entraînement avec les sorties SL/TP du backtest.
+    """
+    close = df["close"].values
+    high = df["high"].values
+    low = df["low"].values
+    atr = df[atr_col].values if atr_col in df.columns else np.full(len(df), np.nan)
+
+    n = len(df)
+    y = np.full(n, np.nan)
+
+    for t in range(n - 1):
+        if not np.isfinite(atr[t]) or atr[t] <= 0:
+            continue
+        sl_price = close[t] - sl_mult * atr[t]
+        tp_price = close[t] + tp_mult * atr[t]
+        result = 0.0  # défaut = 0 (SL ou pas de signal)
+        for k in range(t + 1, min(t + max_horizon + 1, n)):
+            sl_hit = low[k] <= sl_price
+            tp_hit = high[k] >= tp_price
+            if sl_hit and tp_hit:
+                # Hypothèse pessimiste : SL avant TP
+                result = 0.0
+                break
+            elif tp_hit:
+                result = 1.0
+                break
+            elif sl_hit:
+                result = 0.0
+                break
+        y[t] = result
+
+    return pd.Series(y, index=df.index)

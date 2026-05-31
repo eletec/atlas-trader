@@ -26,8 +26,8 @@ from quant.signal_model import SignalModel
 
 logger = logging.getLogger("zeitgeist.quant.signal_model_v3")
 
-MIN_SAMPLES_PER_REGIME = 120  # Minimum pour fit un expert — doit dépasser le seuil interne SignalModel (100)
-                              # + marge pour CalibratedClassifierCV sur séries temporelles
+MIN_SAMPLES_PER_REGIME = 105  # Juste au-dessus du seuil interne SignalModel (100)
+MIN_TOTAL_FOR_SPLIT   = 300   # En dessous → V3 inutile, on garde l'expert global
 
 
 @dataclass
@@ -81,6 +81,15 @@ class MixtureSignalModel:
         except Exception as exc:
             logger.warning(f"Expert global échec: {exc}")
 
+        # Si train trop petit pour splitter, pas d'experts par régime
+        if len(y) < MIN_TOTAL_FOR_SPLIT:
+            logger.info(
+                f"MixtureSignalModel: train={len(y)} < {MIN_TOTAL_FOR_SPLIT} "
+                f"→ expert global uniquement (pas de split par régime)"
+            )
+            print(f"  [V3] global-only (train={len(y)} < {MIN_TOTAL_FOR_SPLIT})", flush=True)
+            return self
+
         # Expert par régime
         states = regime.dropna().unique()
         for state in sorted(states):
@@ -106,10 +115,13 @@ class MixtureSignalModel:
             f"MixtureSignalModel: {len(self._experts)}/{len(states)} experts actifs "
             f"| régimes: {self._regime_counts}"
         )
-        # Affiche aussi sur stdout pour grid search (loggers quant silencés à CRITICAL)
-        _active = {f"{s:.0f}": n for s, n in self._regime_counts.items()}
-        _ok     = [f"{s:.0f}" for s in self._experts]
-        print(f"  [V3] experts={_ok} counts={_active}", flush=True)
+        # Affiche sur stdout une seule fois par état d'experts distinct
+        _active = {f"{s:.2f}": n for s, n in self._regime_counts.items()}
+        _ok     = [f"{s:.2f}" for s in self._experts]
+        _summary = f"experts={_ok} counts={_active}"
+        if not hasattr(MixtureSignalModel, '_last_summary') or MixtureSignalModel._last_summary != _summary:
+            MixtureSignalModel._last_summary = _summary  # type: ignore[attr-defined]
+            print(f"  [V3] {_summary}", flush=True)
         return self
 
     def predict_proba(

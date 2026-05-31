@@ -26,20 +26,27 @@ logger = logging.getLogger("zeitgeist.quant.pipeline")
 
 
 DEFAULT_FEATURE_COLS = [
+    # ── Momentum directionnel ─────────────────────────────────────────────
     "log_return_1_q",
     "log_return_4_q",
     "log_return_24_q",
+    "log_return_96_q",   # 8h — moyen terme
+    "rsi_14_q",          # RSI normalisé [0,1] — indicateur directionnel clé
+    "macd_hist_q",       # MACD histogram normalisé — direction + momentum
+    "ema_cross_q",       # EMA9/EMA21 crossover — signe de tendance courte
+    "roc_12_q",          # Rate of Change 12 barres (1h)
+    # ── Volatilité & structure ────────────────────────────────────────────
     "atr_pct_q",
     "adx_14_q",
     "dist_ma50_q",
     "volume_z_20_q",
-    "vwap_dist_20_q",   # C.1 : VWAP distance / ATR (3/3 IA)
-    "bb_pct_b_q",       # C.2 : Bollinger %b (GPT + DeepSeek)
-    "obv_proxy_20_q",   # C.3 : OBV proxy rolling causal (Grok + DeepSeek)
-    "hour_sin",         # calendaire — déjà ∈ [0,1], pas de normalisation _q
+    "vwap_dist_20_q",    # C.1 : VWAP distance / ATR
+    "bb_pct_b_q",        # C.2 : Bollinger %b
+    "obv_proxy_20_q",    # C.3 : OBV proxy rolling causal
+    # ── Calendaire ────────────────────────────────────────────────────────
+    "hour_sin",
     "hour_cos",
     "is_weekend",
-    # Q13 : Sessions de marché (toujours incluses — modèle apprend les poids)
     "session_london",
     "session_ny",
     "session_overlap",

@@ -23,6 +23,15 @@ def _ema(s: pd.Series, span: int) -> pd.Series:
     return s.ewm(span=span, adjust=False, min_periods=span).mean()
 
 
+def rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """RSI causal — normalisé [0, 1]."""
+    delta = close.diff(1)
+    gain = delta.clip(lower=0).rolling(period, min_periods=period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period, min_periods=period).mean()
+    rs = gain / (loss + 1e-9)
+    return 1.0 / (1.0 + rs)   # ∈ [0,1] : 1=surachat, 0=survente
+
+
 def _true_range(df: pd.DataFrame) -> pd.Series:
     high = df["high"]
     low = df["low"]
@@ -84,6 +93,25 @@ def compute_features(df: pd.DataFrame, extra_ohlcv: dict[str, pd.DataFrame] | No
     out["log_return_1"] = log_close.diff(1)
     out["log_return_4"] = log_close.diff(4)
     out["log_return_24"] = log_close.diff(24)
+    out["log_return_96"] = log_close.diff(96)   # 8h — moyen terme
+
+    # RSI-14 — indicateur directionnel clé ∈ [0,1]
+    out["rsi_14"] = rsi(close, 14)
+
+    # MACD histogram causal (EMA12 - EMA26, signal EMA9) — direction + momentum
+    ema12 = _ema(close, 12)
+    ema26 = _ema(close, 26)
+    macd_line = ema12 - ema26
+    macd_signal = macd_line.ewm(span=9, adjust=False, min_periods=9).mean()
+    out["macd_hist"] = (macd_line - macd_signal) / (close + 1e-9)  # normalisé par prix
+
+    # EMA crossover : EMA9 vs EMA21 — signe de la tendance courte
+    ema9  = _ema(close, 9)
+    ema21 = _ema(close, 21)
+    out["ema_cross"] = (ema9 - ema21) / (close + 1e-9)  # >0 = haussier, <0 = baissier
+
+    # Rate of Change 12 barres (1h) — momentum normalisé
+    out["roc_12"] = close.pct_change(12)
 
     # Volatilité
     atr_14 = atr(df, 14)

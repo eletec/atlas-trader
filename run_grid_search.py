@@ -32,14 +32,21 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 logging.basicConfig(
-    level=logging.WARNING,  # silencer le pipeline pour ne voir que les résultats
+    level=logging.ERROR,  # silencer le pipeline pour ne voir que les résultats
     format="%(asctime)s | %(levelname)-7s | %(message)s",
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("grid_search")
-logging.getLogger("zeitgeist.quant.pipeline").setLevel(logging.WARNING)
-logging.getLogger("quant.backtest").setLevel(logging.WARNING)
-logging.getLogger("backtest.runner").setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
+# Silencer tous les modules internes (DXY 404, kill-switch, norm_window, etc.)
+for _ns in (
+    "zeitgeist.quant",
+    "quant.backtest",
+    "quant.validation",
+    "backtest.runner",
+    "backtest.data_fetcher",
+):
+    logging.getLogger(_ns).setLevel(logging.CRITICAL)
 
 # ── Grille de paramètres ──────────────────────────────────────────────────
 
@@ -140,6 +147,7 @@ def _run_one(
     qcfg.p_dn_threshold       = params["p_dn"]
     qcfg.walk_fwd_every       = 0   # désactivé dans la grille
     qcfg.use_barrier_label    = False
+    qcfg.use_dxy_feature      = False  # pas d'appel API Twelve Data × 432
     _qcfg_mod._CACHE = qcfg
 
     n_total = len(ohlcv)

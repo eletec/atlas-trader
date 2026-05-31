@@ -20,6 +20,7 @@ from quant.normalization import normalize_features
 from quant.regime import RegimeDetector
 from quant.risk import RiskManager, RiskParams
 from quant.signal_model import SignalModel
+from quant.signal_model_v3 import MixtureSignalModel
 from quant.strategy import Action, BaselineStrategy
 
 logger = logging.getLogger("zeitgeist.quant.pipeline")
@@ -410,16 +411,30 @@ def run_pipeline(
                     qcfg=qcfg,
                 )
             else:
-                model = SignalModel(
-                    feature_cols=available_cols,
-                    use_lgb=qcfg.use_lgb,
-                    C=qcfg.signal_model_C,
-                    cv_folds=qcfg.signal_model_cv_folds,
-                    use_calibration=qcfg.signal_model_calibrate,
-                ).fit(
-                    X_train.loc[valid], y_train.loc[valid]
-                )
-                proba_up = model.predict_proba(feats[available_cols])
+                # V3 : Mixture-of-Experts par régime HMM
+                if getattr(qcfg, 'use_regime_experts', False):
+                    regime_train = regime_series.loc[sm_train_idx]
+                    model = MixtureSignalModel(
+                        feature_cols=available_cols,
+                        use_lgb=qcfg.use_lgb,
+                        C=qcfg.signal_model_C,
+                        cv_folds=qcfg.signal_model_cv_folds,
+                        use_calibration=qcfg.signal_model_calibrate,
+                    ).fit(
+                        X_train.loc[valid], y_train.loc[valid], regime_train.loc[valid]
+                    )
+                    proba_up = model.predict_proba(feats[available_cols], regime_series)
+                else:
+                    model = SignalModel(
+                        feature_cols=available_cols,
+                        use_lgb=qcfg.use_lgb,
+                        C=qcfg.signal_model_C,
+                        cv_folds=qcfg.signal_model_cv_folds,
+                        use_calibration=qcfg.signal_model_calibrate,
+                    ).fit(
+                        X_train.loc[valid], y_train.loc[valid]
+                    )
+                    proba_up = model.predict_proba(feats[available_cols])
         except Exception as exc:
             logger.error(f"SignalModel échec ({exc}) — fallback P=0.5.")
             proba_up.loc[:] = 0.5

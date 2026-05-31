@@ -150,6 +150,7 @@ def _run_one(
     qcfg.use_barrier_label         = False
     qcfg.use_dxy_feature           = False  # pas d'appel API Twelve Data × N
     qcfg.use_order_flow_features   = False  # pré-fetché manuellement via ohlcv_cache
+    qcfg.use_regime_experts        = True   # V3 : Mixture-of-Experts par état HMM
     _qcfg_mod._CACHE = qcfg
 
     n_total = len(ohlcv)

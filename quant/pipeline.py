@@ -279,6 +279,22 @@ def run_pipeline(
                 X_train.loc[valid], y_train.loc[valid]
             )
             proba_up = model.predict_proba(feats[available_cols])
+
+            # Seuils adaptatifs calibrés sur la distribution P_up du TRAIN (causal).
+            # Problème : LogReg compresse P_up vers le taux de base (~0.47-0.50),
+            # jamais 0.54. Solution : utiliser les percentiles 80/20 du TRAIN comme seuils.
+            # Garde : floor/cap pour éviter des seuils absurdes si train très petit.
+            p_up_train = proba_up.loc[sm_train_idx].dropna()
+            if len(p_up_train) >= 50:
+                _p80 = float(p_up_train.quantile(0.80))
+                _p20 = float(p_up_train.quantile(0.20))
+                # Floor : ne pas descendre en dessous des seuils config (évite sur-trading)
+                cfg.p_up_threshold = max(cfg.p_up_threshold * 0.90, _p80)
+                cfg.p_dn_threshold = min(cfg.p_dn_threshold * 1.10, _p20)
+                logger.info(
+                    f"Seuils adaptatifs (q80/q20 train): "
+                    f"P_up>{cfg.p_up_threshold:.4f} P_dn<{cfg.p_dn_threshold:.4f}"
+                )
         except Exception as exc:
             logger.error(f"SignalModel échec ({exc}) — fallback P=0.5.")
             proba_up.loc[:] = 0.5

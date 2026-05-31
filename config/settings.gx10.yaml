@@ -418,8 +418,8 @@ quant:
   history_days: 90           # 90j = fenêtre live (360j trop lent sur 5m — normalize O(N×window))
   train_fraction: 0.70       # 70% train / 30% OOS pour refit initial
   horizon_bars: 48           # 4h sur 5m — corr=0.063 vs corr=0.011 à 20min (session_overlap domine)
-  p_up_threshold: 0.52       # abaissé après class_weight=balanced (P_up max ~0.51 avant fix)
-  p_dn_threshold: 0.48       # symétrique
+  p_up_threshold: 0.54       # seuil de base — affiné par seuils adaptatifs (q80 train P_up)
+  p_dn_threshold: 0.46       # seuil de base — affiné par seuils adaptatifs (q20 train P_up)
   use_hmm: false             # Audit 3 IA : HMM instable sur 5m (variance dégénérée XAU, permutations) → règles ADX+vol_of_vol
   refit_interval_hours: 168  # Refit hebdomadaire (7 × 24h)
   # ── Signal model LogReg — paramètres calibration ────────────────────────

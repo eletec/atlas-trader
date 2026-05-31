@@ -69,7 +69,6 @@ class SignalModel:
                             n_estimators=100, max_depth=3, learning_rate=0.03,
                             num_leaves=8, min_data_in_leaf=500,
                             feature_fraction=0.5, lambda_l2=10.0,
-                            is_unbalance=True,  # équivalent class_weight=balanced pour LGB
                             verbose=-1, random_state=42,
                         )),
                     ])
@@ -81,10 +80,7 @@ class SignalModel:
                 base = Pipeline(
                     [
                         ("scaler", StandardScaler()),
-                        ("lr", LogisticRegression(
-                            C=self.C, max_iter=500, solver="liblinear",
-                            class_weight="balanced",  # corrige le biais si marché directionnel sur train
-                        )),
+                        ("lr", LogisticRegression(C=self.C, max_iter=500, solver="liblinear")),
                     ]
                 )
             if self.use_calibration:

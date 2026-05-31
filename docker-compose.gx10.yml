@@ -74,6 +74,7 @@ services:
       - ./agents:/app/agents:ro
       - ./graph:/app/graph:ro
       - ./quant:/app/quant:ro
+      - ./backtest:/app/backtest:ro
       - ./execution:/app/execution:ro
       - ./utils:/app/utils:ro
       # Scripts racine backtestables — bind-montés pour que git pull suffit (restart seul)

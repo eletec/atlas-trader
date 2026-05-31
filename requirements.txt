@@ -53,6 +53,7 @@ python-dotenv>=1.0.0
 numpy>=1.26.0
 scipy>=1.11.0              # V2 quant — deflated Sharpe, stats
 scikit-learn>=1.4.0        # V2 quant — LogisticRegression + Platt calibration
+lightgbm>=4.3.0            # V2 quant — LightGBM optionnel (use_lgb=true)
 hmmlearn>=0.3.2            # HMM pour MarketRegimeAgent + V2 quant.regime
 pyarrow>=14.0.0            # V2 quant — cache OHLCV parquet
 httpx>=0.27.0

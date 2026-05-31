@@ -319,10 +319,10 @@ def fetch_open_interest_history(symbol: str = "BTC/USDT", days: int = 730, force
             try:
                 # fetch_open_interest_history: interval 1h, limit 500 par batch
                 batch = exchange.fetch_open_interest_history(
-                    futures_symbol, "1h", since=current_since, limit=500
+                    symbol, "1h", since=current_since, limit=500
                 )
             except Exception as e:
-                logger.debug(f"OI fetch batch {symbol}: {e}")
+                logger.warning(f"OI fetch batch {symbol}: {e}")
                 break
             if not batch:
                 break

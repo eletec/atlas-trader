@@ -149,6 +149,10 @@ def main() -> None:
         help="Force le re-téléchargement des données (ignore le cache)",
     )
     parser.add_argument(
+        "--horizon", type=int, default=None, metavar="N",
+        help="Override horizon_bars (barres à prédire en avance). Ex: --horizon 4 sur 1h = prédire 4h",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true",
         help="Affichage détaillé (DEBUG)",
     )
@@ -156,6 +160,18 @@ def main() -> None:
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Override horizon_bars si --horizon fourni
+    if args.horizon is not None:
+        try:
+            from quant.config import get_quant_cfg
+            _cfg = get_quant_cfg(reload=True)
+            _cfg.horizon_bars = args.horizon
+            import quant.config as _qcfg_mod
+            _qcfg_mod._CACHE = _cfg
+            logger.info(f"horizon_bars overridé → {args.horizon} barres")
+        except Exception as exc:
+            logger.warning(f"Impossible d'overrider horizon_bars : {exc}")
 
     # ── Infos de démarrage ─────────────────────────────────────────────────
     logger.info("=" * 60)

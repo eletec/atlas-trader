@@ -44,9 +44,9 @@ for _ns in (
     "quant.backtest",
     "quant.validation",
     "backtest.runner",
-    "backtest.data_fetcher",
 ):
     logging.getLogger(_ns).setLevel(logging.CRITICAL)
+# data_fetcher reste à WARNING pour voir les erreurs order flow
 
 # ── Grille de paramètres ──────────────────────────────────────────────────
 
@@ -250,6 +250,8 @@ def _fetch_order_flow_cached(
         oi = fetch_open_interest_history(symbol, days=days)
         if not oi.empty:
             result["oi"] = oi
+        else:
+            logger.warning(f"OI vide pour {symbol} (DataFrame empty)")
     except Exception as exc:
         logger.warning(f"OI fetch {symbol}: {exc}")
 

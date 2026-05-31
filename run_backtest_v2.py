@@ -177,6 +177,10 @@ def main() -> None:
         help="Label à barrière TP/SL (aligne signal+trade mgmt, --sl-mult/--tp-mult utilisés pour le label)",
     )
     parser.add_argument(
+        "--barrier-horizon", type=int, default=None, metavar="N",
+        help="Horizon max pour résolution barrière en bars (défaut: 96 = 4j×24h sur 1h). Indépendant de --horizon",
+    )
+    parser.add_argument(
         "--walk-fwd", type=int, default=None, metavar="N",
         help="Walk-forward: refit du modèle tous les N bars de test. Ex: 168 = refit hebdo sur 1h",
     )
@@ -209,6 +213,8 @@ def main() -> None:
         _overrides["use_lgb"] = True
     if args.barrier_label:
         _overrides["use_barrier_label"] = True
+    if args.barrier_horizon is not None:
+        _overrides["barrier_max_horizon"] = args.barrier_horizon
     if args.walk_fwd is not None:
         _overrides["walk_fwd_every"] = args.walk_fwd
     if args.walk_fwd_window is not None:

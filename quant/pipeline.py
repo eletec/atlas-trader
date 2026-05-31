@@ -318,7 +318,7 @@ def run_pipeline(
                 _barrier_df,
                 sl_mult=qcfg.stop_loss_atr_mult,
                 tp_mult=qcfg.take_profit_atr_mult,
-                max_horizon=qcfg.horizon_bars if qcfg.horizon_bars > 0 else 48,
+                max_horizon=qcfg.barrier_max_horizon,
             )
             logger.info(
                 f"Label barrière: TP={qcfg.take_profit_atr_mult}×ATR SL={qcfg.stop_loss_atr_mult}×ATR "

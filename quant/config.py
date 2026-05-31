@@ -60,6 +60,7 @@ class QuantConfig:
     signal_model_cv_folds: int     = 3     # folds TimeSeriesSplit (3 au lieu de 5 = moins de lissage)
     signal_model_calibrate: bool   = True  # Platt calibration ON
     use_barrier_label: bool        = False  # True → label TP/SL barrier (aligne signal + trade mgmt)
+    barrier_max_horizon: int       = 96    # barres max pour résolution barrière (indépendant de horizon_bars)
 
     # ── Régime HMM ─────────────────────────────────────────────────────────
     hmm_n_states: int      = 3

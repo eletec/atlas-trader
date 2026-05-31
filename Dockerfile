@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     procps \
     sqlite3 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copier les wheels installés depuis le builder

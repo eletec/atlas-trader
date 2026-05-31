@@ -298,10 +298,13 @@ def main() -> None:
     parser.add_argument("--top", type=int, default=25, help="Afficher les N meilleures configs (défaut: 25)")
     parser.add_argument("--output", default="/app/grid_results.csv", help="Fichier CSV de sortie")
     parser.add_argument("--min-trades", type=int, default=30, help="Ignorer configs avec < N trades")
+    parser.add_argument("--days-override", type=int, default=None, help="Forcer une seule valeur de days (ex: 90 pour walk-forward validation)")
     args = parser.parse_args()
 
     symbols = args.symbols or [args.symbol]
     grid = GRID_QUICK if args.quick else GRID_FULL
+    if args.days_override is not None:
+        grid = {**grid, "days": [args.days_override]}
     combos = _build_combinations(grid)
 
     print(f"Grid search — {len(symbols)} symbole(s) × {len(combos)} combinaisons = {len(symbols)*len(combos)} runs")

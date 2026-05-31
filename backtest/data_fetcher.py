@@ -311,7 +311,10 @@ def fetch_open_interest_history(symbol: str = "BTC/USDT", days: int = 730, force
         # Futures USDM uniquement
         exchange = ccxt.binanceusdm({"enableRateLimit": True, "timeout": 30000})
 
-        since_ms = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp() * 1000)
+        # Binance /futures/data/openInterestHist : max 30 jours d'historique
+        OI_MAX_DAYS = 29
+        effective_days = min(days, OI_MAX_DAYS)
+        since_ms = int((datetime.now(timezone.utc) - timedelta(days=effective_days)).timestamp() * 1000)
         all_oi: list = []
         current_since = since_ms
 
@@ -327,6 +330,7 @@ def fetch_open_interest_history(symbol: str = "BTC/USDT", days: int = 730, force
             if not batch:
                 break
             all_oi.extend(batch)
+            logger.debug(f"OI {symbol}: batch={len(batch)}, total={len(all_oi)}")
             if len(batch) < 500:
                 break
             current_since = batch[-1]["timestamp"] + 1

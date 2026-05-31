@@ -344,6 +344,24 @@ class LiveRunner:
         _atr_scalar = atr_raw.item() if hasattr(atr_raw, 'item') else atr_raw
         atr_14 = float(_atr_scalar) if pd.notna(_atr_scalar) else None
 
+        # ATR 1h pour SL/TP — horizon=48×5m=4h, utiliser ATR sur barres 1h
+        # évite le mismatch ATR-5m (trop serré) vs prédiction 4h
+        atr_1h = None
+        if self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 15:
+            try:
+                h1 = self._ohlcv_1h
+                hl = h1["high"] - h1["low"]
+                hc = (h1["high"] - h1["close"].shift(1)).abs()
+                lc = (h1["low"]  - h1["close"].shift(1)).abs()
+                tr_1h = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+                atr_1h = float(tr_1h.rolling(14, min_periods=5).mean().iloc[-1])
+                if not pd.notna(atr_1h) or atr_1h <= 0:
+                    atr_1h = None
+            except Exception:
+                atr_1h = None
+        # Fallback : ATR 5m × sqrt(12) ≈ ATR 1h si données 1h indisponibles
+        atr_for_risk = atr_1h if atr_1h else (atr_14 * (12 ** 0.5) if atr_14 else None)
+
         # ── Gestion position existante ────────────────────────────────────────
         trade_result = None
         pre_close_position = self._position
@@ -428,6 +446,7 @@ class LiveRunner:
                 and not self._risk_manager.is_paused(time.time())
                 and decision.action in (Action.LONG, Action.SHORT)
                 and atr_14 and atr_14 > 0
+                and atr_for_risk and atr_for_risk > 0
                 and vol_ratio >= 0.70
                 and not trend_1h_veto            # D.1 filtre 1h
                 and not _crypto_corr_veto):      # B — filtre corrélation crypto
@@ -438,7 +457,7 @@ class LiveRunner:
             try:
                 pos = risk_mgr.compute_position(
                     side=side, entry_price=close_price,
-                    atr_value=atr_14, capital=self._capital,
+                    atr_value=atr_for_risk, capital=self._capital,
                 )
                 self._capital -= pos.size_units * close_price * 0.0005
                 self._position = pos

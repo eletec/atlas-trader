@@ -17,13 +17,14 @@ project:
   - BTC/USDT
   - ETH/USDT
   - SOL/USDT
-  # XAU/XAG/WTI/GBP/EUR désactivés du pipeline 5m — pipeline daily dédié ci-dessous
-  daily_active_assets:
-  - XAU/USD
-  - XAG/USD
-  - WTI/USD
-  - GBP/USD
-  - EUR/USD
+  - BNB/USDT
+  - XRP/USDT
+  - ADA/USDT
+  - DOGE/USDT
+  - AVAX/USDT
+  - LINK/USDT
+  - DOT/USDT
+  daily_active_assets: []
   daily_execution_hour_utc: 18   # 18h UTC = après clôture NYSE (16h30 ET)
 crawler:
   provider: duckduckgo
@@ -121,120 +122,139 @@ news:
       - ethfinance
       - ethtrader
 
-    XAU/USD:
+    BNB/USDT:
       keywords:
-      - gold
-      - XAU
-      - precious metals
-      - inflation
-      - Fed
-      - interest rate
-      - safe haven
-      - commodities
-      - XAUUSD
-      - central bank
+      - BNB
+      - Binance
+      - BNB Chain
+      - BSC
+      - BEP20
+      - CZ
+      - Binance Smart Chain
       rss:
-      - https://www.kitco.com/rss/kitcogoldrss.xml
-      - https://www.fxstreet.com/rss/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
       nitter:
-      - KitcoNews
-      - GoldTelegraph_
-      - LynAldenContact
-      - zerohedge
+      - cz_binance
+      - BinanceResearch
       reddit:
-      - Gold
-      - investing
-      - Economics
+      - binance
+      - CryptoCurrency
 
-    EUR/USD:
+    XRP/USDT:
       keywords:
-      - euro
-      - EUR
-      - ECB
-      - eurozone
-      - European Central Bank
-      - dollar
-      - DXY
-      - Lagarde
-      - EURUSD
-      - inflation
+      - XRP
+      - Ripple
+      - XRPL
+      - Ripple Labs
+      - Brad Garlinghouse
+      - SEC
+      - cross-border payment
       rss:
-      - https://www.fxstreet.com/rss/news
-      - https://www.forexlive.com/feed/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
       nitter:
-      - Lagarde
-      - BundesbankDE
-      - ecb
-      - EurActiv
+      - Ripple
+      - bgarlinghouse
+      - JoelKatz
       reddit:
-      - Forex
-      - investing
-      - europe
+      - Ripple
+      - CryptoCurrency
 
-    GBP/USD:
+    ADA/USDT:
       keywords:
-      - pound
-      - GBP
-      - sterling
-      - Bank of England
-      - BoE
-      - UK economy
-      - GBPUSD
-      - Brexit
+      - ADA
+      - Cardano
+      - Charles Hoskinson
+      - Plutus
+      - smart contract Cardano
+      - Hydra
       rss:
-      - https://www.fxstreet.com/rss/news
-      - https://www.forexlive.com/feed/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
       nitter:
-      - bankofengland
-      - BBCBusiness
+      - IOHK_Charles
+      - InputOutputHK
+      - CardanoStiftung
       reddit:
-      - Forex
-      - unitedkingdom
+      - cardano
+      - CryptoCurrency
 
-    XAG/USD:
+    DOGE/USDT:
       keywords:
-      - silver
-      - XAG
-      - argent
-      - precious metals
-      - inflation
-      - Fed
-      - safe haven
-      - XAGUSD
+      - DOGE
+      - Dogecoin
+      - Elon Musk
+      - meme coin
+      - DOGE Army
       rss:
-      - https://www.kitco.com/rss/kitcogoldrss.xml
-      - https://www.fxstreet.com/rss/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
       nitter:
-      - KitcoNews
-      - SilverInstitute
-      - LynAldenContact
+      - elonmusk
+      - BillyM2k
       reddit:
-      - Silverbugs
-      - investing
+      - dogecoin
+      - CryptoCurrency
 
-    WTI/USD:
+    AVAX/USDT:
       keywords:
-      - oil
-      - crude
-      - WTI
-      - OPEC
-      - petroleum
-      - energy
-      - EIA
-      - barrel
-      - brent
+      - AVAX
+      - Avalanche
+      - subnet
+      - Ava Labs
+      - C-Chain
+      - DeFi Avalanche
       rss:
-      - https://oilprice.com/rss/main
-      - https://www.fxstreet.com/rss/news
-      - https://feeds.bbci.co.uk/news/business/rss.xml
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
       nitter:
-      - OilPrice_com
-      - EIAgov
-      - zerohedge
+      - avalancheavax
+      - el33th4xor
       reddit:
-      - energy
-      - investing
-      - oil
+      - Avax
+      - CryptoCurrency
+
+    LINK/USDT:
+      keywords:
+      - LINK
+      - Chainlink
+      - oracle
+      - CCIP
+      - Sergey Nazarov
+      - DeFi oracle
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
+      nitter:
+      - chainlink
+      - SergeyNazarov
+      reddit:
+      - Chainlink
+      - CryptoCurrency
+
+    DOT/USDT:
+      keywords:
+      - DOT
+      - Polkadot
+      - parachain
+      - Gavin Wood
+      - substrate
+      - relay chain
+      - Web3 Foundation
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      nitter:
+      - gavofyork
+      - PolkadotNetwork
+      reddit:
+      - dot
+      - CryptoCurrency
 
     SOL/USDT:
       keywords:
@@ -266,6 +286,13 @@ news:
       BTC/USDT: BTC
       ETH/USDT: ETH
       SOL/USDT: SOL
+      BNB/USDT: BNB
+      XRP/USDT: XRP
+      ADA/USDT: ADA
+      DOGE/USDT: DOGE
+      AVAX/USDT: AVAX
+      LINK/USDT: LINK
+      DOT/USDT: DOT
 mirofish:
   n_agents: 5000
   n_steps: 100
@@ -363,11 +390,44 @@ assets:
   universe:
   - symbol: BTC/USDT
     exchange: binance
-    timeframe: 15m
-    theme_mapping:
-    - bitcoin
-    - crypto
-    - blockchain
+    timeframe: 5m
+    theme_mapping: [bitcoin, crypto, blockchain]
+  - symbol: ETH/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [ethereum, DeFi, layer2]
+  - symbol: SOL/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [solana, DeFi, meme coin]
+  - symbol: BNB/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [BNB, Binance, BEP20]
+  - symbol: XRP/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [XRP, Ripple, payment]
+  - symbol: ADA/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Cardano, smart contract, Plutus]
+  - symbol: DOGE/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Dogecoin, meme coin, Elon Musk]
+  - symbol: AVAX/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Avalanche, subnet, DeFi]
+  - symbol: LINK/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Chainlink, oracle, DeFi]
+  - symbol: DOT/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Polkadot, parachain, Web3]
   active_asset: BTC/USDT
 exchange:
   name: binance
@@ -462,32 +522,19 @@ quant:
   refit_ks_pvalue_threshold: 0.05  # seuil KS-test pour déclencher le refit
   refit_ks_window_days: 14         # fenêtre récente pour le KS-test (jours)
 
-  # ── Pipeline DAILY (FX/métaux) ──────────────────────────────────────────────
-  daily_active_assets:
-  - XAU/USD
-  - XAG/USD
-  - WTI/USD
-  - GBP/USD
-  - EUR/USD
-  daily_history_days: 1825          # 5 ans (> 200 bar MA + warmup)
-  daily_horizon_bars: 5             # prédire direction dans 5 jours (1 semaine)
-  daily_norm_window_days: 252       # 1 an boursier pour rolling normalization
-  daily_refit_interval_days: 7      # refit hebdomadaire
-  daily_execution_hour_utc: 18      # 18h UTC (clôture NYSE 16h30 ET + 1h30 buffer)
-  daily_p_up_threshold: 0.54        # seuil global LONG daily
-  daily_p_dn_threshold: 0.46        # seuil global SHORT daily
+  # ── Daily pipeline (disabled — all assets run on 5m intraday) ──────────────
+  daily_active_assets: []
 
-  # ── Seuils p_up/p_dn par actif (override du global) ──────────────────────
+  # ── Per-asset thresholds (override global p_up/p_dn) ─────────────────────
   asset_thresholds:
-    # EUR/USD supprimé ici — seuils dans asset_config.EUR/USD (évite le conflit 0.62 vs 0.60)
     ETH/USDT:
-      p_up_threshold: 0.54
+      p_up_threshold: 0.60
       p_dn_threshold: 0.46
     SOL/USDT:
-      p_up_threshold: 0.54
+      p_up_threshold: 0.58
       p_dn_threshold: 0.46
 
-  # ── Config par actif (timeframe, historique, capital dédié) ────────────────
+  # ── Per-asset config (capital allocation) ────────────────────────────────
   asset_config:
     BTC/USDT:
       capital_usd: 10000
@@ -495,26 +542,20 @@ quant:
       capital_usd: 5000
     SOL/USDT:
       capital_usd: 5000
-    XAU/USD:
-      capital_usd: 5000
-      p_up_threshold: 0.54
-      p_dn_threshold: 0.46
-    XAG/USD:
+    BNB/USDT:
       capital_usd: 3000
-      p_up_threshold: 0.54
-      p_dn_threshold: 0.46
-    WTI/USD:
+    XRP/USDT:
       capital_usd: 3000
-      p_up_threshold: 0.54
-      p_dn_threshold: 0.46
-    GBP/USD:
-      capital_usd: 5000
-      p_up_threshold: 0.54
-      p_dn_threshold: 0.46
-    EUR/USD:
-      capital_usd: 5000
-      p_up_threshold: 0.54
-      p_dn_threshold: 0.46
+    ADA/USDT:
+      capital_usd: 2000
+    DOGE/USDT:
+      capital_usd: 2000
+    AVAX/USDT:
+      capital_usd: 2000
+    LINK/USDT:
+      capital_usd: 2000
+    DOT/USDT:
+      capital_usd: 2000
 
 # ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
 data:

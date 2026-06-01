@@ -26,7 +26,7 @@ try:
     HMM_AVAILABLE = True
 except ImportError:
     HMM_AVAILABLE = False
-    logger.warning("hmmlearn indisponible — fallback ADX+vol_of_vol activé.")
+    logger.warning("hmmlearn unavailable — fallback ADX+vol_of_vol enabled.")
 
 
 def _rgcfg(key: str, fallback):
@@ -80,7 +80,7 @@ class RegimeDetector:
 
         x = features[hmm_cols].dropna()
         if len(x) < 200:
-            logger.warning(f"Données HMM insuffisantes ({len(x)}), fallback threshold.")
+            logger.warning(f"Insufficient HMM data ({len(x)}), fallback threshold.")
             return self._fit_threshold(features)
         hmm = GaussianHMM(
             n_components=self.n_states,
@@ -100,7 +100,7 @@ class RegimeDetector:
             # Clamp : variance > 0.5 sur des returns en % = état dégénéré (HMM mal convergé)
             _MAX_VAR = 0.5
             if any(v > _MAX_VAR for v in raw_variances):
-                logger.warning(f"HMM état(s) dégénéré(s) détecté(s) — variances brutes: {[f'{v:.6f}' for v in raw_variances]} — clampées à {_MAX_VAR}")
+                logger.warning(f"HMM degenerate state(s) detected — raw variances: {[f'{v:.6f}' for v in raw_variances]} — clamped to {_MAX_VAR}")
             variances = [min(v, _MAX_VAR) for v in raw_variances]
             means = [float(np.asarray(hmm.means_[s]).flat[0]) for s in range(self.n_states)]
         except Exception:
@@ -124,7 +124,7 @@ class RegimeDetector:
                 # Assigner PANIC à l'état le plus haussier bloquerait 50% des barres
                 # avec un signal correct. Gate PANIC désactivé pour cet actif/période.
                 self._panic_state = None
-                logger.info("HMM: aucun état à mean négatif — gate PANIC désactivé (marché structurellement haussier).")
+                logger.info("HMM: no state with negative mean — PANIC gate disabled (structurally bullish market).")
         else:
             self._panic_state = int(np.argmax(variances))  # fallback : variance max
         # TREND = état non-PANIC avec la moyenne (return) la plus élevée (signée).
@@ -150,7 +150,7 @@ class RegimeDetector:
             if (self._trending_state != self._prev_trending_state
                     or self._panic_state != self._prev_panic_state):
                 logger.warning(
-                    f"HMM label permutation détectée : "
+                    f"HMM label permutation detected: "
                     f"trend {self._prev_trending_state}→{self._trending_state}, "
                     f"panic {self._prev_panic_state}→{self._panic_state} "
                     f"(variances={[f'{v:.6f}' for v in variances]})"

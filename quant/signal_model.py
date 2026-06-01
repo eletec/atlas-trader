@@ -29,7 +29,7 @@ try:
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
-    logger.warning("scikit-learn indisponible — fallback logistic maison sans calibration.")
+    logger.warning("scikit-learn unavailable — fallback to built-in logistic regression without calibration.")
 
 
 @dataclass
@@ -92,10 +92,10 @@ class SignalModel:
             else:
                 self._model = base
             self._model.fit(Xv, yv)
-            logger.info(f"SignalModel sklearn fit OK sur {len(yv)} échantillons.")
+            logger.info(f"SignalModel sklearn fit OK on {len(yv)} samples.")
         else:
             self._fit_fallback(Xv, yv)
-            logger.info(f"SignalModel fallback fit OK sur {len(yv)} échantillons.")
+            logger.info(f"SignalModel fallback fit OK on {len(yv)} samples.")
         return self
 
     def _fit_fallback(self, X: np.ndarray, y: np.ndarray) -> None:

@@ -102,7 +102,7 @@ def _fetch_yahoo_latest(symbol: str, timeframe: str, limit: int) -> pd.DataFrame
         hist = ticker.history(start=start, end=end, interval=interval, timeout=15)
 
         if hist.empty:
-            logger.warning(f"yfinance latest: aucune donnée pour {symbol} ({yahoo_sym})")
+            logger.warning(f"yfinance latest: no data for {symbol} ({yahoo_sym})")
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
         hist = hist.reset_index()
@@ -118,10 +118,10 @@ def _fetch_yahoo_latest(symbol: str, timeframe: str, limit: int) -> pd.DataFrame
         # Retourner uniquement les `limit` dernières barres
         return df.iloc[-limit:] if len(df) > limit else df
     except ImportError:
-        logger.error("yfinance non installé — pip install yfinance")
+        logger.error("yfinance not installed — pip install yfinance")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     except Exception as exc:
-        logger.error(f"yfinance latest fetch échoué pour {symbol}: {exc}")
+        logger.error(f"yfinance latest fetch failed for {symbol}: {exc}")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 
@@ -147,10 +147,10 @@ def fetch_history(
         try:
             cached = pd.read_parquet(cache_file)
             if not cached.empty:
-                logger.info(f"Cache hit: {cache_file.name} ({len(cached)} bougies)")
+                logger.info(f"Cache hit: {cache_file.name} ({len(cached)} candles)")
                 return cached
         except Exception as exc:
-            logger.warning(f"Lecture cache échouée ({exc}) — re-fetch.")
+            logger.warning(f"Cache read failed ({exc}) — re-fetching.")
 
     # Routing : actifs non disponibles sur Binance → Twelve Data ou yfinance
     if symbol in _YAHOO_SYMBOLS:
@@ -168,7 +168,7 @@ def fetch_history(
         if use_td:
             df = _fetch_twelve_data_history(symbol, timeframe, days, td_key)
             if df.empty:
-                logger.warning(f"Twelve Data vide pour {symbol} — fallback yfinance")
+                logger.warning(f"Twelve Data empty for {symbol} — fallback yfinance")
                 df = _fetch_yahoo_history(symbol, timeframe, days)
         else:
             df = _fetch_yahoo_history(symbol, timeframe, days)
@@ -176,9 +176,9 @@ def fetch_history(
         if cache and not df.empty:
             try:
                 df.to_parquet(cache_file)
-                logger.info(f"Cache écrit: {cache_file.name} ({len(df)} bougies)")
+                logger.info(f"Cache written: {cache_file.name} ({len(df)} candles)")
             except Exception as exc:
-                logger.warning(f"Écriture cache échouée: {exc}")
+                logger.warning(f"Cache write failed: {exc}")
         return df
 
     end_ms = int(time.time() * 1000)
@@ -215,9 +215,9 @@ def fetch_history(
     if cache:
         try:
             df.to_parquet(cache_file)
-            logger.info(f"Cache écrit: {cache_file.name} ({len(df)} bougies)")
+            logger.info(f"Cache written: {cache_file.name} ({len(df)} candles)")
         except Exception as exc:
-            logger.warning(f"Écriture cache échouée: {exc}")
+            logger.warning(f"Cache write failed: {exc}")
 
     return df
 
@@ -241,7 +241,7 @@ def _fetch_yahoo_history(symbol: str, timeframe: str, days: int) -> pd.DataFrame
         hist = ticker.history(start=start, end=end, interval=interval, timeout=15)
 
         if hist.empty:
-            logger.warning(f"yfinance: aucune donnée pour {symbol} ({yahoo_sym})")
+            logger.warning(f"yfinance: no data for {symbol} ({yahoo_sym})")
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
         hist = hist.reset_index()
@@ -256,10 +256,10 @@ def _fetch_yahoo_history(symbol: str, timeframe: str, days: int) -> pd.DataFrame
         df = df[~df.index.duplicated(keep="first")].sort_index()
         return df
     except ImportError:
-        logger.error("yfinance non installé — pip install yfinance")
+        logger.error("yfinance not installed — pip install yfinance")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     except Exception as exc:
-        logger.error(f"yfinance fetch échoué pour {symbol}: {exc}")
+        logger.error(f"yfinance fetch failed for {symbol}: {exc}")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 
@@ -309,12 +309,12 @@ def _fetch_twelve_data_history(
         data = resp.json()
 
         if data.get("status") == "error":
-            logger.warning(f"Twelve Data erreur [{symbol}]: {data.get('message', '?')}")
+            logger.warning(f"Twelve Data error [{symbol}]: {data.get('message', '?')}")
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
         values = data.get("values", [])
         if not values:
-            logger.warning(f"Twelve Data: aucune donnée pour {symbol}")
+            logger.warning(f"Twelve Data: no data for {symbol}")
             return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
         df = pd.DataFrame(values)
@@ -332,11 +332,11 @@ def _fetch_twelve_data_history(
 
         df = df[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
         df = df[~df.index.duplicated(keep="first")]
-        logger.info(f"Twelve Data: {len(df)} barres pour {symbol} ({timeframe}, {days}j)")
+        logger.info(f"Twelve Data: {len(df)} bars for {symbol} ({timeframe}, {days}d)")
         return df
 
     except Exception as exc:
-        logger.error(f"Twelve Data fetch échoué pour {symbol}: {exc}")
+        logger.error(f"Twelve Data fetch failed for {symbol}: {exc}")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 
@@ -382,7 +382,7 @@ def fetch_dxy_history(timeframe: str = "15m", days: int = 90) -> pd.DataFrame:
         logger.info(f"DXY (yfinance): {len(df)} barres")
         return df
     except Exception as exc:
-        logger.warning(f"DXY fetch échoué (yfinance): {exc}")
+        logger.warning(f"DXY fetch failed (yfinance): {exc}")
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
 

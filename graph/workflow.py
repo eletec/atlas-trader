@@ -154,7 +154,7 @@ class LiveRunner:
                 raise
             ohlcv = self._ohlcv
         if len(ohlcv) < 200:
-            logger.error(f"Historique insuffisant ({len(ohlcv)} barres).")
+            logger.error(f"Insufficient history ({len(ohlcv)} bars).")
             return
         self._ohlcv = ohlcv
         split = int(len(ohlcv) * self.train_fraction)
@@ -180,7 +180,7 @@ class LiveRunner:
         # Drop colonnes 100% NaN (ex: volume_z_20_q pour métaux/forex sans données de volume)
         _nan_cols = [c for c in X_train.columns if X_train[c].isna().all()]
         if _nan_cols:
-            logger.warning(f"_refit: {len(_nan_cols)} feature(s) 100% NaN ignorée(s): {_nan_cols}")
+            logger.warning(f"_refit: {len(_nan_cols)} feature(s) 100% NaN — skipped: {_nan_cols}")
             X_train = X_train.drop(columns=_nan_cols)
             self._active_feature_cols = [c for c in self.cfg.feature_cols if c not in _nan_cols]
         else:
@@ -188,7 +188,7 @@ class LiveRunner:
         y_train = y.loc[train_sm_idx]
         valid = X_train.notna().all(axis=1) & y_train.notna()
         if valid.sum() < 100:
-            logger.warning("Données insuffisantes pour SignalModel — P(up)=0.5 fixe.")
+            logger.warning("Insufficient data for SignalModel — P(up)=0.5 fixed.")
             self._model = None
         elif y_train.loc[valid].nunique() < 2:
             logger.warning(
@@ -218,11 +218,11 @@ class LiveRunner:
             ohlcv_1h = fetch_history(symbol=self.symbol, timeframe="1h",
                                      days=self.history_days + 10, cache=True)
             self._ohlcv_1h = ohlcv_1h
-            logger.info(f"Données 1h chargées : {len(ohlcv_1h)} barres")
+            logger.info(f"1h data loaded: {len(ohlcv_1h)} bars")
         except Exception as exc:
-            logger.warning(f"Fetch 1h history failed: {exc} — filtre 1h désactivé")
+            logger.warning(f"Fetch 1h history failed: {exc} — 1h filter disabled")
             self._ohlcv_1h = None
-        logger.info(f"Refit OK — {split} barres train | {len(ohlcv)-split} test")
+        logger.info(f"Refit OK — {split} bars train | {len(ohlcv)-split} test")
 
     def _append_latest_bar(self):
         # Fetch assez de barres pour couvrir les éventuels gaps si le cycle
@@ -472,9 +472,9 @@ class LiveRunner:
                 self._n_trades += 1
                 _entry_opened_this_cycle = True
                 mode_label = "RANGE-MR" if is_range_trade else "TREND"
-                logger.info(f"ENTRÉE {side.upper()} [{mode_label}] @ {close_price:.2f} | SL={pos.stop_loss:.2f} TP={pos.take_profit:.2f}")
+                logger.info(f"ENTRY {side.upper()} [{mode_label}] @ {close_price:.2f} | SL={pos.stop_loss:.2f} TP={pos.take_profit:.2f}")
             except Exception as exc:
-                logger.warning(f"Entrée ignorée: {exc}")
+                logger.warning(f"Entry skipped: {exc}")
 
         pos = self._position
         # Cycle de maintenance : position déjà ouverte, pas de nouvelle entrée, pas de sortie
@@ -803,7 +803,7 @@ def _get_runner(asset: str) -> "LiveRunner":
             _restored_cap = float(_row["equity"])
             runner._capital = _restored_cap
             runner._peak_capital = max(runner._peak_capital, _restored_cap)
-            logger.info(f"[state] {asset} capital restauré depuis DB: {_restored_cap:.2f}$")
+            logger.info(f"[state] {asset} capital restored from DB: {_restored_cap:.2f}$")
     except Exception as exc:
         logger.warning(f"[state] restore capital failed for {asset}: {exc}")
 
@@ -846,7 +846,7 @@ def run_cycle(asset: str = "BTC/USDT", trigger: str = "scheduled") -> dict:
     from utils.cycle_lock import try_acquire, release as _lock_release
     acquired = try_acquire(owner=f"v2_{trigger}", asset=asset)
     if not acquired:
-        logger.warning(f"[{asset}] Cycle déjà en cours — ignoré (trigger={trigger}).")
+        logger.warning(f"[{asset}] Cycle already running — skipped (trigger={trigger}).")
         return {
             "asset": asset, "action": "flat", "reason": "cycle_locked",
             "errors": ["cycle_locked"],

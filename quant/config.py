@@ -68,8 +68,8 @@ class QuantConfig:
 
     # ── Risk management ────────────────────────────────────────────────────
     fraction_per_trade: float       = 0.0075
-    stop_loss_atr_mult: float       = 2.5
-    take_profit_atr_mult: float     = 3.5
+    stop_loss_atr_mult: float       = 2.0   # V3 : SL plus serré (was 2.5 V2)
+    take_profit_atr_mult: float     = 4.0   # V3 : TP plus large → R:R 2.0 (was 3.5 V2)
     trailing_activation_atr: float  = 1.5   # was 1.0 — consensus 3 IA : laisser les trades respirer
     trailing_distance_atr: float    = 1.5   # was 1.0 — recommandation 1.5-2.0×ATR
     weekly_dd_kill_switch: float    = 0.08

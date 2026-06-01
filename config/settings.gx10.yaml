@@ -486,6 +486,10 @@ quant:
   signal_model_C: 5.0        # C=1.0 → sorties compressées [0.47-0.53], jamais de trade. C=5.0 = moins régularisé
   signal_model_cv_folds: 3   # 5 folds lissait trop les proba → 3 folds (moins de réduction vers 0.5)
   signal_model_calibrate: false  # Platt calibration désactivée : récalibre vers 0.5 par construction → sigmoid brut LogReg
+  # ── Risk management V3 (global defaults — overridés par config/assets/*.yaml v2_risk) ──
+  fraction_per_trade: 0.0075      # 0.75% du capital par trade (défaut global)
+  stop_loss_atr_mult: 2.0         # V3 : SL = 2.0×ATR (was 2.5 V2)
+  take_profit_atr_mult: 4.0       # V3 : TP = 4.0×ATR → R:R = 2.0 (was 3.5 V2)
   # ── Trailing stop (Q16 consensus 3 IA — was 1.0×1.0, trop agressif) ──────────
   trailing_activation_atr: 1.5   # was 1.0 — laisse la position respirer
   trailing_distance_atr: 1.5     # was 1.0 — recommandation 1.5-2.0×ATR

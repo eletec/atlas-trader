@@ -417,16 +417,20 @@ class LiveRunner:
 
         # ── Nouvelle entrée ───────────────────────────────────────────────────
         # Filtre volume : n'entrer que si volume >= 70% de la médiane des 20 dernières barres
-        # P2.3 : volume yfinance non fiable pour FX/métaux/WTI → filtre désactivé hors crypto
-        _CRYPTO_ASSETS = {"BTC/USDT", "ETH/USDT", "SOL/USDT"}
+        # Appliqué à tous les actifs crypto (volume Binance fiable pour les perps)
+        _CRYPTO_ASSETS = {
+            "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+            "ADA/USDT", "DOGE/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT",
+        }
         vol_ratio = 1.0
         if self.symbol in _CRYPTO_ASSETS and len(ohlcv) >= 21:
             vol_med = float(ohlcv["volume"].iloc[-21:-1].median())
             vol_ratio = float(ohlcv["volume"].iloc[-1]) / (vol_med + 1e-9)
         # ── Filtre corrélation crypto (consensus Grok + GPT + DeepSeek) ──────────────
-        # BTC/ETH/SOL corrélation >0.85 — si déjà un crypto ouvert dans la même direction,
-        # bloquer l'entrée. Maxim 1 position crypto par direction simultanément.
+        # Crypto perps corrélation >0.80 en phase de marché — limiter à 3 positions
+        # simultanées dans la même direction pour réduire le risque de concentration.
         _crypto_corr_veto = False
+        _MAX_CORR_POSITIONS = 3   # au-delà de 3 cryptos longs/shorts = concentration excessive
         if self.symbol in _CRYPTO_ASSETS and decision.action in (Action.LONG, Action.SHORT):
             _open_same_dir = sum(
                 1 for _sym, _r in _runners.items()
@@ -435,11 +439,11 @@ class LiveRunner:
                 and _r._position is not None
                 and _r._position.side == decision.action.value
             )
-            if _open_same_dir >= 1:
+            if _open_same_dir >= _MAX_CORR_POSITIONS:
                 _crypto_corr_veto = True
                 logger.info(
                     f"[{self.symbol}] crypto corr veto — "
-                    f"{decision.action.value.upper()} bloqué : position corrélée déjà ouverte"
+                    f"{decision.action.value.upper()} bloqué : {_open_same_dir} positions corrélées déjà ouvertes"
                 )
 
         _entry_opened_this_cycle = False
@@ -745,6 +749,14 @@ def _get_runner(asset: str) -> "LiveRunner":
             existing.cfg.signal_model_C = float(qcfg.get("signal_model_C", 5.0))
             existing.cfg.signal_model_cv_folds = int(qcfg.get("signal_model_cv_folds", 3))
             existing.cfg.signal_model_calibrate = bool(qcfg.get("signal_model_calibrate", True))
+            # Hot-reload des paramètres risk per-asset (v2_risk) — permet aux changements
+            # admin d'être pris en compte sans restart container.
+            _av2 = _load_asset_v2_config(asset)
+            if _av2:
+                p = existing._risk_manager.params
+                if "stop_loss_atr_mult"   in _av2: p.stop_loss_atr_mult   = float(_av2["stop_loss_atr_mult"])
+                if "take_profit_atr_mult" in _av2: p.take_profit_atr_mult = float(_av2["take_profit_atr_mult"])
+                if "fraction_per_trade"   in _av2: p.fraction_per_trade   = float(_av2["fraction_per_trade"])
             return existing
         logger.info(
             f"[config] Paramètres changés pour {asset} "

@@ -1,17 +1,19 @@
 project:
   name: Atlas Trader
-  version: 1.0.0-MVP
+  version: 1.1.0
   asset: BTC/USDT
   loop_interval_seconds: 300
   active_assets:
   - BTC/USDT
   - ETH/USDT
   - SOL/USDT
-  - XAU/USD
-  - XAG/USD
-  - WTI/USD
-  - GBP/USD
-  - EUR/USD
+  - BNB/USDT
+  - XRP/USDT
+  - ADA/USDT
+  - DOGE/USDT
+  - AVAX/USDT
+  - LINK/USDT
+  - DOT/USDT
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo
@@ -117,120 +119,139 @@ news:
       - ethfinance
       - ethtrader
 
-    XAU/USD:
+    BNB/USDT:
       keywords:
-      - gold
-      - XAU
-      - precious metals
-      - inflation
-      - Fed
-      - interest rate
-      - safe haven
-      - commodities
-      - XAUUSD
-      - central bank
+      - BNB
+      - Binance
+      - BNB Chain
+      - BSC
+      - BEP20
+      - CZ
+      - Binance Smart Chain
       rss:
-      - https://www.kitco.com/rss/kitcogoldrss.xml
-      - https://www.fxstreet.com/rss/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
       nitter:
-      - KitcoNews
-      - GoldTelegraph_
-      - LynAldenContact
-      - zerohedge
+      - cz_binance
+      - BinanceResearch
       reddit:
-      - Gold
-      - investing
-      - Economics
+      - binance
+      - CryptoCurrency
 
-    EUR/USD:
+    XRP/USDT:
       keywords:
-      - euro
-      - EUR
-      - ECB
-      - eurozone
-      - European Central Bank
-      - dollar
-      - DXY
-      - Lagarde
-      - EURUSD
-      - inflation
+      - XRP
+      - Ripple
+      - XRPL
+      - Ripple Labs
+      - Brad Garlinghouse
+      - SEC
+      - cross-border payment
       rss:
-      - https://www.fxstreet.com/rss/news
-      - https://www.forexlive.com/feed/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
       nitter:
-      - Lagarde
-      - BundesbankDE
-      - ecb
-      - EurActiv
+      - Ripple
+      - bgarlinghouse
+      - JoelKatz
       reddit:
-      - Forex
-      - investing
-      - europe
+      - Ripple
+      - CryptoCurrency
 
-    GBP/USD:
+    ADA/USDT:
       keywords:
-      - pound
-      - GBP
-      - sterling
-      - Bank of England
-      - BoE
-      - UK economy
-      - GBPUSD
-      - Brexit
+      - ADA
+      - Cardano
+      - Charles Hoskinson
+      - Plutus
+      - smart contract Cardano
+      - Hydra
       rss:
-      - https://www.fxstreet.com/rss/news
-      - https://www.forexlive.com/feed/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
       nitter:
-      - bankofengland
-      - BBCBusiness
+      - IOHK_Charles
+      - InputOutputHK
+      - CardanoStiftung
       reddit:
-      - Forex
-      - unitedkingdom
+      - cardano
+      - CryptoCurrency
 
-    XAG/USD:
+    DOGE/USDT:
       keywords:
-      - silver
-      - XAG
-      - argent
-      - precious metals
-      - inflation
-      - Fed
-      - safe haven
-      - XAGUSD
+      - DOGE
+      - Dogecoin
+      - Elon Musk
+      - meme coin
+      - DOGE Army
       rss:
-      - https://www.kitco.com/rss/kitcogoldrss.xml
-      - https://www.fxstreet.com/rss/news
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
       nitter:
-      - KitcoNews
-      - SilverInstitute
-      - LynAldenContact
+      - elonmusk
+      - BillyM2k
       reddit:
-      - Silverbugs
-      - investing
+      - dogecoin
+      - CryptoCurrency
 
-    WTI/USD:
+    AVAX/USDT:
       keywords:
-      - oil
-      - crude
-      - WTI
-      - OPEC
-      - petroleum
-      - energy
-      - EIA
-      - barrel
-      - brent
+      - AVAX
+      - Avalanche
+      - subnet
+      - Ava Labs
+      - C-Chain
+      - DeFi Avalanche
       rss:
-      - https://oilprice.com/rss/main
-      - https://www.fxstreet.com/rss/news
-      - https://feeds.bbci.co.uk/news/business/rss.xml
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
       nitter:
-      - OilPrice_com
-      - EIAgov
-      - zerohedge
+      - avalancheavax
+      - el33th4xor
       reddit:
-      - energy
-      - investing
-      - oil
+      - Avax
+      - CryptoCurrency
+
+    LINK/USDT:
+      keywords:
+      - LINK
+      - Chainlink
+      - oracle
+      - CCIP
+      - Sergey Nazarov
+      - DeFi oracle
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      - https://decrypt.co/feed
+      nitter:
+      - chainlink
+      - SergeyNazarov
+      reddit:
+      - Chainlink
+      - CryptoCurrency
+
+    DOT/USDT:
+      keywords:
+      - DOT
+      - Polkadot
+      - parachain
+      - Gavin Wood
+      - substrate
+      - relay chain
+      - Web3 Foundation
+      rss:
+      - https://feeds.feedburner.com/CoinDesk
+      - https://cointelegraph.com/rss
+      nitter:
+      - gavofyork
+      - PolkadotNetwork
+      reddit:
+      - dot
+      - CryptoCurrency
 
     SOL/USDT:
       keywords:
@@ -258,11 +279,18 @@ news:
   cryptopanic:
     enabled: true
     max_items: 15
-    # Mapping actif → code devise CryptoPanic (actifs non-crypto ignorés automatiquement)
+    # Asset to CryptoPanic currency code mapping (non-crypto assets ignored automatically)
     asset_currency_map:
       BTC/USDT: BTC
       ETH/USDT: ETH
       SOL/USDT: SOL
+      BNB/USDT: BNB
+      XRP/USDT: XRP
+      ADA/USDT: ADA
+      DOGE/USDT: DOGE
+      AVAX/USDT: AVAX
+      LINK/USDT: LINK
+      DOT/USDT: DOT
 mirofish:
   n_agents: 5000
   n_steps: 100
@@ -353,8 +381,8 @@ risk:
   ma50_gradual_size_factor: 0.5
   max_open_positions: 5
   sell_threshold: 30
-  buy_cooldown_minutes: 20    # min entre deux BUY consécutifs pour le même actif (anti-duplicate)
-  sell_cooldown_minutes: 60   # min d'attente après un SELL avant de re-rentrer (anti-churning)
+  buy_cooldown_minutes: 20    # min between two consecutive BUYs for the same asset (anti-duplicate)
+  sell_cooldown_minutes: 60   # min to wait after a SELL before re-entering (anti-churning)
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045
@@ -365,10 +393,43 @@ assets:
   - symbol: BTC/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping:
-    - bitcoin
-    - crypto
-    - blockchain
+    theme_mapping: [bitcoin, crypto, blockchain]
+  - symbol: ETH/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [ethereum, DeFi, layer2]
+  - symbol: SOL/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [solana, DeFi, meme coin]
+  - symbol: BNB/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [BNB, Binance, BSC]
+  - symbol: XRP/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [XRP, Ripple, payment]
+  - symbol: ADA/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Cardano, smart contract]
+  - symbol: DOGE/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Dogecoin, meme coin]
+  - symbol: AVAX/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Avalanche, DeFi, subnet]
+  - symbol: LINK/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Chainlink, oracle, DeFi]
+  - symbol: DOT/USDT
+    exchange: binance
+    timeframe: 5m
+    theme_mapping: [Polkadot, parachain, Web3]
   active_asset: BTC/USDT
 exchange:
   name: binance
@@ -397,7 +458,7 @@ llm:
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
-  deepseek_api_key: ""  # clé dans config/secrets.yaml — NE PAS COMMITTER
+  deepseek_api_key: ""  # key stored in config/secrets.yaml — DO NOT COMMIT
 post_mortem:
   enabled: true
   delay_hours: 24
@@ -405,108 +466,92 @@ post_mortem:
   learning_rate: 0.05
   walk_forward_days: 7
 
-# ══════════════════════════════════════════════════════════════════════════════
-# QUANT V2 — Tous les paramètres configurables depuis l'Admin UI
-# Aucune valeur numérique ne doit être hardcodée dans le code quant/
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+# QUANT V2 — All parameters configurable from the Admin UI
+# No numeric value should be hardcoded in quant/ code
+# ==============================================================================
 quant:
-  # ── Données ────────────────────────────────────────────────────────────────
+  # ── Data ───────────────────────────────────────────────────────────────────
   symbol: BTC/USDT
   timeframe: 5m                   # 1m | 3m | 5m | 15m | 1h | 4h | 1d
-  history_days: 90                # jours d'historique à charger pour le refit
+  history_days: 90                # days of history to load for model refit
 
   # ── Pipeline ───────────────────────────────────────────────────────────────
-  horizon_bars: 4                 # horizon de prédiction (en barres)
-  norm_window_days: 30            # fenêtre de normalisation quantile (en jours, converti auto)
-  p_up_threshold: 0.55            # seuil LONG (was 0.58 — trop restrictif BTC/ETH)
-  p_dn_threshold: 0.42            # seuil SHORT : P(up) < p_dn_threshold
-  train_fraction: 0.70            # fraction train/test pour le live runner
-  refit_interval_days: 7          # intervalle de re-fit du modèle
+  horizon_bars: 4                 # prediction horizon (in bars)
+  norm_window_days: 30            # quantile normalisation window (days, auto-converted)
+  p_up_threshold: 0.55            # LONG signal threshold
+  p_dn_threshold: 0.42            # SHORT threshold: trigger when P(up) < p_dn_threshold
+  train_fraction: 0.70            # train/test split fraction for live runner
+  refit_interval_days: 7          # model refit interval
 
   # ── Signal model ───────────────────────────────────────────────────────────
-  use_hmm: true                   # true = HMM, false = fallback ADX+vol_of_vol
-  use_lgb: false                  # true = LightGBM (expérimental), false = LogReg
-  signal_C: 1.0                   # régularisation LogReg (plus bas = plus régularisé)
+  use_hmm: true                   # true = HMM regime filter, false = fallback ADX+vol_of_vol
+  use_lgb: false                  # true = LightGBM (experimental), false = LogisticRegression
+  signal_C: 1.0                   # LogReg regularisation strength (lower = more regularised)
 
-  # ── Régime HMM ─────────────────────────────────────────────────────────────
-  hmm_n_states: 3                 # nombre d'états HMM (2 ou 3)
-  hmm_adx_threshold: 25.0         # seuil ADX mode fallback
+  # ── HMM Regime ─────────────────────────────────────────────────────────────
+  hmm_n_states: 3                 # number of HMM states (2 or 3)
+  hmm_adx_threshold: 25.0         # ADX threshold for fallback regime detection
 
   # ── Risk management ────────────────────────────────────────────────────────
-  fraction_per_trade: 0.0075      # fraction du capital risqué par trade (0.75%)
-  stop_loss_atr_mult: 2.0         # multiplicateur ATR pour le stop-loss (was 2.5)
-  take_profit_atr_mult: 4.0       # multiplicateur ATR pour le take-profit (R:R 2.0, was 3.5/1.4)
-  trailing_activation_atr: 2.0    # activation trailing à 2×ATR (was 1.5 — coupait winners avant TP)
-  trailing_distance_atr: 2.0      # trail distance 2×ATR (was 1.5 — trop serré sur 1d crypto)
-  weekly_dd_kill_switch: 0.08     # DD hebdo déclenchant le kill-switch (8%)
-  kill_switch_pause_days: 7       # durée de pause après kill-switch
+  fraction_per_trade: 0.0075      # capital fraction risked per trade (0.75%)
+  stop_loss_atr_mult: 2.0         # ATR multiplier for stop-loss
+  take_profit_atr_mult: 4.0       # ATR multiplier for take-profit (R:R 2.0)
+  trailing_activation_atr: 2.0    # trailing stop activation at 2×ATR
+  trailing_distance_atr: 2.0      # trailing stop distance 2×ATR
+  weekly_dd_kill_switch: 0.08     # weekly drawdown triggering kill-switch (8%)
+  kill_switch_pause_days: 7       # pause duration after kill-switch
 
   # ── Backtest ───────────────────────────────────────────────────────────────
-  initial_capital: 10000.0        # capital de départ (USD)
-  fee_rate: 0.0005                # frais taker par côté (0.05%)
-  slippage_rate: 0.0002           # slippage par côté (0.02%)
-  # ── Seuils par actif (override p_up / p_dn pour certains actifs) ──────────
+  initial_capital: 10000.0        # starting capital (USD)
+  fee_rate: 0.0005                # taker fee per side (0.05%)
+  slippage_rate: 0.0002           # slippage per side (0.02%)
+
+  # ── Per-asset thresholds (override global p_up / p_dn) ────────────────────
   # Format: symbol: {p_up_threshold: X, p_dn_threshold: Y}
-  # Les actifs non listés utilisent les seuils globaux ci-dessus.
+  # Assets not listed use the global thresholds above.
   asset_thresholds:
-    EUR/USD:
-      p_up_threshold: 0.62        # EUR/USD : max P_up=0.614 → 0 trades (marché RANGE pur, trend-following inefficace)
-      p_dn_threshold: 0.40        # SHORT plus accessible si EUR devient bearish trending
     ETH/USDT:
-      p_up_threshold: 0.60        # ETH : max notPANIC∩LONG=0 à 0.60 (signaux >0.58 tous en PANIC)
+      p_up_threshold: 0.60        # ETH: P_up rarely exceeds 0.60 in non-PANIC regimes
     SOL/USDT:
-      p_up_threshold: 0.58        # SOL : max P_up=0.573 sur 5y → 0 trades (no edge à 1d, besoin features on-chain)
+      p_up_threshold: 0.58        # SOL: max P_up ~0.573 observed on 5y data
 
-  # ── Config par actif (timeframe et historique live) ───────────────────────
-  # Les métaux/forex ont leur edge prouvé uniquement en 1d.
-  # Le crypto tourne en 5m (loop temps-réel).
-  asset_config:
-    XAU/USD:
-      timeframe: 1d
-      history_days: 1825          # 5 ans — modèle plus robuste pour l'or
-    XAG/USD:
-      timeframe: 1d
-      history_days: 1825
-    WTI/USD:
-      timeframe: 1d
-      history_days: 1825
-    GBP/USD:
-      timeframe: 1d
-      history_days: 1825
-    EUR/USD:
-      timeframe: 1d
-      history_days: 1825
+  # ── Per-asset config (timeframe and live history override) ─────────────────
+  # All Binance perp assets run on 5m real-time loop by default.
+  # Override here only if a specific asset requires different settings.
+  asset_config: {}
+
   # ── Walk-forward ───────────────────────────────────────────────────────────
-  wf_train_days: 90               # durée de la fenêtre train (jours)
-  wf_test_days: 30                # durée de la fenêtre test OOS (jours)
-  wf_step_days: 30                # pas de glissement entre folds (jours)
-  wf_min_folds: 12                # nombre minimum de folds
-  wf_max_folds: 24                # nombre maximum de folds
-  wf_perm_iter: 500               # itérations pour le test de permutation
+  wf_train_days: 90               # training window duration (days)
+  wf_test_days: 30                # OOS test window duration (days)
+  wf_step_days: 30                # slide step between folds (days)
+  wf_min_folds: 12                # minimum number of folds
+  wf_max_folds: 24                # maximum number of folds
+  wf_perm_iter: 500               # permutation test iterations
 
-  # ── Critères go-live durcis (consensus Grok + GPT + DeepSeek) ───────────────
-  go_live_sharpe_min: 0.80        # was 0.5 — trop permissif sur intraday bruité
-  go_live_pf_min: 1.30            # was 1.2
-  go_live_trades_min: 250         # nombre total de trades minimum
-  go_live_pvalue_max: 0.05        # was 0.10 — consensus 3 IA
-  go_live_positive_folds_pct: 0.65  # was 0.60
+  # ── Go-live criteria (tightened — consensus GPT + Grok + DeepSeek) ─────────
+  go_live_sharpe_min: 0.80
+  go_live_pf_min: 1.30
+  go_live_trades_min: 250         # minimum total trades
+  go_live_pvalue_max: 0.05
+  go_live_positive_folds_pct: 0.65
   correlation_threshold: 0.75
-  meta_analysis_interval_days: 14  # LLM failure-pattern analysis, every N days
-  meta_analysis_days: 30            # lookback window for the analysis
+  meta_analysis_interval_days: 14  # LLM failure-pattern analysis interval (days)
+  meta_analysis_days: 30            # lookback window for meta-analysis
 
-  # ── Sources de données (Q11/Q12) ─────────────────────────────────────────
+  # ── Data sources ───────────────────────────────────────────────────────────
   data_provider: "auto"            # "auto" | "twelve_data" | "yahoo"
 
-  # ── Features avancées (Q13/Q14) ──────────────────────────────────────────
-  use_dxy_feature: true            # Q14 : DXY comme feature inter-marché
+  # ── Advanced features ──────────────────────────────────────────────────────
+  use_dxy_feature: true            # DXY as cross-market feature
 
-  # ── Horizon sweep (Q3) ───────────────────────────────────────────────────
-  horizon_sweep_values: [2, 4, 8, 12]   # horizons à tester en sweep
+  # ── Horizon sweep ──────────────────────────────────────────────────────────
+  horizon_sweep_values: [2, 4, 8, 12]   # horizons to test in sweep
 
-  # ── Refit adaptatif KS-test (Q17) ────────────────────────────────────────
+  # ── Adaptive refit KS-test ─────────────────────────────────────────────────
   refit_trigger: "schedule"        # "schedule" | "ks_test" | "both"
-  refit_ks_pvalue_threshold: 0.05  # seuil KS-test pour déclencher le refit
-  refit_ks_window_days: 14         # fenêtre récente pour le KS-test (jours)
+  refit_ks_pvalue_threshold: 0.05  # KS-test p-value threshold to trigger refit
+  refit_ks_window_days: 14         # recent window for KS-test (days)
 monitor:
   interval_seconds: 60
   breaking_news_threshold: 0.8

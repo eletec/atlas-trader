@@ -1,0 +1,58 @@
+asset: XRP/USDT
+timeframe: "5m"              # timeframe per asset (editable from Admin)
+exchange: binance
+testnet: true
+paper_capital_usd: 10000
+
+# ── V2 risk parameters (read by graph/workflow.py) ────────────────────────────
+v2_risk:
+  stop_loss_atr_mult: 2.5
+  take_profit_atr_mult: 3.5
+  fraction_per_trade: 0.0050
+  max_drawdown_pct: 15.0
+  range_sl_atr_mult: 1.5
+  range_tp_atr_mult: 1.5
+  range_fraction_mult: 0.25
+circuit_breaker:
+  funding_warning: 0.00018
+  funding_block: 0.00045
+  sustain_period_cycles: 3
+  max_reduction: 0.75
+scoring:
+  weights:
+    mirofish: 0.12
+    market: 0.35
+    agents: 0.35
+    contrarian: 0.18
+market_regime:
+  n_hmm_states: 2
+  vol_window: 48
+  trend_window: 100
+  adx_period: 21
+agents:
+  market_data:
+    enabled: true
+  fundamental:
+    enabled: false
+    on_chain_enabled: false
+  x_sentiment:
+    enabled: true
+    keywords:
+    - XRP
+    - Ripple
+    - SEC
+    - XRPL
+    - Ripple Labs
+    - Brad Garlinghouse
+    - cross-border payment
+    - CBDC
+  contrarian:
+    enabled: true
+  fear_greed:
+    enabled: true
+  polymarket:
+    enabled: true
+  timesfm:
+    enabled: false
+  market_regime:
+    enabled: true

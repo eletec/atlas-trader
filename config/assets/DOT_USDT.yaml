@@ -6,8 +6,8 @@ paper_capital_usd: 10000
 
 # ── V2 risk parameters (read by graph/workflow.py) ────────────────────────────
 v2_risk:
-  stop_loss_atr_mult: 2.5
-  take_profit_atr_mult: 3.5
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 4.0
   fraction_per_trade: 0.0045
   max_drawdown_pct: 18.0
   range_sl_atr_mult: 1.5

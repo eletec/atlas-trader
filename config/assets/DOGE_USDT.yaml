@@ -7,7 +7,7 @@ paper_capital_usd: 10000
 # ── V2 risk parameters (read by graph/workflow.py) ────────────────────────────
 # DOGE is high-volatility meme asset — tighter sizing, higher DD tolerance
 v2_risk:
-  stop_loss_atr_mult: 2.5
+  stop_loss_atr_mult: 2.0
   take_profit_atr_mult: 4.0    # wider TP to capture meme-driven spikes
   fraction_per_trade: 0.0040   # smaller size due to high vol
   max_drawdown_pct: 20.0

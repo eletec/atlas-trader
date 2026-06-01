@@ -3347,47 +3347,60 @@ def render_admin_panel():
                             key=f"pa_loop_{_paslug}"
                         )
 
-                # ── Risk & Seuils (V2) ────────────────────────────────────────
+                # ── Risk & Seuils (V3 — source of truth: v2_risk) ───────────────────────
                 with st.expander("⚖ Risk & Seuils", expanded=True):
-                    _par = dict(_pacfg.get("risk", {}))
+                    _v2r = dict(_pacfg.get("v2_risk", {}))
+                    _par_extra = dict(_pacfg.get("risk", {}))  # human_in_the_loop + max_open_positions
                     _c1, _c2 = st.columns(2)
                     with _c1:
-                        _par["position_size_pct"] = st.slider(
-                            "Position size (%)", 0.1, 10.0,
-                            float(_par.get("position_size_pct", 1.5)), 0.1,
+                        _new_frac = st.slider(
+                            "Position size (%)", 0.1, 5.0,
+                            round(float(_v2r.get("fraction_per_trade", 0.0075)) * 100, 3), 0.05,
                             key=f"pa_pos_{_paslug}",
-                            help="Fraction du capital risquée par trade (V2 = 1.5% par défaut)."
+                            help="fraction_per_trade × 100 — written to v2_risk (read by graph/workflow.py)"
                         )
-                        _par["max_drawdown_pct"] = st.slider(
+                        _new_dd = st.slider(
                             t("pa_max_dd"), 3.0, 50.0,
-                            float(_par.get("max_drawdown_pct", 15.0)), 1.0,
+                            float(_v2r.get("max_drawdown_pct", 15.0)), 1.0,
                             key=f"pa_dd_{_paslug}"
                         )
-                        _par["max_open_positions"] = st.number_input(
+                        _new_mop = st.number_input(
                             t("pa_max_positions"), 0, 20,
-                            int(_par.get("max_open_positions", 3)),
+                            int(_par_extra.get("max_open_positions", 3)),
                             key=f"pa_mop_{_paslug}",
-                            help="0 = illimité (aucun plafond sur les positions simultanées)."
+                            help="0 = unlimited."
                         )
                     with _c2:
-                        _par["atr_multiplier_sl"] = st.slider(
+                        _new_sl = st.slider(
                             "ATR ×SL", 0.5, 5.0,
-                            float(_par.get("atr_multiplier_sl", 2.5)), 0.25,
+                            float(_v2r.get("stop_loss_atr_mult", 2.0)), 0.25,
                             key=f"pa_atrs_{_paslug}",
-                            help="Multiplicateur ATR pour le stop-loss (V2 = 2.5×)."
+                            help="stop_loss_atr_mult — written to v2_risk"
                         )
-                        _par["atr_multiplier_tp"] = st.slider(
+                        _new_tp = st.slider(
                             "ATR ×TP", 0.5, 8.0,
-                            float(_par.get("atr_multiplier_tp", 3.0)), 0.25,
+                            float(_v2r.get("take_profit_atr_mult", 4.0)), 0.25,
                             key=f"pa_atrtp_{_paslug}",
-                            help="Multiplicateur ATR pour le take-profit (V2 = 3.0×)."
+                            help="take_profit_atr_mult — written to v2_risk"
                         )
-                        _par["human_in_the_loop"] = st.toggle(
+                        _new_hitl = st.toggle(
                             "Human in the loop",
-                            _par.get("human_in_the_loop", False),
+                            _par_extra.get("human_in_the_loop", False),
                             key=f"pa_hitl_{_paslug}"
                         )
-                    _pacfg["risk"] = _par
+                    # Write back to v2_risk (used by graph/workflow.py V3 engine)
+                    _pacfg["v2_risk"] = {
+                        **_v2r,
+                        "fraction_per_trade": round(_new_frac / 100, 6),
+                        "stop_loss_atr_mult": _new_sl,
+                        "take_profit_atr_mult": _new_tp,
+                        "max_drawdown_pct": _new_dd,
+                    }
+                    _pacfg["risk"] = {
+                        **_par_extra,
+                        "human_in_the_loop": _new_hitl,
+                        "max_open_positions": int(_new_mop),
+                    }
 
                 # ── Circuit Breaker (crypto uniquement) ──────────────────────
                 if _is_crypto_pa:

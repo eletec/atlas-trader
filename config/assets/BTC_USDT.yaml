@@ -8,9 +8,9 @@ paper_capital_usd: 10000
 # Les anciens seuils V1 (buy_threshold, exit_threshold, scoring, agents) sont
 # supprimés — V2 décide uniquement sur P(up) + régime HMM.
 v2_risk:
-  stop_loss_atr_mult: 2.5       # SL en mode tendance (ATR × mult)
-  take_profit_atr_mult: 3.5     # TP en mode tendance → R:R = 1.4
-  fraction_per_trade: 0.0055    # mode défensif: réduction sizing
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 4.0
+  fraction_per_trade: 0.0055
   max_drawdown_pct: 15.0        # drawdown hebdo max avant kill-switch
   range_sl_atr_mult: 1.5        # SL mean-reverting (plus serré)
   range_tp_atr_mult: 1.5        # TP mean-reverting (symétrique, R:R=1.0)

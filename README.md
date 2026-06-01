@@ -1,7 +1,11 @@
 # Atlas Trader 🤖
 
-> Autonomous AI trading system — **Multi-Asset Paper Trading** (BTC · ETH · SOL · XAU · XAG · WTI · EUR · GBP)  
-> MiroFish Swarm · LangGraph Agents · HMM Market Regime · Kelly Sizing · Per-Asset Configuration
+> Autonomous AI trading system — **10 Binance Crypto Perps** (BTC · ETH · SOL · BNB · XRP · ADA · DOGE · AVAX · LINK · DOT)  
+> V3 Quant Engine · HMM Regime · LogReg Signal · ATR Risk · Per-Asset Config · 8-language i18n
+
+> **Research verdict (June 2026)** : 15 phases · 374 configs tested · **0 robust edge** on public OHLCV data at retail costs.  
+> See [`RESEARCH_HISTORY.md`](RESEARCH_HISTORY.md) for the full development & research chronicle.  
+> See [`PHASES_0_13_FINAL_REPORT.md`](PHASES_0_13_FINAL_REPORT.md) for the quantitative research final report.
 
 ---
 

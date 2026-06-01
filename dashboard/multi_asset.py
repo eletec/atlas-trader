@@ -30,15 +30,22 @@ def _active_assets() -> list[str]:
 def _asset_icon(asset: str) -> str:
     """Emoji / lettre pour chaque actif."""
     icons = {
-        "BTC/USDT": "₿",
-        "ETH/USDT": "⟠",
-        "SOL/USDT": "◎",
-        "XAU/USD":  "🥇",
-        "XAG/USD":  "🥈",
-        "WTI/USD":  "🛢️",
-        "EUR/USD":  "€",
-        "GBP/USD":  "£",
-        "USD/JPY":  "¥",
+        "BTC/USDT":  "₿",
+        "ETH/USDT":  "⟠",
+        "SOL/USDT":  "◎",
+        "BNB/USDT":  "🔶",
+        "XRP/USDT":  "✕",
+        "ADA/USDT":  "🔵",
+        "DOGE/USDT": "🐕",
+        "AVAX/USDT": "🔺",
+        "LINK/USDT": "🔗",
+        "DOT/USDT":  "⬤",
+        "XAU/USD":   "🥇",
+        "XAG/USD":   "🥈",
+        "WTI/USD":   "🛢️",
+        "EUR/USD":   "€",
+        "GBP/USD":   "£",
+        "USD/JPY":   "¥",
     }
     return icons.get(asset, "◈")
 
@@ -710,7 +717,8 @@ def render_marches_admin_tab() -> None:
 }
 </style>""", unsafe_allow_html=True)
     st.markdown("**Actifs actifs**")
-    all_known = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XAU/USD", "XAG/USD", "WTI/USD", "EUR/USD", "GBP/USD"]
+    all_known = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT",
+                   "DOGE/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT"]
     current_active = get_active_assets()
     new_active = st.multiselect(
         "Actifs surveillés",

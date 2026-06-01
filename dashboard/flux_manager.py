@@ -487,32 +487,30 @@ def render_controls(settings: dict) -> dict | None:
     proj = settings.get("project", {})
 
     # --- Pipeline intraday (5m) ---
+    _all_crypto = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT",
+                   "ADA/USDT", "DOGE/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT"]
     _pa_opts = proj.get("active_assets", ["BTC/USDT"])
     _pa_new = st.multiselect(
-        "Actifs actifs — pipeline intraday (5m, crypto)",
-        options=list(dict.fromkeys(_pa_opts + ["BTC/USDT", "ETH/USDT", "SOL/USDT",
-                                               "XAU/USD", "XAG/USD", "WTI/USD",
-                                               "GBP/USD", "EUR/USD"])),
+        "Active assets — intraday pipeline (5m, crypto)",
+        options=list(dict.fromkeys(_pa_opts + _all_crypto)),
         default=_pa_opts,
         key="flux_ctrl_active_assets",
-        help="Le daemon itère sur ces actifs à chaque cycle (5 min). Réservé aux assets avec OHLCV intraday (CCXT).",
+        help="Daemon iterates over these assets each cycle (5 min). Binance crypto perp futures only.",
     )
 
-    # --- Pipeline daily (1d) — FX / métaux ---
-    _daily_opts_default = ["XAU/USD", "XAG/USD", "WTI/USD", "GBP/USD", "EUR/USD"]
+    # --- Daily pipeline (1d) — disabled, all assets now run on 5m intraday ---
     _da_current = (
         proj.get("daily_active_assets")
         or settings.get("quant", {}).get("daily_active_assets")
         or []
     )
     _da_new = st.multiselect(
-        "Actifs actifs — pipeline daily (1d, FX / métaux)",
-        options=list(dict.fromkeys(_da_current + _daily_opts_default
-                                   + ["XAU/USD", "XAG/USD", "WTI/USD",
-                                      "GBP/USD", "EUR/USD", "BTC/USDT"])),
+        "Active assets — daily pipeline (1d)",
+        options=list(dict.fromkeys(_da_current)),
         default=_da_current,
         key="flux_ctrl_daily_assets",
-        help="Exécution une fois/jour à l'heure UTC configurée (daily_execution_hour_utc). Pipeline DailyRunner indépendant.",
+        help="Daily runner (once/day). Not used in Binance crypto-only mode — leave empty.",
+        disabled=True,
     )
 
     qcfg = settings.get("quant", {})

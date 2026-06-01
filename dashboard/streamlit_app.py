@@ -3037,7 +3037,7 @@ def render_admin_panel():
                 float(q.get("train_fraction", 0.70)), 0.05,
                 help="Fraction des données utilisées pour l'entraînement.",
             )
-            _hz_options = [1, 2, 4, 8, 12, 16, 24]
+            _hz_options = [1, 2, 4, 8, 12, 16, 24, 32, 48, 96]
             _hz_val = int(q.get("horizon_bars", 4))
             _hz_idx = _hz_options.index(_hz_val) if _hz_val in _hz_options else 0
             q["horizon_bars"] = st.selectbox(

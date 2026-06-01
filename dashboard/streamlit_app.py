@@ -3546,18 +3546,18 @@ def render_admin_panel():
 
     elif _atab == "reset":  # Purge des données
         st.markdown(
-            '<h4><i class="fas fa-trash-alt" style="margin-right:7px;color:#e74c3c;"></i>'
-            ' Purge des données</h4>',
+            f'<h4><i class="fas fa-trash-alt" style="margin-right:7px;color:#e74c3c;"></i>'
+            f' {t("reset_page_title")}</h4>',
             unsafe_allow_html=True,
         )
-        st.warning("⚠️ Ces opérations sont irréversibles. Utilisez l'onglet Sauvegarde avant toute purge.")
+        st.warning(t("reset_warning"))
 
         # ── Reset partiel ─────────────────────────────────────────────────
-        st.markdown("#### Reset partiel — état live uniquement")
-        st.caption("Vide `v2_equity` et `v2_state`. Conserve l'historique des décisions.")
+        st.markdown(f"#### {t('reset_partial_title')}")
+        st.caption(t("reset_partial_caption"))
         _col_r3, _col_r4 = st.columns(2)
         with _col_r3:
-            if st.button("🗑️ Reset état + equity V2", type="secondary", use_container_width=True, key="reset_v2_partial"):
+            if st.button(t("reset_partial_btn"), type="secondary", use_container_width=True, key="reset_v2_partial"):
                 try:
                     import sqlite3 as _sq3
                     from utils.config import load_settings as _ls_r
@@ -3566,20 +3566,20 @@ def render_admin_panel():
                         _con_r.execute("DELETE FROM v2_equity")
                         _con_r.execute("DELETE FROM v2_state")
                         _con_r.commit()
-                    st.success("✅ Tables `v2_equity` et `v2_state` vidées.")
+                    st.success(t("reset_partial_ok"))
                 except Exception as _re_r:
                     st.error(f"Erreur : {_re_r}")
         with _col_r4:
-            st.caption("⚠️ Le tableau de bord affichera encore les anciennes métriques tant que `v2_decisions` n'est pas aussi purgée.")
+            st.caption(t("reset_partial_warn"))
 
         # ── Reset complet ─────────────────────────────────────────────────
         st.markdown("---")
-        st.markdown("#### Reset COMPLET — repartir de zéro")
-        st.caption("Vide `v2_equity`, `v2_state` **et** `v2_decisions`. Le dashboard affichera 0 trade / capital initial propre.")
-        _confirm_full = st.checkbox("✅ Je confirme vouloir effacer tout l'historique des trades V2", key="confirm_full_reset")
+        st.markdown(f"#### {t('reset_full_title')}")
+        st.caption(t("reset_full_caption"))
+        _confirm_full = st.checkbox(t("reset_full_confirm"), key="confirm_full_reset")
         _col_r7, _col_r8 = st.columns(2)
         with _col_r7:
-            if st.button("💣 Reset COMPLET V2 + redémarrer", type="primary",
+            if st.button(t("reset_full_btn"), type="primary",
                          use_container_width=True, key="reset_v2_full",
                          disabled=not _confirm_full):
                 import subprocess as _sp2
@@ -3593,7 +3593,7 @@ def render_admin_panel():
                         _con_r2.execute("DELETE FROM v2_state")
                         _con_r2.execute("DELETE FROM v2_decisions")
                         _con_r2.commit()
-                    st.success("✅ Tables `v2_equity`, `v2_state` et `v2_decisions` vidées.")
+                    st.success(t("reset_full_ok"))
                     _ok_db = True
                 except Exception as _re_r2:
                     st.error(f"Erreur DB : {_re_r2}")
@@ -3604,20 +3604,20 @@ def render_admin_panel():
                             capture_output=True, text=True, timeout=15,
                         )
                         if _res2.returncode == 0:
-                            st.success("✅ Daemon trader redémarré — capital initial propre au prochain cycle.")
+                            st.success(t("reset_daemon_ok2"))
                         else:
                             st.warning(f"DB purgée mais redémarrage échoué (rc={_res2.returncode}) : {_res2.stderr or _res2.stdout}")
                     except Exception as _re_ex2:
                         st.warning(f"DB purgée mais redémarrage échoué : {_re_ex2}")
         with _col_r8:
-            st.caption("Après le reset complet, le daemon repart avec le capital initial défini dans `settings.yaml` (`paper_capital_usd`).")
+            st.caption(t("reset_full_caption"))
 
         # ── Redémarrage seul ──────────────────────────────────────────────
         st.markdown("---")
-        st.markdown("#### Redémarrage du daemon uniquement")
+        st.markdown(f"#### {t('reset_daemon_title')}")
         _col_r5, _col_r6 = st.columns(2)
         with _col_r5:
-            if st.button("🔄 Redémarrer le daemon", type="secondary", use_container_width=True, key="restart_trader"):
+            if st.button(t("reset_daemon_btn"), type="secondary", use_container_width=True, key="restart_trader"):
                 import subprocess as _sp
                 try:
                     _res = _sp.run(
@@ -3625,15 +3625,15 @@ def render_admin_panel():
                         capture_output=True, text=True, timeout=15,
                     )
                     if _res.returncode == 0:
-                        st.success("✅ Daemon trader redémarré.")
+                        st.success(t("reset_daemon_ok"))
                     else:
                         st.error(f"Erreur supervisorctl (rc={_res.returncode}) : {_res.stderr or _res.stdout}")
                 except FileNotFoundError:
-                    st.error("supervisorctl introuvable — vérifier que le container utilise supervisord.")
+                    st.error(t("reset_err_supervisorctl"))
                 except Exception as _re_ex:
                     st.error(f"Erreur : {_re_ex}")
         with _col_r6:
-            st.caption("Redémarre uniquement le processus trader (le dashboard reste actif).")
+            st.caption(t("reset_daemon_caption"))
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

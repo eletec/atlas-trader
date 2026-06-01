@@ -227,10 +227,10 @@ def render_global_live_prices() -> None:
                     else:
                         price_str = f"{price:.6f}"
                     st.metric(label=f"{icon} {asset}", value=price_str)
-                    st.caption("Dernier prix connu")
+                    st.caption(t("asset_last_price"))
                 else:
                     st.metric(label=f"{icon} {asset}", value="—")
-                    st.caption("En attente du cycle")
+                    st.caption(t("asset_awaiting_cycle"))
             continue
 
         try:
@@ -578,7 +578,7 @@ def render_marches_admin_tab() -> None:
             help="Clé API Twelve Data (https://twelvedata.com). Stockée dans config/secrets.yaml (gitignored).",
         )
 
-        if st.button("💾 Sauvegarder les sources de données", key="btn_save_data_sources"):
+        if st.button(t("cfg_save_data_sources"), key="btn_save_data_sources"):
             try:
                 from pathlib import Path
                 import yaml as _yaml
@@ -597,13 +597,13 @@ def render_marches_admin_tab() -> None:
 
                 st.success("✅ Sources de données sauvegardées (clé dans `config/secrets.yaml`).")
             except Exception as exc:
-                st.error(f"Erreur sauvegarde : {exc}")
+                st.error(f"{t('cfg_save_data_sources')} — {exc}")
 
     st.markdown("---")
 
-    # ── Section : Paramètres quant globaux (Q3/Q13/Q14/Q17) ─────────────────
-    with st.expander("⚙️ **Paramètres quant globaux**", expanded=False):
-        st.caption("Paramètres globaux du pipeline quant. Sauvegardés dans `settings.yaml → quant:`.")
+    # ── Section : Paramètres quant globaux (Q3/Q13/Q14/Q17) ───────────────────
+    with st.expander(t("cfg_section_quant"), expanded=False):
+        st.caption(t("cfg_section_quant_caption"))
 
         try:
             from quant.config import get_quant_cfg, save_quant_cfg
@@ -681,7 +681,7 @@ def render_marches_admin_tab() -> None:
                     help="Nombre de jours de données récentes comparés à la distribution de référence.",
                 )
 
-            if st.button("💾 Sauvegarder les paramètres quant", key="btn_save_qcfg"):
+            if st.button(t("cfg_save_quant"), key="btn_save_qcfg"):
                 try:
                     from dataclasses import replace as _dc_replace
                     updated = _dc_replace(
@@ -694,7 +694,7 @@ def render_marches_admin_tab() -> None:
                         refit_ks_window_days=int(q_ks_window),
                     )
                     save_quant_cfg(updated)
-                    st.success("✅ Paramètres quant sauvegardés dans `settings.yaml`.")
+                    st.success(t("cfg_quant_saved"))
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Erreur sauvegarde quant : {exc}")
@@ -716,19 +716,19 @@ def render_marches_admin_tab() -> None:
     text-overflow: unset !important;
 }
 </style>""", unsafe_allow_html=True)
-    st.markdown("**Actifs actifs**")
+    st.markdown(t("cfg_active_assets_label"))
     all_known = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT",
                    "DOGE/USDT", "AVAX/USDT", "LINK/USDT", "DOT/USDT"]
     current_active = get_active_assets()
     new_active = st.multiselect(
-        "Actifs surveillés",
+        t("cfg_watched_label"),
         options=all_known,
         default=current_active,
         help="Seuls les actifs ayant un fichier config/assets/*.yaml sont supportés.",
         key="marches_active_assets",
     )
 
-    if st.button("💾 Sauvegarder la liste des actifs", key="btn_save_active_assets"):
+    if st.button(t("cfg_save_assets"), key="btn_save_active_assets"):
         try:
             from utils.config import load_settings, save_settings
             from pathlib import Path
@@ -807,7 +807,7 @@ def _render_asset_config_editor(
         )
 
         # ── v2_risk — mode tendance ───────────────────────────────────────
-        st.caption("Paramètres risque V2 — mode TREND")
+        st.caption(t("cfg_risk_trend_caption"))
         c1, c2, c3 = st.columns(3)
         with c1:
             sl_mult = st.number_input(
@@ -842,7 +842,7 @@ def _render_asset_config_editor(
             )
 
         # ── v2_risk — mode RANGE ─────────────────────────────────────────
-        st.caption("Paramètres risque V2 — mode RANGE (mean-revert)")
+        st.caption(t("cfg_risk_range_caption"))
         r1, r2, r3 = st.columns(3)
         with r1:
             rsl = st.number_input(
@@ -882,7 +882,7 @@ def _render_asset_config_editor(
                 help="Seuil de blocage total des entrées",
             )
 
-        if st.button(f"💾 Sauvegarder {asset}", key=f"save_{slug}"):
+        if st.button(t("cfg_save_asset").format(asset=asset), key=f"save_{slug}"):
             # Ne sauvegarder que les champs propres à l'actif (pas les globaux du merge)
             asset_overrides: dict = {
                 "asset": asset,

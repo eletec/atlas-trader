@@ -458,7 +458,7 @@ def render_status_board(statuses: dict[str, dict], stats: dict[str, dict],
                     latency_color = "normal" if latency <= sla else "inverse"
 
                     with st.container(border=True):
-                        st.markdown(f"**{icon} {flux_def['label']}**")
+                        st.markdown(f"**{icon} {t(f'flux_label_{flux_name}')}**")
                         st.caption(t(f"flux_desc_{flux_name}"))
                         st.metric(t("flux_latency"), f"{latency}ms", delta=None,
                                   delta_color=latency_color)
@@ -476,14 +476,10 @@ def render_controls(settings: dict) -> dict | None:
     """Panneau de contrôle V2 — actifs actifs + paramètres globaux."""
     st.markdown(f'<h4><i class="fas fa-sliders" style="margin-right:7px;color:#7986cb;"></i>{t("flux_controls_title")}</h4>', unsafe_allow_html=True)
 
-    st.info(
-        "🔬 **V2 Pipeline** — le pipeline quantitatif s'exécute comme une unité (pas de toggle par étape). "
-        "Pour configurer les seuils et le timeframe, utilisez l'onglet **Moteur Quant V2**. "
-        "Pour le capital et le risk par actif, utilisez **Par Actif**."
-    )
+    st.info(t("flux_controls_info"))
 
     # Actifs actifs — seul vrai contrôle V2 ici
-    st.markdown("#### Actifs surveillés")
+    st.markdown(f"#### {t('flux_watched_assets')}")
     proj = settings.get("project", {})
 
     # --- Pipeline intraday (5m) ---
@@ -518,24 +514,20 @@ def render_controls(settings: dict) -> dict | None:
     _tf_secs = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400}
     _recommended_interval = _tf_secs.get(_tf_cur, 300)
 
-    st.markdown("#### Intervalle cycle")
+    st.markdown(f"#### {t('flux_cycle_interval')}")
     st.caption(
-        f"Timeframe actif : **{_tf_cur}** → intervalle recommandé : **{_recommended_interval}s**. "
-        "Configurable ici ou dans **Moteur Quant** (timeframe) et **Par Actif** (intervalle)."
+        f"{t('flux_interval_caption').format(tf=_tf_cur, rec=_recommended_interval)}"
     )
     _ival = settings.get("project", {}).get("loop_interval_seconds", 900)
     _ival_new = st.number_input(
-        "Intervalle cycle (s)", 60, 3600, int(_ival), 60,
+        t("flux_interval_label"), 60, 3600, int(_ival), 60,
         key="flux_ctrl_interval",
         help=f"Fréquence de réveil du daemon. Recommandé : {_recommended_interval}s pour TF {_tf_cur}.",
     )
     if _ival_new != _recommended_interval:
         st.caption(f"⚠️ Valeur actuelle ({_ival_new}s) ≠ recommandée ({_recommended_interval}s) — le bot n'agira pas à chaque barre.")
 
-    st.info(
-        "⚙️ **Mode testnet** → onglet **Risk** | "
-        "**Utiliser HMM** → onglet **Moteur Quant**"
-    )
+    st.info(t("flux_hmm_hint"))
 
     changed = (
         set(_pa_new) != set(_pa_opts)
@@ -767,7 +759,7 @@ def render_flux_manager_page() -> None:
         selected_flux = st.radio(
             t("flux_to_analyze"),
             list(FLUX_DEFINITIONS.keys()),
-            format_func=lambda k: FLUX_DEFINITIONS[k]["label"],
+            format_func=lambda k: t(f"flux_label_{k}"),
             horizontal=True, key="chart_flux"
         )
         hours_chart = st.radio(t("flux_period"), [1, 6, 24], index=1,
@@ -785,7 +777,7 @@ def render_flux_manager_page() -> None:
                 t("flux_col_avg_lat"), t("flux_col_p95_lat"), t("flux_col_items")
             ]
             df_stats[t("flux_col_flux")] = df_stats[t("flux_col_flux")].map(
-                lambda k: FLUX_DEFINITIONS.get(k, {}).get("label", k)
+                lambda k: t(f"flux_label_{k}") if f"flux_label_{k}" in ["flux_label_ohlcv_loader"] or True else k
             )
             st.table(df_stats)
         else:
@@ -797,7 +789,7 @@ def render_flux_manager_page() -> None:
             t("flux_filter_by"),
             ["Tous"] + list(FLUX_DEFINITIONS.keys()),
             format_func=lambda k: t("flux_all") if k == "Tous"
-            else FLUX_DEFINITIONS[k]["label"],
+            else t(f"flux_label_{k}"),
             horizontal=True, key="log_flux"
         )
         n_logs = st.number_input(t("flux_nb_lines"), 10, 500, 50, step=10)

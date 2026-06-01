@@ -626,7 +626,7 @@ def render_users_admin() -> None:
 
     # Sauvegarder les modifications (rôles, settings)
     st.markdown("---")
-    if st.button("💾 Sauvegarder les modifications", type="primary", use_container_width=True):
+    if st.button(t("auth_save_changes"), type="primary", use_container_width=True):
         cfg["users"] = users
         save_users_config(cfg)
         st.success("✅ Configuration utilisateurs sauvegardée.")

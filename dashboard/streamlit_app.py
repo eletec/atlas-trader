@@ -1656,7 +1656,7 @@ def _render_v2_monitoring(state: dict, theme: str, bg: str, bdr: str, txt: str, 
                 delta_color="normal" if rolling_sharpe >= 0 else "inverse")
     col2.metric("P(up) actuel", f"{prob_up_current:.3f}" if prob_up_current else "N/A",
                 delta=f"conv={conviction:.3f}" if conviction is not None else None)
-    col3.metric("Régime actuel", regime_label)
+    col3.metric(t("metric_current_regime"), regime_label)
     col4.metric("PF rolling 50", f"{pf_rolling:.2f}" if pf_rolling else "N/A",
                 delta="OK" if pf_rolling and pf_rolling >= 1.2 else "bas",
                 delta_color="normal" if pf_rolling and pf_rolling >= 1.2 else "inverse")
@@ -3009,10 +3009,7 @@ def render_admin_panel():
             f'{t("tab_quant_v2")}</h4>',
             unsafe_allow_html=True,
         )
-        st.info(
-            "Paramètres du pipeline quantitatif — régime de marché, modèle de signal, "
-            "seuils de décision et refit périodique."
-        )
+        st.info(t("quant_info"))
         q = settings.get("quant", {})
         col1, col2 = st.columns(2)
         with col1:
@@ -3021,19 +3018,19 @@ def render_admin_panel():
             if _tf_cur not in _tf_opts:
                 _tf_opts.append(_tf_cur)
             q["timeframe"] = st.selectbox(
-                "Timeframe OHLCV", _tf_opts,
+                t("quant_timeframe"), _tf_opts,
                 index=_tf_opts.index(_tf_cur),
                 help="Granularité des barres OHLCV (ccxt notation).",
             )
             if q["timeframe"] != _tf_cur:
-                st.info("⚠️ Changement de timeframe détecté — le runner sera recréé et un refit forcé sera déclenché au prochain cycle après sauvegarde.")
+                st.info(t("quant_tf_change_warn"))
             q["history_days"] = st.slider(
-                "Historique (jours)", 30, 365,
+                t("quant_history_days"), 30, 365,
                 int(q.get("history_days", 90)), 10,
                 help="Nombre de jours d'historique chargés au refit.",
             )
             q["train_fraction"] = st.slider(
-                "Fraction train/test", 0.55, 0.85,
+                t("quant_train_fraction"), 0.55, 0.85,
                 float(q.get("train_fraction", 0.70)), 0.05,
                 help="Fraction des données utilisées pour l'entraînement.",
             )
@@ -3041,31 +3038,30 @@ def render_admin_panel():
             _hz_val = int(q.get("horizon_bars", 4))
             _hz_idx = _hz_options.index(_hz_val) if _hz_val in _hz_options else 0
             q["horizon_bars"] = st.selectbox(
-                "Horizon (barres)", _hz_options,
+                t("quant_horizon_bars"), _hz_options,
                 index=_hz_idx,
                 help="Horizon de prédiction en barres (ex: 12 × 5min = 1h avec TF 5m).",
             )
         with col2:
             q["p_up_threshold"] = st.slider(
-                "Seuil LONG — P(up) >", 0.50, 0.75,
+                t("quant_p_up_label"), 0.50, 0.75,
                 float(q.get("p_up_threshold", 0.55)), 0.01,
                 help="Au-dessus de ce seuil en régime trending → signal LONG.",
             )
             q["p_dn_threshold"] = st.slider(
-                "Seuil SHORT — P(up) <", 0.25, 0.50,
+                t("quant_p_dn_label"), 0.25, 0.50,
                 float(q.get("p_dn_threshold", 0.45)), 0.01,
                 help="En dessous de ce seuil en régime trending → signal SHORT.",
             )
             _dead_zone = q["p_up_threshold"] - q["p_dn_threshold"]
-            st.caption(f"Zone morte : [{q['p_dn_threshold']:.2f} – {q['p_up_threshold']:.2f}] "
-                       f"(amplitude = {_dead_zone:.2f})")
+            st.caption(t("quant_dead_zone").format(dn=q['p_dn_threshold'], up=q['p_up_threshold'], amp=_dead_zone))
             q["refit_interval_hours"] = st.number_input(
-                "Intervalle refit (heures)", 12, 720,
+                t("quant_refit_interval"), 12, 720,
                 int(q.get("refit_interval_hours", 168)), 12,
                 help="Le modèle est réentraîné automatiquement toutes les N heures.",
             )
             q["use_hmm"] = st.toggle(
-                "Utiliser HMM pour la détection de régime",
+                t("quant_use_hmm"),
                 bool(q.get("use_hmm", False)),
                 help="Active le filtre HMM (hmmlearn requis — désactiver en local si absent).",
             )
@@ -3073,13 +3069,13 @@ def render_admin_panel():
 
         # ── Sources de données (TwelveData) ──────────────────────────────────
         st.markdown("---")
-        st.markdown("#### 🌐 Sources de données")
+        st.markdown(f"#### {t('quant_section_sources')}")
         _dp_opts = ["auto", "twelve_data", "yahoo"]
         _dp_cur = q.get("data_provider", settings.get("data", {}).get("provider", "auto"))
         if _dp_cur not in _dp_opts:
             _dp_cur = "auto"
         _dp_new = st.selectbox(
-            "Fournisseur de données",
+            t("quant_data_provider"),
             _dp_opts,
             index=_dp_opts.index(_dp_cur),
             help="**auto** : essaie Twelve Data (si clé présente) puis Yahoo/Binance. "
@@ -3098,7 +3094,7 @@ def render_admin_panel():
         _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else ("(vide)" if not _td_key_live else _td_key_live)
         st.caption(f"Clé TwelveData active : `{_td_key_display}`")
         _td_key_input = st.text_input(
-            "Nouvelle clé TwelveData (laissez vide pour ne pas changer)",
+            t("quant_td_key_new"),
             value="",
             type="password",
             help="La clé sera écrite dans **config/secrets.yaml** (gitignored). "
@@ -3112,24 +3108,24 @@ def render_admin_panel():
                 _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
                 _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
                 _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
-                st.success("✅ Clé TwelveData enregistrée dans config/secrets.yaml")
+                st.success(t("quant_td_key_saved"))
             except Exception as _se:
                 st.error(f"Erreur écriture secrets.yaml : {_se}")
 
         # ── État live du modèle ───────────────────────────────────────────────
         st.markdown("---")
-        st.markdown("#### État courant du modèle V2")
+        st.markdown(f"#### {t('quant_model_state_title')}")
         try:
             from storage.database import get_v2_state
             _qs = get_v2_state()
             if _qs:
                 _qa, _qb = st.columns(2)
-                _qa.metric("Dernier refit", str(_qs.get("model_fit_at", "—"))[:16])
-                _qa.metric("Régime courant", "TRENDING" if _qs.get("regime") in (1, 1.0) else ("RANGING" if _qs.get("regime") == 0.5 else "PANIC"))
+                _qa.metric(t("quant_last_refit"), str(_qs.get("model_fit_at", "—"))[:16])
+                _qa.metric(t("quant_current_regime"), "TRENDING" if _qs.get("regime") in (1, 1.0) else ("RANGING" if _qs.get("regime") == 0.5 else "PANIC"))
                 _qb.metric("P(up)", f"{_qs.get('prob_up', 0):.1%}" if _qs.get("prob_up") else "—")
-                _qb.metric("Décision", str(_qs.get("action", "—")).upper())
+                _qb.metric(t("quant_decision"), str(_qs.get("action", "—")).upper())
             else:
-                st.info("Aucun cycle V2 exécuté encore.")
+                st.info(t("quant_no_cycle"))
         except Exception as _qe:
             st.caption(f"État indisponible : {_qe}")
 
@@ -3137,7 +3133,7 @@ def render_admin_panel():
         st.markdown(f'<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_risk_title")}</h4>', unsafe_allow_html=True)
 
         st.info(t("cfg_risk_info"))
-        st.caption("💡 Mode, seuils BUY/EXIT, Kelly, drawdown, position size et filtre MA50 sont configurables **par actif** dans l'onglet **🎯 Par Actif**.")
+        st.caption(t("cfg_risk_peractif_hint"))
         risk = settings.get("risk", {})
         risk["human_in_the_loop"] = st.toggle(
             t("cfg_hitl"),
@@ -3156,7 +3152,7 @@ def render_admin_panel():
         st.markdown(f'<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#ef9a9a;"></i>{t("cfg_exchange_title")}</h4>', unsafe_allow_html=True)
         st.info(t("cfg_exchange_info"))
         exch = settings.get("exchange", {})
-        st.caption("💡 Le capital simulé par actif est configurable dans l'onglet **🎯 Par Actif**.")
+        st.caption(t("cfg_exchange_peractif_hint"))
         _testnet_current = exch.get("testnet", True)
         _testnet_new = st.toggle(t("cfg_testnet"), value=_testnet_current)
         exch["testnet"] = _testnet_new

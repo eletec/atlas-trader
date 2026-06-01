@@ -162,7 +162,8 @@ class LiveRunner:
         feats_raw = compute_features(ohlcv)
         feats_norm = normalize_features(
             feats_raw, window=self.cfg.norm_window,
-            columns=["log_return_1", "log_return_4", "log_return_24",
+            columns=["log_return_1", "log_return_4", "log_return_24", "log_return_96",
+                     "rsi_14", "macd_hist", "ema_cross", "roc_12",
                      "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
                      "vwap_dist_20", "bb_pct_b", "obv_proxy_20"],
         )
@@ -267,7 +268,8 @@ class LiveRunner:
             return self._empty_state(trigger, "historique_insuffisant")
 
         n_new_bars = len(ohlcv) - self._feats_cache_ohlcv_len
-        _norm_cols = ["log_return_1", "log_return_4", "log_return_24",
+        _norm_cols = ["log_return_1", "log_return_4", "log_return_24", "log_return_96",
+                      "rsi_14", "macd_hist", "ema_cross", "roc_12",
                       "atr_pct", "adx_14", "dist_ma50", "volume_z_20", "vol_of_vol_20",
                       "vwap_dist_20", "bb_pct_b", "obv_proxy_20"]
         if (self._feats_cache is not None

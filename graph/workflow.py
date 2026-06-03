@@ -94,6 +94,7 @@ class LiveRunner:
         self._position_entry_ts = None
         self._position_is_range: bool = False   # P1.1 : trailing RANGE vs TREND
         self._ohlcv_1h = None          # D.1 : données 1h pour filtre multi-TF
+        self._cooldown_until_ts: float = 0.0   # Fix1 : blocage après time_exit
         self._risk_manager = RiskManager(RiskParams())
         self._risk_manager_range: RiskManager | None = None   # initialisé après chargement config
         try:
@@ -397,6 +398,12 @@ class LiveRunner:
                 trade_result = self._close_position(close_price, exit_signal)
                 self._position = None
                 self._position_is_range = False   # P1.1 : reset après fermeture
+                # Fix1 : cooldown 3h après time_exit pour éviter re-entrée immédiate
+                # sur même thèse perdante (pattern observé BTC 02-03/06)
+                if exit_signal == "time_exit_8bars_loss":
+                    _cooldown_s = _TF_SECONDS.get(self.timeframe, 300) * 36  # 36 barres ≈ 3h
+                    self._cooldown_until_ts = time.time() + _cooldown_s
+                    logger.info(f"[{self.symbol}] cooldown 3h activé après time_exit")
 
         # ── Filtre multi-timeframe 1h (D.1 — 3/3 IA) ─────────────────────────────
         # Veto si tendance horaire contra-directionnelle : SMA20 vs SMA50 sur 1h
@@ -414,6 +421,28 @@ class LiveRunner:
                     trend_1h_veto = True   # LONG rejeté : tendance 1h baissière (trend ET range)
                 elif decision.action == Action.SHORT and trend_1h_up:
                     trend_1h_veto = True   # SHORT rejeté : tendance 1h haussière (trend ET range)
+
+        # ── Filtre 4h anti-biais directionnel (Fix2) ─────────────────────────
+        # SMA20 vs SMA50 sur barres 4h (resample des données 1h déjà disponibles)
+        # Bloque les SHORTs si tendance 4h est haussière (biais observé 01-03/06)
+        # et les LONGs si tendance 4h est baissière — couche supplémentaire au filtre 1h
+        trend_4h_veto = False
+        if decision.action in (Action.LONG, Action.SHORT) and self._ohlcv_1h is not None and len(self._ohlcv_1h) >= 100:
+            try:
+                _ohlcv_4h = self._ohlcv_1h["close"].resample("4h").last().dropna()
+                if len(_ohlcv_4h) >= 50:
+                    sma20_4h = _ohlcv_4h.rolling(20, min_periods=20).mean().iloc[-1]
+                    sma50_4h = _ohlcv_4h.rolling(50, min_periods=50).mean().iloc[-1]
+                    if pd.notna(sma20_4h) and pd.notna(sma50_4h):
+                        trend_4h_up = bool(sma20_4h > sma50_4h)
+                        if decision.action == Action.SHORT and trend_4h_up:
+                            trend_4h_veto = True
+                            logger.info(f"[{self.symbol}] 4h trend veto — SHORT bloqué : tendance 4h haussière")
+                        elif decision.action == Action.LONG and not trend_4h_up:
+                            trend_4h_veto = True
+                            logger.info(f"[{self.symbol}] 4h trend veto — LONG bloqué : tendance 4h baissière")
+            except Exception:
+                pass
 
         # ── Nouvelle entrée ───────────────────────────────────────────────────
         # Filtre volume : n'entrer que si volume >= 70% de la médiane des 20 dernières barres
@@ -446,15 +475,21 @@ class LiveRunner:
                     f"{decision.action.value.upper()} bloqué : {_open_same_dir} positions corrélées déjà ouvertes"
                 )
 
+        _cooldown_active = time.time() < self._cooldown_until_ts   # Fix1
+        if _cooldown_active:
+            logger.info(f"[{self.symbol}] cooldown actif — entrée bloquée ({int(self._cooldown_until_ts - time.time())}s restants)")
+
         _entry_opened_this_cycle = False
         if (self._position is None
                 and trigger != "monitor"          # pas d'entrée en mode monitoring
                 and not self._risk_manager.is_paused(time.time())
+                and not _cooldown_active          # Fix1 : cooldown post time_exit
                 and decision.action in (Action.LONG, Action.SHORT)
                 and atr_14 and atr_14 > 0
                 and atr_for_risk and atr_for_risk > 0
                 and vol_ratio >= 0.70
                 and not trend_1h_veto            # D.1 filtre 1h
+                and not trend_4h_veto            # Fix2 : filtre 4h anti-biais
                 and not _crypto_corr_veto):      # B — filtre corrélation crypto
             side = decision.action.value
             is_range_trade = decision.reason.startswith("range_mean_revert")

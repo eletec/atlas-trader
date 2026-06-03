@@ -63,7 +63,7 @@ services:
   atlas-v4-frontend:
     build:
       context: v4/frontend
-      dockerfile: Dockerfile.frontend
+      dockerfile: Dockerfile
     container_name: atlas-v4-frontend
     restart: unless-stopped
     networks: [v4_net]

@@ -24,4 +24,11 @@ __all__ = [
 ]
 
 # Registre global des types de nœuds — utilisé par le DAGExecutor pour instancier depuis JSON
-NODE_REGISTRY: dict[str, type] = {cls.__name__: cls for cls in __all__}  # type: ignore[misc]
+NODE_REGISTRY: dict[str, type] = {
+    cls.__name__: cls
+    for cls in [
+        AssetDef, LoadMultiTF, ComputeFeatures, Normalize,
+        RegimeHMM, RegimePassthrough, SignalLogReg,
+        RiskATR, PaperTrader, AlertOnly, RecordDecision,
+    ]
+}

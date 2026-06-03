@@ -1,0 +1,23 @@
+# Atlas Trader V4 — Backend (FastAPI + DAG Executor)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Dépendances système
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Dépendances Python V4 (subset de requirements.txt + ajouts V4)
+COPY v4/requirements.backend.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.backend.txt
+
+# Code source V4 + modules V3 wrappés (montés en volume en dev)
+COPY . /app/src
+
+ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "v4.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -1,0 +1,97 @@
+# ============================================================
+# Atlas Trader V4 — Docker Compose (développement local)
+# ============================================================
+# Usage :
+#   docker compose -f docker-compose.v4.yml up -d
+#   docker compose -f docker-compose.v4.yml logs -f
+#   docker compose -f docker-compose.v4.yml down
+#
+# Services :
+#   atlas-v4-api       : FastAPI — DAG executor + API REST + SSE prix
+#   atlas-v4-frontend  : Next.js — éditeur visuel React Flow
+#   atlas-v4-ollama    : Ollama — modèles IA locaux (phi4, llama3, mistral)
+#
+# Volumes ISOLÉS de V3/GX10 — aucun partage avec docker-compose.yml
+# V3 continue de tourner sur GX10, indépendamment.
+# ============================================================
+
+name: atlas-trader-v4
+
+volumes:
+  v4_storage:          # SQLite, DAG JSON, logs
+  v4_models:           # modèles Ollama téléchargés
+  v4_config:
+
+networks:
+  v4_net:
+    driver: bridge
+
+services:
+
+  # ----------------------------------------------------------
+  # API — FastAPI + DAG Executor
+  # ----------------------------------------------------------
+  atlas-v4-api:
+    build:
+      context: .
+      dockerfile: v4/Dockerfile.backend
+    container_name: atlas-v4-api
+    restart: unless-stopped
+    networks: [v4_net]
+    ports:
+      - "8000:8000"
+    volumes:
+      - v4_storage:/app/data
+      - v4_config:/app/config
+      - .:/app/src:ro          # code source monté en lecture seule (hot reload)
+    environment:
+      - V4_ENV=development
+      - V4_TESTNET=true
+      - OLLAMA_URL=http://atlas-v4-ollama:11434
+      - DATABASE_URL=sqlite:////app/data/v4.db
+    depends_on:
+      - atlas-v4-ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ----------------------------------------------------------
+  # Frontend — Next.js + React Flow
+  # ----------------------------------------------------------
+  atlas-v4-frontend:
+    build:
+      context: v4/frontend
+      dockerfile: Dockerfile.frontend
+    container_name: atlas-v4-frontend
+    restart: unless-stopped
+    networks: [v4_net]
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_SSE_URL=http://localhost:8000/prices/stream
+    depends_on:
+      - atlas-v4-api
+
+  # ----------------------------------------------------------
+  # Ollama — modèles IA locaux
+  # ----------------------------------------------------------
+  atlas-v4-ollama:
+    image: ollama/ollama:latest
+    container_name: atlas-v4-ollama
+    restart: unless-stopped
+    networks: [v4_net]
+    ports:
+      - "11434:11434"
+    volumes:
+      - v4_models:/root/.ollama
+    # Pour activer le GPU (optionnel) :
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

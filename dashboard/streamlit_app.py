@@ -2991,6 +2991,13 @@ def render_admin_panel():
         (None, None,      t("admin_section_backup")),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",   t("tab_backup")),
         ('<i class="fas fa-trash-alt"></i>',       "reset",    t("tab_reset_v2")),
+        # ── V4 — Moteur DAG ──────────────────────────────────────────────
+        (None, None,      "V4 — Moteur DAG"),
+        ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  "Canvas DAG"),
+        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring V4"),
+        ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades V4"),
+        ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
+        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config V4"),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -3742,6 +3749,36 @@ def render_admin_panel():
         pass  # le panneau reset gère ses propres boutons
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
+    elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
+        _V4_URLS = {
+            "v4_canvas":  "http://localhost:3000/canvas",
+            "v4_monitor": "http://localhost:3000/monitoring",
+            "v4_trades":  "http://localhost:3000/trades",
+            "v4_arena":   "http://localhost:3000/arena",
+            "v4_admin":   "http://localhost:3000/admin",
+        }
+        _V4_LABELS = {
+            "v4_canvas":  "Canvas DAG",
+            "v4_monitor": "Monitoring V4",
+            "v4_trades":  "Trades V4",
+            "v4_arena":   "Arena",
+            "v4_admin":   "Config V4",
+        }
+        _v4_url = _V4_URLS[_atab]
+        _v4_label = _V4_LABELS[_atab]
+        st.markdown(
+            f'<h4 style="margin-bottom:12px;">'
+            f'<i class="fas fa-diagram-project" style="margin-right:8px;color:#4f6ef7;"></i>'
+            f'{_v4_label}</h4>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<iframe src="{_v4_url}" '
+            f'style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;'
+            f'background:#0f1117;" '
+            f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
+            unsafe_allow_html=True,
+        )
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")

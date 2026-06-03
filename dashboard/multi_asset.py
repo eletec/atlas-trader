@@ -493,27 +493,9 @@ def render_asset_tabs(
     # Clés URL-safe (ex: "BTC_USDT")
     keys   = ["Global"] + [a.replace("/", "_") for a in assets]
 
-    # ── Entrées V4 (Next.js frontend) ────────────────────────────────────────
-    _V4_ITEMS = [
-        ("v4_canvas",  "🎨", "Canvas DAG"),
-        ("v4_monitor", "📡", "Monitoring"),
-        ("v4_trades",  "📋", "Trades V4"),
-        ("v4_arena",   "🏟️",  "Arena"),
-        ("v4_admin",   "⚙️",  "Admin V4"),
-    ]
-    _V4_URLS = {
-        "v4_canvas":  "http://localhost:3000/canvas",
-        "v4_monitor": "http://localhost:3000/monitoring",
-        "v4_trades":  "http://localhost:3000/trades",
-        "v4_arena":   "http://localhost:3000/arena",
-        "v4_admin":   "http://localhost:3000/admin",
-    }
-    _v4_keys = [k for k, _, _ in _V4_ITEMS]
-    _all_keys = keys + _v4_keys
-
     # Sélection lue depuis l'URL (persistée, pas de localStorage Streamlit)
     selected_key = st.query_params.get("_asset", "Global")
-    if selected_key not in _all_keys:
+    if selected_key not in keys:
         selected_key = "Global"
 
     # Items pour le JS [{key, icon, text}, ...]
@@ -522,24 +504,10 @@ def render_asset_tabs(
         parts = lbl.split("  ", 1)
         items.append({"key": k, "icon": parts[0], "text": parts[1] if len(parts) > 1 else parts[0]})
 
-    # Section V4
-    items.append({"section": "V4 — CANVAS"})
-    for k, icon, text in _V4_ITEMS:
-        items.append({"key": k, "icon": icon, "text": text})
-
     _inject_custom_sidenav(items, selected_key, theme=st.query_params.get("theme", "dark"))
 
     # Rendu de la vue sélectionnée
-    if selected_key in _v4_keys:
-        # Embed du frontend Next.js V4 dans un iframe plein écran
-        v4_url = _V4_URLS[selected_key]
-        st.markdown(
-            f'<iframe src="{v4_url}" '
-            f'style="width:100%;height:calc(100vh - 80px);border:none;border-radius:8px;" '
-            f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
-            unsafe_allow_html=True,
-        )
-    elif selected_key == "Global":
+    if selected_key == "Global":
         if pre_global_fn is not None:
             pre_global_fn()
         render_global_overview()

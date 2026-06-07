@@ -50,7 +50,7 @@ const CTX_NODES = [
 export function DAGCanvas() {
   const {
     nodes, edges, onNodesChange, onEdgesChange, onConnect,
-    isRunning, results, reset, setNodes, setEdges, setDagId,
+    isRunning, results, reset, setNodes, setEdges, setDagId, setRunning,
   } = useDagStore();
 
   const { runOnce, schedule, stopDag } = useDagRunner();
@@ -155,14 +155,17 @@ export function DAGCanvas() {
     setError(null);
     try {
       await schedule(cycleS);
+      setRunning(true);
       setFeedback(`⏱ Schedulé toutes les ${cycleS}s`);
     } catch (e: any) { setError(e.message); }
     setTimeout(() => setFeedback(null), 3000);
   };
 
   const handleStop = async () => {
+    setError(null);
     try {
       await stopDag();
+      setRunning(false);
       setFeedback("■ Arrêté");
     } catch (e: any) { setError(e.message); }
     setTimeout(() => setFeedback(null), 2000);

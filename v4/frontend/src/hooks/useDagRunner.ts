@@ -77,7 +77,11 @@ export function useDagRunner() {
   };
 
   const stopDag = async (): Promise<void> => {
-    await fetch(`${API_URL}/dag/${encodeURIComponent(dagId)}`, { method: "DELETE" });
+    const resp = await fetch(`${API_URL}/dag/${encodeURIComponent(dagId)}`, { method: "DELETE" });
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Stop failed (${resp.status}): ${err}`);
+    }
   };
 
   return { runOnce, schedule, stopDag };

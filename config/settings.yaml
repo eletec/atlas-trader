@@ -22,27 +22,18 @@ crawler:
   frequency: per_cycle
   llm_summarizer_model: claude-3-5-haiku-20241022
   request_timeout_seconds: 15
-
-  # ── Templates macro — pertinents pour TOUS les actifs ────────────────────
   templates_macro:
-  - 'geopolitics energy price {year}'
-  - 'inflation central bank policy {year}'
-  - 'global market sentiment {year}'
-  - 'risk-off risk-on sentiment {year}'
-  - 'USD dollar index outlook {year}'
-  - 'recession financial crisis risk {year}'
-
-  # ── Templates par actif dans config/assets/{slug}.yaml ───────────────────
-  # (clé : crawler.templates)
-  # Fallback legacy — ignoré si templates_macro + assets définis
+  - geopolitics energy price {year}
+  - inflation central bank policy {year}
+  - global market sentiment {year}
+  - risk-off risk-on sentiment {year}
+  - USD dollar index outlook {year}
+  - recession financial crisis risk {year}
   templates: []
 news:
   polling_interval_seconds: 1800
   max_items_per_cycle: 30
   relevance_score_threshold: 0.4
-
-  # ── Sources macro — pertinentes pour TOUS les actifs ──────────────────────
-  # Géopolitique, banques centrales, économie globale, marchés actions
   sources_rss_macro:
   - https://feeds.bbci.co.uk/news/business/rss.xml
   - https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best
@@ -51,10 +42,6 @@ news:
   - https://asia.nikkei.com/rss/feed/technology
   - https://www.rt.com/rss/business/
   - https://en.caixin.com/rss/finance.xml
-
-  # ── Configuration spécifique par actif ────────────────────────────────────
-  # Chaque actif a ses propres mots-clés, sources RSS, comptes Twitter/X et subreddits.
-  # Le scorer de pertinence utilise uniquement les keywords de l'actif courant.
   sources_per_asset:
     BTC/USDT:
       keywords:
@@ -91,7 +78,6 @@ news:
       - Bitcoin
       - CryptoCurrency
       - btc
-
     ETH/USDT:
       keywords:
       - ethereum
@@ -118,7 +104,6 @@ news:
       - ethereum
       - ethfinance
       - ethtrader
-
     BNB/USDT:
       keywords:
       - BNB
@@ -138,7 +123,6 @@ news:
       reddit:
       - binance
       - CryptoCurrency
-
     XRP/USDT:
       keywords:
       - XRP
@@ -159,7 +143,6 @@ news:
       reddit:
       - Ripple
       - CryptoCurrency
-
     ADA/USDT:
       keywords:
       - ADA
@@ -178,7 +161,6 @@ news:
       reddit:
       - cardano
       - CryptoCurrency
-
     DOGE/USDT:
       keywords:
       - DOGE
@@ -195,7 +177,6 @@ news:
       reddit:
       - dogecoin
       - CryptoCurrency
-
     AVAX/USDT:
       keywords:
       - AVAX
@@ -214,7 +195,6 @@ news:
       reddit:
       - Avax
       - CryptoCurrency
-
     LINK/USDT:
       keywords:
       - LINK
@@ -233,7 +213,6 @@ news:
       reddit:
       - Chainlink
       - CryptoCurrency
-
     DOT/USDT:
       keywords:
       - DOT
@@ -252,7 +231,6 @@ news:
       reddit:
       - dot
       - CryptoCurrency
-
     SOL/USDT:
       keywords:
       - solana
@@ -275,11 +253,9 @@ news:
       reddit:
       - solana
       - CryptoCurrency
-
   cryptopanic:
     enabled: true
     max_items: 15
-    # Asset to CryptoPanic currency code mapping (non-crypto assets ignored automatically)
     asset_currency_map:
       BTC/USDT: BTC
       ETH/USDT: ETH
@@ -305,50 +281,50 @@ agents:
     weight_in_scoring: 1.0
   fundamental:
     enabled: true
-    weight_in_scoring: 0.0   # Brier 0.303, WR 40.4%, avg_score 62 (perma-optimiste) → neutralisé
+    weight_in_scoring: 0.0
   x_sentiment:
     enabled: true
-    weight_in_scoring: 0.0   # Brier 0.413, WR 36.2%, avg_score 77 (perma-haussier) → neutralisé
+    weight_in_scoring: 0.0
   contrarian:
     enabled: true
     weight_in_scoring: 0.9
   fear_greed:
     enabled: true
-    weight_in_scoring: 0.0   # Brier 0.476, WR 29.8%, avg_score 73 (perma-haussier) → neutralisé
+    weight_in_scoring: 0.0
   polymarket:
     enabled: true
-    weight_in_scoring: 0.55  # Brier 0.244 — bon calibrage mais dominait trop → réduit
+    weight_in_scoring: 0.55
   timesfm:
-    enabled: false           # Brier 0.243, WR 48.9% (~aléatoire) → remplacé par Kronos
+    enabled: false
     weight_in_scoring: 0.0
   kronos:
     enabled: true
-    weight_in_scoring: 0.00  # Brier 0.306, WR 30.8%, avg P&L -$0.33/BUY — pire agent → neutralisé
+    weight_in_scoring: 0.0
   market_regime:
     enabled: true
-    weight_in_scoring: 0.70  # Brier 0.225, WR 66% — meilleur agent → poids maximal
+    weight_in_scoring: 0.7
   bull_bear_debate:
     enabled: false
     weight_in_scoring: 0.0
   alpha_combination:
-    enabled: false           # true = poids dynamiques IC-based (Fundamental Law)
-    min_history: 20          # min trades évalués (result_24h non NULL) pour activer
-    lookback_days: 90        # fenêtre glissante d'analyse
-    correlation_threshold: 0.70  # seuil corrélation inter-agents (info)
-    ic_floor: 0.0            # IC minimal pour recevoir un poids > 0
+    enabled: false
+    min_history: 20
+    lookback_days: 90
+    correlation_threshold: 0.7
+    ic_floor: 0.0
 timesfm:
   forecast_horizon: 24
   backend: cpu
 kronos:
   enabled: true
-  model_name: "NeoQuasar/Kronos-mini"   # mini (4.1M) | small (24.7M) | base (102.3M)
-  forecast_horizon: 96                  # candles à prédire (96 × 15min = 24h)
-  lookback: 400                         # candles de contexte (max 2048 pour mini)
-  temperature: 1.0                      # sampling temperature (0.1 = déterministe, 2.0 = créatif)
-  top_p: 0.9                            # nucleus sampling (0.0 = greedy, 1.0 = full)
-  sample_count: 1                       # trajectoires probabilistes (1 = rapide, ≥3 = distribution)
-  timeout_seconds: 120                  # timeout worker subprocess
-  backend: cpu                          # cpu | cuda (GX10 = CPU uniquement)
+  model_name: NeoQuasar/Kronos-mini
+  forecast_horizon: 96
+  lookback: 400
+  temperature: 1.0
+  top_p: 0.9
+  sample_count: 1
+  timeout_seconds: 120
+  backend: cpu
 market_regime:
   n_hmm_states: 2
   vol_window: 30
@@ -357,8 +333,8 @@ market_regime:
 scoring:
   weights:
     mirofish: 0.12
-    market: 0.50   # technique plus fiable que les agents IA → augmenté
-    agents: 0.20   # agents IA sous-performent → réduit
+    market: 0.5
+    agents: 0.2
     contrarian: 0.18
   min_weight: 0.05
   max_weight: 0.6
@@ -368,21 +344,18 @@ risk:
   kelly_max_fraction: 0.25
   max_drawdown_pct: 15.0
   position_size_pct: 5.0
-  min_position_size_pct: 2.0      # plancher absolu même en Kelly négatif (2% = $200)
+  min_position_size_pct: 2.0
   atr_multiplier_sl: 2.5
   atr_multiplier_tp: 4.0
   atr_period: 14
-  # buy_threshold / exit_threshold : reliques V1 (scoring-based) — non utilisés par V2 (P(up) + HMM)
-  # buy_threshold: 65
-  # exit_threshold: 40
   human_in_the_loop: false
   ma50_filter_mode: gradual
   ma50_strong_signal_threshold: 72
   ma50_gradual_size_factor: 0.5
   max_open_positions: 5
   sell_threshold: 30
-  buy_cooldown_minutes: 20    # min between two consecutive BUYs for the same asset (anti-duplicate)
-  sell_cooldown_minutes: 60   # min to wait after a SELL before re-entering (anti-churning)
+  buy_cooldown_minutes: 20
+  sell_cooldown_minutes: 60
 circuit_breaker:
   funding_warning: 0.00018
   funding_block: 0.00045
@@ -393,43 +366,71 @@ assets:
   - symbol: BTC/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [bitcoin, crypto, blockchain]
+    theme_mapping:
+    - bitcoin
+    - crypto
+    - blockchain
   - symbol: ETH/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [ethereum, DeFi, layer2]
+    theme_mapping:
+    - ethereum
+    - DeFi
+    - layer2
   - symbol: SOL/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [solana, DeFi, meme coin]
+    theme_mapping:
+    - solana
+    - DeFi
+    - meme coin
   - symbol: BNB/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [BNB, Binance, BSC]
+    theme_mapping:
+    - BNB
+    - Binance
+    - BSC
   - symbol: XRP/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [XRP, Ripple, payment]
+    theme_mapping:
+    - XRP
+    - Ripple
+    - payment
   - symbol: ADA/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [Cardano, smart contract]
+    theme_mapping:
+    - Cardano
+    - smart contract
   - symbol: DOGE/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [Dogecoin, meme coin]
+    theme_mapping:
+    - Dogecoin
+    - meme coin
   - symbol: AVAX/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [Avalanche, DeFi, subnet]
+    theme_mapping:
+    - Avalanche
+    - DeFi
+    - subnet
   - symbol: LINK/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [Chainlink, oracle, DeFi]
+    theme_mapping:
+    - Chainlink
+    - oracle
+    - DeFi
   - symbol: DOT/USDT
     exchange: binance
     timeframe: 5m
-    theme_mapping: [Polkadot, parachain, Web3]
+    theme_mapping:
+    - Polkadot
+    - parachain
+    - Web3
   active_asset: BTC/USDT
 exchange:
   name: binance
@@ -458,100 +459,68 @@ llm:
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
-  deepseek_api_key: ""  # key stored in config/secrets.yaml — DO NOT COMMIT
+  deepseek_api_key: [REDACTED]
 post_mortem:
   enabled: true
   delay_hours: 24
   min_history_for_adjustment: 10
   learning_rate: 0.05
   walk_forward_days: 7
-
-# ==============================================================================
-# QUANT V2 — All parameters configurable from the Admin UI
-# No numeric value should be hardcoded in quant/ code
-# ==============================================================================
 quant:
-  # ── Data ───────────────────────────────────────────────────────────────────
   symbol: BTC/USDT
-  timeframe: 5m                   # 1m | 3m | 5m | 15m | 1h | 4h | 1d
-  history_days: 90                # days of history to load for model refit
-
-  # ── Pipeline ───────────────────────────────────────────────────────────────
-  horizon_bars: 4                 # prediction horizon (in bars)
-  norm_window_days: 30            # quantile normalisation window (days, auto-converted)
-  p_up_threshold: 0.55            # LONG signal threshold
-  p_dn_threshold: 0.42            # SHORT threshold: trigger when P(up) < p_dn_threshold
-  train_fraction: 0.70            # train/test split fraction for live runner
-  refit_interval_days: 7          # model refit interval
-
-  # ── Signal model ───────────────────────────────────────────────────────────
-  use_hmm: true                   # true = HMM regime filter, false = fallback ADX+vol_of_vol
-  use_lgb: false                  # true = LightGBM (experimental), false = LogisticRegression
-  signal_C: 1.0                   # LogReg regularisation strength (lower = more regularised)
-
-  # ── HMM Regime ─────────────────────────────────────────────────────────────
-  hmm_n_states: 3                 # number of HMM states (2 or 3)
-  hmm_adx_threshold: 25.0         # ADX threshold for fallback regime detection
-
-  # ── Risk management ────────────────────────────────────────────────────────
-  fraction_per_trade: 0.0075      # capital fraction risked per trade (0.75%)
-  stop_loss_atr_mult: 2.0         # ATR multiplier for stop-loss
-  take_profit_atr_mult: 4.0       # ATR multiplier for take-profit (R:R 2.0)
-  trailing_activation_atr: 2.0    # trailing stop activation at 2×ATR
-  trailing_distance_atr: 2.0      # trailing stop distance 2×ATR
-  weekly_dd_kill_switch: 0.08     # weekly drawdown triggering kill-switch (8%)
-  kill_switch_pause_days: 7       # pause duration after kill-switch
-
-  # ── Backtest ───────────────────────────────────────────────────────────────
-  initial_capital: 10000.0        # starting capital (USD)
-  fee_rate: 0.0005                # taker fee per side (0.05%)
-  slippage_rate: 0.0002           # slippage per side (0.02%)
-
-  # ── Per-asset thresholds (override global p_up / p_dn) ────────────────────
-  # Format: symbol: {p_up_threshold: X, p_dn_threshold: Y}
-  # Assets not listed use the global thresholds above.
+  timeframe: 5m
+  history_days: 90
+  horizon_bars: 4
+  norm_window_days: 30
+  p_up_threshold: 0.55
+  p_dn_threshold: 0.42
+  train_fraction: 0.7
+  refit_interval_days: 7
+  use_hmm: true
+  use_lgb: false
+  signal_C: 1.0
+  hmm_n_states: 3
+  hmm_adx_threshold: 25.0
+  fraction_per_trade: 0.0075
+  stop_loss_atr_mult: 2.0
+  take_profit_atr_mult: 4.0
+  trailing_activation_atr: 2.0
+  trailing_distance_atr: 2.0
+  weekly_dd_kill_switch: 0.08
+  kill_switch_pause_days: 7
+  initial_capital: 10000.0
+  fee_rate: 0.0005
+  slippage_rate: 0.0002
   asset_thresholds:
     ETH/USDT:
-      p_up_threshold: 0.60        # ETH: P_up rarely exceeds 0.60 in non-PANIC regimes
+      p_up_threshold: 0.6
     SOL/USDT:
-      p_up_threshold: 0.58        # SOL: max P_up ~0.573 observed on 5y data
-
-  # ── Per-asset config (timeframe and live history override) ─────────────────
-  # All Binance perp assets run on 5m real-time loop by default.
-  # Override here only if a specific asset requires different settings.
+      p_up_threshold: 0.58
   asset_config: {}
-
-  # ── Walk-forward ───────────────────────────────────────────────────────────
-  wf_train_days: 90               # training window duration (days)
-  wf_test_days: 30                # OOS test window duration (days)
-  wf_step_days: 30                # slide step between folds (days)
-  wf_min_folds: 12                # minimum number of folds
-  wf_max_folds: 24                # maximum number of folds
-  wf_perm_iter: 500               # permutation test iterations
-
-  # ── Go-live criteria (tightened — consensus GPT + Grok + DeepSeek) ─────────
-  go_live_sharpe_min: 0.80
-  go_live_pf_min: 1.30
-  go_live_trades_min: 250         # minimum total trades
+  wf_train_days: 90
+  wf_test_days: 30
+  wf_step_days: 30
+  wf_min_folds: 12
+  wf_max_folds: 24
+  wf_perm_iter: 500
+  go_live_sharpe_min: 0.8
+  go_live_pf_min: 1.3
+  go_live_trades_min: 250
   go_live_pvalue_max: 0.05
   go_live_positive_folds_pct: 0.65
   correlation_threshold: 0.75
-  meta_analysis_interval_days: 14  # LLM failure-pattern analysis interval (days)
-  meta_analysis_days: 30            # lookback window for meta-analysis
-
-  # ── Data sources ───────────────────────────────────────────────────────────
-  data_provider: "auto"            # "auto" | "twelve_data" | "yahoo"
-
-  # ── Advanced features ──────────────────────────────────────────────────────
-  use_dxy_feature: true            # DXY as cross-market feature
-
-  # ── Horizon sweep ──────────────────────────────────────────────────────────
-  horizon_sweep_values: [2, 4, 8, 12]   # horizons to test in sweep
-
-  # ── Adaptive refit KS-test ─────────────────────────────────────────────────
-  refit_trigger: "schedule"        # "schedule" | "ks_test" | "both"
-  refit_ks_pvalue_threshold: 0.05  # KS-test p-value threshold to trigger refit
-  refit_ks_window_days: 14         # recent window for KS-test (days)
+  meta_analysis_interval_days: 14
+  meta_analysis_days: 30
+  data_provider: auto
+  use_dxy_feature: true
+  horizon_sweep_values:
+  - 2
+  - 4
+  - 8
+  - 12
+  refit_trigger: schedule
+  refit_ks_pvalue_threshold: 0.05
+  refit_ks_window_days: 14
 monitor:
   interval_seconds: 60
   breaking_news_threshold: 0.8
@@ -559,8 +528,6 @@ monitor:
 admin:
   password_hash: ''
   session_timeout_minutes: 60
-
-# ── Sources de données (clé API dans config/secrets.yaml — gitignored) ──────
 data:
-  provider: "auto"           # "auto" | "twelve_data" | "yahoo"
-  twelve_data_key: ""        # override local ; préférer config/secrets.yaml
+  provider: auto
+  twelve_data_key: ''

@@ -29,9 +29,9 @@ _LOG_LOCK = threading.Lock()
 
 
 def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
-    """Ajoute une entrée dans le buffer circulaire de logs."""
+    """Ajoute une entrée dans le buffer circulaire de logs (heure locale)."""
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now().isoformat(timespec="seconds"),
         "level": level,
         "dag_id": dag_id,
         "node_id": node_id,

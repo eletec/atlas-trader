@@ -48,6 +48,7 @@ services:
       - V4_ENV=development
       - V4_TESTNET=true
       - OLLAMA_URL=http://atlas-v4-ollama:11434
+      - TZ=Europe/Paris
       - DATABASE_URL=sqlite:////app/data/v4.db
     depends_on:
       - atlas-v4-ollama

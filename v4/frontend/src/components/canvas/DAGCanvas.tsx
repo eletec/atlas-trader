@@ -186,16 +186,16 @@ export function DAGCanvas() {
           minZoom={0.15} maxZoom={2.5}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#161b2a" />
+          <MiniMap nodeColor="#1a1d2e" maskColor="rgba(15,17,23,0.85)"
+            className="border border-canvas-border rounded" position="bottom-right"
+            style={{ bottom: 8, right: 52, width: 120, height: 80 }} />
           <Controls className="fill-slate-500 stroke-canvas-border" position="bottom-right"
             style={{ bottom: 8, right: 8 }} />
-          <MiniMap nodeColor="#1a1d2e" maskColor="rgba(15,17,23,0.85)"
-            className="border border-canvas-border rounded" position="bottom-left"
-            style={{ bottom: 8, left: 8, width: 120, height: 80 }} />
         </ReactFlow>
       </div>
 
-      {/* ═══════════ OVERLAY CONTROLS (top-left) ═══════════ */}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 rounded-lg border border-canvas-border/60 bg-canvas-node/80 backdrop-blur px-2 py-1 shadow-lg">
+      {/* ═══════════ OVERLAY CONTROLS (centré en haut) ═══════════ */}
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-lg border border-canvas-border/60 bg-canvas-node/80 backdrop-blur px-2 py-1 shadow-lg">
         {/* ── DAG Selector ─────────────────────────────────── */}
         <div className="relative">
           <button
@@ -362,8 +362,8 @@ export function DAGCanvas() {
         </div>
       )}
 
-      {/* Éditeur params (droite) */}
-      <div className="absolute right-0 top-0 bottom-0 z-20">
+      {/* Éditeur params (droite) — fixed pour ne pas être clippé */}
+      <div className="fixed right-0 top-0 bottom-0 z-20" style={{ maxWidth: "min(288px, 100vw)" }}>
         <NodeEditor />
       </div>
 

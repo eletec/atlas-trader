@@ -18,7 +18,7 @@ function PriceStreamInit() {
 
 export default function CanvasPage() {
   return (
-    <div className="h-screen w-full overflow-hidden bg-canvas-bg">
+    <div className="h-screen w-full bg-canvas-bg">
       <PriceStreamInit />
       <DAGCanvas />
     </div>

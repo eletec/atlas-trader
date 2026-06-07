@@ -51,11 +51,8 @@ services:
       - ./config/assets:/app/config/assets:rw
       - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
       - ./dashboard:/app/dashboard:ro
-      - ./agents:/app/agents:ro
-      - ./graph:/app/graph:ro
       - ./quant:/app/quant:ro
       - ./utils:/app/utils:ro
-      - ./main.py:/app/main.py:ro
     networks:
       - local_net
     healthcheck:

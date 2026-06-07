@@ -2717,7 +2717,7 @@ def render_agent_scores_chart(asset: str):
 
 
 def render_live_logs(key: str = "global", asset: str | None = None):
-    """Affiche les logs avec pagination (100 lignes par page). Si asset est fourni, filtre sur cet actif."""
+    """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""
     col_title, col_del = st.columns([5, 1])
     with col_title:
         st.markdown(
@@ -2726,6 +2726,40 @@ def render_live_logs(key: str = "global", asset: str | None = None):
             f'{t("logs_title")}</h3>',
             unsafe_allow_html=True,
         )
+
+    # ── Logs V4 (API) ───────────────────────────────────────────────────
+    v4_logs: list[dict] = []
+    try:
+        import urllib.request, json as _json
+        req = urllib.request.Request("http://host.docker.internal:8000/dag/logs?n=50", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            v4_logs = _json.loads(resp.read())
+    except Exception:
+        pass
+
+    if v4_logs:
+        st.markdown(
+            '<p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#4f6ef7;">'
+            '⚡ V4 — Exécution DAG</p>',
+            unsafe_allow_html=True,
+        )
+        theme = _get_theme()
+        log_bg = "#161b22" if theme == "dark" else "#f8f9fa"
+        log_border = "rgba(255,255,255,0.08)" if theme == "dark" else "#dee2e6"
+        for entry in v4_logs[-30:]:
+            ts = entry.get("ts", "")
+            level = entry.get("level", "INFO")
+            msg = entry.get("message", "")
+            lvl_color = {"ERROR": "#ef4444", "WARN": "#f59e0b", "INFO": "#22c55e", "DEBUG": "#888"}.get(level, "#888")
+            st.markdown(
+                f'<div style="font-family:monospace;font-size:11px;padding:2px 8px;'
+                f'background:{log_bg};border-left:3px solid {lvl_color};margin:1px 0;">'
+                f'<span style="color:#888;">{ts[-8:] if ts else "--"}</span> '
+                f'<span style="color:{lvl_color};">{level}</span> '
+                f'<span>{msg}</span></div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown('<div style="margin-bottom:12px;"></div>', unsafe_allow_html=True)
     with col_del:
         if st.button("🗑️ Vider", key=f"btn_clear_logs_{key}",
                      help="Supprime toutes les entrées de la table logs",

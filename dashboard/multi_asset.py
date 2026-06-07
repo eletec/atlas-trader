@@ -19,12 +19,31 @@ from utils.i18n import t
 # ---------------------------------------------------------------------------
 
 def _active_assets() -> list[str]:
-    """Retourne la liste des actifs actifs depuis la config."""
+    """Retourne la liste des actifs actifs : config + DAGs V4 actifs."""
+    assets: list[str] = []
+
+    # 1) Actifs configurés (utils/config)
     try:
         from utils.config import get_active_assets
-        return get_active_assets()
+        assets = list(get_active_assets())
     except Exception:
-        return ["BTC/USDT"]
+        pass
+
+    # 2) Actifs des DAGs V4 actifs (API)
+    try:
+        import urllib.request, json
+        req = urllib.request.Request("http://host.docker.internal:8000/dag/status", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dags = json.loads(resp.read())
+        for d in dags:
+            dag_asset = d.get("asset", "")
+            if dag_asset and dag_asset not in assets:
+                assets.append(dag_asset)
+    except Exception:
+        pass
+
+    # Fallback ultime
+    return assets if assets else ["BTC/USDT"]
 
 
 def _asset_icon(asset: str) -> str:

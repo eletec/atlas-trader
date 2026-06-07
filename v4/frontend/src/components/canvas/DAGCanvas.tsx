@@ -23,7 +23,8 @@ import { useDagStore } from "@/store/dagStore";
 import { useDagRunner } from "@/hooks/useDagRunner";
 import { nodeTypes } from "@/components/nodes/nodeTypes";
 import { NodePalette } from "./NodePalette";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getDefaultNodes, getDefaultEdges } from "@/lib/defaultDag";
 
 export function DAGCanvas() {
   const {
@@ -32,14 +33,33 @@ export function DAGCanvas() {
     isRunning,
     results,
     reset,
+    setNodes,
+    setEdges,
+    setDagId,
   } = useDagStore();
 
   const { runOnce, schedule, stopDag } = useDagRunner();
   const [cycleS, setCycleS] = useState(300);
   const [error, setError] = useState<string | null>(null);
 
+  // Auto-load du DAG démo par défaut si le canvas est vide
+  useEffect(() => {
+    if (nodes.length === 0) {
+      setNodes(getDefaultNodes());
+      setEdges(getDefaultEdges());
+      setDagId("demo_v4");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const doneCount = Object.values(results).filter((r) => r.status === "done").length;
   const errorCount = Object.values(results).filter((r) => r.status === "error").length;
+
+  const handleReset = () => {
+    setNodes(getDefaultNodes());
+    setEdges(getDefaultEdges());
+    setDagId("demo_v4");
+    reset();
+  };
 
   const handleRun = async () => {
     setError(null);
@@ -131,7 +151,7 @@ export function DAGCanvas() {
             </button>
 
             <button
-              onClick={reset}
+              onClick={handleReset}
               className="rounded border border-canvas-border px-2 py-1 text-xs text-slate-500
                          hover:text-canvas-danger transition-colors"
               title="Réinitialiser le canvas"

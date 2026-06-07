@@ -95,9 +95,7 @@ export const useDagStore = create<DAGState>()(
     }),
     {
       name: "atlas_v4_dag",
-      partialize: (s) => ({ nodes: s.nodes, edges: s.edges, dagId: s.dagId, asset: s.asset }),
-      // Ne pas réhydrater depuis localStorage si le canvas a déjà été chargé
-      // (évite que le localStorage écrase les positions après un drag-drop)
+      partialize: (s) => ({ nodes: s.nodes, edges: s.edges, dagId: s.dagId, asset: s.asset, results: s.results, isRunning: s.isRunning }),
     }
   )
 );

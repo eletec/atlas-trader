@@ -3748,15 +3748,38 @@ def render_admin_panel():
             "v4_admin":   "http://localhost:3000/admin",
         }
         _v4_url = _V4_URLS[_atab]
-        # Iframe avec marges négatives compensant exactement le padding Streamlit
-        # stMainBlockContainer: padding-top 2rem, padding-bottom 3rem
-        st.markdown(
-            f'<iframe src="{_v4_url}" '
-            f'style="width:calc(100% + 4rem);height:calc(100vh - 48px);border:none;'
-            f'margin:-2rem 0 -3rem -2rem;display:block;background:#0f1117;" '
-            f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
-            unsafe_allow_html=True,
-        )
+        # JS : wrapper fixed dans le document parent (Streamlit est dans une iframe)
+        import streamlit.components.v1 as _cv1
+        _cv1.html(f"""
+<script>
+(function() {{
+  var p = window.parent || window;
+  var d = p.document;
+  var HDR_H = 48;
+
+  // Supprimer les anciens wrappers V4 (cleanup)
+  d.querySelectorAll('[id$="_v4wrap"]').forEach(function(el) {{ el.remove(); }});
+
+  // Créer le wrapper
+  var wrap = d.createElement('div');
+  wrap.id = '{_atab}_v4wrap';
+  wrap.style.cssText = 'position:fixed;top:'+HDR_H+'px;left:0;right:0;bottom:0;z-index:5;background:#0f1117;';
+  var ifr = d.createElement('iframe');
+  ifr.src = '{_v4_url}';
+  ifr.style.cssText = 'width:100%;height:100%;border:none;';
+  ifr.allow = 'clipboard-read;clipboard-write';
+  ifr.allowFullscreen = true;
+  wrap.appendChild(ifr);
+  d.body.appendChild(wrap);
+
+  // Ajuster left selon la sidebar
+  var nav = d.getElementById('atlas-sidenav');
+  if (nav) {{
+    var c = nav.classList.contains('c');
+    wrap.style.left = c ? '44px' : '180px';
+  }}
+}})();
+</script>""", height=0)
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")

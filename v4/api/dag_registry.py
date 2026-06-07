@@ -120,16 +120,15 @@ class DAGRegistry:
 
     def run_once(self, dag_spec: "DAGSpec") -> dict[str, NodeRunResult]:
         """Exécute un DAG une fois et retourne les résultats. Sans persistance."""
-        _emit_log("INFO", dag_spec.dag_id, f"▶ Exécution one-shot — {dag_spec.asset}")
+        _emit_log("INFO", dag_spec.dag_id, f"▶ {dag_spec.asset} — démarrage")
         executor = self._build_executor(dag_spec)
         results = executor.run_once()
         done = sum(1 for r in results.values() if r.status.value == "done")
         errors = sum(1 for r in results.values() if r.status.value == "error")
-        # Log détaillé par nœud
         for nid, r in results.items():
             _emit_log("INFO" if r.status.value == "done" else "ERROR",
                       dag_spec.dag_id, _summarize_node(nid, r), node_id=nid)
-        _emit_log("INFO", dag_spec.dag_id, f"✓ Cycle terminé : {done}/{len(results)} OK, {errors} erreurs")
+        _emit_log("INFO", dag_spec.dag_id, f"✓ Terminé : {done}/{len(results)} OK, {errors} erreurs")
         return results
 
     def schedule(self, dag_spec: "DAGSpec", cycle_s: float) -> str:
@@ -181,47 +180,9 @@ class DAGRegistry:
                 return [entry] if entry else []
             return list(self._dags.values())
 
-def _summarize_node(nid: str, r: "NodeRunResult") -> str:
-    """Résumé compact d'un résultat de nœud pour les logs."""
-    dur_s = r.duration_ms / 1000
-    status = r.status.value
-    if status == "error":
-        return f"✗ {nid} ({dur_s:.1f}s) — {str(r.error)[:80]}"
-    if not r.outputs:
-        return f"✓ {nid} ({dur_s:.1f}s)"
-    # Extraire les clés intéressantes selon le type de nœud
-    out = r.outputs
-    parts = []
-    if "signal" in out:
-        parts.append(f"signal={out['signal']}")
-    if "trend" in out:
-        parts.append(f"trend={out['trend']}")
-    if "action" in out:
-        parts.append(f"action={out['action']}")
-    if "prob_up" in out:
-        parts.append(f"prob={float(out['prob_up']):.2f}")
-    if "reason" in out and out.get("signal") == "flat":
-        parts.append(out["reason"])
-    if "decision" in out:
-        d = out["decision"]
-        if hasattr(d, "get"):
-            act = d.get("action", "?")
-            prc = d.get("entry_price", 0)
-            parts.append(f"→ {act}" + (f" @ ${prc:,.0f}" if prc else ""))
-    if "trade_result" in out:
-        tr = out["trade_result"]
-        if hasattr(tr, "get"):
-            parts.append(f"trade={tr.get('status','?')}")
-    if "regime" in out:
-        regime_val = out["regime"]
-        if hasattr(regime_val, "iloc"):
-            regime_val = str(regime_val.iloc[0]) if len(regime_val) > 0 else "?"
-        parts.append(f"regime={regime_val}")
-    if "response" in out:
-        resp = str(out.get("response", ""))[:60]
-        parts.append(f'AI: {resp}')
-    detail = " | ".join(parts) if parts else f"{len(out)} outputs"
-    return f"✓ {nid} ({dur_s:.1f}s) — {detail}"
+    # ------------------------------------------------------------------
+    # Boucle interne
+    # ------------------------------------------------------------------
 
     def _loop(self, dag_id: str, cycle_s: float) -> None:
         _emit_log("INFO", dag_id, f"Boucle démarrée (cycle={cycle_s}s)")
@@ -239,7 +200,6 @@ def _summarize_node(nid: str, r: "NodeRunResult") -> str:
                         self._dags[dag_id].last_results = results
                 done = sum(1 for r in results.values() if r.status.value == "done")
                 errors = sum(1 for r in results.values() if r.status.value == "error")
-                # Log détaillé par nœud
                 for nid, r in results.items():
                     _emit_log("INFO" if r.status.value == "done" else "ERROR",
                               dag_id, _summarize_node(nid, r), node_id=nid)
@@ -252,3 +212,46 @@ def _summarize_node(nid: str, r: "NodeRunResult") -> str:
 
         _emit_log("INFO", dag_id, "Boucle arrêtée")
         logger.info("DAG %s — boucle terminée", dag_id)
+
+
+# ------------------------------------------------------------------
+# Helper : résumé de nœud pour les logs
+# ------------------------------------------------------------------
+
+def _summarize_node(nid: str, r: "NodeRunResult") -> str:
+    """Résumé compact d'un résultat de nœud pour les logs."""
+    dur_s = r.duration_ms / 1000
+    status = r.status.value
+    if status == "error":
+        return f"✗ {nid} ({dur_s:.1f}s) — {str(r.error)[:80]}"
+    if not r.outputs:
+        return f"✓ {nid} ({dur_s:.1f}s)"
+    out = r.outputs
+    parts = []
+    if "signal" in out:
+        parts.append(f"signal={out['signal']}")
+    if "trend" in out:
+        parts.append(f"trend={out['trend']}")
+    if "prob_up" in out:
+        parts.append(f"prob={float(out['prob_up']):.2f}")
+    if "reason" in out and out.get("signal") == "flat":
+        parts.append(str(out["reason"])[:50])
+    if "decision" in out:
+        d = out["decision"]
+        if hasattr(d, "get"):
+            act = d.get("action", "?")
+            prc = d.get("entry_price", 0)
+            parts.append(f"{act}" + (f" @ ${prc:,.0f}" if prc else ""))
+    if "trade_result" in out:
+        tr = out["trade_result"]
+        if hasattr(tr, "get"):
+            parts.append(f"trade={tr.get('status','?')}")
+    if "regime" in out:
+        rv = out["regime"]
+        if hasattr(rv, "iloc"):
+            rv = str(rv.iloc[0]) if len(rv) > 0 else "?"
+        parts.append(f"regime={rv}")
+    if "response" in out:
+        parts.append("AI: " + str(out["response"])[:60])
+    detail = " | ".join(parts) if parts else f"{len(out)} output(s)"
+    return f"✓ {nid} ({dur_s:.1f}s) — {detail}"

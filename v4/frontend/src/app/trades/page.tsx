@@ -40,28 +40,45 @@ export default function TradesPage() {
         const seenTradeKeys = new Set<string>();
         for (const dag of dags) {
           const results = dag.last_results || {};
+
+          // D'abord collecter les décisions RiskATR pour enrichir les trades
+          const riskDecisions: Record<string, any> = {};
+          for (const [nodeId, result] of Object.entries(results) as [string, any][]) {
+            if (result.status !== "done") continue;
+            const outputs = result.outputs || {};
+            if (outputs.decision && outputs.decision.action && outputs.decision.action !== "flat") {
+              riskDecisions[nodeId] = outputs.decision;
+            }
+          }
+
+          // PaperTrader → source unique de vérité, enrichi avec RiskATR
           for (const [nodeId, result] of Object.entries(results) as [string, any][]) {
             if (result.status !== "done") continue;
             const outputs = result.outputs || {};
 
-            // PaperTrader → extraire trade_result (source unique de vérité)
             if (outputs.trade_result && outputs.trade_result.action && outputs.trade_result.action !== "flat") {
               const tr = outputs.trade_result;
               const dedupKey = `${tr.action}_${tr.entry_price}_${dag.asset}`;
               if (seenTradeKeys.has(dedupKey)) continue;
               seenTradeKeys.add(dedupKey);
+
+              // Trouver le RiskATR correspondant (ex: short_risk → short_paper)
+              const riskNodeId = nodeId.replace("_paper", "_risk");
+              const riskDec = riskDecisions[riskNodeId] || {};
+
               allTrades.push({
                 trade_id: `${dag.dag_id}_${nodeId}`,
                 symbol: tr.symbol || dag.asset || "BTC/USDT",
                 action: tr.action || "?",
-                entry_price: tr.entry_price,
-                stop_loss: 0,
-                take_profit: 0,
-                size_usd: 0,
-                size_units: 0,
+                entry_price: tr.entry_price || riskDec.entry_price,
+                stop_loss: riskDec.stop_loss || 0,
+                take_profit: riskDec.take_profit || 0,
+                size_usd: riskDec.size_usd || 0,
+                size_units: riskDec.size_units || 0,
+                atr: riskDec.atr || 0,
                 ts: dag.last_run_at ? new Date(dag.last_run_at * 1000).toISOString() : "",
                 status: tr.status || "open",
-                reason: tr.reason || "",
+                reason: riskDec.reason || tr.reason || "",
               });
             }
           }

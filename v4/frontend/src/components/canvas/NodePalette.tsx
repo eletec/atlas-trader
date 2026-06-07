@@ -40,6 +40,14 @@ const NODE_CATALOG = [
     category: "Signal",
     nodes: [
       { type: "SignalLogReg", label: "Signal LogReg", inputPorts: ["features_all", "regime"], outputPorts: ["signal", "prob_up", "reason"] },
+      { type: "SignalConstant", label: "Signal Constant", inputPorts: [], outputPorts: ["signal", "prob_up"] },
+    ],
+  },
+  {
+    category: "Filtres",
+    nodes: [
+      { type: "TrendFilter", label: "Trend Filter 4h", inputPorts: ["ohlcv_1h"], outputPorts: ["trend", "sma20", "sma50", "slope"] },
+      { type: "DirectionGate", label: "Direction Gate", inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"] },
     ],
   },
   {

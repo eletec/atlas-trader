@@ -37,51 +37,32 @@ export default function TradesPage() {
         const dags = await resp.json();
 
         const allTrades: Trade[] = [];
+        const seenTradeKeys = new Set<string>();
         for (const dag of dags) {
           const results = dag.last_results || {};
-          // Cherche les nœuds PaperTrader et RiskATR qui ont produit une décision
           for (const [nodeId, result] of Object.entries(results) as [string, any][]) {
             if (result.status !== "done") continue;
             const outputs = result.outputs || {};
 
-            // PaperTrader → extraire trade_result
+            // PaperTrader → extraire trade_result (source unique de vérité)
             if (outputs.trade_result && outputs.trade_result.action && outputs.trade_result.action !== "flat") {
               const tr = outputs.trade_result;
+              const dedupKey = `${tr.action}_${tr.entry_price}_${dag.asset}`;
+              if (seenTradeKeys.has(dedupKey)) continue;
+              seenTradeKeys.add(dedupKey);
               allTrades.push({
                 trade_id: `${dag.dag_id}_${nodeId}`,
                 symbol: tr.symbol || dag.asset || "BTC/USDT",
                 action: tr.action || "?",
                 entry_price: tr.entry_price,
-                stop_loss: tr.stop_loss,
-                take_profit: tr.take_profit,
-                size_usd: tr.size_usd,
-                size_units: tr.size_units,
+                stop_loss: 0,
+                take_profit: 0,
+                size_usd: 0,
+                size_units: 0,
                 ts: dag.last_run_at ? new Date(dag.last_run_at * 1000).toISOString() : "",
                 status: tr.status || "open",
                 reason: tr.reason || "",
               });
-            }
-
-            // RiskATR → extraire decision (si pas déjà traité par PaperTrader)
-            if (outputs.decision && outputs.decision.action && outputs.decision.action !== "flat") {
-              const dec = outputs.decision;
-              const alreadyAdded = allTrades.some(t => t.trade_id === `${dag.dag_id}_${nodeId}`);
-              if (!alreadyAdded) {
-                allTrades.push({
-                  trade_id: `${dag.dag_id}_${nodeId}`,
-                  symbol: dag.asset || "BTC/USDT",
-                  action: dec.action,
-                  entry_price: dec.entry_price,
-                  stop_loss: dec.stop_loss,
-                  take_profit: dec.take_profit,
-                  size_usd: dec.size_usd,
-                  size_units: dec.size_units,
-                  atr: dec.atr,
-                  ts: dag.last_run_at ? new Date(dag.last_run_at * 1000).toISOString() : "",
-                  status: "open",
-                  reason: dec.reason || "",
-                });
-              }
             }
           }
         }

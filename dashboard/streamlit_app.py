@@ -777,30 +777,43 @@ def _get_ohlcv(asset: str) -> tuple[list, list]:
 
 @st.cache_data(ttl=30)
 def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
-    """Retourne les trades récents : V4 (prioritaire) + V3 fallback."""
+    """Retourne les trades récents : V4 API (prioritaire) + V3 DB fallback."""
     trades: list[dict] = []
 
-    # 1) Trades V4 (paper_trader)
+    # 1) Trades V4 depuis l'API
     try:
-        from storage.paper_trader import get_v4_trades
-        v4 = get_v4_trades(n, symbol=asset)
-        for t in v4:
-            trades.append({
-                "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}",
-                "timestamp": t.get("timestamp", ""),
-                "asset": t.get("symbol", ""),
-                "action": "BUY" if t.get("action") == "long" else "SELL",
-                "entry_price": t.get("entry_price"),
-                "sl_price": t.get("stop_loss"),
-                "tp_price": t.get("take_profit"),
-                "position_size": t.get("size_usd"),
-                "status": t.get("status", "open"),
-                "source": "v4",
-            })
+        import urllib.request, json as _json
+        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dags = _json.loads(resp.read())
+        for d in dags:
+            dag_id = d.get("dag_id", "v4")
+            dag_asset = d.get("asset", "")
+            if asset and dag_asset != asset:
+                continue
+            results = d.get("last_results", {})
+            # Récupérer les trades depuis short_paper et btc_paper
+            for paper_key in ("short_paper", "btc_paper"):
+                paper = results.get(paper_key, {})
+                if isinstance(paper, dict):
+                    tr = paper.get("outputs", {}).get("trade_result", {})
+                    if isinstance(tr, dict) and tr.get("status") == "opened":
+                        trades.append({
+                            "id": f"{dag_id}_{dag_asset}",
+                            "timestamp": d.get("last_run_at", ""),
+                            "asset": dag_asset,
+                            "action": "BUY" if tr.get("action") == "long" else "SELL",
+                            "entry_price": tr.get("entry_price"),
+                            "sl_price": 0,
+                            "tp_price": 0,
+                            "position_size": 0,
+                            "status": "open",
+                            "source": "v4",
+                        })
     except Exception:
         pass
 
-    # 2) Trades V3 (decisions table)
+    # 2) Fallback V3
     try:
         from storage.database import get_recent_trades
         v3 = get_recent_trades(n, asset=asset)
@@ -811,38 +824,41 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     except Exception:
         pass
 
-    # Trier par timestamp décroissant, limiter à n
     trades.sort(key=lambda t: str(t.get("timestamp", "")), reverse=True)
     return trades[:n]
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
-    """Portefeuille consolidé V3 + V4."""
+    """Portefeuille consolidé — compte les trades V4 depuis l'API."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
                  "live_mode": False}
 
-    # 1) V3 paper trader (fallback)
+    # V4 trades via API
     try:
-        from execution.paper_trader import PaperTrader
-        v3 = PaperTrader().get_portfolio(asset=asset)
-        portfolio["capital"] = v3.get("capital", portfolio["capital"])
-        portfolio["current_value"] = v3.get("current_value", portfolio["current_value"])
-        portfolio["total_pnl"] = v3.get("total_pnl", 0)
-        portfolio["n_trades"] = v3.get("n_trades", 0)
+        import urllib.request, json as _json
+        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dags = _json.loads(resp.read())
+        for d in dags:
+            if asset and d.get("asset") != asset:
+                continue
+            results = d.get("last_results", {})
+            for paper_key in ("short_paper", "btc_paper"):
+                paper = results.get(paper_key, {})
+                if isinstance(paper, dict):
+                    tr = paper.get("outputs", {}).get("trade_result", {})
+                    if isinstance(tr, dict) and tr.get("status") == "opened":
+                        portfolio["n_trades"] += 1
     except Exception:
         pass
 
-    # 2) V4 trades (storage/paper_trader)
+    # V3 fallback
     try:
-        from storage.paper_trader import get_v4_trades
-        v4_trades = get_v4_trades(500, symbol=asset)
-        portfolio["n_trades"] += len(v4_trades)
-        # P&L estimé depuis les trades V4 (si closed)
-        for t in v4_trades:
-            if t.get("pnl_usd"):
-                portfolio["total_pnl"] += float(t["pnl_usd"])
+        from execution.paper_trader import PaperTrader
+        v3 = PaperTrader().get_portfolio(asset=asset)
+        portfolio["n_trades"] += v3.get("n_trades", 0)
     except Exception:
         pass
 

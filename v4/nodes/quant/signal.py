@@ -72,7 +72,11 @@ class SignalLogReg(Node):
         if "close" not in features_all.columns:
             return {"signal": "flat", "prob_up": 0.5, "reason": "no_close_column"}
 
-        ohlcv_proxy = features_all[["close"]].copy()
+        # S'assurer que close est une Series (pas un DataFrame en cas de colonnes dupliquées)
+        close_series = features_all["close"]
+        if isinstance(close_series, pd.DataFrame):
+            close_series = close_series.iloc[:, 0]
+        ohlcv_proxy = close_series.to_frame("close")
         y = make_target_direction(ohlcv_proxy, horizon=horizon_bars)
 
         model = SignalModel(

@@ -59,18 +59,23 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   const nodeType = (nodeData.nodeType ?? "default") as string;
   const colors = TYPE_COLORS[nodeType] ?? { border: "border-canvas-border", header: "bg-slate-800/50", dot: "bg-slate-500" };
 
+  // Le dot reflète le statut (prioritaire sur la couleur de type)
+  const dotColor = status !== "idle" ? STATUS_COLOR[status] : colors.dot;
+  // Bordure colorée selon le résultat
+  const statusBorder = status === "done" ? "border-canvas-success/60" : status === "error" ? "border-canvas-danger/60" : "";
+
   return (
     <div
       className={cn(
-        "min-w-[180px] rounded-lg border bg-canvas-node text-xs shadow-lg cursor-pointer transition-shadow",
-        selected ? "border-canvas-accent ring-1 ring-canvas-accent/30" : colors.border,
+        "min-w-[180px] rounded-lg border bg-canvas-node text-xs shadow-lg cursor-pointer transition-all duration-300",
+        selected ? "border-canvas-accent ring-1 ring-canvas-accent/30 scale-[1.02]" : statusBorder || colors.border,
         nodeData.bypass && "opacity-60"
       )}
       onClick={() => selectNode(id)}
     >
       {/* Header */}
       <div className={cn("flex items-center gap-2 border-b border-canvas-border px-3 py-2 rounded-t-lg", colors.header)}>
-        <span className={cn("h-2 w-2 rounded-full shrink-0", colors.dot || STATUS_COLOR[status])} />
+        <span className={cn("h-2.5 w-2.5 rounded-full shrink-0 transition-colors duration-300", dotColor)} title={status} />
         <span className="font-semibold text-white truncate">
           {nodeData.label || nodeType || id}
         </span>
@@ -114,16 +119,26 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
 
       {/* Résultat */}
       {result?.status === "error" && result.error && (
-        <div className="border-t border-canvas-border px-3 py-1 text-[10px] text-canvas-danger truncate">
+        <div className="border-t border-canvas-danger/40 bg-red-950/30 px-3 py-1.5 text-[10px] text-canvas-danger truncate rounded-b-lg">
           ✗ {result.error}
         </div>
       )}
       {result?.status === "done" && (
-        <div className="border-t border-canvas-border px-3 py-1 text-[10px] text-slate-400">
-          {result.duration_ms.toFixed(0)}ms
-          {result.ai_used && (
-            <span className="ml-2 text-canvas-accent">⚡ AI</span>
+        <div className="border-t border-canvas-success/30 bg-green-950/20 px-3 py-1.5 text-[10px] text-canvas-success rounded-b-lg">
+          ✓ {result.duration_ms.toFixed(0)}ms
+          {result.ai_used && <span className="ml-1">· ⚡ AI</span>}
+          {result.outputs && Object.keys(result.outputs).length > 0 && (
+            <span className="ml-1 text-slate-500">
+              · {Object.entries(result.outputs).slice(0, 2).map(([k, v]) =>
+                `${k}=${typeof v === 'number' ? (v as number).toFixed(2) : String(v).slice(0, 12)}`
+              ).join(", ")}
+            </span>
           )}
+        </div>
+      )}
+      {result?.status === "running" && (
+        <div className="border-t border-canvas-warning/30 bg-amber-950/20 px-3 py-1.5 text-[10px] text-canvas-warning animate-pulse rounded-b-lg">
+          ● En cours…
         </div>
       )}
     </div>

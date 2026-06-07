@@ -57,6 +57,7 @@ export function DAGCanvas() {
   const [hydrated, setHydrated] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Hydratation zustand
   useEffect(() => {
@@ -85,10 +86,14 @@ export function DAGCanvas() {
   const errorCount  = Object.values(results).filter((r) => r.status === "error").length;
 
   const handleReset = () => {
+    setConfirmReset(true);
+  };
+  const doReset = () => {
     setNodes(getDefaultNodes());
     setEdges(getDefaultEdges());
     setDagId("demo_v4");
     reset();
+    setConfirmReset(false);
   };
   const handleRun = async () => {
     setError(null);
@@ -203,6 +208,30 @@ export function DAGCanvas() {
         <div className="absolute top-12 left-2 z-10 rounded border border-canvas-danger bg-red-950/90 px-2 py-1 text-[10px] text-canvas-danger shadow-lg">
           {error}
           <button onClick={() => setError(null)} className="ml-2 text-slate-400 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {/* ═══════════ CONFIRMATION RESET ═══════════ */}
+      {confirmReset && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="rounded-xl border border-canvas-border bg-canvas-node p-6 shadow-2xl text-center max-w-xs">
+            <div className="text-3xl mb-3">⚠️</div>
+            <p className="text-sm text-white font-semibold mb-1">Réinitialiser le canvas ?</p>
+            <p className="text-[11px] text-slate-400 mb-4">
+              Tous les nœuds et connexions seront remplacés par le DAG démo par défaut.
+              Cette action est irréversible.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <button onClick={() => setConfirmReset(false)}
+                className="rounded border border-canvas-border px-4 py-1.5 text-xs text-slate-300 hover:text-white transition-colors">
+                Annuler
+              </button>
+              <button onClick={doReset}
+                className="rounded bg-canvas-danger px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-600 transition-colors">
+                Tout réinitialiser
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

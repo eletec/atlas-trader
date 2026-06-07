@@ -78,10 +78,12 @@ export function useDagRunner() {
 
   const stopDag = async (): Promise<void> => {
     const resp = await fetch(`${API_URL}/dag/${encodeURIComponent(dagId)}`, { method: "DELETE" });
-    if (!resp.ok) {
+    // 404 = déjà arrêté ou registre vidé par reload → ce n'est pas une erreur
+    if (!resp.ok && resp.status !== 404) {
       const err = await resp.text();
       throw new Error(`Stop failed (${resp.status}): ${err}`);
     }
+    // Même si 404, on considère le DAG comme arrêté
   };
 
   return { runOnce, schedule, stopDag };

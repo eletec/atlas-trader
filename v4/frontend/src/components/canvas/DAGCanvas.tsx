@@ -166,21 +166,23 @@ export function DAGCanvas() {
 
   const handleSchedule = async () => {
     setError(null);
+    setFeedback(`⏱ Envoi schedule ${cycleS}s…`);
     try {
       await schedule(cycleS);
       setRunning(true);
       setFeedback(`⏱ Schedulé toutes les ${cycleS}s`);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(e.message); setFeedback(null); }
     setTimeout(() => setFeedback(null), 3000);
   };
 
   const handleStop = async () => {
     setError(null);
+    setFeedback("■ Arrêt en cours…");
     try {
       await stopDag();
       setRunning(false);
       setFeedback("■ Arrêté");
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(e.message); setFeedback(null); }
     setTimeout(() => setFeedback(null), 2000);
   };
   const handleCtx = useCallback((e: React.MouseEvent) => {

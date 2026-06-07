@@ -2980,20 +2980,14 @@ def render_admin_panel():
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades V4"),
         ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config V4"),
-        # ── V3 — Legacy ──────────────────────────────────────────────────
-        (None, None,      "V3 — Legacy"),
-        ('<i class="fas fa-microchip"></i>',       "quant",    t("tab_quant_v2")),
-        ('<i class="fas fa-shield-halved"></i>',   "risk",     t("tab_risk")),
-        ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
-        ('<i class="fas fa-robot"></i>',           "aimodel",  t("tab_ai_model")),
-        ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
         # ── Infra & Monitoring ───────────────────────────────────────────
         (None, None,      "Infra & Monitoring"),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",     t("tab_reset_v2")),
-        ('<i class="fas fa-list-check"></i>',      "logging",   t("tab_logging")),
-        ('<i class="fas fa-history"></i>',         "historique", "Historique"),
-        ('<i class="fas fa-user"></i>',            "users",     t("tab_users")),
-        ('<i class="fas fa-floppy-disk"></i>',     "backup",    t("tab_backup")),
+        ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset_v2")),
+        ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
+        ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
+        ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
+        ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup")),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [

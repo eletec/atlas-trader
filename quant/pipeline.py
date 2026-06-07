@@ -274,7 +274,7 @@ def run_pipeline(
     if "funding" not in _extra or "oi" not in _extra:
         try:
             if getattr(qcfg, 'use_order_flow_features', True):
-                from backtest.data_fetcher import fetch_funding_history, fetch_open_interest_history
+                from quant.data_loader import fetch_funding_history, fetch_open_interest_history
                 _of_symbol = _extra.get('_symbol') or _symbol
                 if _of_symbol and str(_of_symbol).endswith('/USDT'):
                     days_needed_of = max(int((ohlcv.index[-1] - ohlcv.index[0]).days) + 5, 30)

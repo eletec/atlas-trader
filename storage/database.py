@@ -1754,9 +1754,9 @@ def get_shadow_comparison_stats() -> list[dict]:
         logger.warning(f"Shadow stats error: {exc}")
 
     # Ajouter les profils sans trades pour qu'ils apparaissent dans le tableau
+    # NOTE: load_profiles (comparison.shadow_runner) supprimé — V1 legacy
     try:
-        from comparison.shadow_runner import load_profiles
-        all_profiles = load_profiles()
+        all_profiles = {}  # was: from comparison.shadow_runner import load_profiles
         existing = {s["profile"] for s in stats}
         for name, cfg in all_profiles.items():
             if cfg.get("active", False):

@@ -735,10 +735,12 @@ def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
 
 @st.cache_data(ttl=90)
 def _get_live_indicators(asset: str) -> dict:
-    """Indicateurs live avec cache 90s — TTL > autorefresh (60s) évite un appel réseau bloquant à chaque rerun."""
+    """Indicateurs live avec cache 90s — interroge l'API V4 pour les prix."""
     try:
-        from agents.market_data_agent import MarketDataAgent
-        return MarketDataAgent().get_indicators(asset)
+        import urllib.request, json
+        req = urllib.request.Request(f"http://host.docker.internal:8000/prices/snapshot?asset={asset}")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
     except Exception:
         return {}
 
@@ -850,9 +852,38 @@ def _save_settings(settings: dict) -> bool:
 # COMPOSANTS UI USER
 # ===========================================================
 
+def _summarize_node_output(node_id: str, output: dict) -> str:
+    """Résumé compact d'une sortie de nœud V4 pour le log."""
+    if node_id.startswith("PaperTrader") or node_id.startswith("paper_trader"):
+        action = output.get("action") or output.get("signal", "?")
+        price = output.get("price") or output.get("entry_price", 0)
+        return f"Trade: {action} @ ${price:,.2f}" if price else f"Trade: {action}"
+    if "signal" in node_id.lower() or node_id.startswith("Signal"):
+        sig = output.get("signal") or output.get("action", "?")
+        return f"Signal: {sig}"
+    if "trend" in node_id.lower() or node_id.startswith("Trend"):
+        trend = output.get("trend", "?")
+        return f"Tendance: {trend}"
+    if "risk" in node_id.lower() or node_id.startswith("Risk"):
+        pos = output.get("position_size") or output.get("size", 0)
+        return f"Position: {pos}"
+    if "regime" in node_id.lower() or node_id.startswith("Regime"):
+        regime = output.get("regime") or output.get("state", "?")
+        return f"Régime: {regime}"
+    if "llm" in node_id.lower() or node_id.startswith("LLM"):
+        model = output.get("model", "?")
+        dur = output.get("duration_ms", 0)
+        return f"LLM {model} ({dur}ms)"
+    # Résumé générique : première valeur scalaire
+    for k, v in output.items():
+        if isinstance(v, (int, float, str, bool)) and k not in ("timestamp", "ts"):
+            return f"{k}: {v}"
+    return ""
+
+
 def _force_run_background(asset: str, log_q) -> None:
     """
-    Exécute le cycle V2 depuis un thread background.
+    Exécute un DAG V4 depuis un thread background.
     Poste des chaînes HTML dans log_q au fur et à mesure.
     Poste ("__done__", (is_error: bool, message: str)) en dernier.
     """
@@ -871,40 +902,44 @@ def _force_run_background(asset: str, log_q) -> None:
 
     t_total = _time.time()
     try:
-        from graph.workflow import run_cycle
-        result = run_cycle(asset=asset, trigger="force")
+        import urllib.request, json
+        req = urllib.request.Request(
+            "http://host.docker.internal:8000/dag/run",
+            data=json.dumps({"dag_id": "demo_v4", "asset": asset}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read())
         total_s = _time.time() - t_total
 
-        action   = result.get("action", "N/A").upper()
-        prob_up  = result.get("prob_up")
-        regime   = "TREND" if result.get("regime_trending") else "RANGE"
-        capital  = result.get("capital", 0)
-        close    = result.get("close_price", 0)
-        reason   = result.get("reason", "")
-        errors   = result.get("errors", [])
-        pos      = result.get("position")
+        results = result.get("results", {})
+        done = sum(1 for r in results.values() if r.get("status") == "done")
+        errs = sum(1 for r in results.values() if r.get("status") == "error")
+        dag_id = result.get("dag_id", "?")
 
-        _log(f"✅ <b>Pipeline OK</b> — {total_s:.1f}s")
-        _log(
-            f"📊 Prix: <b>${close:,.2f}</b> | Régime: <b>{regime}</b> | "
-            f"P(up): <b>{f'{prob_up:.3f}' if prob_up is not None else 'N/A'}</b>"
-        )
-        _log(f"🎯 Décision: <b>{action}</b> — {reason}")
-        if pos:
-            _log(
-                f"📌 Position: <b>{pos.get('side','?').upper()}</b> "
-                f"@ {pos.get('entry_price',0):,.2f} | "
-                f"SL={pos.get('sl',0):,.2f} TP={pos.get('tp',0):,.2f}"
-            )
-        _log(f"💰 Capital: <b>${capital:,.0f}</b>")
+        _log(f"✅ <b>DAG V4 exécuté</b> — {dag_id} ({total_s:.1f}s)")
+        _log(f"📊 Nœuds: <b>{done} OK</b>, {errs} erreur(s) sur {len(results)}")
 
-        if errors:
-            for e in errors:
-                _log(f"⚠️ {e}")
-            msg = f"Cycle V2 terminé ({len(errors)} avertissement(s)) — {action} | {total_s:.1f}s"
+        # Afficher les sorties des nœuds clés
+        for nid, nr in results.items():
+            status = nr.get("status", "?")
+            icon = "✓" if status == "done" else "✗"
+            out = nr.get("output", {})
+            if out and status == "done":
+                # Résumé compact par nœud
+                summary = _summarize_node_output(nid, out)
+                if summary:
+                    _log(f"  {icon} <b>{nid}</b>: {summary}")
+
+        if errs:
+            for nid, nr in results.items():
+                if nr.get("status") == "error":
+                    _log(f"  ⚠️ <b>{nid}</b>: {nr.get('error', '?')}")
+            msg = f"DAG V4 terminé ({errs} erreur(s)) — {dag_id} | {total_s:.1f}s"
             log_q.put(("__done__", (False, msg)))
         else:
-            msg = f"Cycle V2 OK — {action} | capital ${capital:,.0f} | {total_s:.1f}s"
+            msg = f"DAG V4 OK — {dag_id} | {total_s:.1f}s"
             log_q.put(("__done__", (False, msg)))
 
     except Exception as exc:
@@ -2791,23 +2826,9 @@ def render_force_run_button():
 # ===========================================================
 
 def render_profile_comparison():
-    """Section de comparaison des profils shadow vs baseline."""
-    from comparison.shadow_runner import load_profiles
-
-    profiles_cfg = load_profiles()
-    if not profiles_cfg:
-        return
-
-    st.markdown(
-        f'<h3 style="margin:0 0 12px;font-size:18px;">'
-        f'<i class="fas fa-scale-balanced" style="margin-right:8px;color:#ff9800;"></i>'
-        f'{t("profiles_title")}</h3>',
-        unsafe_allow_html=True,
-    )
-    st.info(
-        "⚠️ **Données héritées V1** — Le pipeline V2 (quant pur) ne génère plus de décisions "
-        "par profil shadow. Les chiffres ci-dessous proviennent de l'ancien pipeline LLM et "
-        "ne sont plus mis à jour. Utilisez **BO → Reset V2 → Vider profils shadow V1** pour purger.",
+    """Section de comparaison des profils shadow — désactivée (V1 legacy)."""
+    # Fonctionnalité V1 supprimée avec le nettoyage V3→V4
+    return
         icon="🗄️",
     )
 

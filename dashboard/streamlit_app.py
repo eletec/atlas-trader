@@ -2987,9 +2987,9 @@ def render_admin_panel():
         ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
         ('<i class="fas fa-robot"></i>',           "aimodel",  t("tab_ai_model")),
         ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",    t("tab_reset_v2")),
         # ── Infra & Monitoring ───────────────────────────────────────────
         (None, None,      "Infra & Monitoring"),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",     t("tab_reset_v2")),
         ('<i class="fas fa-list-check"></i>',      "logging",   t("tab_logging")),
         ('<i class="fas fa-history"></i>',         "historique", "Historique"),
         ('<i class="fas fa-user"></i>',            "users",     t("tab_users")),

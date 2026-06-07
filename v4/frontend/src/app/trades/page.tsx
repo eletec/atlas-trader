@@ -1,5 +1,6 @@
 /**
  * Page Trades — journal des trades paper trading.
+ * Lit les résultats du PaperTrader depuis le dernier run DAG.
  */
 "use client";
 
@@ -8,38 +9,96 @@ import { useEffect, useState } from "react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface Trade {
-  trade_id?: string;
-  symbol?: string;
-  action?: string;
+  trade_id: string;
+  symbol: string;
+  action: string;
   entry_price?: number;
   stop_loss?: number;
   take_profit?: number;
   size_usd?: number;
-  ts?: number;
-  status?: string;
+  size_units?: number;
+  atr?: number;
+  ts: string;
+  status: string;
+  reason?: string;
 }
 
 export default function TradesPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // En V4.0 : données mock — la vraie route sera /api/trades
-    setTrades([
-      {
-        trade_id: "mock-001",
-        symbol: "BTC/USDT",
-        action: "long",
-        entry_price: 67450,
-        stop_loss: 66000,
-        take_profit: 72000,
-        size_usd: 50,
-        ts: Date.now() / 1000 - 3600,
-        status: "open",
-      },
-    ]);
-    setLoading(false);
+    async function fetchTrades() {
+      try {
+        // Récupère le statut de tous les DAGs pour extraire les trades PaperTrader
+        const resp = await fetch(`${API_URL}/dag/status`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const dags = await resp.json();
+
+        const allTrades: Trade[] = [];
+        for (const dag of dags) {
+          const results = dag.last_results || {};
+          // Cherche les nœuds PaperTrader et RiskATR qui ont produit une décision
+          for (const [nodeId, result] of Object.entries(results) as [string, any][]) {
+            if (result.status !== "done") continue;
+            const outputs = result.outputs || {};
+
+            // PaperTrader → extraire trade_result
+            if (outputs.trade_result && outputs.trade_result.action && outputs.trade_result.action !== "flat") {
+              const tr = outputs.trade_result;
+              allTrades.push({
+                trade_id: `${dag.dag_id}_${nodeId}`,
+                symbol: tr.symbol || dag.asset || "BTC/USDT",
+                action: tr.action || "?",
+                entry_price: tr.entry_price,
+                stop_loss: tr.stop_loss,
+                take_profit: tr.take_profit,
+                size_usd: tr.size_usd,
+                size_units: tr.size_units,
+                ts: dag.last_run_at ? new Date(dag.last_run_at * 1000).toISOString() : "",
+                status: tr.status || "open",
+                reason: tr.reason || "",
+              });
+            }
+
+            // RiskATR → extraire decision (si pas déjà traité par PaperTrader)
+            if (outputs.decision && outputs.decision.action && outputs.decision.action !== "flat") {
+              const dec = outputs.decision;
+              const alreadyAdded = allTrades.some(t => t.trade_id === `${dag.dag_id}_${nodeId}`);
+              if (!alreadyAdded) {
+                allTrades.push({
+                  trade_id: `${dag.dag_id}_${nodeId}`,
+                  symbol: dag.asset || "BTC/USDT",
+                  action: dec.action,
+                  entry_price: dec.entry_price,
+                  stop_loss: dec.stop_loss,
+                  take_profit: dec.take_profit,
+                  size_usd: dec.size_usd,
+                  size_units: dec.size_units,
+                  atr: dec.atr,
+                  ts: dag.last_run_at ? new Date(dag.last_run_at * 1000).toISOString() : "",
+                  status: "open",
+                  reason: dec.reason || "",
+                });
+              }
+            }
+          }
+        }
+        setTrades(allTrades);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchTrades();
+    const iv = setInterval(fetchTrades, 15_000); // refresh toutes les 15s
+    return () => clearInterval(iv);
   }, []);
+
+  if (loading) return <div className="p-8 text-slate-400 text-sm">Chargement…</div>;
+  if (error) return <div className="p-8 text-red-400 text-sm">Erreur : {error}</div>;
 
   return (
     <div className="min-h-screen bg-canvas-bg p-6">
@@ -71,9 +130,9 @@ export default function TradesPage() {
                   <td className="px-4 py-2 font-mono">{t.entry_price?.toLocaleString()}</td>
                   <td className="px-4 py-2 font-mono text-canvas-danger">{t.stop_loss?.toLocaleString()}</td>
                   <td className="px-4 py-2 font-mono text-canvas-success">{t.take_profit?.toLocaleString()}</td>
-                  <td className="px-4 py-2">${t.size_usd}</td>
+                  <td className="px-4 py-2">${t.size_usd?.toLocaleString()}</td>
                   <td className="px-4 py-2 text-slate-500">
-                    {t.ts ? new Date(t.ts * 1000).toLocaleString() : "—"}
+                    {t.ts ? new Date(t.ts).toLocaleString() : "—"}
                   </td>
                   <td className="px-4 py-2">
                     <span className={t.status === "open" ? "text-canvas-warning" : "text-slate-500"}>

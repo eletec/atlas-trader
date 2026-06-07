@@ -98,7 +98,8 @@ class SignalLogReg(Node):
         except ValueError as e:
             return {"signal": "flat", "prob_up": 0.5, "reason": f"fit_failed:{e}"}
 
-        prob_up = model.predict_proba(features_all.iloc[[-1]][available_cols])
+        prob_up_series = model.predict_proba(features_all.iloc[[-1]][available_cols])
+        prob_up = float(prob_up_series.iloc[0]) if prob_up_series is not None and len(prob_up_series) > 0 else 0.5
 
         regime_trending = regime == "TREND"
         decision = decide(
@@ -110,6 +111,6 @@ class SignalLogReg(Node):
 
         return {
             "signal": decision.action.value,
-            "prob_up": float(prob_up) if prob_up is not None else 0.5,
+            "prob_up": prob_up,
             "reason": decision.reason,
         }

@@ -3755,16 +3755,9 @@ def render_admin_panel():
             "v4_admin":   "Config V4",
         }
         _v4_url = _V4_URLS[_atab]
-        _v4_label = _V4_LABELS[_atab]
-        st.markdown(
-            f'<h4 style="margin-bottom:12px;">'
-            f'<i class="fas fa-diagram-project" style="margin-right:8px;color:#4f6ef7;"></i>'
-            f'{_v4_label}</h4>',
-            unsafe_allow_html=True,
-        )
         st.markdown(
             f'<iframe src="{_v4_url}" '
-            f'style="width:100%;height:calc(100vh - 120px);border:none;border-radius:8px;'
+            f'style="width:100%;height:calc(100vh - 56px);border:none;margin:-8px;'
             f'background:#0f1117;" '
             f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
             unsafe_allow_html=True,

@@ -792,15 +792,20 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
             if asset and dag_asset != asset:
                 continue
             results = d.get("last_results", {})
-            # Récupérer les trades depuis short_paper et btc_paper
             for paper_key in ("short_paper", "btc_paper"):
                 paper = results.get(paper_key, {})
                 if isinstance(paper, dict):
                     tr = paper.get("outputs", {}).get("trade_result", {})
                     if isinstance(tr, dict) and tr.get("status") == "opened":
+                        ts_raw = d.get("last_run_at")
+                        if ts_raw:
+                            from datetime import datetime as _dt
+                            ts_str = _dt.fromtimestamp(float(ts_raw)).strftime("%Y-%m-%dT%H:%M:%S")
+                        else:
+                            ts_str = ""
                         trades.append({
-                            "id": f"{dag_id}_{dag_asset}",
-                            "timestamp": d.get("last_run_at", ""),
+                            "id": f"{dag_id}_{dag_asset}_{paper_key}",
+                            "timestamp": ts_str,
                             "asset": dag_asset,
                             "action": "BUY" if tr.get("action") == "long" else "SELL",
                             "entry_price": tr.get("entry_price"),

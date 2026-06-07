@@ -25,6 +25,8 @@ interface NodeSpec {
   y: number;
   label: string;
   params: Record<string, unknown>;
+  inputPorts: string[];
+  outputPorts: string[];
 }
 
 function makeNode(spec: NodeSpec): RFNode {
@@ -35,8 +37,8 @@ function makeNode(spec: NodeSpec): RFNode {
     data: {
       label: spec.label,
       nodeType: spec.type,
-      inputPorts: [],
-      outputPorts: [],
+      inputPorts: spec.inputPorts,
+      outputPorts: spec.outputPorts,
       params: spec.params,
     },
   };
@@ -49,97 +51,70 @@ const NODES_SPEC: NodeSpec[] = [
 
   // Col 0 : Actif
   {
-    id: "btc_asset",
-    type: "AssetDef",
-    x: X[0], y: Y_TOP,
-    label: "BTC/USDT",
+    id: "btc_asset", type: "AssetDef", x: X[0], y: Y_TOP, label: "BTC/USDT",
     params: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02, keywords: ["bitcoin"] },
+    inputPorts: [], outputPorts: ["symbol", "exchange", "capital", "fraction"],
   },
 
   // Col 1 : Données
   {
-    id: "btc_data",
-    type: "LoadMultiTF",
-    x: X[1], y: Y_TOP,
-    label: "Load 5m + 1h",
+    id: "btc_data", type: "LoadMultiTF", x: X[1], y: Y_TOP, label: "Load 5m + 1h",
     params: { symbol: "BTC/USDT", days_5m: 90, days_1h: 100, exchange: "binance" },
+    inputPorts: ["symbol"], outputPorts: ["ohlcv_5m", "ohlcv_1h"],
   },
 
   // Col 2 : Features
   {
-    id: "btc_features",
-    type: "ComputeFeatures",
-    x: X[2], y: Y_TOP,
-    label: "Compute Features",
-    params: {},
+    id: "btc_features", type: "ComputeFeatures", x: X[2], y: Y_TOP, label: "Compute Features",
+    params: {}, inputPorts: ["ohlcv"], outputPorts: ["features"],
   },
 
   // Col 3 : Normalisation
   {
-    id: "btc_norm",
-    type: "Normalize",
-    x: X[3], y: Y_TOP,
-    label: "Normalize",
-    params: { window: 500 },
+    id: "btc_norm", type: "Normalize", x: X[3], y: Y_TOP, label: "Normalize",
+    params: { window: 500 }, inputPorts: ["features"], outputPorts: ["features_norm", "features_all"],
   },
 
   // Col 4 : Régime + Tendance (parallèle)
   {
-    id: "btc_regime",
-    type: "RegimeHMM",
-    x: X[4], y: Y_TOP - 60,
-    label: "Regime HMM",
-    params: { n_states: 3 },
+    id: "btc_regime", type: "RegimeHMM", x: X[4], y: Y_TOP - 60, label: "Regime HMM",
+    params: { n_states: 3 }, inputPorts: ["features_all"], outputPorts: ["regime", "regime_state"],
   },
   {
-    id: "btc_trend",
-    type: "TrendFilter",
-    x: X[4], y: Y_TOP + 60,
-    label: "Trend 4h (SMA20/50)",
+    id: "btc_trend", type: "TrendFilter", x: X[4], y: Y_TOP + 60, label: "Trend 4h (SMA20/50)",
     params: { timeframe_resample: "4h", sma_fast: 20, sma_slow: 50 },
+    inputPorts: ["ohlcv_1h"], outputPorts: ["trend", "sma20", "sma50", "slope"],
   },
 
   // Col 5 : Signal
   {
-    id: "btc_signal",
-    type: "SignalLogReg",
-    x: X[5], y: Y_TOP,
-    label: "Signal LogReg",
+    id: "btc_signal", type: "SignalLogReg", x: X[5], y: Y_TOP, label: "Signal LogReg",
     params: { calibrate: true, train_fraction: 0.70, horizon_bars: 48, p_up_threshold: 0.55, p_dn_threshold: 0.45 },
+    inputPorts: ["features_all", "regime"], outputPorts: ["signal", "prob_up", "reason"],
   },
 
   // Col 6 : DirectionGate (auto — suit le TrendFilter)
   {
-    id: "btc_gate",
-    type: "DirectionGate",
-    x: X[6], y: Y_TOP,
-    label: "Gate AUTO (TrendFilter)",
+    id: "btc_gate", type: "DirectionGate", x: X[6], y: Y_TOP, label: "Gate AUTO (TrendFilter)",
     params: { allow_long: true, allow_short: true },
+    inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"],
   },
 
   // Col 7 : Risk
   {
-    id: "btc_risk",
-    type: "RiskATR",
-    x: X[7], y: Y_TOP,
-    label: "Risk ATR (2:1)",
+    id: "btc_risk", type: "RiskATR", x: X[7], y: Y_TOP, label: "Risk ATR (2:1)",
     params: { sl_mult: 2.0, tp_mult: 4.0, fraction: 0.005, capital: 10000 },
+    inputPorts: ["signal", "ohlcv_1h", "capital"], outputPorts: ["decision"],
   },
 
-  // Col 8 : Sorties (3 nœuds parallèles)
+  // Col 8 : Sorties (2 nœuds parallèles)
   {
-    id: "btc_paper",
-    type: "PaperTrader",
-    x: X[8], y: Y_TOP - 60,
-    label: "Paper Trader",
-    params: {},
+    id: "btc_paper", type: "PaperTrader", x: X[8], y: Y_TOP - 60, label: "Paper Trader",
+    params: {}, inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"],
   },
   {
-    id: "btc_record",
-    type: "RecordDecision",
-    x: X[8], y: Y_TOP + 60,
-    label: "Record DB",
-    params: { db_path: "/app/storage/v4_decisions.db" },
+    id: "btc_record", type: "RecordDecision", x: X[8], y: Y_TOP + 60, label: "Record DB",
+    params: { db_path: "/app/storage/v4_decisions.db" }, inputPorts: ["decision"], outputPorts: [],
   },
 
   // ═══════════════════════════════════════════════════════════════
@@ -148,38 +123,28 @@ const NODES_SPEC: NodeSpec[] = [
 
   // Col 5 : Signal fixe SHORT
   {
-    id: "short_signal",
-    type: "SignalConstant",
-    x: X[5], y: Y_BOT,
-    label: "SHORT Forcé",
-    params: { signal: "short" },
+    id: "short_signal", type: "SignalConstant", x: X[5], y: Y_BOT, label: "SHORT Forcé",
+    params: { signal: "short" }, inputPorts: [], outputPorts: ["signal", "prob_up"],
   },
 
   // Col 6 : Gate SHORT-only
   {
-    id: "short_gate",
-    type: "DirectionGate",
-    x: X[6], y: Y_BOT,
-    label: "Gate SHORT-only",
+    id: "short_gate", type: "DirectionGate", x: X[6], y: Y_BOT, label: "Gate SHORT-only",
     params: { allow_long: false, allow_short: true },
+    inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"],
   },
 
   // Col 7 : Risk SHORT
   {
-    id: "short_risk",
-    type: "RiskATR",
-    x: X[7], y: Y_BOT,
-    label: "Risk ATR (3:1 SHORT)",
+    id: "short_risk", type: "RiskATR", x: X[7], y: Y_BOT, label: "Risk ATR (3:1 SHORT)",
     params: { sl_mult: 3.0, tp_mult: 6.0, fraction: 0.003, capital: 10000 },
+    inputPorts: ["signal", "ohlcv_1h", "capital"], outputPorts: ["decision"],
   },
 
   // Col 8 : Alerte
   {
-    id: "short_alert",
-    type: "AlertOnly",
-    x: X[8], y: Y_BOT,
-    label: "Alert (Telegram)",
-    params: { channels: ["log", "telegram"] },
+    id: "short_alert", type: "AlertOnly", x: X[8], y: Y_BOT, label: "Alert (Telegram)",
+    params: { channels: ["log", "telegram"] }, inputPorts: ["decision"], outputPorts: [],
   },
 ];
 

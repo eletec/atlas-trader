@@ -11,7 +11,7 @@ import { useDagStore } from "@/store/dagStore";
 import { useCallback, useState } from "react";
 
 const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
-  AssetDef: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02, keywords: ["bitcoin"] },
+  AssetDef: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02 },
   LoadMultiTF: { symbol: "BTC/USDT", days_5m: 90, days_1h: 100, exchange: "binance" },
   ComputeFeatures: {},
   Normalize: { window: 500 },
@@ -22,9 +22,10 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   SignalConstant: { signal: "flat", prob_up: 0.5 },
   DirectionGate: { allow_long: true, allow_short: true, invert_trend: false },
   RiskATR: { sl_mult: 2.0, tp_mult: 4.0, fraction: 0.005, capital: 10000 },
-  PaperTrader: {},
+  PaperTrader: { symbol: "BTC/USDT", dag_id: "demo_v4" },
   AlertOnly: { channels: ["log"] },
-  RecordDecision: { db_path: "/app/storage/v4_decisions.db" },
+  RecordDecision: { db_path: "/app/data/v4_decisions.db" },
+  LLMNode: { model: "phi4:latest", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },
 };
 
 function inferType(value: unknown): "string" | "number" | "boolean" | "array" {
@@ -95,9 +96,9 @@ export function NodeEditor() {
   const entries = Object.entries(params);
 
   return (
-    <div className="w-72 border-l border-canvas-border bg-canvas-node overflow-y-auto overflow-x-hidden" style={{ maxHeight: "calc(100vh - 48px)" }}>
+    <div className="w-72 border-l border-canvas-border bg-canvas-node flex flex-col" style={{ height: "100vh" }}>
       {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-canvas-border bg-canvas-node px-3 py-2 flex items-center justify-between">
+      <div className="shrink-0 border-b border-canvas-border bg-canvas-node px-3 py-2 flex items-center justify-between">
         <div>
           <span className="text-xs font-semibold text-white block">{(nodeData?.label as string) ?? selectedNodeId ?? "Node"}</span>
           <span className="text-[10px] text-slate-500">{nodeType}</span>
@@ -111,8 +112,8 @@ export function NodeEditor() {
         </button>
       </div>
 
-      {/* Params */}
-      <div className="p-3 space-y-2">
+      {/* Params — scrollable */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
         <div className="flex items-center justify-between mb-1">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Paramètres</span>
           <button
@@ -184,30 +185,32 @@ export function NodeEditor() {
           );
         })}
 
-        {/* Ajouter un paramètre */}
-        <div className="border-t border-canvas-border pt-2 mt-2">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">+ Ajouter</span>
-          <div className="flex gap-1">
-            <input
-              className="flex-1 bg-canvas-bg border border-canvas-border rounded px-1 py-0.5 text-[11px] text-white"
-              placeholder="nom"
-              value={newKey}
-              onChange={(e) => setNewKey(e.target.value)}
-            />
-            <input
-              className="flex-1 bg-canvas-bg border border-canvas-border rounded px-1 py-0.5 text-[11px] text-white"
-              placeholder="valeur"
-              value={newVal}
-              onChange={(e) => setNewVal(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            />
-            <button
-              onClick={handleAdd}
-              className="bg-canvas-accent text-white text-[10px] px-2 rounded hover:opacity-80"
-            >
-              +
-            </button>
-          </div>
+      </div>
+
+      {/* Ajouter un paramètre — sticky en bas */}
+      <div className="shrink-0 border-t border-canvas-border bg-canvas-node p-3">
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">+ Ajouter</span>
+        <div className="flex gap-1">
+          <input
+            className="flex-1 min-w-0 bg-canvas-bg border border-canvas-border rounded px-1 py-1 text-[11px] text-white"
+            placeholder="nom"
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value)}
+          />
+          <input
+            className="flex-1 min-w-0 bg-canvas-bg border border-canvas-border rounded px-1 py-1 text-[11px] text-white"
+            placeholder="valeur"
+            value={newVal}
+            onChange={(e) => setNewVal(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          />
+          <button
+            onClick={handleAdd}
+            className="shrink-0 bg-canvas-accent text-white text-xs font-bold px-2.5 rounded hover:opacity-80 transition-opacity"
+            title="Ajouter le paramètre"
+          >
+            +
+          </button>
         </div>
       </div>
     </div>

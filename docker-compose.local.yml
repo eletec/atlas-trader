@@ -46,6 +46,7 @@ services:
       # Code source monté en live (pas besoin de rebuild pour tester les modifs)
       - ./storage/database.py:/app/storage/database.py:ro
       - ./storage/__init__.py:/app/storage/__init__.py:ro
+      - ./storage/paper_trader.py:/app/storage/paper_trader.py:ro
       - ./config/settings.yaml:/app/config/settings.yaml:rw
       - ./config/users.yaml:/app/config/users.yaml:rw
       - ./config/assets:/app/config/assets:rw

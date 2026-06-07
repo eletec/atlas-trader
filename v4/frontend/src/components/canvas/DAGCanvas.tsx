@@ -1,11 +1,12 @@
 /**
  * v4/frontend/src/components/canvas/DAGCanvas.tsx
  *
- * Canvas principal React Flow avec :
- *   - Fond grille sombre
- *   - Contrôles zoom / minimap
- *   - Barre d'outils (Run / Schedule / Stop / Reset)
- *   - Statut global (running, dernière exécution)
+ * Canvas React Flow avec :
+ *   - Bandeau top fixe (titre + statut + Run/Schedule/Stop/Reset + toggle palette)
+ *   - Palette rétractable (bouton ☰ Nœuds dans le bandeau)
+ *   - Canvas plein écran, marges minimales, Controls + MiniMap en bas
+ *   - Menu contextuel (clic droit → ajouter nœud)
+ *   - NodeEditor en panneau droit
  */
 "use client";
 
@@ -15,7 +16,6 @@ import {
   Controls,
   MiniMap,
   BackgroundVariant,
-  Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -24,39 +24,48 @@ import { useDagRunner } from "@/hooks/useDagRunner";
 import { nodeTypes } from "@/components/nodes/nodeTypes";
 import { NodePalette } from "./NodePalette";
 import { NodeEditor } from "./NodeEditor";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getDefaultNodes, getDefaultEdges } from "@/lib/defaultDag";
+
+// ── Menu contextuel ─────────────────────────────────────────────────────────
+const CTX_NODES = [
+  { type: "AssetDef",          label: "💰 Asset",          cat: "Actif" },
+  { type: "LoadMultiTF",       label: "📊 Load Data",      cat: "Données" },
+  { type: "ComputeFeatures",   label: "🔢 Features",       cat: "Features" },
+  { type: "Normalize",         label: "📐 Normalize",      cat: "Features" },
+  { type: "RegimeHMM",         label: "📈 Regime HMM",     cat: "Régime" },
+  { type: "TrendFilter",       label: "📉 Trend 4h",       cat: "Filtres" },
+  { type: "SignalLogReg",      label: "🎯 Signal ML",      cat: "Signal" },
+  { type: "SignalConstant",    label: "📌 Signal Fixe",    cat: "Signal" },
+  { type: "DirectionGate",     label: "🚦 Gate",           cat: "Filtres" },
+  { type: "RiskATR",           label: "🛡️ Risk ATR",       cat: "Risque" },
+  { type: "LLMNode",           label: "🤖 LLM AI",         cat: "IA" },
+  { type: "PaperTrader",       label: "📋 Paper Trade",    cat: "Sortie" },
+  { type: "AlertOnly",         label: "🔔 Alert Only",     cat: "Sortie" },
+  { type: "RecordDecision",    label: "💾 Record DB",      cat: "Sortie" },
+];
 
 export function DAGCanvas() {
   const {
-    nodes, edges,
-    onNodesChange, onEdgesChange, onConnect,
-    isRunning,
-    results,
-    reset,
-    setNodes,
-    setEdges,
-    setDagId,
+    nodes, edges, onNodesChange, onEdgesChange, onConnect,
+    isRunning, results, reset, setNodes, setEdges, setDagId,
   } = useDagStore();
 
   const { runOnce, schedule, stopDag } = useDagRunner();
   const [cycleS, setCycleS] = useState(300);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
-  // Attendre l'hydratation du store persisté AVANT de charger le DAG par défaut
+  // Hydratation zustand
   useEffect(() => {
-    const unsub = useDagStore.persist.onFinishHydration(() => {
-      setHydrated(true);
-    });
-    // Si déjà hydraté (pas de localStorage ou synchrone)
-    if (useDagStore.persist.hasHydrated()) {
-      setHydrated(true);
-    }
+    const unsub = useDagStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useDagStore.persist.hasHydrated()) setHydrated(true);
     return () => unsub();
   }, []);
 
-  // Auto-load du DAG démo par défaut si le canvas est vide (APRÈS hydratation)
+  // DAG par défaut
   useEffect(() => {
     if (hydrated && nodes.length === 0) {
       setNodes(getDefaultNodes());
@@ -65,8 +74,15 @@ export function DAGCanvas() {
     }
   }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doneCount = Object.values(results).filter((r) => r.status === "done").length;
-  const errorCount = Object.values(results).filter((r) => r.status === "error").length;
+  // Fermer ctx menu au clic
+  useEffect(() => {
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
+  const doneCount   = Object.values(results).filter((r) => r.status === "done").length;
+  const errorCount  = Object.values(results).filter((r) => r.status === "error").length;
 
   const handleReset = () => {
     setNodes(getDefaultNodes());
@@ -74,117 +90,138 @@ export function DAGCanvas() {
     setDagId("demo_v4");
     reset();
   };
-
   const handleRun = async () => {
     setError(null);
-    try {
-      await runOnce();
-    } catch (e: any) {
-      setError(e.message);
-    }
+    try { await runOnce(); } catch (e: any) { setError(e.message); }
   };
+  const handleCtx = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+  const addNode = useCallback((spec: typeof CTX_NODES[0]) => {
+    if (!ctxMenu) return;
+    const id = `${spec.type}_${Date.now()}`;
+    setNodes([...nodes, { id, type: spec.type,
+      position: { x: ctxMenu.x - 150, y: ctxMenu.y - 80 },
+      data: { label: spec.label, nodeType: spec.type, inputPorts: [], outputPorts: [], params: {} },
+    }]);
+    setCtxMenu(null);
+  }, [ctxMenu, nodes, setNodes]);
 
   return (
-    <div className="h-full w-full relative">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-        fitView
-        deleteKeyCode="Delete"
-        className="bg-canvas-bg"
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e2130" />
-        <Controls className="fill-slate-400 stroke-canvas-border" />
-        <MiniMap
-          nodeColor="#1a1d2e"
-          maskColor="rgba(15,17,23,0.8)"
-          className="border border-canvas-border rounded"
-        />
+    <div className="h-full w-full flex flex-col bg-canvas-bg">
+      {/* ═══════════ BANDEAU TOP ═══════════ */}
+      <div className="flex items-center gap-2 border-b border-canvas-border bg-canvas-node/90 backdrop-blur px-3 py-1 shrink-0 z-30" style={{ minHeight: 34 }}>
+        <span className="text-[11px] font-semibold text-white mr-1">Atlas V4</span>
 
-        {/* Palette latérale */}
-        <Panel position="top-left">
-          <NodePalette />
-        </Panel>
+        <button
+          onClick={() => setShowPalette(!showPalette)}
+          className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+            showPalette ? "bg-canvas-accent text-white" : "border border-canvas-border text-slate-400 hover:text-white"
+          }`}
+        >
+          ☰ Nœuds
+        </button>
 
-        {/* Barre d'outils */}
-        <Panel position="top-right">
-          <div className="flex items-center gap-2 rounded-lg border border-canvas-border bg-canvas-node px-3 py-2 shadow-lg">
-            {/* Statut */}
-            <div className="text-xs text-slate-400 mr-2">
-              {isRunning ? (
-                <span className="text-canvas-warning animate-pulse">● Running…</span>
-              ) : Object.keys(results).length > 0 ? (
-                <span>
-                  <span className="text-canvas-success">{doneCount} ✓</span>
-                  {errorCount > 0 && (
-                    <span className="text-canvas-danger ml-2">{errorCount} ✗</span>
-                  )}
-                </span>
-              ) : (
-                <span className="text-slate-500">Prêt</span>
-              )}
-            </div>
+        <span className="w-px h-4 bg-canvas-border mx-1" />
 
-            <button
-              onClick={handleRun}
-              disabled={isRunning}
-              className="rounded bg-canvas-accent px-3 py-1 text-xs font-semibold text-white 
-                         hover:bg-indigo-500 disabled:opacity-50 transition-colors"
-            >
-              ▶ Run
-            </button>
-
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                value={cycleS}
-                onChange={(e) => setCycleS(Number(e.target.value))}
-                className="w-14 rounded border border-canvas-border bg-canvas-bg px-1 py-1 text-xs text-slate-300"
-                min={5}
-              />
-              <button
-                onClick={() => schedule(cycleS)}
-                className="rounded border border-canvas-border px-3 py-1 text-xs text-slate-300
-                           hover:border-canvas-accent hover:text-white transition-colors"
-              >
-                ⏱ Schedule
-              </button>
-            </div>
-
-            <button
-              onClick={stopDag}
-              className="rounded border border-canvas-border px-3 py-1 text-xs text-slate-300
-                         hover:border-canvas-danger hover:text-canvas-danger transition-colors"
-            >
-              ■ Stop
-            </button>
-
-            <button
-              onClick={handleReset}
-              className="rounded border border-canvas-border px-2 py-1 text-xs text-slate-500
-                         hover:text-canvas-danger transition-colors"
-              title="Réinitialiser le canvas"
-            >
-              ✕
-            </button>
-          </div>
-          {error && (
-            <div className="mt-2 rounded border border-canvas-danger bg-red-950 px-3 py-1 text-xs text-canvas-danger">
-              {error}
-            </div>
+        {/* Statut */}
+        <span className="text-[10px] text-slate-500">
+          {isRunning ? (
+            <span className="text-canvas-warning animate-pulse">● Running…</span>
+          ) : Object.keys(results).length > 0 ? (
+            <span>
+              <span className="text-canvas-success">{doneCount}✓</span>
+              {errorCount > 0 && <span className="text-canvas-danger ml-1">{errorCount}✗</span>}
+            </span>
+          ) : (
+            <span>{nodes.length} nœuds · {edges.length} fils</span>
           )}
-        </Panel>
-      </ReactFlow>
+        </span>
 
-      {/* Panneau d'édition des paramètres (droite) */}
-      <div className="absolute right-0 top-0 h-full z-20">
+        <div className="flex-1" />
+
+        {/* Contrôles */}
+        <button onClick={handleRun} disabled={isRunning}
+          className="rounded bg-canvas-accent px-2.5 py-0.5 text-[10px] font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">
+          ▶ Run
+        </button>
+        <input type="number" value={cycleS} onChange={(e) => setCycleS(Number(e.target.value))}
+          className="w-11 rounded border border-canvas-border bg-canvas-bg px-1 py-0.5 text-[10px] text-slate-300"
+          min={5} title="Intervalle (s)" />
+        <button onClick={() => schedule(cycleS)}
+          className="rounded border border-canvas-border px-2 py-0.5 text-[10px] text-slate-300 hover:border-canvas-accent hover:text-white">
+          ⏱ Sched
+        </button>
+        <button onClick={stopDag}
+          className="rounded border border-canvas-border px-2 py-0.5 text-[10px] text-slate-300 hover:border-canvas-danger hover:text-canvas-danger">
+          ■ Stop
+        </button>
+        <button onClick={handleReset}
+          className="rounded border border-canvas-border px-2 py-0.5 text-[10px] text-slate-500 hover:text-canvas-danger"
+          title="Reset canvas">
+          ✕
+        </button>
+      </div>
+
+      {/* Erreur */}
+      {error && (
+        <div className="border-b border-canvas-danger bg-red-950/60 px-3 py-0.5 text-[10px] text-canvas-danger shrink-0">{error}</div>
+      )}
+
+      {/* ═══════════ CORPS ═══════════ */}
+      <div className="flex-1 flex min-h-0">
+        {/* Palette (rétractable) */}
+        {showPalette && (
+          <div className="w-44 border-r border-canvas-border bg-canvas-node overflow-y-auto shrink-0 z-20">
+            <div className="px-2.5 py-1.5 text-[9px] font-semibold text-slate-400 uppercase tracking-wider border-b border-canvas-border">
+              Palette
+            </div>
+            <NodePalette compact />
+          </div>
+        )}
+
+        {/* Canvas */}
+        <div className="flex-1 relative" onContextMenu={handleCtx}>
+          <ReactFlow
+            nodes={nodes} edges={edges}
+            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
+            nodeTypes={nodeTypes} fitView deleteKeyCode="Delete"
+            className="bg-canvas-bg" proOptions={{ hideAttribution: true }}
+            defaultViewport={{ x: 20, y: 20, zoom: 0.75 }}
+            minZoom={0.15} maxZoom={2.5}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#161b2a" />
+            <Controls className="fill-slate-500 stroke-canvas-border" position="bottom-right"
+              style={{ bottom: 8, right: 8 }} />
+            <MiniMap nodeColor="#1a1d2e" maskColor="rgba(15,17,23,0.85)"
+              className="border border-canvas-border rounded" position="bottom-left"
+              style={{ bottom: 8, left: 8, width: 120, height: 80 }} />
+          </ReactFlow>
+        </div>
+
+        {/* Éditeur params (droite) */}
         <NodeEditor />
       </div>
+
+      {/* ═══════════ MENU CONTEXTUEL ═══════════ */}
+      {ctxMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
+          <div className="fixed z-50 w-44 rounded-lg border border-canvas-border bg-canvas-node shadow-2xl py-1 overflow-y-auto"
+            style={{ left: ctxMenu.x, top: ctxMenu.y, maxHeight: "55vh" }}>
+            <div className="px-3 py-1 text-[9px] font-semibold text-slate-500 uppercase">Ajouter</div>
+            {CTX_NODES.map((n) => (
+              <button key={n.type}
+                className="w-full text-left px-3 py-1 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2"
+                onClick={() => addNode(n)}>
+                <span className="text-[9px] text-slate-600 w-14 shrink-0">{n.cat}</span>
+                <span>{n.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

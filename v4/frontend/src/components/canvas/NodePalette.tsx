@@ -74,7 +74,7 @@ const NODE_CATALOG = [
 
 let _nodeCounter = 1;
 
-export function NodePalette() {
+export function NodePalette({ compact = false }: { compact?: boolean }) {
   const setNodes = useDagStore((s) => s.setNodes);
   const nodes = useDagStore((s) => s.nodes);
 
@@ -94,6 +94,30 @@ export function NodePalette() {
     };
     setNodes([...nodes, newNode]);
   };
+
+  if (compact) {
+    return (
+      <div className="flex flex-col py-1">
+        {NODE_CATALOG.map(({ category, nodes: catNodes }) => (
+          <div key={category}>
+            <div className="px-2.5 py-1 text-[9px] text-slate-600 uppercase tracking-wider">
+              {category}
+            </div>
+            {catNodes.map((spec) => (
+              <button
+                key={spec.type}
+                onClick={() => addNode(spec)}
+                className="w-full px-2.5 py-1 text-left text-[11px] text-slate-400 
+                           hover:bg-slate-800 hover:text-white transition-colors"
+              >
+                {spec.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="w-44 rounded-lg border border-canvas-border bg-canvas-node shadow-lg overflow-y-auto max-h-[80vh]">

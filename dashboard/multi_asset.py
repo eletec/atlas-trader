@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 
+import streamlit as st
 from utils.i18n import t
 
 
@@ -90,106 +91,130 @@ def _score_bar(score: float, theme: str = "dark") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Composant 1 : Vue globale
+# Composant 1 : Vue globale (V4 — données live des DAGs actifs)
 # ---------------------------------------------------------------------------
 
 _ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}
 
+@st.cache_data(ttl=30)
+def _fetch_v4_dags() -> list[dict]:
+    """Récupère le statut de tous les DAGs V4."""
+    try:
+        import urllib.request, json
+        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return []
+
+
 def render_global_overview() -> None:
     """
-    Tableau consolidé multi-actifs affiché en tête de la vue Globale.
-    V2 : lit v2_equity (dernière ligne par actif). Fallback sur decisions V1 si vide.
+    Tableau consolidé multi-actifs — données V4 live.
+    Affiche l'état de chaque DAG actif : signal, tendance, dernier trade, statut.
     """
     import streamlit as st
 
-    try:
-        from storage.database import get_v2_assets_summary, get_assets_summary, get_connection
-        from utils.session import MarketSession
-        db_rows = get_v2_assets_summary()
-        is_v2 = bool(db_rows)
-        if not is_v2:
-            db_rows = get_assets_summary()
-    except Exception as exc:
-        st.warning(f'{t("global_data_unavailable")} : {exc}')
+    dags = _fetch_v4_dags()
+    if not dags:
+        # Fallback V3 silencieux — ne rien afficher plutôt que des données obsolètes
         return
 
-    # prob_up par actif depuis les lignes per-asset de v2_state (id=hash(asset)+100)
-    _prob_up_by_asset: dict[str, float] = {}
-    if is_v2:
-        try:
-            with get_connection() as _conn:
-                _pu_rows = _conn.execute(
-                    "SELECT asset, prob_up FROM v2_state WHERE id >= 100 AND prob_up IS NOT NULL"
-                ).fetchall()
-                _prob_up_by_asset = {r["asset"]: float(r["prob_up"]) for r in _pu_rows}
-        except Exception:
-            pass
-
-    db_by_asset = {r["asset"]: r for r in db_rows}
-    all_assets = _active_assets()
-    rows = []
-    for asset in all_assets:
-        if asset in db_by_asset:
-            rows.append(db_by_asset[asset])
-        else:
-            rows.append({"asset": asset, "action": "flat", "score": None,
-                         "equity": None, "timestamp": None, "result_24h": None})
-
     theme = st.query_params.get("theme", "dark")
-    st.markdown(f"### {t('global_overview_title')}")
 
-    extra_hdr = "Capital V2" if is_v2 else t('col_pnl')
+    st.markdown(f"### {'🌐 Vue Globale V4'}")
+
     html_rows = ""
-    for r in rows:
-        asset  = r.get("asset", "?")
-        action = (r.get("action") or "flat").lower()
-        # V2 : direction basée sur l'action (LONG=75, SHORT=25, FLAT=50)
-        # V1 fallback : score 0-100 depuis decisions
-        if is_v2:
-            _pu = _prob_up_by_asset.get(asset)
-            score = round(float(_pu) * 100) if _pu is not None else _ACTION_TO_DIR.get(action, 50)
-        else:
-            score = float(r.get("score") or 50)
-        ts    = (r.get("ts") or r.get("timestamp") or "")[:16]
-        icon  = _asset_icon(asset)
+    for d in dags:
+        dag_id = d.get("dag_id", "?")
+        asset = d.get("asset", "?")
+        running = d.get("running", False)
+        last_ts = d.get("last_run_at")
+        results = d.get("last_results", {})
 
-        # Capital V2 ou P&L V1
-        if is_v2:
-            equity = r.get("equity")
-            extra_str = (f'<span style="font-size:12px;">${equity:,.0f}</span>' if equity else "—")
+        ts_str = ""
+        if last_ts:
+            from datetime import datetime as _dt
+            try:
+                ts_str = _dt.fromtimestamp(last_ts).strftime("%H:%M:%S")
+            except Exception:
+                ts_str = "—"
         else:
-            pnl = r.get("result_24h")
-            extra_str = (
-                f'<span style="color:#27ae60">+{pnl:.1f}%</span>' if pnl and pnl > 0
-                else (f'<span style="color:#e74c3c">{pnl:.1f}%</span>' if pnl and pnl < 0 else "—")
-            )
-        # Session status
-        try:
-            sess = MarketSession(asset)
-            sess_label = sess.status_label()
-        except Exception:
-            sess_label = "–"
+            ts_str = "—"
+
+        icon = _asset_icon(asset) if asset else "◈"
+
+        # Extraire signal, trend, trade des résultats
+        signal_node = results.get("btc_signal", {}) or results.get("signal", {})
+        trend_node = results.get("btc_trend", {})
+        risk_node = results.get("btc_risk", {})
+        short_risk = results.get("short_risk", {})
+        paper_node = results.get("btc_paper", {})
+
+        signal_out = signal_node.get("outputs", {}) if isinstance(signal_node, dict) else {}
+        trend_out = trend_node.get("outputs", {}) if isinstance(trend_node, dict) else {}
+        risk_out = risk_node.get("outputs", {}) if isinstance(risk_node, dict) else {}
+        short_out = short_risk.get("outputs", {}) if isinstance(short_risk, dict) else {}
+        paper_out = paper_node.get("outputs", {}) if isinstance(paper_node, dict) else {}
+
+        signal = signal_out.get("signal", "—")
+        prob_up = signal_out.get("prob_up")
+        trend = trend_out.get("trend", "—")
+        risk_decision = risk_out.get("decision", {})
+        short_decision = short_out.get("decision", {})
+        trade_result = paper_out.get("trade_result", {})
+
+        if isinstance(risk_decision, str):
+            risk_decision = {}
+        if isinstance(short_decision, str):
+            short_decision = {}
+        if isinstance(trade_result, str):
+            trade_result = {}
+
+        # Score = prob_up × 100 ou 50 si flat
+        if signal == "long":
+            score = int((prob_up or 0.75) * 100)
+        elif signal == "short":
+            score = int(((1 - (prob_up or 0.5)) * 100))
+        else:
+            score = 50
+
+        # Trade info
+        trade_action = risk_decision.get("action") or short_decision.get("action")
+        trade_price = risk_decision.get("entry_price") or short_decision.get("entry_price")
+        if trade_action and trade_action != "flat" and trade_price:
+            trade_str = f'{trade_action.upper()} @ ${trade_price:,.0f}'
+        elif trade_action == "flat" or not trade_action:
+            trade_str = "—"
+        else:
+            trade_str = str(trade_action or "—")
+
+        # Statut du DAG
+        status_icon = "🟢" if running else "⚫"
+        status_text = "actif" if running else "arrêté"
 
         html_rows += (
             f"<tr>"
             f"<td style='padding:6px 10px;'>{icon} {asset}</td>"
-            f"<td style='padding:6px 10px;'>{_action_badge(action)}</td>"
+            f"<td style='padding:6px 10px;'>{_action_badge(signal)}</td>"
             f"<td style='padding:6px 10px;'>{_score_bar(score, theme)}</td>"
-            f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts}</td>"
-            f"<td style='padding:6px 10px;'>{extra_str}</td>"
-            f"<td style='padding:6px 10px;font-size:12px;'>{sess_label}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts_str}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{trade_str}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{trend.upper() if trend else '—'}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{status_icon} {status_text}</td>"
             f"</tr>"
         )
 
     st.markdown(
         f"""<table style="width:100%;border-collapse:collapse;">
         <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:12px;opacity:.6;">
-          <th style="padding:4px 10px;text-align:left;">{t('col_asset')}</th>
-          <th style="padding:4px 10px;text-align:left;">{t('col_signal')}</th>
-          <th style="padding:4px 10px;text-align:left;">{"Direction V2" if is_v2 else t('col_score')}</th>
-          <th style="padding:4px 10px;text-align:left;">{t('col_timestamp')}</th>
-          <th style="padding:4px 10px;text-align:left;">{extra_hdr}</th>
-          <th style="padding:4px 10px;text-align:left;">{t('col_session')}</th>
+          <th style="padding:4px 10px;text-align:left;">Actif</th>
+          <th style="padding:4px 10px;text-align:left;">Signal</th>
+          <th style="padding:4px 10px;text-align:left;">Direction</th>
+          <th style="padding:4px 10px;text-align:left;">Dernier run</th>
+          <th style="padding:4px 10px;text-align:left;">Trade</th>
+          <th style="padding:4px 10px;text-align:left;">Tendance</th>
+          <th style="padding:4px 10px;text-align:left;">Statut</th>
         </tr></thead>
         <tbody>{html_rows}</tbody>
         </table>""",

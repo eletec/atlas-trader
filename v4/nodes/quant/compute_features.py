@@ -41,6 +41,8 @@ class ComputeFeatures(Node):
 
         ohlcv: pd.DataFrame = inputs["ohlcv"]
         features = compute_features(ohlcv)
+        # Préserver la colonne close pour les nœuds aval (SignalLogReg)
+        features["close"] = ohlcv["close"]
         return {"features": features}
 
 

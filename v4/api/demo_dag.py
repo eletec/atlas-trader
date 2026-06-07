@@ -30,7 +30,7 @@ DEMO_DAG = DAGSpec(
         NodeSpec(id="ai_analyst", type="LLMNode",
                  params={"system_prompt": "You are a crypto trading analyst.",
                           "user_prompt": "Market: {inputs}", "model": "phi4:latest",
-                          "temperature": 0.3, "max_tokens": 256}),
+                          "temperature": 0.3, "max_tokens": 256, "timeout_s": 180}),
         NodeSpec(id="short_signal", type="SignalConstant", params={"signal": "short"}),
         NodeSpec(id="short_gate", type="DirectionGate",
                  params={"allow_long": False, "allow_short": True}),

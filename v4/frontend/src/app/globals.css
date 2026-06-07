@@ -30,8 +30,17 @@ body {
   stroke-width: 2;
 }
 
-.react-flow__edge-path:hover {
-  stroke: #7c9bfc;
+/* Edge selected — highlight */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #818cf8 !important;
+  stroke-width: 3 !important;
+  filter: drop-shadow(0 0 3px rgba(129, 140, 248, 0.4));
+}
+
+/* Edge hover */
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #6366f1 !important;
+  stroke-width: 2.5 !important;
 }
 
 .react-flow__handle {

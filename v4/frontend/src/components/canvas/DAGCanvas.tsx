@@ -217,10 +217,15 @@ export function DAGCanvas() {
         <ReactFlow
           nodes={nodes} edges={edges}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-          nodeTypes={nodeTypes} fitView deleteKeyCode="Delete"
+          nodeTypes={nodeTypes} fitView deleteKeyCode={["Delete", "Backspace"]}
           className="bg-canvas-bg" proOptions={{ hideAttribution: true }}
           defaultViewport={{ x: 20, y: 20, zoom: 0.75 }}
           minZoom={0.15} maxZoom={2.5}
+          defaultEdgeOptions={{
+            style: { stroke: "#3a3f66", strokeWidth: 2 },
+            animated: false,
+            interactionWidth: 14,
+          }}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#161b2a" />
           <MiniMap nodeColor="#1a1d2e" maskColor="rgba(15,17,23,0.85)"

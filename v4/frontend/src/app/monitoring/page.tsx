@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { PriceTicker } from "@/components/ui/PriceTicker";
 import { usePriceStream } from "@/hooks/usePriceStream";
 import { usePriceStore } from "@/store/priceStore";
+import { cn } from "@/lib/utils";
 
 const TRACKED = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"];
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -25,8 +26,17 @@ interface DAGStatus {
   last_results: Record<string, { status: string; duration_ms: number }>;
 }
 
+interface LogEntry {
+  ts: string;
+  level: string;
+  dag_id: string;
+  node_id: string;
+  message: string;
+}
+
 export default function MonitoringPage() {
   const [dags, setDags] = useState<DAGStatus[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const connected = usePriceStore((s) => s.connected);
 
   useEffect(() => {
@@ -34,12 +44,22 @@ export default function MonitoringPage() {
       try {
         const r = await fetch(`${API_URL}/dag/status`);
         if (r.ok) setDags(await r.json());
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     };
     poll();
     const id = setInterval(poll, 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const pollLogs = async () => {
+      try {
+        const r = await fetch(`${API_URL}/dag/logs?n=100`);
+        if (r.ok) setLogs(await r.json());
+      } catch { /* ignore */ }
+    };
+    pollLogs();
+    const id = setInterval(pollLogs, 5_000);
     return () => clearInterval(id);
   }, []);
 
@@ -117,6 +137,32 @@ export default function MonitoringPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </section>
+
+      {/* Logs d'exécution */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
+          Logs V4
+        </h2>
+        {logs.length === 0 ? (
+          <p className="text-slate-500 text-xs">Aucun log. Lancez ▶ Run ou ⏱ Sched.</p>
+        ) : (
+          <div className="overflow-auto rounded-lg border border-canvas-border bg-canvas-node max-h-80">
+            <div className="font-mono text-[11px] leading-relaxed">
+              {logs.map((l, i) => (
+                <div key={i} className="flex gap-2 px-3 py-1 border-b border-canvas-border/30 hover:bg-slate-800/30">
+                  <span className="text-slate-600 shrink-0 w-[72px]">{l.ts?.slice(11, 19) || ""}</span>
+                  <span className={cn(
+                    "shrink-0 w-10 font-semibold",
+                    l.level === "ERROR" ? "text-canvas-danger" : l.level === "WARNING" ? "text-amber-400" : "text-slate-500"
+                  )}>{l.level}</span>
+                  <span className="text-slate-500 shrink-0 w-20 truncate">{l.dag_id}</span>
+                  <span className="text-slate-300">{l.message}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </section>

@@ -13,7 +13,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from v4.api.dag_registry import DAGRegistry
+from v4.api.dag_registry import DAGRegistry, get_logs
 from v4.api.models import (
     DAGStatusOut,
     NodeResultOut,
@@ -98,6 +98,12 @@ async def stop_dag(dag_id: str):
 @router.get("/status", response_model=list[DAGStatusOut])
 async def all_dag_status():
     return _entries_to_out(DAGRegistry.instance().status())
+
+
+@router.get("/logs")
+async def dag_logs(n: int = 50):
+    """Retourne les N derniers logs d'exécution des DAGs."""
+    return get_logs(n)
 
 
 @router.get("/{dag_id}/status", response_model=DAGStatusOut)

@@ -4,6 +4,7 @@ v4/api/dag_registry.py — Registre global des DAGs actifs.
 Gère le cycle de vie des DAGExecutor en mémoire :
   - DAGs one-shot : créés, exécutés, résultats stockés, détruits
   - DAGs schedulés : créés, boucle dans thread daemon, statut et résultats persistés
+  - Buffer de logs circulaire (derniers 200 événements)
 
 Thread-safe. Pas de persistance sur disque (volontaire pour la V4.0).
 """
@@ -12,13 +13,39 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from v4.core.dag_executor import DAGExecutor
 from v4.core.node import Node, NodeRunResult
 
 logger = logging.getLogger("v4.api.dag_registry")
+
+# Buffer circulaire de logs (partagé entre tous les DAGs)
+_LOG_BUFFER: deque[dict] = deque(maxlen=200)
+_LOG_LOCK = threading.Lock()
+
+
+def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
+    """Ajoute une entrée dans le buffer circulaire de logs."""
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "level": level,
+        "dag_id": dag_id,
+        "node_id": node_id,
+        "message": message,
+    }
+    with _LOG_LOCK:
+        _LOG_BUFFER.append(entry)
+    logger.info("[%s] %s%s: %s", dag_id, f"{node_id} " if node_id else "", level, message)
+
+
+def get_logs(n: int = 50) -> list[dict]:
+    """Retourne les N derniers logs."""
+    with _LOG_LOCK:
+        return list(_LOG_BUFFER)[-n:]
 
 
 @dataclass
@@ -93,8 +120,16 @@ class DAGRegistry:
 
     def run_once(self, dag_spec: "DAGSpec") -> dict[str, NodeRunResult]:
         """Exécute un DAG une fois et retourne les résultats. Sans persistance."""
+        _emit_log("INFO", dag_spec.dag_id, f"Exécution one-shot démarrée ({dag_spec.asset})")
         executor = self._build_executor(dag_spec)
-        return executor.run_once()
+        results = executor.run_once()
+        done = sum(1 for r in results.values() if r.status.value == "done")
+        errors = sum(1 for r in results.values() if r.status.value == "error")
+        _emit_log("INFO", dag_spec.dag_id, f"Terminé : {done}✓ {errors}✗")
+        for nid, r in results.items():
+            if r.status.value == "error":
+                _emit_log("ERROR", dag_spec.dag_id, str(r.error)[:120], node_id=nid)
+        return results
 
     def schedule(self, dag_spec: "DAGSpec", cycle_s: float) -> str:
         """Démarre un DAG en boucle. Retourne le dag_id."""
@@ -150,6 +185,7 @@ class DAGRegistry:
     # ------------------------------------------------------------------
 
     def _loop(self, dag_id: str, cycle_s: float) -> None:
+        _emit_log("INFO", dag_id, f"Boucle démarrée (cycle={cycle_s}s)")
         while True:
             with self._mu:
                 entry = self._dags.get(dag_id)
@@ -162,9 +198,14 @@ class DAGRegistry:
                     if dag_id in self._dags:
                         self._dags[dag_id].last_run_at = time.time()
                         self._dags[dag_id].last_results = results
+                done = sum(1 for r in results.values() if r.status.value == "done")
+                errors = sum(1 for r in results.values() if r.status.value == "error")
+                _emit_log("INFO", dag_id, f"Cycle OK : {done}✓ {errors}✗")
             except Exception:
+                _emit_log("ERROR", dag_id, "Erreur dans la boucle")
                 logger.exception("DAG %s — erreur dans la boucle", dag_id)
 
             time.sleep(cycle_s)
 
+        _emit_log("INFO", dag_id, "Boucle arrêtée")
         logger.info("DAG %s — boucle terminée", dag_id)

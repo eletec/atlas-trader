@@ -3748,17 +3748,10 @@ def render_admin_panel():
             "v4_admin":   "http://localhost:3000/admin",
         }
         _v4_url = _V4_URLS[_atab]
-        # Supprimer les marges Streamlit pour les vues V4 (plein écran)
-        st.markdown(
-            "<style>"
-            "[data-testid='stMainBlockContainer'] { padding: 0 !important; }"
-            "[data-testid='stAppViewContainer'] { padding: 0 !important; }"
-            "</style>",
-            unsafe_allow_html=True,
-        )
+        # Iframe en position fixed (ignore le padding Streamlit sans l'override globale)
         st.markdown(
             f'<iframe src="{_v4_url}" '
-            f'style="width:100vw;height:calc(100vh - 48px);border:none;margin:0;position:fixed;top:48px;left:0;'
+            f'style="width:100%;height:calc(100vh - 48px);border:none;margin:-2rem -2rem;display:block;'
             f'background:#0f1117;" '
             f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
             unsafe_allow_html=True,

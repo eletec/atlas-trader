@@ -20,7 +20,9 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { useDagStore } from "@/store/dagStore";
+import { useDagRegistry, saveDAG, loadDAG } from "@/store/dagRegistry";
 import { useDagRunner } from "@/hooks/useDagRunner";
+import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 import { nodeTypes } from "@/components/nodes/nodeTypes";
 import { NodePalette } from "./NodePalette";
 import { NodeEditor } from "./NodeEditor";
@@ -58,6 +60,12 @@ export function DAGCanvas() {
   const [showPalette, setShowPalette] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showDagMenu, setShowDagMenu] = useState(false);
+  const [newDagName, setNewDagName] = useState("");
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
+
+  const { dags, activeId, setActive, create, rename, remove, ensureDefault } = useDagRegistry();
 
   // Hydratation zustand
   useEffect(() => {
@@ -68,12 +76,22 @@ export function DAGCanvas() {
 
   // DAG par défaut
   useEffect(() => {
-    if (hydrated && nodes.length === 0) {
-      setNodes(getDefaultNodes());
-      setEdges(getDefaultEdges());
-      setDagId("demo_v4");
+    if (hydrated) {
+      ensureDefault();
+      if (nodes.length === 0) {
+        setNodes(getDefaultNodes());
+        setEdges(getDefaultEdges());
+        setDagId("default");
+      }
     }
   }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sauvegarder le DAG actif dans le registre à chaque modification
+  useEffect(() => {
+    if (hydrated && activeId) {
+      saveDAG(activeId, { nodes, edges, asset: "BTC/USDT" });
+    }
+  }, [nodes, edges, activeId, hydrated]);
 
   // Fermer ctx menu au clic
   useEffect(() => {
@@ -91,9 +109,40 @@ export function DAGCanvas() {
   const doReset = () => {
     setNodes(getDefaultNodes());
     setEdges(getDefaultEdges());
-    setDagId("demo_v4");
+    setDagId("default");
     reset();
     setConfirmReset(false);
+  };
+
+  const handleSwitchDag = (id: string) => {
+    setActive(id);
+    const data = loadDAG(id);
+    if (data) {
+      setNodes(data.nodes as RFNode[]);
+      setEdges(data.edges as RFEdge[]);
+      setDagId(id);
+      reset();
+    }
+    setShowDagMenu(false);
+  };
+
+  const handleCreateDag = () => {
+    const name = newDagName.trim() || `Flow ${dags.length + 1}`;
+    const entry = create(name);
+    // Sauvegarder un DAG vide pour le nouveau flow
+    saveDAG(entry.id, { nodes: [], edges: [], asset: "BTC/USDT" });
+    handleSwitchDag(entry.id);
+    setNewDagName("");
+    setShowDagMenu(false);
+  };
+
+  const handleDeleteDag = (id: string) => {
+    if (dags.length <= 1) return; // Garder au moins 1 DAG
+    if (id === activeId) {
+      const next = dags.find((d) => d.id !== id);
+      if (next) handleSwitchDag(next.id);
+    }
+    remove(id);
   };
   const handleRun = async () => {
     setError(null);
@@ -147,6 +196,84 @@ export function DAGCanvas() {
 
       {/* ═══════════ OVERLAY CONTROLS (top-left) ═══════════ */}
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 rounded-lg border border-canvas-border/60 bg-canvas-node/80 backdrop-blur px-2 py-1 shadow-lg">
+        {/* ── DAG Selector ─────────────────────────────────── */}
+        <div className="relative">
+          <button
+            onClick={() => setShowDagMenu(!showDagMenu)}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-300 hover:text-white transition-colors"
+            title="Flows"
+          >
+            <span className="text-canvas-accent">📁</span>
+            <span className="max-w-[80px] truncate">{dags.find((d) => d.id === activeId)?.name ?? "Flow"}</span>
+            <span className="text-slate-600 text-[8px]">▼</span>
+          </button>
+
+          {showDagMenu && (
+            <>
+              <div className="fixed inset-0 z-50" onClick={() => setShowDagMenu(false)} />
+              <div className="absolute top-full left-0 mt-1 w-52 rounded-lg border border-canvas-border bg-canvas-node shadow-2xl py-1 z-50">
+                <div className="px-2 py-1 text-[9px] font-semibold text-slate-500 uppercase">Flows</div>
+
+                {dags.map((d) => (
+                  <div key={d.id} className={`flex items-center group ${d.id === activeId ? "bg-canvas-accent/10" : ""}`}>
+                    {renameId === d.id ? (
+                      <input
+                        autoFocus
+                        value={renameName}
+                        onChange={(e) => setRenameName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { rename(d.id, renameName); setRenameId(null); }
+                          if (e.key === "Escape") setRenameId(null);
+                        }}
+                        onBlur={() => { if (renameId) { rename(d.id, renameName); setRenameId(null); } }}
+                        className="flex-1 bg-canvas-bg border border-canvas-accent rounded px-1 py-0.5 text-[10px] text-white mx-1"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => handleSwitchDag(d.id)}
+                        className="flex-1 text-left px-2 py-1 text-[11px] text-slate-300 hover:text-white truncate"
+                      >
+                        {d.name}
+                      </button>
+                    )}
+                    {d.id === activeId && <span className="text-[8px] text-canvas-accent mr-1">●</span>}
+                    <button
+                      onClick={() => { setRenameId(d.id); setRenameName(d.name); }}
+                      className="text-[10px] text-slate-600 hover:text-white px-1 opacity-0 group-hover:opacity-100"
+                      title="Renommer"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDag(d.id)}
+                      className="text-[10px] text-slate-600 hover:text-canvas-danger px-1 opacity-0 group-hover:opacity-100"
+                      title="Supprimer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+
+                <div className="border-t border-canvas-border mt-1 pt-1 px-2 flex gap-1">
+                  <input
+                    value={newDagName}
+                    onChange={(e) => setNewDagName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleCreateDag()}
+                    placeholder="Nouveau flow..."
+                    className="flex-1 bg-canvas-bg border border-canvas-border rounded px-1 py-0.5 text-[10px] text-white"
+                  />
+                  <button onClick={handleCreateDag}
+                    className="rounded bg-canvas-accent px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-indigo-500">
+                    +
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <span className="w-px h-3 bg-canvas-border/60" />
+
         <button
           onClick={() => setShowPalette(!showPalette)}
           className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${

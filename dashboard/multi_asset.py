@@ -224,100 +224,65 @@ def render_global_overview() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Composant 1b : Prix live multi-actifs (cartes)
+# Composant 1b : Prix live multi-actifs (cartes) — V4 API
 # ---------------------------------------------------------------------------
 
+@st.cache_data(ttl=15)
+def _fetch_v4_prices() -> dict[str, dict]:
+    """Récupère les prix live depuis l'API V4 (WebSocket Binance)."""
+    try:
+        import urllib.request, json
+        req = urllib.request.Request("http://host.docker.internal:8000/prices/snapshot")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return {}
+
+
 def render_global_live_prices() -> None:
-    """Grille de prix live pour tous les actifs actifs — V2 : CCXT direct."""
+    """Grille de prix live — données V4 (WebSocket Binance)."""
     import streamlit as st
 
-    assets = _active_assets()
-    if not assets:
+    dags = _fetch_v4_dags()
+    if not dags:
         return
 
-    st.markdown(f"### {t('live_prices_title')}")
+    st.markdown(f"### {'📡 Prix temps réel'}")
 
-    try:
-        from quant.data_loader import fetch_ohlcv, _YAHOO_SYMBOLS as _NON_BINANCE
-    except Exception as exc:
-        st.caption(f"Prix indisponibles : {exc}")
-        return
+    prices = _fetch_v4_prices()
 
-    # Prix en DB pour les actifs non-Binance (forex/commodités) — non-bloquant
-    _db_prices: dict[str, float] = {}
-    try:
-        from storage.database import get_v2_assets_summary
-        for _row in get_v2_assets_summary():
-            if _row.get("close_price"):
-                _db_prices[_row["asset"]] = float(_row["close_price"])
-    except Exception:
-        pass
+    # Extraire les actifs des DAGs actifs
+    dag_assets = list({d.get("asset", "") for d in dags if d.get("asset")})
+    if not dag_assets:
+        dag_assets = ["BTC/USDT"]
 
-    cols = st.columns(min(len(assets), 5))
-    for i, asset in enumerate(assets):
+    cols = st.columns(min(len(dag_assets), 4))
+    for i, asset in enumerate(dag_assets):
         icon = _asset_icon(asset)
+        pdata = prices.get(asset, {})
+        price = pdata.get("price") if pdata else None
 
-        # Actifs non-Binance (forex/commodités) → prix depuis DB (mis à jour par le daemon)
-        if asset in _NON_BINANCE:
-            price = _db_prices.get(asset)
-            with cols[i % len(cols)]:
-                if price and price > 0:
-                    if price >= 1000:
-                        price_str = f"{price:,.0f}"
-                    elif price >= 1:
-                        price_str = f"{price:,.2f}"
-                    elif price >= 0.001:
-                        price_str = f"{price:,.4f}"
-                    else:
-                        price_str = f"{price:.6f}"
-                    st.metric(label=f"{icon} {asset}", value=price_str)
-                    st.caption(t("asset_last_price"))
-                else:
-                    st.metric(label=f"{icon} {asset}", value="—")
-                    st.caption(t("asset_awaiting_cycle"))
-            continue
-
-        try:
-            bars = fetch_ohlcv(symbol=asset, timeframe="15m", limit=52)
-            if bars is None or bars.empty:
-                raise ValueError("Aucune barre")
-            price = float(bars["close"].iloc[-1])
-            ma50  = float(bars["close"].tail(50).mean()) if len(bars) >= 50 else None
-            closes = bars["close"].values.astype(float)
-            # RSI rapide (14)
-            if len(closes) >= 15:
-                deltas = [closes[j] - closes[j-1] for j in range(1, len(closes))]
-                gains = [max(d, 0) for d in deltas[-14:]]
-                losses = [max(-d, 0) for d in deltas[-14:]]
-                avg_gain = sum(gains) / 14
-                avg_loss = sum(losses) / 14
-                rsi = 100 - 100 / (1 + avg_gain / avg_loss) if avg_loss else 100.0
-            else:
-                rsi = 50.0
-            above = price > ma50 if ma50 else None
-            delta_str = None
-            if ma50 and price:
-                delta_pct = (price / ma50 - 1) * 100
-                if abs(delta_pct) <= 30:
-                    delta_str = f"{delta_pct:+.1f}% vs MA50"
-            rsi_tag = "🟢" if rsi >= 60 else "🔴" if rsi <= 40 else "🟡"
-            with cols[i % len(cols)]:
+        with cols[i % len(cols)]:
+            if price and price > 0:
                 if price >= 1000:
-                    price_str = f"{price:,.0f}"
+                    price_str = f"${price:,.0f}"
                 elif price >= 1:
-                    price_str = f"{price:,.2f}"
-                elif price >= 0.001:
-                    price_str = f"{price:,.4f}"
+                    price_str = f"${price:,.2f}"
                 else:
-                    price_str = f"{price:.6f}"
-                st.metric(label=f"{icon} {asset}", value=price_str, delta=delta_str)
-                st.caption(
-                    f"RSI {rsi_tag} {rsi:.0f} · "
-                    f"{'▲ MA50' if above else '▼ MA50' if above is not None else '—'}"
-                )
-        except Exception:
-            with cols[i % len(cols)]:
-                st.metric(f"{icon} {asset}", "—")
+                    price_str = f"${price:.4f}"
+                st.metric(label=f"{icon} {asset}", value=price_str)
+                # Récupérer le signal du DAG pour cet actif
+                dag = next((d for d in dags if d.get("asset") == asset), None)
+                if dag:
+                    results = dag.get("last_results", {})
+                    trend_node = results.get("btc_trend", {})
+                    trend = trend_node.get("outputs", {}).get("trend", "") if isinstance(trend_node, dict) else ""
+                    signal_node = results.get("btc_signal", {})
+                    signal = signal_node.get("outputs", {}).get("signal", "") if isinstance(signal_node, dict) else ""
+                    st.caption(f"{trend.upper() if trend else '—'} | {signal}")
+            else:
+                st.metric(label=f"{icon} {asset}", value="—")
+                st.caption("connexion...")
     st.markdown("---")
 
 

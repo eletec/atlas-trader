@@ -64,7 +64,9 @@ export function DAGCanvas() {
   const [newDagName, setNewDagName] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
-  const [feedback, setFeedback] = useState<string | null>(null);  // toast temporaire
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [runStart, setRunStart] = useState<number | null>(null);  // timestamp de début du run
+  const [elapsed, setElapsed] = useState(0);
 
   const { dags, activeId, setActive, create, rename, remove, ensureDefault } = useDagRegistry();
 
@@ -147,9 +149,20 @@ export function DAGCanvas() {
   };
   const handleRun = async () => {
     setError(null);
-    try { await runOnce(); setFeedback("✓ Run terminé"); } catch (e: any) { setError(e.message); }
-    setTimeout(() => setFeedback(null), 2000);
+    setRunStart(Date.now());
+    setElapsed(0);
+    try { await runOnce(); setFeedback(`✓ Terminé en ${elapsed}s`); }
+    catch (e: any) { setError(e.message); }
+    setTimeout(() => setFeedback(null), 3000);
+    setRunStart(null);
   };
+
+  // Tick du chrono pendant le run
+  useEffect(() => {
+    if (!runStart) return;
+    const iv = setInterval(() => setElapsed(Math.round((Date.now() - runStart) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [runStart]);
 
   const handleSchedule = async () => {
     setError(null);
@@ -339,7 +352,9 @@ export function DAGCanvas() {
         {/* Statut miniature */}
         <span className="w-px h-3 bg-canvas-border/60" />
         <span className="text-[9px] text-slate-500 min-w-[40px]">
-          {isRunning ? (
+          {runStart ? (
+            <span className="text-canvas-warning animate-pulse">● {elapsed}s</span>
+          ) : isRunning ? (
             <span className="text-canvas-warning animate-pulse">● run</span>
           ) : Object.keys(results).length > 0 ? (
             <span>

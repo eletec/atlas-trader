@@ -2982,6 +2982,7 @@ def render_admin_panel():
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config V4"),
         # ── Infra & Monitoring ───────────────────────────────────────────
         (None, None,      "Infra & Monitoring"),
+        ('<i class="fas fa-database"></i>',        "sources",    "Sources de données"),
         ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
         ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset_v2")),
         ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
@@ -3268,6 +3269,55 @@ def render_admin_panel():
         if _key_name and _new_key:
             _llm[_key_name] = _new_key
         settings["llm"] = _llm
+
+    elif _atab == "sources":  # Sources de données (TwelveData / Yahoo)
+        st.markdown(
+            '<h4><i class="fas fa-database" style="margin-right:7px;color:#7986cb;"></i>'
+            'Sources de données</h4>',
+            unsafe_allow_html=True,
+        )
+        st.info("Configuration du fournisseur de données et des clés API. Partagé entre V3 et V4.")
+        _dp_opts = ["auto", "twelve_data", "yahoo"]
+        _dp_cur = settings.get("data", {}).get("provider", "auto")
+        if _dp_cur not in _dp_opts:
+            _dp_cur = "auto"
+        _dp_new = st.selectbox(
+            "Fournisseur de données",
+            _dp_opts,
+            index=_dp_opts.index(_dp_cur),
+            help="**auto** : essaie Twelve Data (si clé présente) puis Yahoo/Binance. "
+                 "**twelve_data** : force Twelve Data pour les actifs forex/commodités. "
+                 "**yahoo** : force Yahoo Finance.",
+        )
+        settings.setdefault("data", {})["provider"] = _dp_new
+        # Also update quant settings for backward compat
+        settings.setdefault("quant", {})["data_provider"] = _dp_new
+
+        # Lecture de la clé TwelveData (secrets.yaml en priorité)
+        try:
+            from quant.config import get_twelve_data_key as _get_td_key
+            _td_key_live = _get_td_key()
+        except Exception:
+            _td_key_live = ""
+        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else ("(vide)" if not _td_key_live else _td_key_live)
+        st.caption(f"Clé TwelveData active : `{_td_key_display}`")
+        _td_key_input = st.text_input(
+            "Nouvelle clé TwelveData (laissez vide pour ne pas changer)",
+            value="",
+            type="password",
+            help="La clé sera écrite dans **config/secrets.yaml** (gitignored).",
+        )
+        if _td_key_input.strip():
+            from pathlib import Path as _SPPath
+            import yaml as _syaml
+            _secrets_path = _SPPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+            try:
+                _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
+                _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
+                _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
+                st.success("✅ Clé TwelveData sauvegardée.")
+            except Exception as _se:
+                st.error(f"Erreur écriture secrets.yaml : {_se}")
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)

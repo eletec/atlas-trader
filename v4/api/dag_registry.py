@@ -57,7 +57,7 @@ class DAGRegistry:
 
     def _build_executor(self, dag_spec: "DAGSpec") -> DAGExecutor:  # noqa: F821
         """Instancie les nœuds depuis le registre et monte le DAGExecutor."""
-        from v4.nodes.quant import NODE_REGISTRY
+        from v4.nodes import NODE_REGISTRY
         from v4.core.node import NodeMeta
 
         executor = DAGExecutor(asset=dag_spec.asset, dag_name=dag_spec.dag_id)

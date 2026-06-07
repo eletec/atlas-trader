@@ -95,7 +95,7 @@ export function NodeEditor() {
   const entries = Object.entries(params);
 
   return (
-    <div className="w-72 border-l border-canvas-border bg-canvas-node overflow-y-auto" style={{ maxHeight: "calc(100vh - 48px)" }}>
+    <div className="w-72 border-l border-canvas-border bg-canvas-node overflow-y-auto overflow-x-hidden" style={{ maxHeight: "calc(100vh - 48px)" }}>
       {/* Header */}
       <div className="sticky top-0 z-10 border-b border-canvas-border bg-canvas-node px-3 py-2 flex items-center justify-between">
         <div>
@@ -132,10 +132,10 @@ export function NodeEditor() {
           const type = inferType(value);
           return (
             <div key={key} className="flex items-start gap-1 group">
-              <label className="text-[10px] text-slate-400 w-24 shrink-0 pt-1 truncate" title={key}>
+              <label className="text-[10px] text-slate-400 w-20 shrink-0 pt-1 truncate" title={key}>
                 {key}
               </label>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 {type === "boolean" ? (
                   <select
                     className="w-full bg-canvas-bg border border-canvas-border rounded px-1 py-0.5 text-[11px] text-white"

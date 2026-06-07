@@ -3747,17 +3747,18 @@ def render_admin_panel():
             "v4_arena":   "http://localhost:3000/arena",
             "v4_admin":   "http://localhost:3000/admin",
         }
-        _V4_LABELS = {
-            "v4_canvas":  "Canvas DAG",
-            "v4_monitor": "Monitoring V4",
-            "v4_trades":  "Trades V4",
-            "v4_arena":   "Arena",
-            "v4_admin":   "Config V4",
-        }
         _v4_url = _V4_URLS[_atab]
+        # Supprimer les marges Streamlit pour les vues V4 (plein écran)
+        st.markdown(
+            "<style>"
+            "[data-testid='stMainBlockContainer'] { padding: 0 !important; }"
+            "[data-testid='stAppViewContainer'] { padding: 0 !important; }"
+            "</style>",
+            unsafe_allow_html=True,
+        )
         st.markdown(
             f'<iframe src="{_v4_url}" '
-            f'style="width:100%;height:calc(100vh - 56px);border:none;margin:-8px;'
+            f'style="width:100vw;height:calc(100vh - 48px);border:none;margin:0;position:fixed;top:48px;left:0;'
             f'background:#0f1117;" '
             f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
             unsafe_allow_html=True,

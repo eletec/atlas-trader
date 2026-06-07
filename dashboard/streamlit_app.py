@@ -777,12 +777,43 @@ def _get_ohlcv(asset: str) -> tuple[list, list]:
 
 @st.cache_data(ttl=30)
 def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
-    """P3: utilise get_recent_trades (filtre SQL) au lieu de charger 2000 lignes."""
+    """Retourne les trades récents : V4 (prioritaire) + V3 fallback."""
+    trades: list[dict] = []
+
+    # 1) Trades V4 (paper_trader)
+    try:
+        from storage.paper_trader import get_v4_trades
+        v4 = get_v4_trades(n, symbol=asset)
+        for t in v4:
+            trades.append({
+                "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}",
+                "timestamp": t.get("timestamp", ""),
+                "asset": t.get("symbol", ""),
+                "action": "BUY" if t.get("action") == "long" else "SELL",
+                "entry_price": t.get("entry_price"),
+                "sl_price": t.get("stop_loss"),
+                "tp_price": t.get("take_profit"),
+                "position_size": t.get("size_usd"),
+                "status": t.get("status", "open"),
+                "source": "v4",
+            })
+    except Exception:
+        pass
+
+    # 2) Trades V3 (decisions table)
     try:
         from storage.database import get_recent_trades
-        return get_recent_trades(n, asset=asset)
+        v3 = get_recent_trades(n, asset=asset)
+        for t in v3:
+            if t.get("action") in ("BUY", "SELL"):
+                t["source"] = "v3"
+                trades.append(t)
     except Exception:
-        return []
+        pass
+
+    # Trier par timestamp décroissant, limiter à n
+    trades.sort(key=lambda t: str(t.get("timestamp", "")), reverse=True)
+    return trades[:n]
 
 
 @st.cache_data(ttl=60)

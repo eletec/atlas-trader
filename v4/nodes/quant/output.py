@@ -54,30 +54,38 @@ class PaperTrader(Node):
         if action == "flat":
             return {"trade_result": {"status": "flat", "symbol": symbol}}
 
+        entry_price = decision.get("entry_price", 0)
+        stop_loss   = decision.get("stop_loss", 0)
+        take_profit = decision.get("take_profit", 0)
+        size_usd    = decision.get("size_usd", 0)
+        size_units  = decision.get("size_units", 0)
+        atr         = decision.get("atr", 0)
+
         logger.info(
             "PaperTrader [%s] %s @ %.4f  SL=%.4f  TP=%.4f  size=%.2f$",
-            symbol, action,
-            decision.get("entry_price", 0),
-            decision.get("stop_loss", 0),
-            decision.get("take_profit", 0),
-            decision.get("size_usd", 0),
+            symbol, action, entry_price, stop_loss, take_profit, size_usd,
         )
 
-        # Délégation au module V3 si disponible, sinon log-only
+        # Persistance en BDD via storage/paper_trader.py
+        dag_id = self.params.get("dag_id", "demo_v4")
         try:
             from storage.paper_trader import persist_trade
             trade_id = persist_trade(
                 symbol=symbol,
                 action=action,
-                entry_price=decision["entry_price"],
-                stop_loss=decision["stop_loss"],
-                take_profit=decision["take_profit"],
-                size_usd=decision["size_usd"],
+                entry_price=entry_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                size_usd=size_usd,
+                size_units=size_units,
+                atr=atr,
                 testnet=testnet,
+                dag_id=dag_id,
             )
-            return {"trade_result": {"status": "opened", "trade_id": trade_id, "symbol": symbol}}
+            return {"trade_result": {"status": "opened", "trade_id": trade_id, "symbol": symbol,
+                                      "action": action, "entry_price": entry_price}}
         except ImportError:
-            # Module V3 non disponible en dev — log-only
+            logger.warning("storage.paper_trader non disponible — trade log-only")
             return {"trade_result": {"status": "logged_only", "decision": decision}}
 
 

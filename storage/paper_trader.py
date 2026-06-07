@@ -1,0 +1,108 @@
+"""
+storage/paper_trader.py — Persistance des trades V4 PaperTrader en SQLite.
+
+Utilisé par v4/nodes/quant/output.py (PaperTrader.run).
+"""
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+
+logger = logging.getLogger("storage.paper_trader")
+
+
+def _ensure_table(conn) -> None:
+    """Crée la table v4_trades si elle n'existe pas."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS v4_trades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_id        TEXT    UNIQUE NOT NULL,
+            dag_id          TEXT    NOT NULL,
+            timestamp       TEXT    NOT NULL,
+            symbol          TEXT    NOT NULL,
+            action          TEXT    NOT NULL,      -- long | short
+            entry_price     REAL    NOT NULL,
+            stop_loss       REAL,
+            take_profit     REAL,
+            size_usd        REAL    NOT NULL,
+            size_units      REAL,
+            atr             REAL,
+            status          TEXT    DEFAULT 'open', -- open | closed | cancelled
+            closed_at       TEXT,
+            pnl_usd         REAL    DEFAULT 0,
+            testnet         INTEGER DEFAULT 1
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_v4_trades_dag
+        ON v4_trades(dag_id, timestamp DESC)
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_v4_trades_symbol
+        ON v4_trades(symbol, timestamp DESC)
+    """)
+    conn.commit()
+
+
+def persist_trade(
+    symbol: str,
+    action: str,
+    entry_price: float,
+    stop_loss: float,
+    take_profit: float,
+    size_usd: float,
+    testnet: bool = True,
+    dag_id: str = "",
+    size_units: float = 0,
+    atr: float = 0,
+) -> str:
+    """
+    Persiste un trade paper dans la table v4_trades.
+
+    Returns:
+        trade_id (str) — UUID unique du trade.
+    """
+    from storage.database import get_connection
+
+    trade_id = str(uuid.uuid4())[:8]
+    now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        with get_connection() as conn:
+            _ensure_table(conn)
+            conn.execute(
+                """INSERT INTO v4_trades
+                   (trade_id, dag_id, timestamp, symbol, action, entry_price,
+                    stop_loss, take_profit, size_usd, size_units, atr, status, testnet)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)""",
+                (trade_id, dag_id, now, symbol, action, entry_price,
+                 stop_loss, take_profit, size_usd, size_units, atr, int(testnet)),
+            )
+            conn.commit()
+        logger.info("Trade persisté: %s %s %s @ %.2f size=$%.0f", trade_id, symbol, action, entry_price, size_usd)
+        return trade_id
+    except Exception as exc:
+        logger.warning("persist_trade failed: %s", exc)
+        return trade_id  # retourne l'ID même si la persistence échoue
+
+
+def get_v4_trades(n: int = 200, symbol: str | None = None) -> list[dict]:
+    """Retourne les N derniers trades V4."""
+    from storage.database import get_connection
+
+    try:
+        with get_connection() as conn:
+            if symbol:
+                rows = conn.execute(
+                    "SELECT * FROM v4_trades WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+                    (symbol, n),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM v4_trades ORDER BY timestamp DESC LIMIT ?",
+                    (n,),
+                ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []

@@ -47,17 +47,26 @@ app.include_router(prices_router, prefix="/prices", tags=["prices"])
 
 @app.on_event("startup")
 async def _auto_schedule_demo():
-    """Démarre automatiquement le DAG démo au boot (si pas déjà schedulé)."""
+    """Démarre automatiquement le DAG démo et les tickers prix au boot."""
+    # 1) DAG démo
     try:
         from v4.api.demo_dag import DEMO_DAG
         from v4.api.dag_registry import DAGRegistry
         registry = DAGRegistry.instance()
-        # Ne pas écraser un DAG déjà schedulé
         if "demo_v4" not in {e.dag_id for e in registry.status()}:
             registry.schedule(DEMO_DAG, cycle_s=300)
             logging.getLogger("v4.api.main").info("DAG démo 'demo_v4' schedulé (cycle=300s)")
     except Exception as exc:
         logging.getLogger("v4.api.main").warning(f"DAG démo non schedulé : {exc}")
+
+    # 2) Tickers prix (Binance WS) pour les symboles par défaut
+    try:
+        from v4.api.routes.prices import ensure_ticker
+        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"]:
+            ensure_ticker(sym)
+        logging.getLogger("v4.api.main").info("Tickers prix démarrés (BTC, ETH, SOL, BNB)")
+    except Exception as exc:
+        logging.getLogger("v4.api.main").warning(f"Tickers prix non démarrés : {exc}")
 
 
 @app.get("/health")

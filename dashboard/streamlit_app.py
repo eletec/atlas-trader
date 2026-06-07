@@ -3748,11 +3748,12 @@ def render_admin_panel():
             "v4_admin":   "http://localhost:3000/admin",
         }
         _v4_url = _V4_URLS[_atab]
-        # Iframe en position fixed (ignore le padding Streamlit sans l'override globale)
+        # Iframe avec marges négatives compensant exactement le padding Streamlit
+        # stMainBlockContainer: padding-top 2rem, padding-bottom 3rem
         st.markdown(
             f'<iframe src="{_v4_url}" '
-            f'style="width:100%;height:calc(100vh - 48px);border:none;margin:-2rem -2rem;display:block;'
-            f'background:#0f1117;" '
+            f'style="width:calc(100% + 4rem);height:calc(100vh - 48px);border:none;'
+            f'margin:-2rem 0 -3rem -2rem;display:block;background:#0f1117;" '
             f'allow="clipboard-read;clipboard-write" allowfullscreen></iframe>',
             unsafe_allow_html=True,
         )

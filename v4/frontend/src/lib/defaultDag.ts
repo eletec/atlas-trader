@@ -118,6 +118,21 @@ const NODES_SPEC: NodeSpec[] = [
   },
 
   // ═══════════════════════════════════════════════════════════════
+  // LANE 3 — Analyse IA (LLM)
+  // ═══════════════════════════════════════════════════════════════
+  {
+    id: "ai_analyst", type: "LLMNode", x: X[8], y: Y_TOP + 160, label: "AI Analyst",
+    params: {
+      system_prompt: "You are a crypto trading analyst. Respond in JSON with keys: sentiment (bullish/bearish/neutral), confidence (0-100), reason (short).",
+      user_prompt: "Market data: {inputs}",
+      model: "phi4:latest",
+      temperature: 0.3,
+      max_tokens: 256,
+    },
+    inputPorts: ["decision", "regime", "trend"], outputPorts: ["response", "parsed", "tokens_used", "model", "duration_ms"],
+  },
+
+  // ═══════════════════════════════════════════════════════════════
   // LANE 2 — SHORT forcé (démo SignalConstant + DirectionGate)
   // ═══════════════════════════════════════════════════════════════
 
@@ -193,6 +208,11 @@ const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: 
 
   // Risk → Alerte
   { src: "short_risk", dst: "short_alert", srcPort: "decision", dstPort: "decision" },
+
+  // ── Lane 3 : AI Analyst ────────────────────────────────────────
+  { src: "btc_risk", dst: "ai_analyst", srcPort: "decision", dstPort: "decision" },
+  { src: "btc_regime", dst: "ai_analyst", srcPort: "regime", dstPort: "regime" },
+  { src: "btc_trend", dst: "ai_analyst", srcPort: "trend", dstPort: "trend" },
 ];
 
 export function getDefaultNodes(): RFNode[] {

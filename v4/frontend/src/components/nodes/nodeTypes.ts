@@ -21,6 +21,7 @@ export const nodeTypes = {
   SignalConstant: BaseNode,
   TrendFilter: BaseNode,
   DirectionGate: BaseNode,
+  LLMNode: BaseNode,
   RiskATR: BaseNode,
   PaperTrader: BaseNode,
   AlertOnly: BaseNode,

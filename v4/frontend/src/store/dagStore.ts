@@ -31,6 +31,7 @@ interface DAGState {
   asset: string;
   results: Record<string, NodeRunResult>;
   isRunning: boolean;
+  selectedNodeId: string | null;
 
   // Actions
   setNodes: (nodes: RFNode[]) => void;
@@ -42,6 +43,8 @@ interface DAGState {
   setDagId: (id: string) => void;
   setResults: (results: Record<string, NodeRunResult>) => void;
   setRunning: (v: boolean) => void;
+  selectNode: (id: string | null) => void;
+  updateNodeParams: (nodeId: string, params: Record<string, unknown>) => void;
   reset: () => void;
 }
 
@@ -54,12 +57,21 @@ export const useDagStore = create<DAGState>()(
       asset: "BTC/USDT",
       results: {},
       isRunning: false,
+      selectedNodeId: null,
 
       setNodes: (nodes) => set({ nodes }),
       setEdges: (edges) => set({ edges }),
 
       onNodesChange: (changes) =>
-        set((s) => ({ nodes: applyNodeChanges(changes, s.nodes) })),
+        set((s) => {
+          const next = { nodes: applyNodeChanges(changes, s.nodes) };
+          // Si un nœud a été sélectionné, suivre le changement
+          const selectChange = changes.find((c) => c.type === "select");
+          if (selectChange && selectChange.selected) {
+            return { ...next, selectedNodeId: (selectChange as any).id ?? s.selectedNodeId };
+          }
+          return next;
+        }),
 
       onEdgesChange: (changes) =>
         set((s) => ({ edges: applyEdgeChanges(changes, s.edges) })),
@@ -71,12 +83,21 @@ export const useDagStore = create<DAGState>()(
       setDagId: (dagId) => set({ dagId }),
       setResults: (results) => set({ results }),
       setRunning: (isRunning) => set({ isRunning }),
+      selectNode: (id) => set({ selectedNodeId: id }),
+      updateNodeParams: (nodeId, params) =>
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.id === nodeId ? { ...n, data: { ...n.data, params } } : n
+          ),
+        })),
 
-      reset: () => set({ nodes: [], edges: [], results: {} }),
+      reset: () => set({ nodes: [], edges: [], results: {}, selectedNodeId: null }),
     }),
     {
       name: "atlas_v4_dag",
       partialize: (s) => ({ nodes: s.nodes, edges: s.edges, dagId: s.dagId, asset: s.asset }),
+      // Ne pas réhydrater depuis localStorage si le canvas a déjà été chargé
+      // (évite que le localStorage écrase les positions après un drag-drop)
     }
   )
 );

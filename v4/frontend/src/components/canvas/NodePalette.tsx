@@ -57,6 +57,12 @@ const NODE_CATALOG = [
     ],
   },
   {
+    category: "IA / LLM",
+    nodes: [
+      { type: "LLMNode", label: "LLM Node", inputPorts: [], outputPorts: ["response", "parsed", "tokens_used", "model", "duration_ms"] },
+    ],
+  },
+  {
     category: "Sortie",
     nodes: [
       { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"] },

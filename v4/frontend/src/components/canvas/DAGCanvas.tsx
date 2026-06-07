@@ -23,6 +23,7 @@ import { useDagStore } from "@/store/dagStore";
 import { useDagRunner } from "@/hooks/useDagRunner";
 import { nodeTypes } from "@/components/nodes/nodeTypes";
 import { NodePalette } from "./NodePalette";
+import { NodeEditor } from "./NodeEditor";
 import { useState, useEffect } from "react";
 import { getDefaultNodes, getDefaultEdges } from "@/lib/defaultDag";
 
@@ -41,15 +42,28 @@ export function DAGCanvas() {
   const { runOnce, schedule, stopDag } = useDagRunner();
   const [cycleS, setCycleS] = useState(300);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-  // Auto-load du DAG démo par défaut si le canvas est vide
+  // Attendre l'hydratation du store persisté AVANT de charger le DAG par défaut
   useEffect(() => {
-    if (nodes.length === 0) {
+    const unsub = useDagStore.persist.onFinishHydration(() => {
+      setHydrated(true);
+    });
+    // Si déjà hydraté (pas de localStorage ou synchrone)
+    if (useDagStore.persist.hasHydrated()) {
+      setHydrated(true);
+    }
+    return () => unsub();
+  }, []);
+
+  // Auto-load du DAG démo par défaut si le canvas est vide (APRÈS hydratation)
+  useEffect(() => {
+    if (hydrated && nodes.length === 0) {
       setNodes(getDefaultNodes());
       setEdges(getDefaultEdges());
       setDagId("demo_v4");
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doneCount = Object.values(results).filter((r) => r.status === "done").length;
   const errorCount = Object.values(results).filter((r) => r.status === "error").length;
@@ -166,6 +180,11 @@ export function DAGCanvas() {
           )}
         </Panel>
       </ReactFlow>
+
+      {/* Panneau d'édition des paramètres (droite) */}
+      <div className="absolute right-0 top-0 h-full z-20">
+        <NodeEditor />
+      </div>
     </div>
   );
 }

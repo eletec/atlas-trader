@@ -1,0 +1,66 @@
+# ============================================================
+# Atlas Trader — Compose LOCAL (dev / Windows)
+# ============================================================
+# Lance uniquement le dashboard Streamlit V3 avec des volumes
+# locaux (pas de dépendance aux volumes GX10 externes).
+#
+# Usage :
+#   docker compose -f docker-compose.local.yml up --build -d
+#   http://localhost:8501
+# ============================================================
+
+name: atlas-local
+
+volumes:
+  local_storage:
+    driver: local
+  local_logs:
+    driver: local
+  local_config:
+    driver: local
+
+networks:
+  local_net:
+    driver: bridge
+
+services:
+  atlas-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: atlas-trader:latest
+    container_name: atlas-local-dashboard
+    command: dashboard
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - LOG_LEVEL=INFO
+      - SETTINGS_FILE=/app/config/settings.yaml
+    ports:
+      - "8501:8501"
+    volumes:
+      - local_storage:/app/storage
+      - local_logs:/app/logs
+      - local_config:/app/config
+      # Code source monté en live (pas besoin de rebuild pour tester les modifs)
+      - ./storage/database.py:/app/storage/database.py:ro
+      - ./storage/__init__.py:/app/storage/__init__.py:ro
+      - ./config/settings.yaml:/app/config/settings.yaml:rw
+      - ./config/users.yaml:/app/config/users.yaml:rw
+      - ./config/assets:/app/config/assets:rw
+      - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
+      - ./dashboard:/app/dashboard:ro
+      - ./agents:/app/agents:ro
+      - ./graph:/app/graph:ro
+      - ./quant:/app/quant:ro
+      - ./utils:/app/utils:ro
+      - ./main.py:/app/main.py:ro
+    networks:
+      - local_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

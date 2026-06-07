@@ -3935,6 +3935,88 @@ def _inject_session_persistence_js(has_valid_session: bool) -> None:
 # PAGE PRINCIPALE
 # ===========================================================
 
+@st.cache_data(ttl=15)
+def _get_v4_dags() -> list[dict]:
+    """Récupère l'état des DAGs V4 depuis l'API (cache 15s)."""
+    try:
+        import urllib.request, json
+        # host.docker.internal pour atteindre le host depuis un container
+        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return []
+
+
+def _render_v4_status():
+    """Section V4 dans le dashboard front office."""
+    dags = _get_v4_dags()
+    if not dags:
+        return
+
+    st.markdown("---")
+    st.markdown(
+        '<h3 style="margin:0 0 10px;font-size:18px;">'
+        '<i class="fas fa-diagram-project" style="margin-right:8px;color:#4f6ef7;"></i>'
+        'V4 — Moteur DAG</h3>',
+        unsafe_allow_html=True,
+    )
+
+    theme = _get_theme()
+    if theme == "light":
+        tbl_bg, tbl_fg, head_bg, border = "#ffffff", "#212529", "#f1f3f5", "#dee2e6"
+        row_alt, sep = "#f8f9fa", "#e9ecef"
+    else:
+        tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
+        row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
+
+    cols = ["DAG ID", "Actif", "Statut", "Cycle (s)", "Dernier run", "✓", "✗"]
+    header = "".join(
+        f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
+        f'background:{head_bg};border-bottom:2px solid {border};">{c}</th>'
+        for c in cols
+    )
+
+    rows_html = ""
+    for i, d in enumerate(dags):
+        bg = row_alt if i % 2 else tbl_bg
+        done = sum(1 for r in d.get("last_results", {}).values() if r.get("status") == "done")
+        errs = sum(1 for r in d.get("last_results", {}).values() if r.get("status") == "error")
+        last_ts = ""
+        if d.get("last_run_at"):
+            from datetime import datetime as _v4dt
+            try:
+                last_ts = _v4dt.fromtimestamp(d["last_run_at"]).strftime("%H:%M:%S")
+            except Exception:
+                last_ts = "—"
+        else:
+            last_ts = "—"
+
+        rows_html += (
+            f'<tr style="background:{bg};">'
+            f'<td style="padding:5px 10px;font-size:12px;font-family:monospace;">{d["dag_id"]}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;">{d.get("asset", "—")}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;">'
+            f'<span style="color:{"#22c55e" if d.get("running") else "#888"}">'
+            f'{"● actif" if d.get("running") else "○ arrêté"}</span></td>'
+            f'<td style="padding:5px 10px;font-size:12px;">{d.get("cycle_s") or "—"}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;">{last_ts}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;color:#22c55e;">{done} ✓</td>'
+            f'<td style="padding:5px 10px;font-size:12px;color:#ef4444;">{errs} ✗</td>'
+            f'</tr>'
+        )
+
+    st.markdown(
+        f'<div style="overflow:auto;border:1px solid {border};border-radius:8px;'
+        f'background:{tbl_bg};max-height:300px;">'
+        f'<table style="border-collapse:collapse;width:100%;min-width:600px;">'
+        f'<thead><tr>{header}</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        f'</table></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def main():
     _init_session()
 
@@ -4033,6 +4115,10 @@ def main():
                 render_live_logs(key="global")
 
             render_asset_tabs(_render_for_asset, global_fn=_render_global, pre_global_fn=_render_portfolio_first)
+
+            # ── V4 — État des DAGs (si l'API est accessible) ─────────────────
+            _render_v4_status()
+
             st.markdown(
                 '<div style="text-align:center;padding:24px 0 8px;'
                 'font-size:11px;opacity:0.35;">Atlas Trader &mdash; by Jako 2026</div>',

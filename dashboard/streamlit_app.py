@@ -812,6 +812,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                             "sl_price": 0,
                             "tp_price": 0,
                             "position_size": 0,
+                            "result_24h": None,   # V4: pas encore de P&L 24h
                             "status": "open",
                             "source": "v4",
                         })
@@ -2119,8 +2120,12 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
 
     df = pd.DataFrame(history)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df["cumulative_pnl"] = df["result_24h"].fillna(0).cumsum()
-    final_pnl = df["cumulative_pnl"].iloc[-1]
+    # V4 trades n'ont pas result_24h — utiliser 0 par défaut
+    if "result_24h" in df.columns:
+        df["cumulative_pnl"] = df["result_24h"].fillna(0).cumsum()
+    else:
+        df["cumulative_pnl"] = 0
+    final_pnl = df["cumulative_pnl"].iloc[-1] if len(df) > 0 else 0
     color = "#2ecc71" if final_pnl >= 0 else "#e74c3c"
 
     fig = go.Figure()

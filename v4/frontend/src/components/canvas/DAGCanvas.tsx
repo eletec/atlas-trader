@@ -64,6 +64,7 @@ export function DAGCanvas() {
   const [newDagName, setNewDagName] = useState("");
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);  // toast temporaire
 
   const { dags, activeId, setActive, create, rename, remove, ensureDefault } = useDagRegistry();
 
@@ -146,7 +147,25 @@ export function DAGCanvas() {
   };
   const handleRun = async () => {
     setError(null);
-    try { await runOnce(); } catch (e: any) { setError(e.message); }
+    try { await runOnce(); setFeedback("✓ Run terminé"); } catch (e: any) { setError(e.message); }
+    setTimeout(() => setFeedback(null), 2000);
+  };
+
+  const handleSchedule = async () => {
+    setError(null);
+    try {
+      await schedule(cycleS);
+      setFeedback(`⏱ Schedulé toutes les ${cycleS}s`);
+    } catch (e: any) { setError(e.message); }
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const handleStop = async () => {
+    try {
+      await stopDag();
+      setFeedback("■ Arrêté");
+    } catch (e: any) { setError(e.message); }
+    setTimeout(() => setFeedback(null), 2000);
   };
   const handleCtx = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -296,13 +315,13 @@ export function DAGCanvas() {
           className="w-10 rounded border border-canvas-border/60 bg-canvas-bg/60 px-1 py-0.5 text-[10px] text-slate-300 text-center"
           min={5} title="Intervalle (secondes)" />
 
-        <button onClick={() => schedule(cycleS)}
+        <button onClick={handleSchedule}
           className="rounded border border-canvas-border/60 px-1.5 py-0.5 text-[10px] text-slate-400 hover:border-canvas-accent hover:text-white"
           title="Ordonnancer">
           ⏱
         </button>
 
-        <button onClick={stopDag}
+        <button onClick={handleStop}
           className="rounded border border-canvas-border/60 px-1.5 py-0.5 text-[10px] text-slate-400 hover:border-canvas-danger hover:text-canvas-danger"
           title="Arrêter">
           ■
@@ -335,6 +354,13 @@ export function DAGCanvas() {
         <div className="absolute top-12 left-2 z-10 rounded border border-canvas-danger bg-red-950/90 px-2 py-1 text-[10px] text-canvas-danger shadow-lg">
           {error}
           <button onClick={() => setError(null)} className="ml-2 text-slate-400 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {/* Feedback toast (succès) */}
+      {feedback && (
+        <div className="absolute top-2 right-2 z-10 rounded border border-canvas-accent/40 bg-canvas-node/95 px-3 py-1.5 text-[11px] text-white shadow-lg animate-pulse">
+          {feedback}
         </div>
       )}
 

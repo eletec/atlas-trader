@@ -45,6 +45,21 @@ app.include_router(dag_router, prefix="/dag", tags=["dag"])
 app.include_router(prices_router, prefix="/prices", tags=["prices"])
 
 
+@app.on_event("startup")
+async def _auto_schedule_demo():
+    """Démarre automatiquement le DAG démo au boot (si pas déjà schedulé)."""
+    try:
+        from v4.api.demo_dag import DEMO_DAG
+        from v4.api.dag_registry import DAGRegistry
+        registry = DAGRegistry.instance()
+        # Ne pas écraser un DAG déjà schedulé
+        if "demo_v4" not in {e.dag_id for e in registry.status()}:
+            registry.schedule(DEMO_DAG, cycle_s=300)
+            logging.getLogger("v4.api.main").info("DAG démo 'demo_v4' schedulé (cycle=300s)")
+    except Exception as exc:
+        logging.getLogger("v4.api.main").warning(f"DAG démo non schedulé : {exc}")
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "version": "4.0.0"}

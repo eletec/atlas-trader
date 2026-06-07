@@ -122,11 +122,14 @@ class DAGExecutor:
         for edge in self._edges:
             src = self._nodes[edge.source_node]
             tgt = self._nodes[edge.target_node]
-            if edge.source_port not in src.output_schema():
+            # Si le schéma est vide → nœud dynamique (accepte/produit n'importe quel port)
+            src_ports = src.output_schema()
+            tgt_ports = tgt.input_schema()
+            if src_ports and edge.source_port not in src_ports:
                 raise DAGValidationError(
                     f"Node {edge.source_node} has no output port '{edge.source_port}'"
                 )
-            if edge.target_port not in tgt.input_schema():
+            if tgt_ports and edge.target_port not in tgt_ports:
                 raise DAGValidationError(
                     f"Node {edge.target_node} has no input port '{edge.target_port}'"
                 )

@@ -818,13 +818,35 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 @st.cache_data(ttl=60)
 def _get_portfolio(asset: str | None = None) -> dict:
+    """Portefeuille consolidé V3 + V4."""
+    portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
+                 "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
+                 "live_mode": False}
+
+    # 1) V3 paper trader (fallback)
     try:
         from execution.paper_trader import PaperTrader
-        return PaperTrader().get_portfolio(asset=asset)
+        v3 = PaperTrader().get_portfolio(asset=asset)
+        portfolio["capital"] = v3.get("capital", portfolio["capital"])
+        portfolio["current_value"] = v3.get("current_value", portfolio["current_value"])
+        portfolio["total_pnl"] = v3.get("total_pnl", 0)
+        portfolio["n_trades"] = v3.get("n_trades", 0)
     except Exception:
-        return {"capital": 10000, "current_value": 10000, "total_pnl": 0,
-                "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
-                "live_mode": False}
+        pass
+
+    # 2) V4 trades (storage/paper_trader)
+    try:
+        from storage.paper_trader import get_v4_trades
+        v4_trades = get_v4_trades(500, symbol=asset)
+        portfolio["n_trades"] += len(v4_trades)
+        # P&L estimé depuis les trades V4 (si closed)
+        for t in v4_trades:
+            if t.get("pnl_usd"):
+                portfolio["total_pnl"] += float(t["pnl_usd"])
+    except Exception:
+        pass
+
+    return portfolio
 
 
 @st.cache_data(ttl=30)

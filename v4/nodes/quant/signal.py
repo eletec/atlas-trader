@@ -48,6 +48,15 @@ class SignalLogReg(Node):
         return {"signal": "str", "prob_up": "float", "reason": "str"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        import traceback, logging
+        _log = logging.getLogger("v4.nodes.quant.signal")
+        try:
+            return self._run_impl(inputs)
+        except Exception as exc:
+            _log.error("SignalLogReg failed: %s\n%s", exc, traceback.format_exc())
+            return {"signal": "flat", "prob_up": 0.5, "reason": f"error:{exc}"}
+
+    def _run_impl(self, inputs: dict[str, Any]) -> dict[str, Any]:
         from quant.features import make_target_direction
         from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
         from quant.signal_model import SignalModel

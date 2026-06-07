@@ -61,25 +61,39 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
 
   // Le dot reflète le statut (prioritaire sur la couleur de type)
   const dotColor = status !== "idle" ? STATUS_COLOR[status] : colors.dot;
-  // Bordure colorée selon le résultat
-  const statusBorder = status === "done" ? "border-canvas-success/60" : status === "error" ? "border-canvas-danger/60" : "";
+  // Fond et bordure selon le résultat
+  const statusBg = status === "done" ? "bg-green-950/30" : status === "error" ? "bg-red-950/30" : status === "running" ? "bg-amber-950/20" : "";
+  const statusBorder = status === "done" ? "border-green-500/60" : status === "error" ? "border-red-500/60" : status === "running" ? "border-amber-500/40" : "";
+  // Badge texte
+  const statusLabel = status === "done" ? "✓ OK" : status === "error" ? "✗ ERR" : status === "running" ? "● RUN" : "";
 
   return (
     <div
       className={cn(
-        "min-w-[180px] rounded-lg border bg-canvas-node text-xs shadow-lg cursor-pointer transition-all duration-300",
+        "min-w-[180px] rounded-lg border-2 bg-canvas-node text-xs shadow-lg cursor-pointer transition-all duration-300",
         selected ? "border-canvas-accent ring-1 ring-canvas-accent/30 scale-[1.02]" : statusBorder || colors.border,
+        statusBg,
         nodeData.bypass && "opacity-60"
       )}
       onClick={() => selectNode(id)}
     >
       {/* Header */}
       <div className={cn("flex items-center gap-2 border-b border-canvas-border px-3 py-2 rounded-t-lg", colors.header)}>
-        <span className={cn("h-2.5 w-2.5 rounded-full shrink-0 transition-colors duration-300", dotColor)} title={status} />
+        <span className={cn("h-3 w-3 rounded-full shrink-0 transition-colors duration-300", dotColor, status === "running" && "animate-pulse")} title={status} />
         <span className="font-semibold text-white truncate">
           {nodeData.label || nodeType || id}
         </span>
-        <span className="ml-auto text-slate-500 text-[10px] shrink-0">
+        {statusLabel && (
+          <span className={cn(
+            "ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0",
+            status === "done" && "bg-green-600/30 text-green-400",
+            status === "error" && "bg-red-600/30 text-red-400",
+            status === "running" && "bg-amber-600/30 text-amber-400 animate-pulse"
+          )}>
+            {statusLabel}
+          </span>
+        )}
+        <span className="text-slate-500 text-[10px] shrink-0">
           {nodeType}
         </span>
       </div>

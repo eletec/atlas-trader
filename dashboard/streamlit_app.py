@@ -2973,24 +2973,6 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
-        # ── V2 Quant ─────────────────────────────────────────────────────────
-        (None, None,      t("admin_section_quant")),
-        ('<i class="fas fa-microchip"></i>',       "quant",    t("tab_quant_v2")),
-        ('<i class="fas fa-shield-halved"></i>',   "risk",     t("tab_risk")),
-        # ── Système ───────────────────────────────────────────────────────────
-        (None, None,      t("admin_section_system")),
-        ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
-        ('<i class="fas fa-list-check"></i>',      "logging",  t("tab_logging")),
-        ('<i class="fas fa-robot"></i>',           "aimodel",  t("tab_ai_model")),
-        ('<i class="fas fa-user"></i>',            "users",    t("tab_users")),
-        ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
-        # ── Historique ────────────────────────────────────────────────────
-        (None, None,      "Historique"),
-        ('<i class="fas fa-history"></i>',         "historique", "Historique"),
-        # ── Sauvegarde ──────────────────────────────────────────────────
-        (None, None,      t("admin_section_backup")),
-        ('<i class="fas fa-floppy-disk"></i>',     "backup",   t("tab_backup")),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",    t("tab_reset_v2")),
         # ── V4 — Moteur DAG ──────────────────────────────────────────────
         (None, None,      "V4 — Moteur DAG"),
         ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  "Canvas DAG"),
@@ -2998,6 +2980,20 @@ def render_admin_panel():
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades V4"),
         ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config V4"),
+        # ── V3 — Legacy ──────────────────────────────────────────────────
+        (None, None,      "V3 — Legacy"),
+        ('<i class="fas fa-microchip"></i>',       "quant",    t("tab_quant_v2")),
+        ('<i class="fas fa-shield-halved"></i>',   "risk",     t("tab_risk")),
+        ('<i class="fas fa-exchange-alt"></i>',    "flux",     t("tab_flux")),
+        ('<i class="fas fa-robot"></i>',           "aimodel",  t("tab_ai_model")),
+        ('<i class="fas fa-layer-group"></i>',     "peractif", t("tab_per_asset")),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",    t("tab_reset_v2")),
+        # ── Infra & Monitoring ───────────────────────────────────────────
+        (None, None,      "Infra & Monitoring"),
+        ('<i class="fas fa-list-check"></i>',      "logging",   t("tab_logging")),
+        ('<i class="fas fa-history"></i>',         "historique", "Historique"),
+        ('<i class="fas fa-user"></i>',            "users",     t("tab_users")),
+        ('<i class="fas fa-floppy-disk"></i>',     "backup",    t("tab_backup")),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -3005,9 +3001,9 @@ def render_admin_panel():
         else {"key": s[1], "icon": s[0], "text": s[2]}
         for s in _ADMIN_SECTIONS
     ]
-    _atab = st.query_params.get("_atab", "quant")
+    _atab = st.query_params.get("_atab", "v4_canvas")
     if _atab not in _admin_keys:
-        _atab = "quant"
+        _atab = "v4_canvas"
     _inject_custom_sidenav(_admin_items, _atab, qparam="_atab", theme=_get_theme())
 
     if _atab == "quant":  # Quant V2 Pipeline

@@ -25,6 +25,9 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
                  params={"symbol": symbol, "days_5m": 90, "days_1h": 100,
                           "exchange": "binance"}),
+        # ── Colonne 1b : Position Manager (trailing stop) ──
+        NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
+                 params={"symbol": symbol, "trail_atr": 2.0, "atr_period": 14}),
         # ── Colonne 2 : Features techniques ──
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
         # ── Colonne 3 : Normalisation ──
@@ -81,6 +84,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_data", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
                  target_node=f"{pfx}_features", target_port="ohlcv"),
+        EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
+                 target_node=f"{pfx}_posmgr", target_port="ohlcv_5m"),
         EdgeSpec(source_node=f"{pfx}_features", source_port="features",
                  target_node=f"{pfx}_norm", target_port="features"),
         EdgeSpec(source_node=f"{pfx}_norm", source_port="features_all",

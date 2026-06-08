@@ -106,3 +106,79 @@ def get_v4_trades(n: int = 200, symbol: str | None = None) -> list[dict]:
         return [dict(r) for r in rows]
     except Exception:
         return []
+
+
+def get_open_positions(symbol: str | None = None) -> list[dict]:
+    """Retourne toutes les positions encore ouvertes."""
+    from storage.database import get_connection
+
+    try:
+        with get_connection() as conn:
+            if symbol:
+                rows = conn.execute(
+                    "SELECT * FROM v4_trades WHERE status='open' AND symbol=? ORDER BY timestamp ASC",
+                    (symbol,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM v4_trades WHERE status='open' ORDER BY timestamp ASC"
+                ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def close_position(
+    trade_id: str,
+    close_price: float,
+    pnl_usd: float,
+    reason: str = "sl",
+) -> bool:
+    """Ferme une position et enregistre le PnL.
+
+    Args:
+        trade_id: UUID du trade
+        close_price: prix de clôture
+        pnl_usd: profit/perte en USD
+        reason: 'sl' | 'tp' | 'signal_reverse' | 'manual'
+
+    Returns:
+        True si la clôture a réussi.
+    """
+    from storage.database import get_connection
+
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """UPDATE v4_trades
+                   SET status='closed', closed_at=?, pnl_usd=?
+                   WHERE trade_id=? AND status='open'""",
+                (now, pnl_usd, trade_id),
+            )
+            conn.commit()
+        logger.info(
+            "Position fermée: %s @ %.2f pnl=$%.2f (%s)",
+            trade_id, close_price, pnl_usd, reason,
+        )
+        return True
+    except Exception as exc:
+        logger.warning("close_position failed: %s", exc)
+        return False
+
+
+def update_stop_loss(trade_id: str, new_sl: float) -> bool:
+    """Met à jour le stop-loss d'une position ouverte (trailing)."""
+    from storage.database import get_connection
+
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE v4_trades SET stop_loss=? WHERE trade_id=? AND status='open'",
+                (new_sl, trade_id),
+            )
+            conn.commit()
+        return True
+    except Exception as exc:
+        logger.warning("update_stop_loss failed: %s", exc)
+        return False

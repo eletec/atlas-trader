@@ -2855,6 +2855,83 @@ def _active_assets_v4() -> list[str]:
         return []
 
 
+def _render_backtest_v4():
+    """Panneau de backtest V4 — teste la stratégie sur données historiques."""
+    st.markdown("### 🧪 Backtest V4")
+    st.caption("Teste la stratégie DAG sur des données historiques Binance.")
+
+    symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"])
+    days = st.slider("Jours d'historique", 7, 180, 60, 7)
+    capital = st.number_input("Capital initial ($)", 100, 1_000_000, 10_000, 1000)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        risk_pct = st.slider("Risque/trade (%)", 0.1, 5.0, 1.0, 0.1)
+        sl_mult = st.slider("SL (×ATR)", 1.0, 6.0, 2.0, 0.5)
+    with col2:
+        fraction = st.slider("Fraction max capital", 0.005, 0.20, 0.02, 0.005)
+        tp_mult = st.slider("TP (×ATR)", 1.0, 10.0, 4.0, 0.5)
+
+    exit_strat = st.selectbox("Stratégie de sortie", ["chandelier", "trailing"])
+    exit_atr = st.slider("Exit ATR mult", 1.0, 6.0, 3.0, 0.5)
+    min_dist = st.slider("Breathing room (×ATR)", 0.0, 3.0, 1.0, 0.5)
+
+    if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
+        with st.spinner(f"Backtest {symbol} sur {days}j..."):
+            try:
+                from dashboard.backtest_v4 import run_backtest_v4
+                result = run_backtest_v4(
+                    symbol=symbol, days=days, capital=capital,
+                    risk_pct=risk_pct, sl_mult=sl_mult, tp_mult=tp_mult,
+                    fraction=fraction, exit_strategy=exit_strat,
+                    exit_atr_mult=exit_atr, min_atr_dist=min_dist,
+                )
+
+                # Métriques
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                col_m1.metric("P&L Total", f"${result.total_pnl:,.2f}", f"{result.total_pnl_pct:+.1f}%")
+                col_m2.metric("Win Rate", f"{result.win_rate:.0f}%")
+                col_m3.metric("Max Drawdown", f"{result.max_drawdown_pct:.1f}%")
+                col_m4.metric("Sharpe", f"{result.sharpe:.2f}")
+
+                col_m5, col_m6 = st.columns(2)
+                col_m5.metric("Gain moyen", f"${result.avg_win:,.2f}")
+                col_m6.metric("Perte moyenne", f"${result.avg_loss:,.2f}")
+
+                st.metric("Trades", result.n_trades)
+
+                # Liste des trades
+                if result.trades:
+                    st.markdown("---")
+                    st.markdown("#### 📋 Trades")
+                    df_trades = pd.DataFrame([{
+                        "Date": t.timestamp[:19],
+                        "Action": t.action.upper(),
+                        "Entry": f"${t.entry_price:,.2f}",
+                        "Exit": f"${t.exit_price:,.2f}",
+                        "PnL": f"${t.pnl_usd:+.2f}",
+                        "PnL%": f"{t.pnl_pct:+.2f}%",
+                        "Raison": t.exit_reason,
+                        "Barres": t.bars_held,
+                    } for t in result.trades])
+                    st.dataframe(df_trades, use_container_width=True, hide_index=True)
+
+                    # Courbe PnL
+                    st.markdown("#### 📈 Équité")
+                    cumulative = [result.initial_capital]
+                    for t in result.trades:
+                        cumulative.append(cumulative[-1] + t.pnl_usd)
+                    import plotly.graph_objects as go
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(y=cumulative, mode="lines", name="Équité"))
+                    fig.add_hline(y=result.initial_capital, line_dash="dash", line_color="gray")
+                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
+                    st.plotly_chart(fig, use_container_width=True)
+
+            except Exception as e:
+                st.error(f"Erreur backtest: {e}")
+
+
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""
     col_title, col_del = st.columns([5, 1])
@@ -3033,6 +3110,7 @@ def render_admin_panel():
         ('<i class="fas fa-database"></i>',        "sources",    "Sources de données"),
         ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
         ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset_v2")),
+        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest V4"),
         ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
         ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
         ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
@@ -3638,6 +3716,9 @@ def render_admin_panel():
                                 st.error(f"❌ {_re}")
         except Exception as _lb_exc:
             st.caption(f"{t('bkp_list_error')} {_lb_exc}")
+
+    elif _atab == "backtest":  # Backtest V4
+        _render_backtest_v4()
 
     elif _atab == "reset":  # Purge des données
         st.markdown(

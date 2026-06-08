@@ -329,7 +329,7 @@ def _compute_trend_v4(ohlcv_1h) -> str:
         return "neutral"
 
 
-def run_backtest_v4(
+def _compute_metrics(trades, equity, capital, final_cap, symbol, df) -> BTResult:
     n = len(trades)
     if n == 0:
         return BTResult(symbol=symbol, start=str(df.index[0]), end=str(df.index[-1]),

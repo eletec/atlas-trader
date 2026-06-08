@@ -134,10 +134,13 @@ export function DAGCanvas() {
     if (!loadDAG(id)) {
       saveDAG(id, { nodes: getDefaultNodes(), edges: getDefaultEdges(), asset: "BTC/USDT" });
     }
-    // Switcher l'actif et recharger la page (approche propre)
-    setActive(id);
+    // Persister l'activeId AVANT le reload
+    localStorage.setItem("atlas_v4_dag_registry", JSON.stringify({
+      state: { dags: dags.map(d => ({ ...d })), activeId: id },
+      version: 0,
+    }));
     setShowDagMenu(false);
-    setTimeout(() => window.location.reload(), 50);
+    window.location.reload();
   };
 
   const handleCreateDag = () => {

@@ -11,6 +11,7 @@ from v4.nodes.quant.regime import RegimeHMM, RegimePassthrough
 from v4.nodes.quant.risk import RiskATR
 from v4.nodes.quant.signal import SignalLogReg
 from v4.nodes.quant.signal_constant import SignalConstant
+from v4.nodes.quant.signal_xgb import SignalXGB
 from v4.nodes.quant.trend_filter import TrendFilter
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "RiskATR",
     "SignalConstant",
     "SignalLogReg",
+    "SignalXGB",
     "PaperTrader",
     "AlertOnly",
     "RecordDecision",
@@ -37,7 +39,7 @@ NODE_REGISTRY: dict[str, type] = {
     for cls in [
         AssetDef, LoadMultiTF, ComputeFeatures, Normalize,
         DirectionGate, RegimeHMM, RegimePassthrough,
-        SignalConstant, SignalLogReg,
+        SignalConstant, SignalLogReg, SignalXGB,
         RiskATR, PaperTrader, AlertOnly, RecordDecision,
         PositionManager,
         TrendFilter,

@@ -29,6 +29,7 @@ numpy>=1.26.0
 pandas>=2.2.0
 scikit-learn>=1.5.0
 hmmlearn>=0.3.2
+xgboost>=2.0.0
 
 # ---- IA / LLM ----
 litellm>=1.40.0             # proxy universel (Ollama, OpenAI, Anthropic...)

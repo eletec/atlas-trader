@@ -107,10 +107,14 @@ class LLMNode(Node):
                 response_text = body.get("response", "")
             else:
                 # DeepSeek / OpenAI-compatible via litellm
+                # Lire la clé API depuis secrets.yaml ou variable d'env
+                api_key = _llm_cfg.get("deepseek_api_key", "") or ""
+                if not api_key:
+                    api_key = _llm_cfg.get("api_key", "") or ""
                 import litellm
                 litellm.drop_params = True
-                resp_obj = litellm.completion(
-                    model=f"{provider}/{model}" if provider != "deepseek" else f"deepseek/{model}",
+                kwargs = dict(
+                    model=f"{provider}/{model}" if "/" not in model else model,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": formatted_prompt},
@@ -119,6 +123,9 @@ class LLMNode(Node):
                     max_tokens=max_tokens,
                     timeout=timeout_s,
                 )
+                if api_key:
+                    kwargs["api_key"] = api_key
+                resp_obj = litellm.completion(**kwargs)
                 response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""
         except Exception as exc:
             duration_ms = (time.time() - t0) * 1000

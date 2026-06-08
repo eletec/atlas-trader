@@ -42,7 +42,7 @@ services:
       - "8000:8000"
     volumes:
       - v4_storage:/app/data
-      - v4_config:/app/config
+      - v4_config:/app/src/config
       - .:/app/src:ro          # code source monté en lecture seule (hot reload)
     environment:
       - V4_ENV=development
@@ -99,7 +99,7 @@ services:
       - STREAMLIT_SERVER_PORT=8501
     volumes:
       - v4_storage:/app/data
-      - v4_config:/app/config
+      - v4_config:/app/src/config
       - .:/app/src:ro
     depends_on:
       - atlas-v4-api

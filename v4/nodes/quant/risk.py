@@ -26,10 +26,11 @@ class RiskATR(Node):
         decision  (dict  — {action, size_usd, entry_price, stop_loss, take_profit, reason})
 
     Params :
-        sl_mult   : float — multiplicateur ATR pour SL (défaut 2.0)
-        tp_mult   : float — multiplicateur ATR pour TP (défaut 4.0)
-        fraction  : float — fraction du capital par trade (défaut 0.005)
-        capital   : float — capital en USD (défaut 10000, surchargé par input capital)
+        sl_mult    : float — multiplicateur ATR pour SL (défaut 2.0)
+        tp_mult    : float — multiplicateur ATR pour TP (défaut 4.0)
+        fraction   : float — fraction max du capital par trade (défaut 0.02)
+        capital    : float — capital en USD (défaut 10000)
+        risk_pct   : float — % du capital risqué par trade (défaut 1.0)
     """
 
     @property
@@ -51,9 +52,10 @@ class RiskATR(Node):
         ohlcv_1h: pd.DataFrame = inputs["ohlcv_1h"]
         capital: float = float(inputs.get("capital") or self.params.get("capital", 10_000.0))
 
-        sl_mult  = self.params.get("sl_mult", 2.0)
-        tp_mult  = self.params.get("tp_mult", 4.0)
-        fraction = self.params.get("fraction", 0.005)
+        sl_mult  = float(self.params.get("sl_mult", 2.0))
+        tp_mult  = float(self.params.get("tp_mult", 4.0))
+        fraction = float(self.params.get("fraction", 0.02))
+        risk_pct = float(self.params.get("risk_pct", 1.0))
 
         if signal == "flat" or ohlcv_1h is None or ohlcv_1h.empty:
             return {"decision": {"action": "flat", "reason": "signal_flat"}}
@@ -67,10 +69,24 @@ class RiskATR(Node):
             (high - close.shift()).abs(),
             (low  - close.shift()).abs(),
         ], axis=1).max(axis=1)
-        atr = tr.rolling(14).mean().iloc[-1]
+        atr = float(tr.rolling(14).mean().iloc[-1])
 
         entry_price = float(close.iloc[-1])
-        size_usd    = capital * fraction
+
+        # ── Sizing contextuel basé sur le risque ──
+        # Risque max par trade = risk_pct% du capital
+        max_risk_usd = capital * (risk_pct / 100.0)
+        # Risque unitaire = distance SL / prix (en %)
+        if entry_price > 0 and atr > 0:
+            risk_per_unit = (sl_mult * atr) / entry_price  # % de perte si SL touché
+        else:
+            risk_per_unit = 0.01  # fallback 1%
+        # Taille basée sur le risque : capital * risk_pct / (SL_distance%)
+        risk_based_size = max_risk_usd / risk_per_unit if risk_per_unit > 0 else capital * fraction
+        # Borné par la fraction max du capital
+        size_usd = min(risk_based_size, capital * fraction)
+        # Minimum $10 pour éviter les trades insignifiants
+        size_usd = max(size_usd, 10.0)
 
         if signal == "long":
             stop_loss   = entry_price - sl_mult * atr

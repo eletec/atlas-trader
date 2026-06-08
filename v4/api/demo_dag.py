@@ -50,8 +50,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  params={"allow_long": True, "allow_short": True}),
         # ── Colonne 7 : Risk ATR ──
         NodeSpec(id=f"{pfx}_risk", type="RiskATR",
-                 params={"sl_mult": 2.0, "tp_mult": 4.0, "fraction": 0.005,
-                          "capital": 10000}),
+                 params={"sl_mult": 2.0, "tp_mult": 4.0, "fraction": 0.02,
+                          "risk_pct": 1.0, "capital": 10000}),
         # ── Colonne 8 : PaperTrader LONG ──
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id}),
@@ -71,8 +71,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_short_gate", type="DirectionGate",
                  params={"allow_long": False, "allow_short": True}),
         NodeSpec(id=f"{pfx}_short_risk", type="RiskATR",
-                 params={"sl_mult": 3.0, "tp_mult": 6.0, "fraction": 0.003,
-                          "capital": 10000}),
+                 params={"sl_mult": 3.0, "tp_mult": 6.0, "fraction": 0.015,
+                          "risk_pct": 1.0, "capital": 10000}),
         NodeSpec(id=f"{pfx}_short_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id}),
         NodeSpec(id=f"{pfx}_short_alert", type="AlertOnly",

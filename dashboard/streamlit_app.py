@@ -781,46 +781,27 @@ def _get_ohlcv(asset: str) -> tuple[list, list]:
 
 @st.cache_data(ttl=30)
 def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
-    """Retourne les trades récents : V4 API (prioritaire) + V3 DB fallback."""
+    """Retourne les trades récents : V4 DB (prioritaire) + V3 DB fallback."""
     trades: list[dict] = []
 
-    # 1) Trades V4 depuis l'API
+    # 1) Trades V4 depuis la DB (persistant, pas dépendant du cycle)
     try:
-        import urllib.request, json as _json
-        req = urllib.request.Request(f"{_API_BASE}/dag/status")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            dags = _json.loads(resp.read())
-        for d in dags:
-            dag_id = d.get("dag_id", "v4")
-            dag_asset = d.get("asset", "")
-            if asset and dag_asset != asset:
-                continue
-            pfx = dag_asset.split("/")[0].lower()[:3] if dag_asset else "btc"
-            results = d.get("last_results", {})
-            for paper_key in (f"{pfx}_short_paper", f"{pfx}_paper"):
-                paper = results.get(paper_key, {})
-                if isinstance(paper, dict):
-                    tr = paper.get("outputs", {}).get("trade_result", {})
-                    if isinstance(tr, dict) and tr.get("status") == "opened":
-                        ts_raw = d.get("last_run_at")
-                        if ts_raw:
-                            from datetime import datetime as _dt
-                            ts_str = _dt.fromtimestamp(float(ts_raw)).strftime("%Y-%m-%dT%H:%M:%S")
-                        else:
-                            ts_str = ""
-                        trades.append({
-                            "id": f"{dag_id}_{dag_asset}_{paper_key}",
-                            "timestamp": ts_str,
-                            "asset": dag_asset,
-                            "action": "BUY" if tr.get("action") == "long" else "SELL",
-                            "entry_price": tr.get("entry_price"),
-                            "sl_price": 0,
-                            "tp_price": 0,
-                            "position_size": 0,
-                            "result_24h": None,   # V4: pas encore de P&L 24h
-                            "status": "open",
-                            "source": "v4",
-                        })
+        from storage.paper_trader import get_v4_trades
+        v4_trades = get_v4_trades(n=n, symbol=asset)
+        for t in v4_trades:
+            trades.append({
+                "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",
+                "timestamp": t.get("timestamp", ""),
+                "asset": t.get("symbol", ""),
+                "action": "BUY" if t.get("action") == "long" else "SELL",
+                "entry_price": t.get("entry_price"),
+                "sl_price": t.get("stop_loss", 0),
+                "tp_price": t.get("take_profit", 0),
+                "position_size": t.get("size_usd", 0),
+                "result_24h": t.get("pnl_usd") if t.get("status") == "closed" else None,
+                "status": t.get("status", "open"),
+                "source": "v4",
+            })
     except Exception:
         pass
 

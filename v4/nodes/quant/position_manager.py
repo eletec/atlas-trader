@@ -151,16 +151,21 @@ class PositionManager(Node):
             )
 
             # Le SL ne doit jamais reculer (LONG: monte, SHORT: descend)
-            # + distance minimale de breathing room (_min_dist × ATR)
+            # + breathing room basé sur le PRIX ACTUEL (pas l'entrée)
             if action == "long":
-                new_sl = max(new_sl, current_sl, 0.01) if current_sl > 0 else max(new_sl, 0.01)
-                new_sl = min(new_sl, entry - _min_dist * atr)  # breathing room
+                # SL monte seulement, jamais descendre
+                new_sl = max(new_sl, current_sl) if current_sl > 0 else max(new_sl, 0.01)
+                # Breathing room : SL au plus proche = current_price - min_dist*ATR
+                # (empêche le SL de coller au prix et de se faire whipsaw)
+                new_sl = min(new_sl, current_close - _min_dist * atr)
                 hit_raw = current_sl > 0 and current_low <= current_sl
             else:
+                # SL descend seulement (tightening pour shorts), jamais monter
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
-                if entry > 0:
-                    new_sl = max(new_sl, entry + _min_dist * atr)
+                # Breathing room : SL au plus proche = current_price + min_dist*ATR
+                # (le SL reste au-dessus du prix actuel)
+                new_sl = max(new_sl, current_close + _min_dist * atr)
                 hit_raw = current_sl > 0 and current_high >= current_sl
 
             # ── Multi-TF filter : ne fermer que si la tendance 1h confirme ──

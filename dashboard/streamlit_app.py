@@ -2841,6 +2841,18 @@ def _render_ai_analysis(asset: str):
         pass
 
 
+def _active_assets_v4() -> list[str]:
+    """Retourne les actifs des DAGs V4 actifs depuis l'API."""
+    try:
+        import urllib.request, json as _json
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dags = _json.loads(resp.read())
+        return [d.get("asset", "") for d in dags if d.get("asset")]
+    except Exception:
+        return []
+
+
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""
     col_title, col_del = st.columns([5, 1])
@@ -4110,7 +4122,11 @@ def main():
                 render_portfolio(portfolio)
 
             def _render_global():
-                """Vue consolidée : PnL tous actifs + logs."""
+                """Vue consolidée : PnL tous actifs + analyses IA."""
+                st.markdown("### 🧠 Dernières analyses IA")
+                for asset in (_active_assets_v4() or ["BTC/USDT"]):
+                    _render_ai_analysis(asset)
+                st.markdown("---")
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)
                 render_pnl_chart(_tr_all, key="pnl_chart_global")

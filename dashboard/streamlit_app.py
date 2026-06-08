@@ -788,7 +788,6 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     try:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
-        st.warning(f"🔍 get_v4_trades({asset or 'ALL'}) = {len(v4_trades)} trades")
         for t in v4_trades:
             trades.append({
                 "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",

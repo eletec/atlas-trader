@@ -3596,54 +3596,23 @@ def render_admin_panel():
 
         # ── Reset V4 (Canvas + DAGs API) ──────────────────────────────────
         st.markdown(f"#### V4 — Réinitialisation")
-        st.caption("Arrête les DAGs actifs sur l'API et réinitialise le canvas.")
-        if st.button("🗑️ Stopper tous les DAGs V4 + Reset Canvas", type="secondary", use_container_width=True):
+        st.caption("Stoppe les DAGs actifs et restaure les flows par défaut.")
+        if st.button("🗑️ Stopper tous les DAGs V4 + Restaurer flows par défaut", type="secondary", use_container_width=True):
             import urllib.request as _ur4
             try:
-                # Arrêter tous les DAGs
                 dags = json.loads(_ur4.urlopen("http://host.docker.internal:8000/dag/status").read())
                 for d in dags:
                     try:
                         _ur4.urlopen(_ur4.Request(f"http://host.docker.internal:8000/dag/{d['dag_id']}", method="DELETE"))
                     except Exception:
                         pass
-                st.success(f"{len(dags)} DAG(s) arrêté(s).")
+                st.success(f"{len(dags)} DAG(s) arrêté(s). Ils redémarreront au prochain cycle API.")
             except Exception as e:
                 st.warning(f"API V4 injoignable : {e}")
-            st.info("Pour reset le canvas, tape ceci dans la console du navigateur (F12) :\n\n"
+            st.info("Pour restaurer les flows du canvas, tape ceci dans la console (F12) :\n\n"
                      "```js\nlocalStorage.removeItem('atlas_v4_dag_registry')\n```\n"
-                     "Puis rafraîchis http://localhost:3000/canvas")
-
-        # ── Reset V2 (legacy) ─────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown(f"#### V2 — Tables legacy")
-        st.caption("Vide les anciennes tables V2 (equity, state, decisions).")
-        _col_r3, _col_r4 = st.columns(2)
-        with _col_r3:
-            if st.button("Vider V2 (equity + state)", type="secondary", use_container_width=True, key="reset_v2_partial"):
-                try:
-                    import sqlite3 as _sq3
-                    from utils.config import load_settings as _ls_r
-                    _db_r = _ls_r().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3.connect(_db_r) as _con_r:
-                        _con_r.execute("DELETE FROM v2_equity")
-                        _con_r.execute("DELETE FROM v2_state")
-                        _con_r.commit()
-                    st.success("Tables v2_equity et v2_state vidées.")
-                except Exception as _re_r:
-                    st.error(f"Erreur : {_re_r}")
-        with _col_r4:
-            if st.button("Vider V2 (decisions)", type="secondary", use_container_width=True, key="reset_v2_decisions"):
-                try:
-                    import sqlite3 as _sq3c
-                    from utils.config import load_settings as _ls_r3
-                    _db_r3 = _ls_r3().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3c.connect(_db_r3) as _con_r3:
-                        _con_r3.execute("DELETE FROM v2_decisions")
-                        _con_r3.commit()
-                    st.success("Table v2_decisions vidée.")
-                except Exception as _re_r3:
-                    st.error(f"Erreur : {_re_r3}")
+                     "Puis rafraîchis http://localhost:3000/canvas\n\n"
+                     "✅ Tes flows seront recréés automatiquement (BTC, ETH, SOL, BNB, XRP).")
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

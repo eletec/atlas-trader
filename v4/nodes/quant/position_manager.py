@@ -132,17 +132,18 @@ class PositionManager(Node):
             )
 
             # Le SL ne doit jamais reculer (LONG: monte, SHORT: descend)
+            # + distance minimale de breathing room (min_atr_dist × ATR)
+            min_atr_dist = float(self.params.get("min_atr_dist", 1.0))
             if action == "long":
                 new_sl = max(new_sl, current_sl, 0.01) if current_sl > 0 else max(new_sl, 0.01)
-                # Le SL ne franchit jamais le prix d'entrée (sinon on ferme à perte)
-                new_sl = min(new_sl, entry)
+                new_sl = min(new_sl, entry - min_atr_dist * atr)  # breathing room
                 hit = current_sl > 0 and current_low <= current_sl
             else:
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
-                # Le SL ne franchit jamais le prix d'entrée
+                # Le SL garde au moins min_atr_dist × ATR de breathing room
                 if entry > 0:
-                    new_sl = max(new_sl, entry)
+                    new_sl = max(new_sl, entry + min_atr_dist * atr)
                 hit = current_sl > 0 and current_high >= current_sl
 
             if hit:

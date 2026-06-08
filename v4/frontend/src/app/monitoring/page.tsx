@@ -9,7 +9,7 @@ import { usePriceStream } from "@/hooks/usePriceStream";
 import { usePriceStore } from "@/store/priceStore";
 import { cn } from "@/lib/utils";
 
-const TRACKED = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"];
+const TRACKED = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"];
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function PriceStreamInit() {

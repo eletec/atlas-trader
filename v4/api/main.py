@@ -64,9 +64,9 @@ async def _auto_schedule_demo():
     # 2) Tickers prix (Binance WS) pour les symboles par défaut
     try:
         from v4.api.routes.prices import ensure_ticker
-        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"]:
+        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]:
             ensure_ticker(sym)
-        logging.getLogger("v4.api.main").info("Tickers prix démarrés (BTC, ETH, SOL, BNB)")
+        logging.getLogger("v4.api.main").info("Tickers prix démarrés (BTC, ETH, SOL, BNB, XRP)")
     except Exception as exc:
         logging.getLogger("v4.api.main").warning(f"Tickers prix non démarrés : {exc}")
 

@@ -40,11 +40,13 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_trend", type="TrendFilter",
                  params={"timeframe_resample": "4h", "sma_fast": 20,
                           "sma_slow": 50}),
-        # ── Colonne 5 : Signal LogReg ──
-        NodeSpec(id=f"{pfx}_signal", type="SignalLogReg",
+        # ── Colonne 5 : Signal XGBoost ──
+        NodeSpec(id=f"{pfx}_signal", type="SignalXGB",
                  params={"calibrate": True, "train_fraction": 0.70,
-                          "horizon_bars": 48, "p_up_threshold": 0.50,
-                          "p_dn_threshold": 0.50}),
+                          "horizon_bars": 48, "p_up_threshold": 0.55,
+                          "p_dn_threshold": 0.45, "retrain_cycle": 120,
+                          "max_depth": 5, "n_estimators": 100,
+                          "lag_features": 3}),
         # ── Colonne 6 : Gate directionnel ──
         NodeSpec(id=f"{pfx}_gate", type="DirectionGate",
                  params={"allow_long": True, "allow_short": True}),

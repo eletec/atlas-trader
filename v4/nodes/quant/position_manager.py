@@ -154,14 +154,48 @@ class PositionManager(Node):
             if action == "long":
                 new_sl = max(new_sl, current_sl, 0.01) if current_sl > 0 else max(new_sl, 0.01)
                 new_sl = min(new_sl, entry - _min_dist * atr)  # breathing room
-                hit = current_sl > 0 and current_low <= current_sl
+                hit_raw = current_sl > 0 and current_low <= current_sl
             else:
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
-                # Le SL garde au moins _min_dist × ATR de breathing room
                 if entry > 0:
                     new_sl = max(new_sl, entry + _min_dist * atr)
-                hit = current_sl > 0 and current_high >= current_sl
+                hit_raw = current_sl > 0 and current_high >= current_sl
+
+            # ── Multi-TF filter : ne fermer que si la tendance 1h confirme ──
+            use_multi_tf = bool(self.params.get("use_multi_tf", True))
+            hit = hit_raw
+            if hit_raw and use_multi_tf and ohlcv_1h is not None and len(ohlcv_1h) >= 55:
+                close_1h = ohlcv_1h["close"]
+                sma20 = float(close_1h.rolling(20).mean().iloc[-1])
+                sma50 = float(close_1h.rolling(50).mean().iloc[-1])
+                trend_1h = "bullish" if sma20 > sma50 else "bearish"
+                # Ne fermer un SHORT que si la tendance 1h passe bullish
+                # Ne fermer un LONG que si la tendance 1h passe bearish
+                if action == "short" and trend_1h != "bullish":
+                    hit = False
+                    logger.info("posmgr multi-TF: SL hit but 1h trend still %s → HOLD", trend_1h)
+                elif action == "long" and trend_1h != "bearish":
+                    hit = False
+                    logger.info("posmgr multi-TF: SL hit but 1h trend still %s → HOLD", trend_1h)
+
+            # ── Percent giveback : tracker le gain max ──
+            giveback_pct = float(self.params.get("giveback_pct", 0.0))
+            if giveback_pct > 0 and not hit:
+                if action == "long":
+                    max_favorable = max(entry, current_close)  # simplifié: best = max(entry, current)
+                    giveback_sl = max_favorable - (max_favorable - entry) * (giveback_pct / 100.0)
+                    if current_low <= giveback_sl and current_sl > 0:
+                        hit = True
+                        new_sl = giveback_sl
+                        logger.info("posmgr giveback: gave back %.1f%% → CLOSE", giveback_pct)
+                else:
+                    max_favorable = min(entry, current_close)
+                    giveback_sl = max_favorable + (entry - max_favorable) * (giveback_pct / 100.0)
+                    if current_high >= giveback_sl and current_sl > 0:
+                        hit = True
+                        new_sl = giveback_sl
+                        logger.info("posmgr giveback: gave back %.1f%% → CLOSE", giveback_pct)
 
             if hit:
                 close_price = current_sl
@@ -170,11 +204,21 @@ class PositionManager(Node):
                 else:
                     pnl = (entry - close_price) / entry * float(pos.get("size_usd", 0))
 
-                close_position(trade_id, close_price, round(pnl, 4), strategy)
+                # Raison détaillée pour les logs
+                reason_parts = [strategy]
+                if use_multi_tf:
+                    reason_parts.append("multiTF")
+                if giveback_pct > 0:
+                    reason_parts.append(f"giveback{giveback_pct:.0f}%")
+                if vol_factor > 1.0:
+                    reason_parts.append(f"vol{vol_factor:.1f}x")
+                reason = "+".join(reason_parts)
+
+                close_position(trade_id, close_price, round(pnl, 4), reason)
                 closed_this_cycle.append({
                     "trade_id": trade_id, "symbol": symbol, "action": action,
                     "entry_price": entry, "close_price": close_price,
-                    "pnl_usd": round(pnl, 4), "reason": strategy,
+                    "pnl_usd": round(pnl, 4), "reason": reason,
                     "strategy": strategy,
                 })
                 logger.info(

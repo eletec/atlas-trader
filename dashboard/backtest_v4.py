@@ -156,8 +156,19 @@ def run_backtest_v4(
                 equity_curve.append(current_capital)
                 continue
 
-        # ── Signal (XGBoost prioritaire, fallback LogReg) ──
-        signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
+        # ── Signal ──
+        signal, prob_up, confidence = "flat", 0.5, 0.0
+        try:
+            signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
+        except Exception:
+            try:
+                s, p = _compute_signal_v4(ohlcv_5m_win, ohlcv_1h_win, symbol)
+                signal, prob_up, confidence = s, p, 0.0
+            except Exception:
+                # Fallback ultime: SMA crossover
+                signal = _compute_signal_sma(ohlcv_1h_win)
+                prob_up = 0.5
+                confidence = 0.0
         trend = _compute_trend_v4(ohlcv_1h_win)
 
         # ── Direction Gate ──
@@ -312,6 +323,26 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
     except Exception as e:
         logger.warning("Signal V4 failed: %s", e)
         return "flat", 0.5
+
+
+def _compute_trend_v4(ohlcv_1h) -> str:
+
+
+def _compute_signal_sma(ohlcv_1h) -> str:
+    """Fallback ultime: signal basé sur SMA crossover."""
+    try:
+        if len(ohlcv_1h) < 55:
+            return "flat"
+        close = ohlcv_1h["close"]
+        sma20 = float(close.rolling(20).mean().iloc[-1])
+        sma50 = float(close.rolling(50).mean().iloc[-1])
+        if sma20 > sma50:
+            return "long"
+        elif sma20 < sma50:
+            return "short"
+        return "flat"
+    except Exception:
+        return "flat"
 
 
 def _compute_trend_v4(ohlcv_1h) -> str:

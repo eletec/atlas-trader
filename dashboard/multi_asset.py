@@ -239,7 +239,7 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live — données V4 (WebSocket Binance)."""
+    """Grille de prix live enrichie — données V4 (WebSocket Binance + DAG)."""
     import streamlit as st
 
     dags = _fetch_v4_dags()
@@ -255,7 +255,7 @@ def render_global_live_prices() -> None:
     if not dag_assets:
         dag_assets = ["BTC/USDT"]
 
-    cols = st.columns(min(len(dag_assets), 4))
+    cols = st.columns(min(len(dag_assets), 5))
     for i, asset in enumerate(dag_assets):
         icon = _asset_icon(asset)
         pdata = prices.get(asset, {})
@@ -263,6 +263,7 @@ def render_global_live_prices() -> None:
 
         with cols[i % len(cols)]:
             if price and price > 0:
+                # Formater le prix
                 if price >= 1000:
                     price_str = f"${price:,.0f}"
                 elif price >= 1:
@@ -270,16 +271,61 @@ def render_global_live_prices() -> None:
                 else:
                     price_str = f"${price:.4f}"
                 st.metric(label=f"{icon} {asset}", value=price_str)
-                # Récupérer le signal du DAG pour cet actif
+
+                # Récupérer le signal/trend du DAG
                 dag = next((d for d in dags if d.get("asset") == asset), None)
                 if dag:
-                    pfx = asset.split("/")[0].lower()[:3]  # btc, eth, sol, bnb, xrp
+                    pfx = asset.split("/")[0].lower()[:3]
                     results = dag.get("last_results", {})
+
+                    # Trend
                     trend_node = results.get(f"{pfx}_trend", {})
-                    trend = trend_node.get("outputs", {}).get("trend", "") if isinstance(trend_node, dict) else ""
+                    if isinstance(trend_node, dict):
+                        trend = trend_node.get("outputs", {}).get("trend", "")
+                    else:
+                        trend = ""
+
+                    # Signal
                     signal_node = results.get(f"{pfx}_signal", {})
-                    signal = signal_node.get("outputs", {}).get("signal", "") if isinstance(signal_node, dict) else ""
-                    st.caption(f"{trend.upper() if trend else '—'} | {signal}")
+                    if isinstance(signal_node, dict):
+                        signal = signal_node.get("outputs", {}).get("signal", "")
+                        prob = signal_node.get("outputs", {}).get("prob_up")
+                    else:
+                        signal = ""
+                        prob = None
+
+                    # Position ouverte ?
+                    posmgr_node = results.get(f"{pfx}_posmgr", {})
+                    if isinstance(posmgr_node, dict):
+                        open_pos = posmgr_node.get("outputs", {}).get("open_positions", [])
+                        closed_pos = posmgr_node.get("outputs", {}).get("closed", [])
+                        n_open = len(open_pos) if isinstance(open_pos, list) else 0
+                    else:
+                        n_open = 0
+                        closed_pos = []
+
+                    # Construire la ligne de détail
+                    parts = []
+                    if trend:
+                        parts.append(trend.upper())
+                    if signal:
+                        sig_str = signal
+                        if prob is not None:
+                            sig_str += f" {float(prob):.0%}"
+                        parts.append(sig_str)
+                    if n_open > 0:
+                        parts.append(f"🔴{n_open} pos" if n_open > 1 else "🔴open")
+                    else:
+                        parts.append("⚪flat")
+
+                    # Afficher les derniers closes
+                    if isinstance(closed_pos, list) and closed_pos:
+                        last_close = closed_pos[-1]
+                        pnl = last_close.get("pnl_usd", 0)
+                        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+                        parts.append(f"✅{pnl_str}")
+
+                    st.caption(" | ".join(parts) if parts else "—")
             else:
                 st.metric(label=f"{icon} {asset}", value="—")
                 st.caption("connexion...")

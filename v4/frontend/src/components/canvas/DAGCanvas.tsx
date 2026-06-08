@@ -120,12 +120,16 @@ export function DAGCanvas() {
   const handleSwitchDag = (id: string) => {
     setActive(id);
     const data = loadDAG(id);
-    if (data) {
+    if (data && data.nodes && data.nodes.length > 0) {
       setNodes(data.nodes as RFNode[]);
       setEdges(data.edges as RFEdge[]);
-      setDagId(id);
-      reset();
+    } else {
+      // Pas de données → charger le DAG par défaut
+      setNodes(getDefaultNodes());
+      setEdges(getDefaultEdges());
     }
+    setDagId(id);
+    reset();
     setShowDagMenu(false);
   };
 

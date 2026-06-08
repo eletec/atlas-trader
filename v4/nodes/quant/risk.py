@@ -52,10 +52,12 @@ class RiskATR(Node):
         ohlcv_1h: pd.DataFrame = inputs["ohlcv_1h"]
         capital: float = float(inputs.get("capital") or self.params.get("capital", 10_000.0))
 
-        sl_mult  = float(self.params.get("sl_mult", 2.0))
-        tp_mult  = float(self.params.get("tp_mult", 4.0))
-        fraction = float(self.params.get("fraction", 0.02))
-        risk_pct = float(self.params.get("risk_pct", 1.0))
+        # ── Paramètres : priorité DAG → settings.yaml → défaut ──
+        _defaults = _load_risk_defaults()
+        sl_mult  = float(self.params.get("sl_mult", _defaults.get("sl_mult", 2.0)))
+        tp_mult  = float(self.params.get("tp_mult", _defaults.get("tp_mult", 4.0)))
+        fraction = float(self.params.get("fraction", _defaults.get("max_fraction", 0.02)))
+        risk_pct = float(self.params.get("risk_pct", _defaults.get("risk_pct", 1.0)))
 
         if signal == "flat" or ohlcv_1h is None or ohlcv_1h.empty:
             return {"decision": {"action": "flat", "reason": "signal_flat"}}

@@ -14,6 +14,15 @@ project:
   - AVAX/USDT
   - LINK/USDT
   - DOT/USDT
+
+# ── Risk Management (V4) ──
+risk:
+  capital: 10000
+  max_fraction: 0.02
+  risk_pct: 1.0
+  sl_mult: 2.0
+  tp_mult: 4.0
+
 crawler:
   provider: duckduckgo
   fallback_provider: duckduckgo

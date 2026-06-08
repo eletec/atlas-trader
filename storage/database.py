@@ -556,17 +556,20 @@ def get_closed_trade_stats(asset: str | None = None, min_trades: int = 5) -> dic
 
 def get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
     """Retourne les N dernières décisions, filtré par actif si précisé."""
-    with get_connection() as conn:
-        if asset:
-            rows = conn.execute(
-                "SELECT * FROM decisions WHERE asset = ? ORDER BY timestamp DESC LIMIT ?",
-                (asset, n),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?", (n,)
-            ).fetchall()
-        return [dict(row) for row in rows]
+    try:
+        with get_connection() as conn:
+            if asset:
+                rows = conn.execute(
+                    "SELECT * FROM decisions WHERE asset = ? ORDER BY timestamp DESC LIMIT ?",
+                    (asset, n),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?", (n,)
+                ).fetchall()
+            return [dict(row) for row in rows]
+    except Exception:
+        return []
 
 
 def count_trades(asset: str | None = None) -> int:

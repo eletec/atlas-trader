@@ -841,12 +841,12 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 @st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
-    """Portefeuille consolidé — compte les trades V4 depuis l'API."""
+    """Portefeuille consolidé — compte les positions ouvertes depuis les DAGs V4."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
                  "live_mode": False}
 
-    # V4 trades via API
+    # V4 positions ouvertes via API (PositionManager)
     try:
         import urllib.request, json as _json
         req = urllib.request.Request(f"{_API_BASE}/dag/status")
@@ -858,12 +858,11 @@ def _get_portfolio(asset: str | None = None) -> dict:
                 continue
             pfx = dag_asset.split("/")[0].lower()[:3] if dag_asset else "btc"
             results = d.get("last_results", {})
-            for paper_key in (f"{pfx}_short_paper", f"{pfx}_paper"):
-                paper = results.get(paper_key, {})
-                if isinstance(paper, dict):
-                    tr = paper.get("outputs", {}).get("trade_result", {})
-                    if isinstance(tr, dict) and tr.get("status") == "opened":
-                        portfolio["n_trades"] += 1
+            posmgr = results.get(f"{pfx}_posmgr", {})
+            if isinstance(posmgr, dict):
+                open_pos = posmgr.get("outputs", {}).get("open_positions", [])
+                if isinstance(open_pos, list):
+                    portfolio["n_trades"] += len(open_pos)
     except Exception:
         pass
 

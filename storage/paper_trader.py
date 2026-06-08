@@ -126,7 +126,7 @@ def get_open_positions(symbol: str | None = None) -> list[dict]:
                 ).fetchall()
         result = [dict(r) for r in rows]
         if result:
-            logger.debug("get_open_positions: %d found", len(result))
+            logger.info("get_open_positions: %d found", len(result))
         return result
     except Exception:
         return []
@@ -184,7 +184,7 @@ def update_stop_loss(trade_id: str, new_sl: float) -> bool:
                 (new_sl, trade_id),
             )
             conn.commit()
-        logger.debug("SL updated: %s -> %.4f", trade_id, new_sl)
+        logger.info("SL updated: %s -> %.4f", trade_id, new_sl)
         return True
     except Exception as exc:
         logger.warning("update_stop_loss failed: %s", exc)

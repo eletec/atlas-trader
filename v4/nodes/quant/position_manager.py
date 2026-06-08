@@ -120,7 +120,7 @@ class PositionManager(Node):
             else:
                 new_sl = self._calc_trailing_sl(current_close, action, atr, atr_mult)
 
-            logger.debug(
+            logger.info(
                 "posmgr [%s] %s %s: entry=%.2f cur_sl=%.2f new_sl=%.2f atr=%.2f",
                 symbol, trade_id, action, entry, current_sl, new_sl, atr,
             )
@@ -159,7 +159,7 @@ class PositionManager(Node):
                 if (action == "long" and new_sl > current_sl) or \
                    (action == "short" and (new_sl < current_sl or current_sl == 0)):
                     ok = update_stop_loss(trade_id, round(new_sl, 4))
-                    logger.debug(
+                    logger.info(
                         "SL trail [%s] %s %s: %.2f -> %.2f (ok=%s)",
                         strategy, trade_id, action, current_sl, new_sl, ok,
                     )

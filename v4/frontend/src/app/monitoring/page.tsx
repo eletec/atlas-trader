@@ -8,12 +8,12 @@ import { PriceTicker } from "@/components/ui/PriceTicker";
 import { usePriceStream } from "@/hooks/usePriceStream";
 import { usePriceStore } from "@/store/priceStore";
 import { cn } from "@/lib/utils";
+import { useMemo } from "react";
 
-const TRACKED = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"];
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-function PriceStreamInit() {
-  usePriceStream(TRACKED);
+function PriceStreamInit({ symbols }: { symbols: string[] }) {
+  usePriceStream(symbols);
   return null;
 }
 
@@ -38,6 +38,12 @@ export default function MonitoringPage() {
   const [dags, setDags] = useState<DAGStatus[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const connected = usePriceStore((s) => s.connected);
+
+  // Actifs dynamiques depuis les DAGs actifs
+  const trackedSymbols = useMemo(() => {
+    const assets = dags.map((d) => d.asset).filter(Boolean);
+    return assets.length > 0 ? assets : ["BTC/USDT"];
+  }, [dags]);
 
   useEffect(() => {
     const poll = async () => {
@@ -65,7 +71,7 @@ export default function MonitoringPage() {
 
   return (
     <div className="min-h-screen bg-canvas-bg p-6">
-      <PriceStreamInit />
+      <PriceStreamInit symbols={trackedSymbols} />
 
       <h1 className="mb-6 text-2xl font-bold text-white">Monitoring</h1>
 
@@ -78,7 +84,7 @@ export default function MonitoringPage() {
           </span>
         </h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {TRACKED.map((sym) => (
+          {trackedSymbols.map((sym) => (
             <div
               key={sym}
               className="rounded-lg border border-canvas-border bg-canvas-node px-4 py-3"

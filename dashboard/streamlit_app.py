@@ -89,6 +89,10 @@ except Exception:
     from flux_manager import render_flux_manager_page
 from utils.i18n import t, set_lang, get_lang, SUPPORTED_LANGS
 
+# ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
+import os as _os
+_API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
+
 # ===========================================================
 # CONFIG PAGE
 # ===========================================================
@@ -738,7 +742,7 @@ def _get_live_indicators(asset: str) -> dict:
     """Indicateurs live avec cache 90s — interroge l'API V4 pour les prix."""
     try:
         import urllib.request, json
-        req = urllib.request.Request(f"http://host.docker.internal:8000/prices/snapshot?asset={asset}")
+        req = urllib.request.Request(f"{_API_BASE}/prices/snapshot?asset={asset}")
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read())
     except Exception:
@@ -783,7 +787,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     # 1) Trades V4 depuis l'API
     try:
         import urllib.request, json as _json
-        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
         with urllib.request.urlopen(req, timeout=5) as resp:
             dags = _json.loads(resp.read())
         for d in dags:
@@ -844,7 +848,7 @@ def _get_portfolio(asset: str | None = None) -> dict:
     # V4 trades via API
     try:
         import urllib.request, json as _json
-        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
         with urllib.request.urlopen(req, timeout=5) as resp:
             dags = _json.loads(resp.read())
         for d in dags:
@@ -979,7 +983,7 @@ def _force_run_background(asset: str, log_q) -> None:
     try:
         import urllib.request, json
         req = urllib.request.Request(
-            "http://host.docker.internal:8000/dag/run",
+            f"{_API_BASE}/dag/run",
             data=json.dumps({"dag_id": "demo_v4", "asset": asset}).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -2803,7 +2807,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
     v4_logs: list[dict] = []
     try:
         import urllib.request, json as _json
-        req = urllib.request.Request("http://host.docker.internal:8000/dag/logs?n=50", method="GET")
+        req = urllib.request.Request(f"{_API_BASE}/dag/logs?n=50", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             v4_logs = _json.loads(resp.read())
     except Exception:
@@ -3593,10 +3597,10 @@ def render_admin_panel():
         if st.button("🗑️ Stopper tous les DAGs V4 + Restaurer flows par défaut", type="secondary", use_container_width=True):
             import urllib.request as _ur4, json as _j4
             try:
-                dags = _j4.loads(_ur4.urlopen("http://host.docker.internal:8000/dag/status").read())
+                dags = _j4.loads(_ur4.urlopen(f"{_API_BASE}/dag/status").read())
                 for d in dags:
                     try:
-                        _ur4.urlopen(_ur4.Request(f"http://host.docker.internal:8000/dag/{d['dag_id']}", method="DELETE"))
+                        _ur4.urlopen(_ur4.Request(f"{_API_BASE}/dag/{d['dag_id']}", method="DELETE"))
                     except Exception:
                         pass
                 st.success(f"{len(dags)} DAG(s) arrêté(s). Ils redémarreront au prochain cycle API.")
@@ -3865,8 +3869,8 @@ def _get_v4_dags() -> list[dict]:
     """Récupère l'état des DAGs V4 depuis l'API (cache 15s)."""
     try:
         import urllib.request, json
-        # host.docker.internal pour atteindre le host depuis un container
-        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        # _API_BASE pour atteindre le host depuis un container
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read())
     except Exception:

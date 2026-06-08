@@ -97,6 +97,7 @@ services:
       - TZ=Europe/Paris
       - DATABASE_URL=sqlite:////app/data/v4.db
       - STREAMLIT_SERVER_PORT=8501
+      - V4_API_URL=http://atlas-v4-api:8000
     volumes:
       - v4_storage:/app/data
       - v4_config:/app/src/config

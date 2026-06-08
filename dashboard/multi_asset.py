@@ -14,6 +14,10 @@ from typing import Callable
 import streamlit as st
 from utils.i18n import t
 
+# ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
+import os as _os
+_API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,7 +28,7 @@ def _active_assets() -> list[str]:
     # 1) Actifs des DAGs V4 actifs (prioritaire)
     try:
         import urllib.request, json
-        req = urllib.request.Request("http://host.docker.internal:8000/dag/status", method="GET")
+        req = urllib.request.Request(f"{_API_BASE}/dag/status", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             dags = json.loads(resp.read())
         assets = [d.get("asset", "") for d in dags if d.get("asset")]
@@ -95,7 +99,7 @@ def _fetch_v4_dags() -> list[dict]:
     """Récupère le statut de tous les DAGs V4."""
     try:
         import urllib.request, json
-        req = urllib.request.Request("http://host.docker.internal:8000/dag/status")
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
         with urllib.request.urlopen(req, timeout=5) as resp:
             return json.loads(resp.read())
     except Exception:
@@ -226,7 +230,7 @@ def _fetch_v4_prices() -> dict[str, dict]:
     """Récupère les prix live depuis l'API V4 (WebSocket Binance)."""
     try:
         import urllib.request, json
-        req = urllib.request.Request("http://host.docker.internal:8000/prices/snapshot")
+        req = urllib.request.Request(f"{_API_BASE}/prices/snapshot")
         with urllib.request.urlopen(req, timeout=3) as resp:
             return json.loads(resp.read())
     except Exception:

@@ -3594,12 +3594,33 @@ def render_admin_panel():
         )
         st.warning(t("reset_warning"))
 
-        # ── Reset partiel ─────────────────────────────────────────────────
-        st.markdown(f"#### {t('reset_partial_title')}")
-        st.caption(t("reset_partial_caption"))
+        # ── Reset V4 (Canvas + DAGs API) ──────────────────────────────────
+        st.markdown(f"#### V4 — Réinitialisation")
+        st.caption("Arrête les DAGs actifs sur l'API et réinitialise le canvas.")
+        if st.button("🗑️ Stopper tous les DAGs V4 + Reset Canvas", type="secondary", use_container_width=True):
+            import urllib.request as _ur4
+            try:
+                # Arrêter tous les DAGs
+                dags = json.loads(_ur4.urlopen("http://host.docker.internal:8000/dag/status").read())
+                for d in dags:
+                    try:
+                        _ur4.urlopen(_ur4.Request(f"http://host.docker.internal:8000/dag/{d['dag_id']}", method="DELETE"))
+                    except Exception:
+                        pass
+                st.success(f"{len(dags)} DAG(s) arrêté(s).")
+            except Exception as e:
+                st.warning(f"API V4 injoignable : {e}")
+            st.info("Pour reset le canvas, tape ceci dans la console du navigateur (F12) :\n\n"
+                     "```js\nlocalStorage.removeItem('atlas_v4_dag_registry')\n```\n"
+                     "Puis rafraîchis http://localhost:3000/canvas")
+
+        # ── Reset V2 (legacy) ─────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown(f"#### V2 — Tables legacy")
+        st.caption("Vide les anciennes tables V2 (equity, state, decisions).")
         _col_r3, _col_r4 = st.columns(2)
         with _col_r3:
-            if st.button(t("reset_partial_btn"), type="secondary", use_container_width=True, key="reset_v2_partial"):
+            if st.button("Vider V2 (equity + state)", type="secondary", use_container_width=True, key="reset_v2_partial"):
                 try:
                     import sqlite3 as _sq3
                     from utils.config import load_settings as _ls_r
@@ -3608,74 +3629,36 @@ def render_admin_panel():
                         _con_r.execute("DELETE FROM v2_equity")
                         _con_r.execute("DELETE FROM v2_state")
                         _con_r.commit()
-                    st.success(t("reset_partial_ok"))
+                    st.success("Tables v2_equity et v2_state vidées.")
                 except Exception as _re_r:
                     st.error(f"Erreur : {_re_r}")
         with _col_r4:
-            st.caption(t("reset_partial_warn"))
-
-        # ── Reset complet ─────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown(f"#### {t('reset_full_title')}")
-        st.caption(t("reset_full_caption"))
-        _confirm_full = st.checkbox(t("reset_full_confirm"), key="confirm_full_reset")
-        _col_r7, _col_r8 = st.columns(2)
-        with _col_r7:
-            if st.button(t("reset_full_btn"), type="primary",
-                         use_container_width=True, key="reset_v2_full",
-                         disabled=not _confirm_full):
-                import subprocess as _sp2
-                import sqlite3 as _sq3b
-                _ok_db = False
+            if st.button("Vider V2 (decisions)", type="secondary", use_container_width=True, key="reset_v2_decisions"):
                 try:
-                    from utils.config import load_settings as _ls_r2
-                    _db_r2 = _ls_r2().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3b.connect(_db_r2) as _con_r2:
-                        _con_r2.execute("DELETE FROM v2_equity")
-                        _con_r2.execute("DELETE FROM v2_state")
-                        _con_r2.execute("DELETE FROM v2_decisions")
-                        _con_r2.commit()
-                    st.success(t("reset_full_ok"))
-                    _ok_db = True
-                except Exception as _re_r2:
-                    st.error(f"Erreur DB : {_re_r2}")
-                if _ok_db:
-                    try:
-                        _res2 = _sp2.run(
-                            ["supervisorctl", "-s", "unix:///tmp/supervisor.sock", "restart", "trader"],
-                            capture_output=True, text=True, timeout=15,
-                        )
-                        if _res2.returncode == 0:
-                            st.success(t("reset_daemon_ok2"))
-                        else:
+                    import sqlite3 as _sq3c
+                    from utils.config import load_settings as _ls_r3
+                    _db_r3 = _ls_r3().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3c.connect(_db_r3) as _con_r3:
+                        _con_r3.execute("DELETE FROM v2_decisions")
+                        _con_r3.commit()
+                    st.success("Table v2_decisions vidée.")
+                except Exception as _re_r3:
+                    st.error(f"Erreur : {_re_r3}")
                             st.warning(f"DB purgée mais redémarrage échoué (rc={_res2.returncode}) : {_res2.stderr or _res2.stdout}")
                     except Exception as _re_ex2:
                         st.warning(f"DB purgée mais redémarrage échoué : {_re_ex2}")
-        with _col_r8:
-            st.caption(t("reset_full_caption"))
-
-        # ── Redémarrage seul ──────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown(f"#### {t('reset_daemon_title')}")
-        _col_r5, _col_r6 = st.columns(2)
-        with _col_r5:
-            if st.button(t("reset_daemon_btn"), type="secondary", use_container_width=True, key="restart_trader"):
-                import subprocess as _sp
+        with _col_r4:
+            if st.button("Vider V2 (decisions)", type="secondary", use_container_width=True, key="reset_v2_decisions"):
                 try:
-                    _res = _sp.run(
-                        ["supervisorctl", "-s", "unix:///tmp/supervisor.sock", "restart", "trader"],
-                        capture_output=True, text=True, timeout=15,
-                    )
-                    if _res.returncode == 0:
-                        st.success(t("reset_daemon_ok"))
-                    else:
-                        st.error(f"Erreur supervisorctl (rc={_res.returncode}) : {_res.stderr or _res.stdout}")
-                except FileNotFoundError:
-                    st.error(t("reset_err_supervisorctl"))
-                except Exception as _re_ex:
-                    st.error(f"Erreur : {_re_ex}")
-        with _col_r6:
-            st.caption(t("reset_daemon_caption"))
+                    import sqlite3 as _sq3c
+                    from utils.config import load_settings as _ls_r3
+                    _db_r3 = _ls_r3().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
+                    with _sq3c.connect(_db_r3) as _con_r3:
+                        _con_r3.execute("DELETE FROM v2_decisions")
+                        _con_r3.commit()
+                    st.success("Table v2_decisions vidée.")
+                except Exception as _re_r3:
+                    st.error(f"Erreur : {_re_r3}")
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

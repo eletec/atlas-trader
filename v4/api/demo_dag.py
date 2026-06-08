@@ -62,8 +62,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_ai", type="LLMNode",
                  params={"system_prompt": "You are a crypto trading analyst.",
                           "user_prompt": "Market: {inputs}",
-                          "model": "phi4:latest", "temperature": 0.3,
-                          "max_tokens": 128, "timeout_s": 300}),
+                          "temperature": 0.3,
+                          "max_tokens": 128, "timeout_s": 60}),
 
         # ═══ Lane SHORT forcée (démo) ═══
         NodeSpec(id=f"{pfx}_short_sig", type="SignalConstant",

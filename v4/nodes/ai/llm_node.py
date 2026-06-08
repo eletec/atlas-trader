@@ -52,12 +52,20 @@ class LLMNode(Node):
         return {"response": "str", "parsed": "dict", "tokens_used": "int", "model": "str", "duration_ms": "float"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        from v4.nodes.config_loader import load_v4_config
+
+        # ── Modèle : priorité DAG → settings.yaml global → défaut ──
+        _llm_cfg = load_v4_config(None, "llm", {
+            "provider": "deepseek", "model": "deepseek-v4-pro",
+            "ollama_url": "http://atlas-v4-ollama:11434",
+        })
+        provider      = self.params.get("provider") or _llm_cfg.get("provider", "ollama")
+        model         = self.params.get("model") or _llm_cfg.get("model", "phi4:latest")
         system_prompt = self.params.get("system_prompt", "You are a trading assistant. Respond in JSON.")
         user_prompt   = self.params.get("user_prompt", "Analyze: {inputs}")
-        model         = self.params.get("model", "phi4:latest")
         temperature   = float(self.params.get("temperature", 0.3))
         max_tokens    = int(self.params.get("max_tokens", 512))
-        ollama_url    = self.params.get("ollama_url", "http://atlas-v4-ollama:11434")
+        ollama_url    = self.params.get("ollama_url", _llm_cfg.get("ollama_url", "http://atlas-v4-ollama:11434"))
         timeout_s     = int(self.params.get("timeout_s", 60))
 
         # Substitution des placeholders dans le user_prompt
@@ -79,15 +87,39 @@ class LLMNode(Node):
 
         t0 = time.time()
         try:
-            import urllib.request
-
-            req = urllib.request.Request(
-                f"{ollama_url}/api/generate",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
+            if provider == "ollama":
+                # Ollama local (pas de clé API)
+                import urllib.request
+                payload = {
+                    "model": model,
+                    "system": system_prompt,
+                    "prompt": formatted_prompt,
+                    "stream": False,
+                    "options": {"temperature": temperature, "num_predict": max_tokens},
+                }
+                req = urllib.request.Request(
+                    f"{ollama_url}/api/generate",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                response_text = body.get("response", "")
+            else:
+                # DeepSeek / OpenAI-compatible via litellm
+                import litellm
+                litellm.drop_params = True
+                resp_obj = litellm.completion(
+                    model=f"{provider}/{model}" if provider != "deepseek" else f"deepseek/{model}",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": formatted_prompt},
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout_s,
+                )
+                response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""
         except Exception as exc:
             duration_ms = (time.time() - t0) * 1000
             return {

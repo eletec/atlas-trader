@@ -13,6 +13,32 @@ import pandas as pd
 from v4.core.node import Node
 
 
+def _load_risk_defaults() -> dict:
+    """Charge les paramètres de risque globaux depuis config/settings.yaml.
+    Fallback aux défauts si le fichier est absent ou incomplet."""
+    defaults = {
+        "capital": 10_000,
+        "max_fraction": 0.02,
+        "risk_pct": 1.0,
+        "sl_mult": 2.0,
+        "tp_mult": 4.0,
+    }
+    try:
+        from pathlib import Path
+        import yaml
+        settings_path = Path(__file__).resolve().parent.parent.parent.parent / "config" / "settings.yaml"
+        if settings_path.exists():
+            with settings_path.open("r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            risk_cfg = data.get("risk", {})
+            for k in defaults:
+                if k in risk_cfg:
+                    defaults[k] = risk_cfg[k]
+    except Exception:
+        pass
+    return defaults
+
+
 class RiskATR(Node):
     """
     Calcule la position (size, SL, TP) basée sur l'ATR du timeframe 1h.

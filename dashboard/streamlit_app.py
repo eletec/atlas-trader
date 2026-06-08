@@ -805,17 +805,6 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     except Exception:
         pass
 
-    # 2) Fallback V3
-    try:
-        from storage.database import get_recent_trades
-        v3 = get_recent_trades(n, asset=asset)
-        for t in v3:
-            if t.get("action") in ("BUY", "SELL"):
-                t["source"] = "v3"
-                trades.append(t)
-    except Exception:
-        pass
-
     trades.sort(key=lambda t: str(t.get("timestamp", "")), reverse=True)
     return trades[:n]
 

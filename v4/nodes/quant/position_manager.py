@@ -128,12 +128,15 @@ class PositionManager(Node):
             # Le SL ne doit jamais reculer (LONG: monte, SHORT: descend)
             if action == "long":
                 new_sl = max(new_sl, current_sl, 0.01) if current_sl > 0 else max(new_sl, 0.01)
-                # Check SL touché : le low de la barre passe sous le SL
+                # Le SL ne franchit jamais le prix d'entrée (sinon on ferme à perte)
+                new_sl = min(new_sl, entry)
                 hit = current_sl > 0 and current_low <= current_sl
             else:
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
-                # Check SL touché : le high de la barre passe au-dessus du SL
+                # Le SL ne franchit jamais le prix d'entrée
+                if entry > 0:
+                    new_sl = max(new_sl, entry)
                 hit = current_sl > 0 and current_high >= current_sl
 
             if hit:

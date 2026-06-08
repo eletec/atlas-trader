@@ -110,7 +110,13 @@ export const useDagRegistry = create<DAGRegistryState>()(
         const { dags } = get();
         if (dags.length === 0) {
           set({
-            dags: [{ id: "default", name: "Demo V4", createdAt: Date.now() }],
+            dags: [
+              { id: "default", name: "BTC/USDT", createdAt: Date.now() },
+              { id: "eth",    name: "ETH/USDT", createdAt: Date.now() },
+              { id: "sol",    name: "SOL/USDT", createdAt: Date.now() },
+              { id: "bnb",    name: "BNB/USDT", createdAt: Date.now() },
+              { id: "xrp",    name: "XRP/USDT", createdAt: Date.now() },
+            ],
             activeId: "default",
           });
         }

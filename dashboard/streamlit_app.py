@@ -2788,7 +2788,7 @@ def _render_v4_config():
 
     col1, col2 = st.columns(2)
     with col1:
-        capital = st.number_input("Capital total (USD)", value=float(risk_cfg.get("capital", 10000)), min_value=100, step=1000)
+        capital = st.number_input("Capital total (USD)", value=float(risk_cfg.get("capital", 10000)), min_value=100.0, step=1000.0)
         max_fraction = st.slider("Fraction max par trade", value=float(risk_cfg.get("max_fraction", 0.02)), min_value=0.001, max_value=0.20, step=0.001, format="%.1f%%")
     with col2:
         risk_pct = st.slider("Risque par trade", value=float(risk_cfg.get("risk_pct", 1.0)), min_value=0.1, max_value=10.0, step=0.1, format="%.1f%%")

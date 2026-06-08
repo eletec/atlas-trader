@@ -413,13 +413,31 @@ def _compute_metrics(trades, equity, capital, final_cap, symbol, df) -> BTResult
     avg_win = sum(t.pnl_usd for t in wins) / len(wins) if wins else 0
     avg_loss = sum(t.pnl_usd for t in losses) / len(losses) if losses else 0
 
-    eq = pd.Series(equity)
-    rolling_max = eq.cummax()
-    dd = (eq - rolling_max) / rolling_max * 100
+    # Build daily equity curve for correct Sharpe & drawdown
+    eq_dates = [df.index[0]]
+    eq_vals = [capital]
+    for t in trades:
+        eq_dates.append(pd.Timestamp(t.timestamp))
+    # equity[1:] are post-trade equity values (aligned with trades by construction)
+    for i, t in enumerate(trades):
+        eq_vals.append(equity[i + 1] if i + 1 < len(equity) else eq_vals[-1])
+    eq_series = pd.Series(eq_vals, index=pd.DatetimeIndex(eq_dates)).sort_index()
+    # Resample to daily (forward-fill between trades, no intraday mark-to-market)
+    daily_eq = eq_series.resample("1D").last().ffill()
+    if len(daily_eq) < 2:
+        daily_eq = eq_series  # fallback if <2 days of data
+
+    # Max drawdown from daily equity
+    rolling_max = daily_eq.cummax()
+    dd = (daily_eq - rolling_max) / rolling_max * 100
     max_dd = abs(float(dd.min()))
 
-    returns = pd.Series(equity).pct_change().dropna()
-    sharpe = float(returns.mean() / returns.std() * np.sqrt(252 * 78)) if returns.std() > 0 else 0
+    # Sharpe from daily returns, annualized
+    daily_ret = daily_eq.pct_change().dropna()
+    if daily_ret.std() > 0 and len(daily_ret) > 1:
+        sharpe = float(daily_ret.mean() / daily_ret.std() * np.sqrt(252))
+    else:
+        sharpe = 0.0
 
     total_pnl = final_cap - capital
     return BTResult(

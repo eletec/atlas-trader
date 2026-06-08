@@ -294,17 +294,27 @@ def render_global_live_prices() -> None:
                         signal = ""
                         prob = None
 
-                    # Position ouverte ?
+                    # Position ouverte ? (depuis le posmgr)
                     posmgr_node = results.get(f"{pfx}_posmgr", {})
+                    open_positions = []
                     if isinstance(posmgr_node, dict):
-                        open_pos = posmgr_node.get("outputs", {}).get("open_positions", [])
-                        closed_pos = posmgr_node.get("outputs", {}).get("closed", [])
-                        n_open = len(open_pos) if isinstance(open_pos, list) else 0
-                    else:
-                        n_open = 0
-                        closed_pos = []
+                        open_positions = posmgr_node.get("outputs", {}).get("open_positions", [])
+                    if not isinstance(open_positions, list):
+                        open_positions = []
 
-                    # Construire la ligne de détail
+                    # Calculer le PnL latent
+                    pnl_parts = []
+                    for p in open_positions:
+                        entry = p.get("entry_price", 0) if isinstance(p, dict) else 0
+                        action = p.get("action", "") if isinstance(p, dict) else ""
+                        if entry and price:
+                            if action == "long":
+                                pnl_pct = (price - entry) / entry * 100
+                            else:
+                                pnl_pct = (entry - price) / entry * 100
+                            pnl_parts.append(f"{action[:1].upper()}{'+' if pnl_pct >= 0 else ''}{pnl_pct:.1f}%")
+
+                    # Construire la ligne de detail
                     parts = []
                     if trend:
                         parts.append(trend.upper())
@@ -313,17 +323,12 @@ def render_global_live_prices() -> None:
                         if prob is not None:
                             sig_str += f" {float(prob):.0%}"
                         parts.append(sig_str)
-                    if n_open > 0:
-                        parts.append(f"🔴{n_open} pos" if n_open > 1 else "🔴open")
+                    if pnl_parts:
+                        parts.append(" | ".join(pnl_parts))
+                    elif open_positions:
+                        parts.append("open")
                     else:
-                        parts.append("⚪flat")
-
-                    # Afficher les derniers closes
-                    if isinstance(closed_pos, list) and closed_pos:
-                        last_close = closed_pos[-1]
-                        pnl = last_close.get("pnl_usd", 0)
-                        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-                        parts.append(f"✅{pnl_str}")
+                        parts.append("flat")
 
                     st.caption(" | ".join(parts) if parts else "—")
             else:

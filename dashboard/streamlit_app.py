@@ -2834,9 +2834,11 @@ def _render_ai_analysis(asset: str):
         response = ai_outputs.get("response", "")
         model = ai_outputs.get("model", "")
         duration = ai_outputs.get("duration_ms", 0)
-        if response and not response.startswith("LLM_ERROR"):
-            with st.expander(f"🧠 Analyse IA ({model}, {duration/1000:.1f}s)", expanded=False):
-                st.markdown(response)
+        if response:
+            is_error = response.startswith("LLM_ERROR")
+            icon = "⚠️" if is_error else "🧠"
+            with st.expander(f"{icon} Analyse IA ({model}, {duration/1000:.1f}s)", expanded=not is_error):
+                st.text(response)
     except Exception:
         pass
 

@@ -246,6 +246,25 @@ def _summarize_node(nid: str, r: "NodeRunResult") -> str:
         tr = out["trade_result"]
         if hasattr(tr, "get"):
             parts.append(f"trade={tr.get('status','?')}")
+    if "closed" in out:
+        closed = out["closed"]
+        if isinstance(closed, list):
+            if closed:
+                details = ", ".join(
+                    f"{c.get('action','?')} {c.get('reason','?')} pnl=${c.get('pnl_usd',0):.2f}"
+                    for c in closed
+                )
+                parts.append(f"CLOSED {len(closed)}: {details}")
+            else:
+                parts.append("no closes")
+    if "open_positions" in out:
+        n_open = len(out["open_positions"]) if isinstance(out["open_positions"], list) else 0
+        if n_open > 0:
+            parts.append(f"{n_open} open")
+    if "atr" in out:
+        parts.append(f"ATR={out['atr']}")
+    if "strategy" in out:
+        parts.append(f"strat={out['strategy']}")
     if "regime" in out:
         rv = out["regime"]
         if hasattr(rv, "iloc"):

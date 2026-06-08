@@ -15,9 +15,20 @@ from typing import Any
 
 logger = logging.getLogger("zeitgeist.db")
 
-# Chemin de la DB (configurable) : ancré sur le dossier du module,
-# indépendant du répertoire courant (dashboard, daemon, tests, etc.).
-_DB_PATH = Path(__file__).resolve().parent / "zeitgeist.db"
+# Chemin de la DB (configurable) : priorité DATABASE_URL, sinon /app/data/zeitgeist.db, sinon dossier du module
+import os
+
+_DB_URL = os.environ.get("DATABASE_URL", "")
+if _DB_URL.startswith("sqlite:///"):
+    _DB_PATH = Path(_DB_URL.replace("sqlite:///", ""))
+elif _DB_URL:
+    _DB_PATH = Path(_DB_URL)
+else:
+    _DB_PATH = Path(__file__).resolve().parent / "zeitgeist.db"
+
+# Forcer un chemin writable si on est dans /app/src (Docker read-only mount)
+if str(_DB_PATH).startswith("/app/src/"):
+    _DB_PATH = Path("/app/data/zeitgeist.db")
 _lock = threading.RLock()  # RLock (réentrant) — évite le deadlock si logger appelle get_connection()
 
 

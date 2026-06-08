@@ -822,28 +822,27 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 @st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
-    """Portefeuille consolidé — compte les positions ouvertes depuis les DAGs V4."""
+    """Portefeuille consolidé — positions ouvertes + PnL cumulé depuis la DB."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
                  "live_mode": False}
 
-    # V4 positions ouvertes via API (PositionManager)
+    # V4 : positions ouvertes + PnL cumulé depuis la DB
     try:
-        import urllib.request, json as _json
-        req = urllib.request.Request(f"{_API_BASE}/dag/status")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            dags = _json.loads(resp.read())
-        for d in dags:
-            dag_asset = d.get("asset", "")
-            if asset and dag_asset != asset:
-                continue
-            pfx = dag_asset.split("/")[0].lower()[:3] if dag_asset else "btc"
-            results = d.get("last_results", {})
-            posmgr = results.get(f"{pfx}_posmgr", {})
-            if isinstance(posmgr, dict):
-                open_pos = posmgr.get("outputs", {}).get("open_positions", [])
-                if isinstance(open_pos, list):
-                    portfolio["n_trades"] += len(open_pos)
+        from storage.paper_trader import get_v4_trades
+        all_trades = get_v4_trades(n=500, symbol=asset)
+        total_pnl = 0.0
+        n_open = 0
+        for t in all_trades:
+            if t.get("status") == "open":
+                n_open += 1
+            pnl = t.get("pnl_usd")
+            if pnl is not None:
+                total_pnl += float(pnl)
+        portfolio["n_trades"] = n_open
+        portfolio["total_pnl"] = round(total_pnl, 2)
+        if portfolio["capital"] > 0:
+            portfolio["total_pnl_pct"] = round(total_pnl / portfolio["capital"] * 100, 2)
     except Exception:
         pass
 

@@ -32,10 +32,16 @@ app = FastAPI(
     description="API de trading algorithmique — moteur DAG + plugins IA",
 )
 
-# CORS : permet le frontend Next.js en dev (localhost:3000)
+# CORS : permet le frontend Next.js et le dashboard Streamlit, en local et via IP
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://atlas-v4-frontend:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8502",
+        "http://atlas-v4-frontend:3000",
+        "http://192.168.1.80:3000",
+        "http://192.168.1.80:8502",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

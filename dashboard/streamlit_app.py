@@ -3611,8 +3611,8 @@ def render_admin_panel():
             except Exception as e:
                 st.error(f"Erreur DB : {e}")
 
-            st.info("Les DAGs redémarreront automatiquement dans quelques secondes.")
-            st.rerun()
+            st.success("✅ Reset complet effectué — DAGs arrêtés, trades effacés. Redémarrage en cours...")
+            st.balloons()
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

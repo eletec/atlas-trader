@@ -25,9 +25,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
                  params={"symbol": symbol, "days_5m": 90, "days_1h": 100,
                           "exchange": "binance"}),
-        # ── Colonne 1b : Position Manager (trailing stop) ──
+        # ── Colonne 1b : Position Manager (chandelier exit) ──
         NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
-                 params={"symbol": symbol, "trail_atr": 2.0, "atr_period": 14}),
+                 params={"symbol": symbol, "exit_strategy": "chandelier",
+                          "atr_mult": 3.0, "chandelier_lookback": 22}),
         # ── Colonne 2 : Features techniques ──
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
         # ── Colonne 3 : Normalisation ──

@@ -80,13 +80,20 @@ def run_backtest_v4(
 
     logger.info("Backtest %s: %d barres 5m, min=%d", symbol, len(df_5m), min_bars)
 
-    for i in range(min_bars, len(df_5m) - 1, cycle_interval):
+    # ── Boucle principale : exit check chaque barre, signal chaque cycle ──
+    last_signal = "flat"
+    last_prob_up = 0.5
+    last_confidence = 0.0
+
+    for i in range(min_bars, len(df_5m) - 1):
         ohlcv_5m_win = df_5m.iloc[:i + 1]
+        bar_5m = df_5m.iloc[i + 1]  # barre "suivante" pour exécution
         ohlcv_1h_win = df_1h[df_1h.index <= ohlcv_5m_win.index[-1]]
+
         if len(ohlcv_1h_win) < atr_period:
             continue
 
-        # ── ATR 1h ──
+        # ── ATR 1h (recalculé chaque barre pour exit précis) ──
         close_1h = ohlcv_1h_win["close"]
         high_1h = ohlcv_1h_win["high"]
         low_1h = ohlcv_1h_win["low"]
@@ -100,10 +107,10 @@ def run_backtest_v4(
             continue
 
         entry_price = float(ohlcv_5m_win["close"].iloc[-1])
-        current_high = float(ohlcv_5m_win["high"].iloc[-1])
-        current_low = float(ohlcv_5m_win["low"].iloc[-1])
+        current_high = float(bar_5m["high"])
+        current_low = float(bar_5m["low"])
 
-        # ── Position Manager (exit) ──
+        # ── Position Manager (exit) — vérifié CHAQUE barre ──
         if position:
             pos_sl = position["sl"]
             pos_action = position["action"]
@@ -146,7 +153,7 @@ def run_backtest_v4(
                 pnl_usd = pos_size * pnl_pct
                 current_capital += pnl_usd
                 trades.append(BTTrade(
-                    timestamp=str(ohlcv_5m_win.index[-1]),
+                    timestamp=str(bar_5m.name),
                     symbol=symbol, action=pos_action,
                     entry_price=pos_entry, exit_price=close_price,
                     pnl_usd=round(pnl_usd, 4), pnl_pct=round(pnl_pct * 100, 4),
@@ -156,44 +163,80 @@ def run_backtest_v4(
                 equity_curve.append(current_capital)
                 continue
 
-        # ── Signal ──
-        signal, prob_up, confidence = "flat", 0.5, 0.0
-        try:
-            signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
-        except Exception:
+        # ── Signal — calculé uniquement au début de chaque cycle ──
+        is_cycle = ((i - min_bars) % cycle_interval == 0)
+        if is_cycle and position is None:
+            signal, prob_up, confidence = "flat", 0.5, 0.0
             try:
-                s, p = _compute_signal_v4(ohlcv_5m_win, ohlcv_1h_win, symbol)
-                signal, prob_up, confidence = s, p, 0.0
-            except Exception:
-                # Fallback ultime: SMA crossover
-                signal = _compute_signal_sma(ohlcv_1h_win)
-                prob_up = 0.5
-                confidence = 0.0
-        trend = _compute_trend_v4(ohlcv_1h_win)
+                signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
+            except Exception as exc1:
+                logger.debug("XGB+LogReg cascade failed: %s — trying LogReg directly", exc1)
+                try:
+                    s, p = _compute_signal_v4(ohlcv_5m_win, ohlcv_1h_win, symbol)
+                    signal, prob_up, confidence = s, p, 0.0
+                except Exception as exc2:
+                    logger.debug("LogReg direct failed: %s — fallback SMA", exc2)
+                    # Fallback ultime: SMA crossover
+                    signal = _compute_signal_sma(ohlcv_1h_win)
+                    prob_up = 0.5
+                    confidence = 0.0
+            trend = _compute_trend_v4(ohlcv_1h_win)
 
-        # ── Direction Gate ──
-        if signal == "long" and trend == "bearish":
-            signal = "flat"
-        elif signal == "short" and trend == "bullish":
-            signal = "flat"
+            # ── Direction Gate ──
+            if signal == "long" and trend == "bearish":
+                logger.debug("Direction Gate: long blocked by bearish trend")
+                signal = "flat"
+            elif signal == "short" and trend == "bullish":
+                logger.debug("Direction Gate: short blocked by bullish trend")
+                signal = "flat"
 
-        # ── Ouverture ──
-        if signal != "flat" and position is None:
-            risk_per_unit = (sl_mult * atr_1h) / entry_price if entry_price > 0 else 0.01
-            max_risk = current_capital * (risk_pct / 100.0)
-            risk_based = max_risk / risk_per_unit if risk_per_unit > 0 else current_capital * fraction
-            size_usd = min(risk_based, current_capital * fraction)
-            size_usd = max(size_usd, 10.0)
+            last_signal = signal
+            last_prob_up = prob_up
+            last_confidence = confidence
 
-            if signal == "long":
-                sl = entry_price - sl_mult * atr_1h
-            else:
-                sl = entry_price + sl_mult * atr_1h
+            logger.debug(
+                "Signal cycle i=%d: sig=%s prob=%.3f conf=%.3f trend=%s | 1h_bars=%d",
+                i, signal, prob_up, confidence, trend, len(ohlcv_1h_win),
+            )
 
-            position = {
-                "action": signal, "entry": entry_price, "sl": sl,
-                "tp": 0, "size_usd": size_usd, "entry_bar": i,
-            }
+            # ── Ouverture ──
+            if signal != "flat" and position is None:
+                # Entrée à l'open de la barre suivante
+                entry_exec = float(bar_5m["open"])
+                risk_per_unit = (sl_mult * atr_1h) / entry_exec if entry_exec > 0 else 0.01
+                max_risk = current_capital * (risk_pct / 100.0)
+                risk_based = max_risk / risk_per_unit if risk_per_unit > 0 else current_capital * fraction
+                size_usd = min(risk_based, current_capital * fraction)
+                size_usd = max(size_usd, 10.0)
+
+                if signal == "long":
+                    sl = entry_exec - sl_mult * atr_1h
+                else:
+                    sl = entry_exec + sl_mult * atr_1h
+
+                position = {
+                    "action": signal, "entry": entry_exec, "sl": sl,
+                    "tp": 0, "size_usd": size_usd, "entry_bar": i,
+                }
+
+    # ── Clôture fin de test (mark-to-market) ──
+    if position is not None:
+        close_price = float(df_5m["close"].iloc[-1])
+        pos_action = position["action"]
+        pos_entry = position["entry"]
+        pos_size = position["size_usd"]
+        pnl_pct = (close_price - pos_entry) / pos_entry if pos_action == "long" else (pos_entry - close_price) / pos_entry
+        pnl_usd = pos_size * pnl_pct
+        current_capital += pnl_usd
+        trades.append(BTTrade(
+            timestamp=str(df_5m.index[-1]),
+            symbol=symbol, action=pos_action,
+            entry_price=pos_entry, exit_price=close_price,
+            pnl_usd=round(pnl_usd, 4), pnl_pct=round(pnl_pct * 100, 4),
+            exit_reason="end_of_test", bars_held=len(df_5m) - position["entry_bar"],
+        ))
+        position = None
+        equity_curve.append(current_capital)
 
     # ── Métriques ──
     return _compute_metrics(trades, equity_curve, capital, current_capital, symbol, df_5m)
@@ -203,35 +246,36 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
     """Calcule le signal avec XGBoost (meilleur que LogReg)."""
     try:
         from quant.features import compute_features
-        from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
         import xgboost as xgb
 
-        features = compute_features(
-            ohlcv_5m,
-            feature_cols=list(DEFAULT_FEATURE_COLS),
-            config=PipelineConfig(),
-        )
+        features = compute_features(ohlcv_5m)
         if features is None or len(features) < 100:
             return "flat", 0.5, 0.0
 
         df = features.select_dtypes(include=[np.number]).dropna()
+        # Ajouter le close price depuis ohlcv_5m (aligné sur l'index de features)
+        close_price = ohlcv_5m["close"].reindex(df.index)
+        df["_close"] = close_price
+        df = df.dropna()
         if len(df) < 100:
             return "flat", 0.5, 0.0
 
         # Ajouter lags
         n_lags = 3
+        feat_cols = [c for c in df.columns if c != "_close"]
         for lag in range(1, n_lags + 1):
-            for col in df.columns:
+            for col in feat_cols:
                 df[f"{col}_lag{lag}"] = df[col].shift(lag)
         df = df.dropna()
 
-        # Cible
-        close_col = "close" if "close" in df.columns else df.columns[0]
-        future = df[close_col].shift(-48)
-        target = (future > df[close_col]).astype(int)
+        # Cible basée sur le VRAI close price
+        future = df["_close"].shift(-48)
+        target = (future > df["_close"]).astype(int)
 
+        # Features sans la colonne _close ni future
+        X_cols = [c for c in df.columns if c not in ("_close",)]
         split = int(len(df) * 0.70)
-        train_f = df.iloc[:split]
+        train_f = df[X_cols].iloc[:split]
         train_t = target.iloc[:split].dropna()
         train_f = train_f.iloc[:len(train_t)]
 
@@ -245,7 +289,7 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
         )
         model.fit(train_f.values, train_t.values)
 
-        last = df.iloc[-1:]
+        last = df[X_cols].iloc[-1:]
         proba = model.predict_proba(last.values)[0]
         prob_up = float(proba[1]) if len(proba) > 1 else float(proba[0])
         confidence = abs(prob_up - 0.5) * 2.0
@@ -257,7 +301,7 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
         return "flat", prob_up, confidence
 
     except Exception as e:
-        # Fallback LogReg
+        logger.debug("XGB signal failed (%s), trying LogReg fallback", e)
         signal, prob = _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol)
         return signal, prob, 0.0
 
@@ -266,24 +310,30 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
     """Calcule le signal avec le VRAI LogReg (pas SMA)."""
     try:
         from quant.features import compute_features
-        from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
         from quant.signal_model import SignalModel
 
-        features = compute_features(
-            ohlcv_5m,
-            feature_cols=list(DEFAULT_FEATURE_COLS),
-            config=PipelineConfig(),
-        )
+        features = compute_features(ohlcv_5m)
         if features is None or len(features) < 100:
             return "flat", 0.5
 
+        # Ne garder que les colonnes numériques (raw features, pas _q)
+        feats_num = features.select_dtypes(include=[np.number])
+        # Exclure les colonnes non-informatives ou redondantes
+        exclude = ["donchian_high_20", "donchian_low_20", "breakout_up", "breakout_dn"]
+        feat_cols = [c for c in feats_num.columns if c not in exclude]
+        if len(feat_cols) < 3:
+            return "flat", 0.5
+
         # Entraînement walk-forward
-        split = int(len(features) * 0.70)
-        train = features.iloc[:split]
+        split = int(len(feats_num) * 0.70)
+        train = feats_num.iloc[:split]
         if train.empty:
             return "flat", 0.5
 
-        model = SignalModel(calibrate=True)
+        model = SignalModel(
+            feature_cols=feat_cols,
+            use_calibration=True,
+        )
         target = (ohlcv_5m["close"].shift(-48) > ohlcv_5m["close"]).astype(int)
         target = target.loc[train.index]
 
@@ -294,24 +344,15 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
         train_f = train.loc[valid_idx]
         target_f = target.loc[valid_idx]
 
-        # Ne garder que les colonnes numériques
-        train_f = train_f.select_dtypes(include=[np.number])
-        if train_f.empty or len(train_f.columns) < 3:
-            return "flat", 0.5
-
         model.fit(train_f, target_f)
 
-        last = features.iloc[-1:]
-        last_num = last.select_dtypes(include=[np.number])
-        if last_num.empty:
-            return "flat", 0.5
-
-        # Aligner les colonnes
-        common_cols = train_f.columns.intersection(last_num.columns)
+        last = feats_num.iloc[-1:]
+        # Aligner les colonnes sur celles du train
+        common_cols = [c for c in feat_cols if c in last.columns]
         if len(common_cols) < 3:
             return "flat", 0.5
 
-        prob_up = float(model.predict_proba(last_num[common_cols])[:, 1][0])
+        prob_up = float(model.predict_proba(last[common_cols]))
         prob_up = float(prob_up)
 
         if prob_up >= 0.55:

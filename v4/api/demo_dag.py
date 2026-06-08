@@ -87,6 +87,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_features", target_port="ohlcv"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
                  target_node=f"{pfx}_posmgr", target_port="ohlcv_5m"),
+        EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
+                 target_node=f"{pfx}_posmgr", target_port="ohlcv_1h"),
         EdgeSpec(source_node=f"{pfx}_features", source_port="features",
                  target_node=f"{pfx}_norm", target_port="features"),
         EdgeSpec(source_node=f"{pfx}_norm", source_port="features_all",

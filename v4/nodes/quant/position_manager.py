@@ -40,7 +40,7 @@ class PositionManager(Node):
 
     @staticmethod
     def input_schema() -> dict[str, str]:
-        return {"ohlcv_5m": "DataFrame"}
+        return {"ohlcv_5m": "DataFrame", "ohlcv_1h": "DataFrame"}
 
     @staticmethod
     def output_schema() -> dict[str, str]:
@@ -73,7 +73,8 @@ class PositionManager(Node):
         atr_mult = float(self.params.get("atr_mult") or self.params.get("trail_atr", 3.0))
         atr_period = int(self.params.get("atr_period", 14))
         lookback = int(self.params.get("chandelier_lookback", 22))
-        ohlcv = inputs.get("ohlcv_5m")
+        ohlcv_5m = inputs.get("ohlcv_5m")
+        ohlcv_1h = inputs.get("ohlcv_1h")  # utilisé pour ATR + chandelier (timeframe plus large)
 
         from storage.paper_trader import get_open_positions, close_position, update_stop_loss
 
@@ -81,20 +82,28 @@ class PositionManager(Node):
         if not positions:
             return {"closed": [], "open_positions": []}
 
-        if ohlcv is None or not hasattr(ohlcv, "iloc") or len(ohlcv) < max(atr_period, lookback):
-            logger.warning("PositionManager: pas assez d'OHLCV (%s barres)", len(ohlcv) if ohlcv is not None else 0)
+        # Utiliser 1h pour l'ATR (plus représentatif), fallback 5m
+        ohlcv_atr = ohlcv_1h if ohlcv_1h is not None and hasattr(ohlcv_1h, "iloc") and len(ohlcv_1h) >= atr_period else ohlcv_5m
+        ohlcv_ch = ohlcv_1h if ohlcv_1h is not None and hasattr(ohlcv_1h, "iloc") and len(ohlcv_1h) >= lookback else ohlcv_5m
+
+        if ohlcv_5m is None or not hasattr(ohlcv_5m, "iloc") or len(ohlcv_5m) < 2:
+            logger.warning("PositionManager: pas assez d'OHLCV 5m")
             return {"closed": [], "open_positions": positions}
 
-        # ATR
-        recent_atr = ohlcv.iloc[-atr_period:]
+        if ohlcv_atr is None or len(ohlcv_atr) < atr_period:
+            logger.warning("PositionManager: pas assez d'OHLCV pour ATR")
+            return {"closed": [], "open_positions": positions}
+
+        # ATR sur timeframe 1h
+        recent_atr = ohlcv_atr.iloc[-atr_period:]
         atr = float((recent_atr["high"] - recent_atr["low"]).mean()) if len(recent_atr) >= 2 else 1.0
         if atr <= 0:
             atr = 1.0
 
-        # Prix actuels
-        current_high = float(ohlcv["high"].iloc[-1])
-        current_low = float(ohlcv["low"].iloc[-1])
-        current_close = float(ohlcv["close"].iloc[-1])
+        # Prix actuels (5m pour détection intra-barre)
+        current_high = float(ohlcv_5m["high"].iloc[-1])
+        current_low = float(ohlcv_5m["low"].iloc[-1])
+        current_close = float(ohlcv_5m["close"].iloc[-1])
 
         closed_this_cycle: list[dict] = []
         still_open: list[dict] = []
@@ -107,7 +116,7 @@ class PositionManager(Node):
 
             # ── Calcul du nouveau SL selon la stratégie ──
             if strategy == "chandelier":
-                new_sl = self._calc_chandelier_sl(ohlcv, action, atr, lookback, atr_mult)
+                new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, atr_mult)
             else:
                 new_sl = self._calc_trailing_sl(current_close, action, atr, atr_mult)
 

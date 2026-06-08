@@ -3577,7 +3577,7 @@ def render_admin_panel():
         # ── Reset V4 (Canvas + DAGs API) ──────────────────────────────────
         st.markdown(f"#### V4 — Réinitialisation")
         st.caption("Stoppe les DAGs actifs et restaure les flows par défaut.")
-        if st.button("🗑️ Stopper tous les DAGs V4 + Restaurer flows par défaut", type="secondary", use_container_width=True):
+        if st.button("🗑️ Stopper tous les DAGs V4", type="secondary", use_container_width=True):
             import urllib.request as _ur4, json as _j4
             try:
                 dags = _j4.loads(_ur4.urlopen(f"{_API_BASE}/dag/status").read())
@@ -3587,24 +3587,29 @@ def render_admin_panel():
                     except Exception:
                         pass
                 st.success(f"{len(dags)} DAG(s) arrêté(s). Ils redémarreront au prochain cycle API.")
+                st.rerun()
             except Exception as e:
                 st.warning(f"API V4 injoignable : {e}")
-            st.info("Pour restaurer les flows du canvas, tape ceci dans la console (F12) :\n\n"
-                     "```js\nlocalStorage.removeItem('atlas_v4_dag_registry')\n```\n"
-                     "Puis rafraîchis http://localhost:3000/canvas\n\n"
-                     "✅ Tes flows seront recréés automatiquement (BTC, ETH, SOL, BNB, XRP).")
 
         st.markdown("---")
         st.markdown(f"#### V4 — Purge historique des trades")
-        st.caption("Supprime tous les trades paper trading (ouverts et fermés) de la base V4.")
-        if st.button("🗑️ Effacer tout l'historique V4", type="primary", use_container_width=True):
+        st.caption("Supprime définitivement tous les trades paper trading (ouverts et fermés).")
+        confirm = st.checkbox(
+            "✅ Je comprends que tout l'historique des trades sera effacé définitivement.",
+            key="reset_confirm_v4",
+        )
+        if st.button(
+            "🗑️ Effacer tout l'historique V4",
+            type="primary",
+            use_container_width=True,
+            disabled=not confirm,
+        ):
             try:
-                from storage.paper_trader import get_v4_trades
                 from storage.database import get_connection
                 with get_connection() as conn:
                     conn.execute("DELETE FROM v4_trades")
                     conn.commit()
-                st.success("✅ Historique V4 effacé. 0 trades.")
+                st.success("✅ Historique V4 effacé. 0 trades, 0 PnL.")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erreur : {e}")

@@ -114,6 +114,7 @@ def get_open_positions(symbol: str | None = None) -> list[dict]:
 
     try:
         with get_connection() as conn:
+            _ensure_table(conn)
             if symbol:
                 rows = conn.execute(
                     "SELECT * FROM v4_trades WHERE status='open' AND symbol=? ORDER BY timestamp ASC",
@@ -150,6 +151,7 @@ def close_position(
     now = datetime.now(timezone.utc).isoformat()
     try:
         with get_connection() as conn:
+            _ensure_table(conn)
             conn.execute(
                 """UPDATE v4_trades
                    SET status='closed', closed_at=?, pnl_usd=?
@@ -173,6 +175,7 @@ def update_stop_loss(trade_id: str, new_sl: float) -> bool:
 
     try:
         with get_connection() as conn:
+            _ensure_table(conn)
             conn.execute(
                 "UPDATE v4_trades SET stop_loss=? WHERE trade_id=? AND status='open'",
                 (new_sl, trade_id),

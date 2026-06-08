@@ -118,16 +118,21 @@ export function DAGCanvas() {
   };
 
   const handleSwitchDag = (id: string) => {
-    setActive(id);
+    // Sauvegarder l'état courant avant de switcher
+    if (activeId && activeId !== id) {
+      saveDAG(activeId, { nodes, edges, asset: "BTC/USDT" });
+    }
+    // Charger le nouveau
     const data = loadDAG(id);
     if (data && data.nodes && data.nodes.length > 0) {
       setNodes(data.nodes as RFNode[]);
       setEdges(data.edges as RFEdge[]);
     } else {
-      // Pas de données → charger le DAG par défaut
       setNodes(getDefaultNodes());
       setEdges(getDefaultEdges());
+      saveDAG(id, { nodes: getDefaultNodes(), edges: getDefaultEdges(), asset: "BTC/USDT" });
     }
+    setActive(id);
     setDagId(id);
     reset();
     setShowDagMenu(false);

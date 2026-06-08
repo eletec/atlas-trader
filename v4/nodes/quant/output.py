@@ -54,6 +54,22 @@ class PaperTrader(Node):
         if action == "flat":
             return {"trade_result": {"status": "flat", "symbol": symbol}}
 
+        # ── Limite de positions simultanées (pyramiding control) ──
+        max_positions = int(self.params.get("max_positions", 1))
+        if max_positions > 0:
+            try:
+                from storage.paper_trader import get_open_positions
+                open_count = len(get_open_positions(symbol=symbol))
+                if open_count >= max_positions:
+                    logger.info(
+                        "PaperTrader [%s] skip %s: %d/%d positions déjà ouvertes",
+                        symbol, action, open_count, max_positions,
+                    )
+                    return {"trade_result": {"status": "skipped", "symbol": symbol,
+                                              "reason": f"max_positions={max_positions} reached ({open_count} open)"}}
+            except Exception:
+                pass  # si la DB n'est pas dispo, on continue sans limite
+
         entry_price = decision.get("entry_price", 0)
         stop_loss   = decision.get("stop_loss", 0)
         take_profit = decision.get("take_profit", 0)

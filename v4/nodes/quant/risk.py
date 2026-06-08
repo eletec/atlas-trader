@@ -90,10 +90,15 @@ class RiskATR(Node):
             risk_per_unit = (sl_mult * atr) / entry_price  # % de perte si SL touché
         else:
             risk_per_unit = 0.01  # fallback 1%
-        # Taille basée sur le risque : capital * risk_pct / (SL_distance%)
+        # Taille basée sur le risque : risquer max_risk_usd sur la distance SL
         risk_based_size = max_risk_usd / risk_per_unit if risk_per_unit > 0 else capital * fraction
-        # Borné par la fraction max du capital
-        size_usd = min(risk_based_size, capital * fraction)
+        # Plafond intelligent : max(fraction_cap × capital, risk_mult × max_risk)
+        # ex: 5% capital ou 3× le risque du trade
+        risk_cap_mult = float(self.params.get("risk_cap_mult", 3.0))
+        max_size_by_risk = max_risk_usd * risk_cap_mult
+        max_size_by_capital = capital * fraction
+        ceiling = max(max_size_by_risk, max_size_by_capital) if max_size_by_risk > 0 else capital * fraction
+        size_usd = min(risk_based_size, ceiling)
         # Minimum $10 pour éviter les trades insignifiants
         size_usd = max(size_usd, 10.0)
 

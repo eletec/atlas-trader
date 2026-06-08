@@ -92,6 +92,8 @@ from utils.i18n import t, set_lang, get_lang, SUPPORTED_LANGS
 # ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
 import os as _os
 _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
+# ── Frontend URL (Next.js) — accessible depuis le navigateur ────────────────
+_V4_FRONTEND = _os.environ.get("V4_FRONTEND_URL", "http://localhost:3000")
 
 # ===========================================================
 # CONFIG PAGE
@@ -3907,11 +3909,11 @@ def render_admin_panel():
             return
 
         _V4_URLS = {
-            "v4_canvas":  "http://localhost:3000/canvas",
-            "v4_monitor": "http://localhost:3000/monitoring",
-            "v4_trades":  "http://localhost:3000/trades",
-            "v4_arena":   "http://localhost:3000/arena",
-            "v4_admin":   "http://localhost:3000/admin",
+            "v4_canvas":  f"{_V4_FRONTEND}/canvas",
+            "v4_monitor": f"{_V4_FRONTEND}/monitoring",
+            "v4_trades":  f"{_V4_FRONTEND}/trades",
+            "v4_arena":   f"{_V4_FRONTEND}/arena",
+            "v4_admin":   f"{_V4_FRONTEND}/admin",
         }
         _v4_url = _V4_URLS[_atab]
         # JS : wrapper fixed dans le document parent (Streamlit est dans une iframe)

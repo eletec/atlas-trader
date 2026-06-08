@@ -81,22 +81,19 @@ export function DAGCanvas() {
   useEffect(() => {
     if (hydrated) {
       ensureDefault();
-      if (nodes.length === 0) {
-        // Essayer de charger le flow actif
-        const data = loadDAG(activeId);
-        if (data && data.nodes && data.nodes.length > 0) {
-          setNodes(data.nodes as RFNode[]);
-          setEdges(data.edges as RFEdge[]);
-          setDagId(activeId);
-        } else {
-          // Fallback: DAG par défaut
-          const defNodes = getDefaultNodes();
-          const defEdges = getDefaultEdges();
-          setNodes(defNodes);
-          setEdges(defEdges);
-          setDagId("default");
-          saveDAG("default", { nodes: defNodes, edges: defEdges, asset: "BTC/USDT" });
-        }
+      // Charger les données du flow actif
+      const data = loadDAG(activeId);
+      if (data && data.nodes && data.nodes.length > 0) {
+        setNodes(data.nodes as RFNode[]);
+        setEdges(data.edges as RFEdge[]);
+        setDagId(activeId);
+      } else if (nodes.length === 0) {
+        const defNodes = getDefaultNodes();
+        const defEdges = getDefaultEdges();
+        setNodes(defNodes);
+        setEdges(defEdges);
+        setDagId("default");
+        saveDAG("default", { nodes: defNodes, edges: defEdges, asset: "BTC/USDT" });
       }
     }
   }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -133,18 +130,14 @@ export function DAGCanvas() {
     if (activeId === id) { setShowDagMenu(false); return; }
     // Sauvegarder l'état courant
     saveDAG(activeId, { nodes, edges, asset: "BTC/USDT" });
-    // Charger le nouveau flux
-    const data = loadDAG(id);
-    const newNodes = (data?.nodes?.length ? data.nodes : getDefaultNodes()) as RFNode[];
-    const newEdges = (data?.edges?.length ? data.edges : getDefaultEdges()) as RFEdge[];
-    setNodes(newNodes);
-    setEdges(newEdges);
-    setDagId(id);
+    // Si le flux cible n'a pas de données, créer un défaut
+    if (!loadDAG(id)) {
+      saveDAG(id, { nodes: getDefaultNodes(), edges: getDefaultEdges(), asset: "BTC/USDT" });
+    }
+    // Switcher l'actif et recharger la page (approche propre)
     setActive(id);
-    reset();
-    // Persister immédiatement
-    saveDAG(id, { nodes: newNodes, edges: newEdges, asset: "BTC/USDT" });
     setShowDagMenu(false);
+    setTimeout(() => window.location.reload(), 50);
   };
 
   const handleCreateDag = () => {

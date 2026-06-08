@@ -3757,9 +3757,19 @@ def render_admin_panel():
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
     elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
-        # ── Config V4 native (pas d'iframe) ──
+        # ── Config V4 native ──
         if _atab == "v4_admin":
             _render_v4_config()
+            return
+        # ── Trades V4 natif (depuis la DB) ──
+        if _atab == "v4_trades":
+            st.markdown("### 📋 Journal des trades")
+            st.caption("Mode : paper trading (testnet uniquement)")
+            _tr = _get_recent_trades(200)
+            if _tr:
+                render_trades_list_sortable(_tr)
+            else:
+                st.info("Aucun trade enregistré.")
             return
 
         _V4_URLS = {

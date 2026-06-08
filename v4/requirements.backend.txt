@@ -13,6 +13,8 @@ yfinance>=0.2.40
 
 # ---- Dashboard ----
 streamlit>=1.35.0
+streamlit-autorefresh>=1.0.1
+plotly>=5.20.0
 
 # ---- Quant (V3 wrappé) ----
 numpy>=1.26.0

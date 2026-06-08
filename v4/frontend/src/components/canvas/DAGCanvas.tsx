@@ -77,14 +77,26 @@ export function DAGCanvas() {
     return () => unsub();
   }, []);
 
-  // DAG par défaut
+  // DAG par défaut + restauration du flow actif
   useEffect(() => {
     if (hydrated) {
       ensureDefault();
       if (nodes.length === 0) {
-        setNodes(getDefaultNodes());
-        setEdges(getDefaultEdges());
-        setDagId("default");
+        // Essayer de charger le flow actif
+        const data = loadDAG(activeId);
+        if (data && data.nodes && data.nodes.length > 0) {
+          setNodes(data.nodes as RFNode[]);
+          setEdges(data.edges as RFEdge[]);
+          setDagId(activeId);
+        } else {
+          // Fallback: DAG par défaut
+          const defNodes = getDefaultNodes();
+          const defEdges = getDefaultEdges();
+          setNodes(defNodes);
+          setEdges(defEdges);
+          setDagId("default");
+          saveDAG("default", { nodes: defNodes, edges: defEdges, asset: "BTC/USDT" });
+        }
       }
     }
   }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,23 +130,20 @@ export function DAGCanvas() {
   };
 
   const handleSwitchDag = (id: string) => {
-    // Sauvegarder l'état courant avant de switcher
-    if (activeId && activeId !== id) {
-      saveDAG(activeId, { nodes, edges, asset: "BTC/USDT" });
-    }
-    // Charger le nouveau
+    if (activeId === id) { setShowDagMenu(false); return; }
+    // Sauvegarder l'état courant
+    saveDAG(activeId, { nodes, edges, asset: "BTC/USDT" });
+    // Charger le nouveau flux
     const data = loadDAG(id);
-    if (data && data.nodes && data.nodes.length > 0) {
-      setNodes(data.nodes as RFNode[]);
-      setEdges(data.edges as RFEdge[]);
-    } else {
-      setNodes(getDefaultNodes());
-      setEdges(getDefaultEdges());
-      saveDAG(id, { nodes: getDefaultNodes(), edges: getDefaultEdges(), asset: "BTC/USDT" });
-    }
-    setActive(id);
+    const newNodes = (data?.nodes?.length ? data.nodes : getDefaultNodes()) as RFNode[];
+    const newEdges = (data?.edges?.length ? data.edges : getDefaultEdges()) as RFEdge[];
+    setNodes(newNodes);
+    setEdges(newEdges);
     setDagId(id);
+    setActive(id);
     reset();
+    // Persister immédiatement
+    saveDAG(id, { nodes: newNodes, edges: newEdges, asset: "BTC/USDT" });
     setShowDagMenu(false);
   };
 

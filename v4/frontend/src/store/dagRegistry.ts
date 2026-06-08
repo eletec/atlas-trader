@@ -58,25 +58,6 @@ export const useDagRegistry = create<DAGRegistryState>()(
       activeId: "default",
 
       setActive: (id) => {
-        const prevId = get().activeId;
-        if (prevId && prevId !== id) {
-          const prevRaw = localStorage.getItem("atlas_v4_dag");
-          if (prevRaw) {
-            localStorage.setItem(`atlas_v4_dag_${prevId}`, prevRaw);
-          }
-        }
-        // Charger le nouveau — si pas de données, copier depuis le DAG courant ou créer un défaut
-        const data = loadDAG(id);
-        if (data) {
-          localStorage.setItem("atlas_v4_dag", JSON.stringify(data));
-        } else {
-          // Pas de données pour ce flow → sauvegarder l'état courant comme défaut
-          const currentRaw = localStorage.getItem("atlas_v4_dag");
-          if (currentRaw) {
-            localStorage.setItem(`atlas_v4_dag_${id}`, currentRaw);
-            localStorage.setItem("atlas_v4_dag", currentRaw);
-          }
-        }
         set({ activeId: id });
       },
 

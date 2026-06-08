@@ -142,12 +142,13 @@ def render_global_overview() -> None:
 
         icon = _asset_icon(asset) if asset else "◈"
 
-        # Extraire signal, trend, trade des résultats
-        signal_node = results.get("btc_signal", {}) or results.get("signal", {})
-        trend_node = results.get("btc_trend", {})
-        risk_node = results.get("btc_risk", {})
-        short_risk = results.get("short_risk", {})
-        paper_node = results.get("btc_paper", {})
+        # Extraire signal, trend, trade des résultats avec le bon préfixe
+        pfx = asset.split("/")[0].lower()[:3] if asset else "btc"
+        signal_node = results.get(f"{pfx}_signal", {}) or results.get("signal", {})
+        trend_node = results.get(f"{pfx}_trend", {})
+        risk_node = results.get(f"{pfx}_risk", {})
+        short_risk = results.get(f"{pfx}_short_risk", {})
+        paper_node = results.get(f"{pfx}_paper", {})
 
         signal_out = signal_node.get("outputs", {}) if isinstance(signal_node, dict) else {}
         trend_out = trend_node.get("outputs", {}) if isinstance(trend_node, dict) else {}
@@ -272,10 +273,11 @@ def render_global_live_prices() -> None:
                 # Récupérer le signal du DAG pour cet actif
                 dag = next((d for d in dags if d.get("asset") == asset), None)
                 if dag:
+                    pfx = asset.split("/")[0].lower()[:3]  # btc, eth, sol, bnb, xrp
                     results = dag.get("last_results", {})
-                    trend_node = results.get("btc_trend", {})
+                    trend_node = results.get(f"{pfx}_trend", {})
                     trend = trend_node.get("outputs", {}).get("trend", "") if isinstance(trend_node, dict) else ""
-                    signal_node = results.get("btc_signal", {})
+                    signal_node = results.get(f"{pfx}_signal", {})
                     signal = signal_node.get("outputs", {}).get("signal", "") if isinstance(signal_node, dict) else ""
                     st.caption(f"{trend.upper() if trend else '—'} | {signal}")
             else:

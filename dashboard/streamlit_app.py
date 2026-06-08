@@ -795,8 +795,9 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
             dag_asset = d.get("asset", "")
             if asset and dag_asset != asset:
                 continue
+            pfx = dag_asset.split("/")[0].lower()[:3] if dag_asset else "btc"
             results = d.get("last_results", {})
-            for paper_key in ("short_paper", "btc_paper"):
+            for paper_key in (f"{pfx}_short_paper", f"{pfx}_paper"):
                 paper = results.get(paper_key, {})
                 if isinstance(paper, dict):
                     tr = paper.get("outputs", {}).get("trade_result", {})
@@ -852,10 +853,12 @@ def _get_portfolio(asset: str | None = None) -> dict:
         with urllib.request.urlopen(req, timeout=5) as resp:
             dags = _json.loads(resp.read())
         for d in dags:
-            if asset and d.get("asset") != asset:
+            dag_asset = d.get("asset", "")
+            if asset and dag_asset != asset:
                 continue
+            pfx = dag_asset.split("/")[0].lower()[:3] if dag_asset else "btc"
             results = d.get("last_results", {})
-            for paper_key in ("short_paper", "btc_paper"):
+            for paper_key in (f"{pfx}_short_paper", f"{pfx}_paper"):
                 paper = results.get(paper_key, {})
                 if isinstance(paper, dict):
                     tr = paper.get("outputs", {}).get("trade_result", {})

@@ -3644,21 +3644,6 @@ def render_admin_panel():
                     st.success("Table v2_decisions vidée.")
                 except Exception as _re_r3:
                     st.error(f"Erreur : {_re_r3}")
-                            st.warning(f"DB purgée mais redémarrage échoué (rc={_res2.returncode}) : {_res2.stderr or _res2.stdout}")
-                    except Exception as _re_ex2:
-                        st.warning(f"DB purgée mais redémarrage échoué : {_re_ex2}")
-        with _col_r4:
-            if st.button("Vider V2 (decisions)", type="secondary", use_container_width=True, key="reset_v2_decisions"):
-                try:
-                    import sqlite3 as _sq3c
-                    from utils.config import load_settings as _ls_r3
-                    _db_r3 = _ls_r3().get("logging", {}).get("sqlite_db", "storage/zeitgeist.db")
-                    with _sq3c.connect(_db_r3) as _con_r3:
-                        _con_r3.execute("DELETE FROM v2_decisions")
-                        _con_r3.commit()
-                    st.success("Table v2_decisions vidée.")
-                except Exception as _re_r3:
-                    st.error(f"Erreur : {_re_r3}")
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

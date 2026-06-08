@@ -329,7 +329,7 @@ def _compute_trend_v4(ohlcv_1h) -> str:
         return "neutral"
 
 
-def _compute_metrics(trades, equity, capital, final_cap, symbol, df) -> BTResult:
+def run_backtest_v4(
     n = len(trades)
     if n == 0:
         return BTResult(symbol=symbol, start=str(df.index[0]), end=str(df.index[-1]),
@@ -362,3 +362,48 @@ def _compute_metrics(trades, equity, capital, final_cap, symbol, df) -> BTResult
         max_drawdown_pct=round(max_dd, 2), sharpe=round(sharpe, 2),
         trades=trades,
     )
+
+
+def optimize_params(
+    symbol: str = "BTC/USDT",
+    days: int = 30,
+    capital: float = 10_000,
+) -> list[dict]:
+    """Grid search rapide pour trouver les meilleurs paramètres.
+
+    Retourne une liste de configs triée par score (Sharpe × (1 - maxDD%)).
+    """
+    results = []
+    param_grid = [
+        # (sl_mult, tp_mult, fraction, risk_pct, exit_atr, min_dist, exit_strat)
+        (2.0, 4.0, 0.02, 1.0, 3.0, 1.0, "chandelier"),
+        (3.0, 6.0, 0.03, 1.0, 4.0, 1.5, "chandelier"),
+        (2.0, 4.0, 0.02, 1.5, 3.0, 1.0, "trailing"),
+        (2.5, 5.0, 0.025, 1.0, 3.5, 1.5, "chandelier"),
+        (3.0, 6.0, 0.03, 1.5, 4.0, 2.0, "trailing"),
+        (1.5, 3.0, 0.015, 1.0, 2.5, 1.0, "chandelier"),
+        (3.0, 6.0, 0.04, 1.0, 4.0, 1.5, "chandelier"),
+        (2.0, 4.0, 0.02, 2.0, 3.0, 1.5, "chandelier"),
+    ]
+
+    for sl, tp, frac, rpct, exit_atr, min_dist, estrat in param_grid:
+        try:
+            r = run_backtest_v4(
+                symbol=symbol, days=days, capital=capital,
+                risk_pct=rpct, sl_mult=sl, tp_mult=tp, fraction=frac,
+                exit_strategy=estrat, exit_atr_mult=exit_atr, min_atr_dist=min_dist,
+            )
+            # Score composite : Sharpe pondéré par survie (1 - maxDD)
+            score = r.sharpe * max(0, 1 - r.max_drawdown_pct / 100.0) if r.n_trades > 0 else -999
+            results.append({
+                "sl_mult": sl, "tp_mult": tp, "fraction": frac, "risk_pct": rpct,
+                "exit_atr": exit_atr, "min_dist": min_dist, "exit_strat": estrat,
+                "pnl": r.total_pnl, "pnl_pct": r.total_pnl_pct, "win_rate": r.win_rate,
+                "sharpe": r.sharpe, "max_dd": r.max_drawdown_pct, "n_trades": r.n_trades,
+                "score": round(score, 2),
+            })
+        except Exception as e:
+            logger.warning("Optimize failed for config: %s", e)
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results

@@ -2931,6 +2931,17 @@ def _render_backtest_v4():
             except Exception as e:
                 st.error(f"Erreur backtest: {e}")
 
+    if st.button("🔍 Optimiser les paramètres (grid search)", type="secondary", use_container_width=True):
+        with st.spinner(f"Optimisation {symbol} sur {days}j (8 combinaisons)..."):
+            try:
+                from dashboard.backtest_v4 import optimize_params
+                results = optimize_params(symbol=symbol, days=days, capital=capital)
+                if results:
+                    st.success(f"Meilleure config: SL={results[0]['sl_mult']} TP={results[0]['tp_mult']} Exit={results[0]['exit_strat']} ATR={results[0]['exit_atr']}")
+                    st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Erreur optimisation: {e}")
+
 
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""

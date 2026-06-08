@@ -3574,10 +3574,21 @@ def render_admin_panel():
         )
         st.warning(t("reset_warning"))
 
-        # ── Reset V4 (Canvas + DAGs API) ──────────────────────────────────
-        st.markdown(f"#### V4 — Réinitialisation")
-        st.caption("Stoppe les DAGs actifs et restaure les flows par défaut.")
-        if st.button("🗑️ Stopper tous les DAGs V4", type="secondary", use_container_width=True):
+        # ── Reset V4 (DAGs + trades) ──────────────────────────────────────
+        st.markdown(f"#### V4 — Remise à zéro")
+        st.caption("Arrête tous les DAGs, efface l'historique des trades. Les DAGs redémarreront automatiquement.")
+
+        confirm = st.checkbox(
+            "✅ Je comprends que **tous les trades** (ouverts et fermés) seront **irréversiblement supprimés**.",
+            key="reset_v4_confirm",
+        )
+        if st.button(
+            "🗑️ Reset complet V4",
+            type="primary",
+            use_container_width=True,
+            disabled=not confirm,
+        ):
+            # 1) Arrêter les DAGs
             import urllib.request as _ur4, json as _j4
             try:
                 dags = _j4.loads(_ur4.urlopen(f"{_API_BASE}/dag/status").read())
@@ -3586,33 +3597,22 @@ def render_admin_panel():
                         _ur4.urlopen(_ur4.Request(f"{_API_BASE}/dag/{d['dag_id']}", method="DELETE"))
                     except Exception:
                         pass
-                st.success(f"{len(dags)} DAG(s) arrêté(s). Ils redémarreront au prochain cycle API.")
-                st.rerun()
+                st.success(f"✅ {len(dags)} DAG(s) arrêté(s).")
             except Exception as e:
                 st.warning(f"API V4 injoignable : {e}")
 
-        st.markdown("---")
-        st.markdown(f"#### V4 — Purge historique des trades")
-        st.caption("Supprime définitivement tous les trades paper trading (ouverts et fermés).")
-        confirm = st.checkbox(
-            "✅ Je comprends que tout l'historique des trades sera effacé définitivement.",
-            key="reset_confirm_v4",
-        )
-        if st.button(
-            "🗑️ Effacer tout l'historique V4",
-            type="primary",
-            use_container_width=True,
-            disabled=not confirm,
-        ):
+            # 2) Effacer l'historique des trades
             try:
                 from storage.database import get_connection
                 with get_connection() as conn:
                     conn.execute("DELETE FROM v4_trades")
                     conn.commit()
-                st.success("✅ Historique V4 effacé. 0 trades, 0 PnL.")
-                st.rerun()
+                st.success("✅ Historique des trades effacé.")
             except Exception as e:
-                st.error(f"Erreur : {e}")
+                st.error(f"Erreur DB : {e}")
+
+            st.info("Les DAGs redémarreront automatiquement dans quelques secondes.")
+            st.rerun()
 
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(

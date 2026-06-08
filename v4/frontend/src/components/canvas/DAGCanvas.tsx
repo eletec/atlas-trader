@@ -77,16 +77,21 @@ export function DAGCanvas() {
     return () => unsub();
   }, []);
 
-  // DAG par défaut + restauration du flow actif
+  // DAG par défaut + restauration du flow depuis URL
   useEffect(() => {
     if (hydrated) {
       ensureDefault();
-      // Charger les données du flow actif
-      const data = loadDAG(activeId);
+      // Lire le flow depuis l'URL (?flow=eth)
+      const urlParams = new URLSearchParams(window.location.search);
+      const flowFromUrl = urlParams.get("flow") || activeId || "default";
+      if (flowFromUrl !== activeId) {
+        setActive(flowFromUrl);
+      }
+      const data = loadDAG(flowFromUrl);
       if (data && data.nodes && data.nodes.length > 0) {
         setNodes(data.nodes as RFNode[]);
         setEdges(data.edges as RFEdge[]);
-        setDagId(activeId);
+        setDagId(flowFromUrl);
       } else if (nodes.length === 0) {
         const defNodes = getDefaultNodes();
         const defEdges = getDefaultEdges();
@@ -128,19 +133,15 @@ export function DAGCanvas() {
 
   const handleSwitchDag = (id: string) => {
     if (activeId === id) { setShowDagMenu(false); return; }
-    // Sauvegarder l'état courant
     saveDAG(activeId, { nodes, edges, asset: "BTC/USDT" });
-    // Si le flux cible n'a pas de données, créer un défaut
     if (!loadDAG(id)) {
       saveDAG(id, { nodes: getDefaultNodes(), edges: getDefaultEdges(), asset: "BTC/USDT" });
     }
-    // Persister l'activeId AVANT le reload
-    localStorage.setItem("atlas_v4_dag_registry", JSON.stringify({
-      state: { dags: dags.map(d => ({ ...d })), activeId: id },
-      version: 0,
-    }));
     setShowDagMenu(false);
-    window.location.reload();
+    // Rediriger vers la même page avec ?flow=xxx
+    const url = new URL(window.location.href);
+    url.searchParams.set("flow", id);
+    window.location.href = url.toString();
   };
 
   const handleCreateDag = () => {

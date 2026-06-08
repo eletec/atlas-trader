@@ -48,13 +48,13 @@ app.include_router(prices_router, prefix="/prices", tags=["prices"])
 @app.on_event("startup")
 async def _auto_schedule_demo():
     """Démarre automatiquement le DAG démo et les tickers prix au boot."""
-    # 1) DAGs démo (BTC + ETH)
+    # 1) DAGs démo (BTC, ETH, SOL, BNB, XRP)
     try:
-        from v4.api.demo_dag import DEMO_DAG, DEMO_ETH
+        from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP
         from v4.api.dag_registry import DAGRegistry
         registry = DAGRegistry.instance()
         existing_ids = {e.dag_id for e in registry.status()}
-        for dag in (DEMO_DAG, DEMO_ETH):
+        for dag in (DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP):
             if dag.dag_id not in existing_ids:
                 registry.schedule(dag, cycle_s=300)
                 logging.getLogger("v4.api.main").info("DAG '%s' schedulé (cycle=300s)", dag.dag_id)

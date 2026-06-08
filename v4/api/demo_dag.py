@@ -169,3 +169,6 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
 
 
 DEMO_ETH = _make_dag("demo_eth", "ETH/USDT")
+DEMO_SOL = _make_dag("demo_sol", "SOL/USDT")
+DEMO_BNB = _make_dag("demo_bnb", "BNB/USDT")
+DEMO_XRP = _make_dag("demo_xrp", "XRP/USDT")

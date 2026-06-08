@@ -156,8 +156,8 @@ def run_backtest_v4(
                 equity_curve.append(current_capital)
                 continue
 
-        # ── Signal (LogReg sur features) ──
-        signal, prob_up = _compute_signal_v4(ohlcv_5m_win, ohlcv_1h_win, symbol)
+        # ── Signal (XGBoost prioritaire, fallback LogReg) ──
+        signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
         trend = _compute_trend_v4(ohlcv_1h_win)
 
         # ── Direction Gate ──
@@ -186,6 +186,69 @@ def run_backtest_v4(
 
     # ── Métriques ──
     return _compute_metrics(trades, equity_curve, capital, current_capital, symbol, df_5m)
+
+
+def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
+    """Calcule le signal avec XGBoost (meilleur que LogReg)."""
+    try:
+        from quant.features import compute_features
+        from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
+        import xgboost as xgb
+
+        features = compute_features(
+            ohlcv_5m,
+            feature_cols=list(DEFAULT_FEATURE_COLS),
+            config=PipelineConfig(),
+        )
+        if features is None or len(features) < 100:
+            return "flat", 0.5, 0.0
+
+        df = features.select_dtypes(include=[np.number]).dropna()
+        if len(df) < 100:
+            return "flat", 0.5, 0.0
+
+        # Ajouter lags
+        n_lags = 3
+        for lag in range(1, n_lags + 1):
+            for col in df.columns:
+                df[f"{col}_lag{lag}"] = df[col].shift(lag)
+        df = df.dropna()
+
+        # Cible
+        close_col = "close" if "close" in df.columns else df.columns[0]
+        future = df[close_col].shift(-48)
+        target = (future > df[close_col]).astype(int)
+
+        split = int(len(df) * 0.70)
+        train_f = df.iloc[:split]
+        train_t = target.iloc[:split].dropna()
+        train_f = train_f.iloc[:len(train_t)]
+
+        if len(train_t) < 50:
+            return "flat", 0.5, 0.0
+
+        model = xgb.XGBClassifier(
+            n_estimators=100, max_depth=5, learning_rate=0.05,
+            subsample=0.8, colsample_bytree=0.8,
+            objective="binary:logistic", verbosity=0, random_state=42,
+        )
+        model.fit(train_f.values, train_t.values)
+
+        last = df.iloc[-1:]
+        proba = model.predict_proba(last.values)[0]
+        prob_up = float(proba[1]) if len(proba) > 1 else float(proba[0])
+        confidence = abs(prob_up - 0.5) * 2.0
+
+        if prob_up >= 0.55:
+            return "long", prob_up, confidence
+        elif prob_up <= 0.45:
+            return "short", prob_up, confidence
+        return "flat", prob_up, confidence
+
+    except Exception as e:
+        # Fallback LogReg
+        signal, prob = _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol)
+        return signal, prob, 0.0
 
 
 def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:

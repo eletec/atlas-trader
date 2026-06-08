@@ -2820,17 +2820,9 @@ def render_live_logs(key: str = "global", asset: str | None = None):
         st.markdown('<div style="margin-bottom:12px;"></div>', unsafe_allow_html=True)
     with col_del:
         if st.button("🗑️ Vider", key=f"btn_clear_logs_{key}",
-                     help="Supprime toutes les entrées de la table logs",
+                     help="Efface les logs V4 (buffer circulaire automatique)",
                      use_container_width=True):
-            try:
-                from storage.database import get_connection
-                with get_connection() as conn:
-                    conn.execute("DELETE FROM logs")
-                    conn.commit()
-                st.success("Logs supprimés.", icon="✅")
-                st.rerun()
-            except Exception as _e:
-                st.error(f"Erreur suppression logs : {_e}")
+            st.info("Les logs V4 sont en mémoire (buffer 200 lignes). Ils se renouvellent automatiquement.", icon="ℹ️")
     try:
         from storage.database import get_connection
         with get_connection() as conn:

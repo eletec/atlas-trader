@@ -53,8 +53,8 @@ class SignalModel:
         Xv = X.loc[mask, list(self.feature_cols)].values
         yv = y.loc[mask].astype(int).values
 
-        if len(yv) < 100:
-            raise ValueError(f"Données insuffisantes pour fit ({len(yv)} < 100).")
+        if len(yv) < 50:
+            raise ValueError(f"Données insuffisantes pour fit ({len(yv)} < 50).")
         if len(np.unique(yv)) < 2:
             raise ValueError("Cible avec une seule classe — modèle dégénéré.")
 

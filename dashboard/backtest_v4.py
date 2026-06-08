@@ -75,7 +75,7 @@ def run_backtest_v4(
 
     atr_period = 14
     ch_lookback = 22
-    min_bars = 200  # minimum pour le signal LogReg
+    min_bars = 500  # minimum pour le signal ML (assez de barres après dropna + lags + target shift)
     cycle_interval = 12  # bars 5m = 1h par cycle
 
     logger.info("Backtest %s: %d barres 5m, min=%d", symbol, len(df_5m), min_bars)
@@ -166,37 +166,50 @@ def run_backtest_v4(
         # ── Signal — calculé uniquement au début de chaque cycle ──
         is_cycle = ((i - min_bars) % cycle_interval == 0)
         if is_cycle and position is None:
+            trend = _compute_trend_v4(ohlcv_1h_win)
             signal, prob_up, confidence = "flat", 0.5, 0.0
+            source = "none"
+
+            # Cascade: XGBoost → LogReg → SMA (each triggers if previous returns "flat")
             try:
                 signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
-            except Exception as exc1:
-                logger.debug("XGB+LogReg cascade failed: %s — trying LogReg directly", exc1)
+                if signal != "flat":
+                    source = "xgb"
+            except Exception as exc_xgb:
+                logger.debug("XGBoost indisponible: %s", exc_xgb)
+
+            if signal == "flat":
                 try:
                     s, p = _compute_signal_v4(ohlcv_5m_win, ohlcv_1h_win, symbol)
-                    signal, prob_up, confidence = s, p, 0.0
-                except Exception as exc2:
-                    logger.debug("LogReg direct failed: %s — fallback SMA", exc2)
-                    # Fallback ultime: SMA crossover
-                    signal = _compute_signal_sma(ohlcv_1h_win)
+                    if s != "flat":
+                        signal, prob_up, confidence = s, p, 0.0
+                        source = "logreg"
+                except Exception as exc_lr:
+                    logger.debug("LogReg indisponible: %s", exc_lr)
+
+            if signal == "flat":
+                signal = _compute_signal_sma(ohlcv_1h_win)
+                if signal != "flat":
                     prob_up = 0.5
                     confidence = 0.0
-            trend = _compute_trend_v4(ohlcv_1h_win)
+                    source = "sma"
 
-            # ── Direction Gate ──
-            if signal == "long" and trend == "bearish":
-                logger.debug("Direction Gate: long blocked by bearish trend")
-                signal = "flat"
-            elif signal == "short" and trend == "bullish":
-                logger.debug("Direction Gate: short blocked by bullish trend")
-                signal = "flat"
+            # ── Direction Gate (only for ML signals, not SMA which is self-consistent) ──
+            if source != "sma":
+                if signal == "long" and trend == "bearish":
+                    logger.debug("Direction Gate: long blocked by bearish trend")
+                    signal = "flat"
+                elif signal == "short" and trend == "bullish":
+                    logger.debug("Direction Gate: short blocked by bullish trend")
+                    signal = "flat"
 
             last_signal = signal
             last_prob_up = prob_up
             last_confidence = confidence
 
-            logger.debug(
-                "Signal cycle i=%d: sig=%s prob=%.3f conf=%.3f trend=%s | 1h_bars=%d",
-                i, signal, prob_up, confidence, trend, len(ohlcv_1h_win),
+            logger.info(
+                "Signal i=%d: sig=%s prob=%.3f source=%s trend=%s | 1h_bars=%d 5m_bars=%d",
+                i, signal, prob_up, source, trend, len(ohlcv_1h_win), i,
             )
 
             # ── Ouverture ──
@@ -252,44 +265,54 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
         if features is None or len(features) < 100:
             return "flat", 0.5, 0.0
 
-        df = features.select_dtypes(include=[np.number]).dropna()
-        # Ajouter le close price depuis ohlcv_5m (aligné sur l'index de features)
-        close_price = ohlcv_5m["close"].reindex(df.index)
-        df["_close"] = close_price
-        df = df.dropna()
-        if len(df) < 100:
+        # Ne garder que les colonnes numériques, forward-fill les NaN (causal)
+        feats_num = features.select_dtypes(include=[np.number]).ffill()
+        # Exclure colonnes redondantes ou non informatives
+        exclude = ["donchian_high_20", "donchian_low_20", "breakout_up", "breakout_dn"]
+        feat_cols = [c for c in feats_num.columns if c not in exclude]
+        if len(feat_cols) < 3:
             return "flat", 0.5, 0.0
 
-        # Ajouter lags
-        n_lags = 3
-        feat_cols = [c for c in df.columns if c != "_close"]
+        df = feats_num[feat_cols].copy()
+        # Ajouter le close price depuis ohlcv_5m (aligné sur l'index)
+        close_price = ohlcv_5m["close"].reindex(df.index)
+        df["_close"] = close_price
+
+        # Ajouter 1 lag seulement (3 lags sur 20+ features = trop pour <1000 barres)
+        n_lags = 1
         for lag in range(1, n_lags + 1):
             for col in feat_cols:
                 df[f"{col}_lag{lag}"] = df[col].shift(lag)
-        df = df.dropna()
 
-        # Cible basée sur le VRAI close price
+        # Cible basée sur le VRAI close price (48 barres = 4h en 5m)
         future = df["_close"].shift(-48)
         target = (future > df["_close"]).astype(int)
 
-        # Features sans la colonne _close ni future
-        X_cols = [c for c in df.columns if c not in ("_close",)]
-        split = int(len(df) * 0.70)
-        train_f = df[X_cols].iloc[:split]
-        train_t = target.iloc[:split].dropna()
-        train_f = train_f.iloc[:len(train_t)]
+        # Garder uniquement les lignes où la cible est définie
+        valid_mask = target.notna() & df[feat_cols].notna().all(axis=1)
+        if valid_mask.sum() < 50:
+            return "flat", 0.5, 0.0
 
-        if len(train_t) < 50:
+        df_valid = df.loc[valid_mask]
+        target_valid = target.loc[valid_mask]
+
+        # Features sans _close ni target
+        X_cols = [c for c in df_valid.columns if c not in ("_close",)]
+        split = int(len(df_valid) * 0.70)
+        train_f = df_valid[X_cols].iloc[:split]
+        train_t = target_valid.iloc[:split]
+
+        if len(train_t) < 30:
             return "flat", 0.5, 0.0
 
         model = xgb.XGBClassifier(
-            n_estimators=100, max_depth=5, learning_rate=0.05,
+            n_estimators=100, max_depth=4, learning_rate=0.05,
             subsample=0.8, colsample_bytree=0.8,
             objective="binary:logistic", verbosity=0, random_state=42,
         )
         model.fit(train_f.values, train_t.values)
 
-        last = df[X_cols].iloc[-1:]
+        last = df_valid[X_cols].iloc[-1:]
         proba = model.predict_proba(last.values)[0]
         prob_up = float(proba[1]) if len(proba) > 1 else float(proba[0])
         confidence = abs(prob_up - 0.5) * 2.0
@@ -300,10 +323,8 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
             return "short", prob_up, confidence
         return "flat", prob_up, confidence
 
-    except Exception as e:
-        logger.debug("XGB signal failed (%s), trying LogReg fallback", e)
-        signal, prob = _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol)
-        return signal, prob, 0.0
+    except Exception:
+        raise  # let outer cascade handle fallback
 
 
 def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
@@ -316,8 +337,8 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
         if features is None or len(features) < 100:
             return "flat", 0.5
 
-        # Ne garder que les colonnes numériques (raw features, pas _q)
-        feats_num = features.select_dtypes(include=[np.number])
+        # Ne garder que les colonnes numériques (raw features, pas _q), forward-fill NaN
+        feats_num = features.select_dtypes(include=[np.number]).ffill()
         # Exclure les colonnes non-informatives ou redondantes
         exclude = ["donchian_high_20", "donchian_low_20", "breakout_up", "breakout_dn"]
         feat_cols = [c for c in feats_num.columns if c not in exclude]
@@ -325,34 +346,32 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
             return "flat", 0.5
 
         # Entraînement walk-forward
-        split = int(len(feats_num) * 0.70)
-        train = feats_num.iloc[:split]
-        if train.empty:
+        target = (ohlcv_5m["close"].shift(-48) > ohlcv_5m["close"]).astype(int)
+        # Garder les lignes où features ET target sont définies
+        valid_mask = target.notna() & feats_num[feat_cols].notna().all(axis=1)
+        if valid_mask.sum() < 50:
+            return "flat", 0.5
+
+        feats_valid = feats_num.loc[valid_mask, feat_cols]
+        target_valid = target.loc[valid_mask]
+
+        split = int(len(feats_valid) * 0.70)
+        train_f = feats_valid.iloc[:split]
+        train_t = target_valid.iloc[:split]
+        if len(train_t) < 30:
             return "flat", 0.5
 
         model = SignalModel(
             feature_cols=feat_cols,
             use_calibration=True,
         )
-        target = (ohlcv_5m["close"].shift(-48) > ohlcv_5m["close"]).astype(int)
-        target = target.loc[train.index]
+        model.fit(train_f, train_t)
 
-        valid_idx = train.index.intersection(target.dropna().index)
-        if len(valid_idx) < 50:
+        last = feats_valid.iloc[-1:][feat_cols]
+        if last.isna().any(axis=1).iloc[0]:
             return "flat", 0.5
 
-        train_f = train.loc[valid_idx]
-        target_f = target.loc[valid_idx]
-
-        model.fit(train_f, target_f)
-
-        last = feats_num.iloc[-1:]
-        # Aligner les colonnes sur celles du train
-        common_cols = [c for c in feat_cols if c in last.columns]
-        if len(common_cols) < 3:
-            return "flat", 0.5
-
-        prob_up = float(model.predict_proba(last[common_cols]))
+        prob_up = float(model.predict_proba(last))
         prob_up = float(prob_up)
 
         if prob_up >= 0.55:

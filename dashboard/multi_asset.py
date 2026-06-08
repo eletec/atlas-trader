@@ -20,31 +20,25 @@ from utils.i18n import t
 # ---------------------------------------------------------------------------
 
 def _active_assets() -> list[str]:
-    """Retourne la liste des actifs actifs : config + DAGs V4 actifs."""
-    assets: list[str] = []
-
-    # 1) Actifs configurés (utils/config)
-    try:
-        from utils.config import get_active_assets
-        assets = list(get_active_assets())
-    except Exception:
-        pass
-
-    # 2) Actifs des DAGs V4 actifs (API)
+    """Retourne les actifs des DAGs V4 actifs. Fallback config V3 si API injoignable."""
+    # 1) Actifs des DAGs V4 actifs (prioritaire)
     try:
         import urllib.request, json
         req = urllib.request.Request("http://host.docker.internal:8000/dag/status", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             dags = json.loads(resp.read())
-        for d in dags:
-            dag_asset = d.get("asset", "")
-            if dag_asset and dag_asset not in assets:
-                assets.append(dag_asset)
+        assets = [d.get("asset", "") for d in dags if d.get("asset")]
+        if assets:
+            return assets
     except Exception:
         pass
 
-    # Fallback ultime
-    return assets if assets else ["BTC/USDT"]
+    # 2) Fallback config V3
+    try:
+        from utils.config import get_active_assets
+        return get_active_assets()
+    except Exception:
+        return ["BTC/USDT"]
 
 
 def _asset_icon(asset: str) -> str:

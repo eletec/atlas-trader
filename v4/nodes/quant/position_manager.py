@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import numpy as np
+
 from v4.core.node import Node
 
 logger = logging.getLogger("v4.nodes.quant.position_manager")
@@ -106,6 +108,22 @@ class PositionManager(Node):
         if atr <= 0:
             atr = 1.0
 
+        # ── Volatility-adaptive : élargir SL en haute volatilité ──
+        vol_factor = 1.0
+        vol_lookback = int(self.params.get("vol_lookback", 50))
+        vol_threshold = float(self.params.get("vol_threshold", 1.5))
+        vol_multiplier = float(self.params.get("vol_multiplier", 1.5))
+        if len(ohlcv_atr) >= vol_lookback:
+            atr_series = (ohlcv_atr["high"] - ohlcv_atr["low"]).rolling(atr_period).mean()
+            atr_ma = float(atr_series.rolling(vol_lookback).mean().iloc[-1])
+            if not np.isnan(atr_ma) and atr_ma > 0 and atr > atr_ma * vol_threshold:
+                vol_factor = vol_multiplier
+                logger.info("High volatility: ATR=%.2f > %.1fx MA(%.2f) → SL x%.1f", atr, vol_threshold, atr_ma, vol_factor)
+
+        # Appliquer le facteur de volatilité aux paramètres de sortie
+        _exit_mult = atr_mult * vol_factor
+        _min_dist = min_atr_dist * vol_factor
+
         # Prix actuels (5m pour détection intra-barre)
         current_high = float(ohlcv_5m["high"].iloc[-1])
         current_low = float(ohlcv_5m["low"].iloc[-1])
@@ -122,28 +140,27 @@ class PositionManager(Node):
 
             # ── Calcul du nouveau SL selon la stratégie ──
             if strategy == "chandelier":
-                new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, atr_mult)
+                new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, _exit_mult)
             else:
-                new_sl = self._calc_trailing_sl(current_close, action, atr, atr_mult)
+                new_sl = self._calc_trailing_sl(current_close, action, atr, _exit_mult)
 
             logger.info(
-                "posmgr [%s] %s %s: entry=%.2f cur_sl=%.2f new_sl=%.2f atr=%.2f",
-                symbol, trade_id, action, entry, current_sl, new_sl, atr,
+                "posmgr [%s] %s %s: entry=%.2f cur_sl=%.2f new_sl=%.2f atr=%.2f vol=%.1f",
+                symbol, trade_id, action, entry, current_sl, new_sl, atr, vol_factor,
             )
 
             # Le SL ne doit jamais reculer (LONG: monte, SHORT: descend)
-            # + distance minimale de breathing room (min_atr_dist × ATR)
-            min_atr_dist = float(self.params.get("min_atr_dist", 1.0))
+            # + distance minimale de breathing room (_min_dist × ATR)
             if action == "long":
                 new_sl = max(new_sl, current_sl, 0.01) if current_sl > 0 else max(new_sl, 0.01)
-                new_sl = min(new_sl, entry - min_atr_dist * atr)  # breathing room
+                new_sl = min(new_sl, entry - _min_dist * atr)  # breathing room
                 hit = current_sl > 0 and current_low <= current_sl
             else:
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
-                # Le SL garde au moins min_atr_dist × ATR de breathing room
+                # Le SL garde au moins _min_dist × ATR de breathing room
                 if entry > 0:
-                    new_sl = max(new_sl, entry + min_atr_dist * atr)
+                    new_sl = max(new_sl, entry + _min_dist * atr)
                 hit = current_sl > 0 and current_high >= current_sl
 
             if hit:

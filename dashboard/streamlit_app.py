@@ -3594,6 +3594,21 @@ def render_admin_panel():
                      "Puis rafraîchis http://localhost:3000/canvas\n\n"
                      "✅ Tes flows seront recréés automatiquement (BTC, ETH, SOL, BNB, XRP).")
 
+        st.markdown("---")
+        st.markdown(f"#### V4 — Purge historique des trades")
+        st.caption("Supprime tous les trades paper trading (ouverts et fermés) de la base V4.")
+        if st.button("🗑️ Effacer tout l'historique V4", type="primary", use_container_width=True):
+            try:
+                from storage.paper_trader import get_v4_trades
+                from storage.database import get_connection
+                with get_connection() as conn:
+                    conn.execute("DELETE FROM v4_trades")
+                    conn.commit()
+                st.success("✅ Historique V4 effacé. 0 trades.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erreur : {e}")
+
     elif _atab == "historique":  # Historique des décisions V2
         st.markdown(
             '<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'

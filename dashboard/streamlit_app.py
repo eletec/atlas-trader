@@ -3598,9 +3598,9 @@ def render_admin_panel():
         st.markdown(f"#### V4 — Réinitialisation")
         st.caption("Stoppe les DAGs actifs et restaure les flows par défaut.")
         if st.button("🗑️ Stopper tous les DAGs V4 + Restaurer flows par défaut", type="secondary", use_container_width=True):
-            import urllib.request as _ur4
+            import urllib.request as _ur4, json as _j4
             try:
-                dags = json.loads(_ur4.urlopen("http://host.docker.internal:8000/dag/status").read())
+                dags = _j4.loads(_ur4.urlopen("http://host.docker.internal:8000/dag/status").read())
                 for d in dags:
                     try:
                         _ur4.urlopen(_ur4.Request(f"http://host.docker.internal:8000/dag/{d['dag_id']}", method="DELETE"))

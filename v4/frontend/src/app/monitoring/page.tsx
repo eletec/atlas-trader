@@ -9,8 +9,9 @@ import { usePriceStream } from "@/hooks/usePriceStream";
 import { usePriceStore } from "@/store/priceStore";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";
+import { getApiUrl } from "@/lib/api-url";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = getApiUrl();
 
 function PriceStreamInit({ symbols }: { symbols: string[] }) {
   usePriceStream(symbols);

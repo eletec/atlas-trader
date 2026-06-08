@@ -9,8 +9,9 @@
 
 import { useEffect, useRef } from "react";
 import { usePriceStore } from "@/store/priceStore";
+import { getApiUrl } from "@/lib/api-url";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = getApiUrl();
 
 export function usePriceStream(symbols: string[]) {
   const update = usePriceStore((s) => s.update);

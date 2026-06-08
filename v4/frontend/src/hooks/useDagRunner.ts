@@ -8,8 +8,9 @@
 
 import { useDagStore } from "@/store/dagStore";
 import type { NodeRunResult } from "@/store/dagStore";
+import { getApiUrl } from "@/lib/api-url";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = getApiUrl();
 
 /** Convertit les nœuds React Flow en NodeSpec[] pour l'API. */
 function buildPayload(dagId: string, asset: string, nodes: any[], edges: any[]) {

@@ -25,7 +25,12 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
                  params={"symbol": symbol, "days_5m": 90, "days_1h": 100,
                           "exchange": "binance"}),
-        # ── Colonne 1b : Position Manager (chandelier exit) ──
+        # ── Colonne 1b : Cross-TF Repricing (microstructure) ──
+        NodeSpec(id=f"{pfx}_crosstf", type="CrossTFArb",
+                 params={"mode": "divergence", "momentum_5m": 6,
+                          "momentum_1h": 4, "threshold": 0.15,
+                          "strong_threshold": 0.40}),
+        # ── Colonne 1c : Position Manager (chandelier exit) ──
         NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
                  params={"symbol": symbol, "exit_strategy": "chandelier",
                           "atr_mult": 3.0, "chandelier_lookback": 22}),
@@ -88,6 +93,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
                  target_node=f"{pfx}_features", target_port="ohlcv"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
+                 target_node=f"{pfx}_crosstf", target_port="ohlcv_5m"),
+        EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
+                 target_node=f"{pfx}_crosstf", target_port="ohlcv_1h"),
+        EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
                  target_node=f"{pfx}_posmgr", target_port="ohlcv_5m"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
                  target_node=f"{pfx}_posmgr", target_port="ohlcv_1h"),
@@ -141,6 +150,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_ai", target_port="regime"),
         EdgeSpec(source_node=f"{pfx}_trend", source_port="trend",
                  target_node=f"{pfx}_ai", target_port="trend"),
+        EdgeSpec(source_node=f"{pfx}_crosstf", source_port="signal",
+                 target_node=f"{pfx}_ai", target_port="cross_tf_signal"),
     ]
 
     return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)

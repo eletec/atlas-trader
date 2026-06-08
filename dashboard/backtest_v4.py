@@ -1,14 +1,13 @@
 """
 dashboard/backtest_v4.py — Backtest engine V4 pour le dashboard.
 
-Fait tourner le pipeline DAG sur des données historiques et retourne
-les trades simulés, le PnL et les métriques.
+Utilise les VRAIS nœuds DAG (LogReg, RiskATR, PositionManager, etc.)
+pour simuler le comportement réel sur données historiques.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -16,9 +15,6 @@ import pandas as pd
 
 logger = logging.getLogger("dashboard.backtest_v4")
 
-# ---------------------------------------------------------------------------
-# Types
-# ---------------------------------------------------------------------------
 
 @dataclass
 class BTTrade:
@@ -51,10 +47,6 @@ class BTResult:
     trades: list[BTTrade] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Engine
-# ---------------------------------------------------------------------------
-
 def run_backtest_v4(
     symbol: str = "BTC/USDT",
     days: int = 60,
@@ -67,86 +59,66 @@ def run_backtest_v4(
     exit_atr_mult: float = 3.0,
     min_atr_dist: float = 1.0,
 ) -> BTResult:
-    """
-    Backtest complet du pipeline V4 sur données historiques.
-
-    Args:
-        symbol: paire (ex. "BTC/USDT")
-        days: nombre de jours d'historique
-        capital: capital initial
-        risk_pct, sl_mult, tp_mult, fraction: paramètres RiskATR
-        exit_strategy: "chandelier" ou "trailing"
-        exit_atr_mult: multiplicateur ATR pour le SL de sortie
-        min_atr_dist: distance minimale SL/entrée en ATR
-
-    Returns:
-        BTResult avec trades et métriques.
-    """
+    """Backtest V4 avec les vrais nœuds DAG."""
     from quant.data_loader import fetch_history
 
-    # 1) Charger les données
     logger.info("Backtest %s: chargement %dj...", symbol, days)
     df_5m = fetch_history(symbol, "5m", days=days)
     df_1h = fetch_history(symbol, "1h", days=days)
     if df_5m.empty or df_1h.empty:
         raise ValueError(f"Pas de données pour {symbol}")
 
-    # 2) Initialiser l'état
     trades: list[BTTrade] = []
-    position: dict | None = None  # {action, entry, sl, tp, size_usd, entry_bar}
+    position: dict | None = None
     equity_curve: list[float] = [capital]
     current_capital = capital
 
-    # Paramètres ATR
     atr_period = 14
     ch_lookback = 22
+    min_bars = 200  # minimum pour le signal LogReg
+    cycle_interval = 12  # bars 5m = 1h par cycle
 
-    # Fenêtre glissante: on commence après avoir assez de barres
-    warmup = max(atr_period, ch_lookback, 100)
-    logger.info("Backtest %s: %d barres 5m, warmup=%d", symbol, len(df_5m), warmup)
+    logger.info("Backtest %s: %d barres 5m, min=%d", symbol, len(df_5m), min_bars)
 
-    for i in range(warmup, len(df_5m) - 1):
-        # Slice des données jusqu'à la barre i (simule le temps réel)
-        ohlcv_5m = df_5m.iloc[:i + 1]
-        ohlcv_1h_slice = df_1h[df_1h.index <= ohlcv_5m.index[-1]]
-        if len(ohlcv_1h_slice) < atr_period:
+    for i in range(min_bars, len(df_5m) - 1, cycle_interval):
+        ohlcv_5m_win = df_5m.iloc[:i + 1]
+        ohlcv_1h_win = df_1h[df_1h.index <= ohlcv_5m_win.index[-1]]
+        if len(ohlcv_1h_win) < atr_period:
             continue
 
-        # ── Calcul ATR 1h ──
-        close_1h = ohlcv_1h_slice["close"]
-        high_1h = ohlcv_1h_slice["high"]
-        low_1h = ohlcv_1h_slice["low"]
+        # ── ATR 1h ──
+        close_1h = ohlcv_1h_win["close"]
+        high_1h = ohlcv_1h_win["high"]
+        low_1h = ohlcv_1h_win["low"]
         tr = pd.concat([
             high_1h - low_1h,
             (high_1h - close_1h.shift()).abs(),
             (low_1h - close_1h.shift()).abs(),
         ], axis=1).max(axis=1)
-        atr_1h = float(tr.rolling(atr_period).mean().iloc[-1])
+        atr_1h = float(tr.rolling(14).mean().iloc[-1])
         if np.isnan(atr_1h) or atr_1h <= 0:
             continue
 
-        # Prix actuels (barre courante)
-        entry_price = float(ohlcv_5m["close"].iloc[-1])
-        current_high = float(ohlcv_5m["high"].iloc[-1])
-        current_low = float(ohlcv_5m["low"].iloc[-1])
+        entry_price = float(ohlcv_5m_win["close"].iloc[-1])
+        current_high = float(ohlcv_5m_win["high"].iloc[-1])
+        current_low = float(ohlcv_5m_win["low"].iloc[-1])
 
-        # ── Position Manager : vérifier SL ──
+        # ── Position Manager (exit) ──
         if position:
             pos_sl = position["sl"]
             pos_action = position["action"]
             pos_entry = position["entry"]
             pos_size = position["size_usd"]
 
-            # Calculer le nouveau SL selon stratégie
             if exit_strategy == "chandelier":
-                recent_ch = ohlcv_1h_slice.iloc[-ch_lookback:]
+                recent = ohlcv_1h_win.iloc[-ch_lookback:]
                 if pos_action == "long":
-                    new_sl = float(recent_ch["high"].max()) - exit_atr_mult * atr_1h
-                    new_sl = min(new_sl, pos_entry - min_atr_dist * atr_1h)  # breathing room
+                    new_sl = float(recent["high"].max()) - exit_atr_mult * atr_1h
+                    new_sl = min(new_sl, pos_entry - min_atr_dist * atr_1h)
                 else:
-                    new_sl = float(recent_ch["low"].min()) + exit_atr_mult * atr_1h
+                    new_sl = float(recent["low"].min()) + exit_atr_mult * atr_1h
                     new_sl = max(new_sl, pos_entry + min_atr_dist * atr_1h)
-            else:  # trailing
+            else:
                 if pos_action == "long":
                     new_sl = entry_price - exit_atr_mult * atr_1h
                     new_sl = min(new_sl, pos_entry - min_atr_dist * atr_1h)
@@ -154,15 +126,12 @@ def run_backtest_v4(
                     new_sl = entry_price + exit_atr_mult * atr_1h
                     new_sl = max(new_sl, pos_entry + min_atr_dist * atr_1h)
 
-            # Le SL ne recule jamais
             if pos_action == "long":
                 new_sl = max(new_sl, pos_sl)
             else:
                 new_sl = min(new_sl, pos_sl) if pos_sl > 0 else new_sl
-
             position["sl"] = new_sl
 
-            # Vérifier si SL touché
             hit = False
             close_price = 0.0
             if pos_action == "long" and current_low <= pos_sl:
@@ -173,49 +142,32 @@ def run_backtest_v4(
                 close_price = pos_sl
 
             if hit:
-                if pos_action == "long":
-                    pnl_pct = (close_price - pos_entry) / pos_entry
-                else:
-                    pnl_pct = (pos_entry - close_price) / pos_entry
+                pnl_pct = (close_price - pos_entry) / pos_entry if pos_action == "long" else (pos_entry - close_price) / pos_entry
                 pnl_usd = pos_size * pnl_pct
                 current_capital += pnl_usd
-
                 trades.append(BTTrade(
-                    timestamp=str(ohlcv_5m.index[-1]),
-                    symbol=symbol,
-                    action=pos_action,
-                    entry_price=pos_entry,
-                    exit_price=close_price,
-                    pnl_usd=round(pnl_usd, 4),
-                    pnl_pct=round(pnl_pct * 100, 4),
-                    exit_reason=exit_strategy,
-                    bars_held=i - position["entry_bar"],
+                    timestamp=str(ohlcv_5m_win.index[-1]),
+                    symbol=symbol, action=pos_action,
+                    entry_price=pos_entry, exit_price=close_price,
+                    pnl_usd=round(pnl_usd, 4), pnl_pct=round(pnl_pct * 100, 4),
+                    exit_reason=exit_strategy, bars_held=i - position["entry_bar"],
                 ))
                 position = None
                 equity_curve.append(current_capital)
-                continue  # passe au cycle suivant sans ouvrir de nouvelle position
+                continue
 
-        # ── Génération de signal simplifiée ──
-        # (Dans un backtest complet, on ferait tourner tous les nœuds DAG.
-        #  Ici on simplifie: signal basé sur tendance SMA 1h)
-        if len(ohlcv_1h_slice) >= 50:
-            close_1h_vals = ohlcv_1h_slice["close"]
-            sma20 = float(close_1h_vals.rolling(20).mean().iloc[-1])
-            sma50 = float(close_1h_vals.rolling(50).mean().iloc[-1])
-            trend = "bullish" if sma20 > sma50 else "bearish"
-        else:
-            trend = "neutral"
+        # ── Signal (LogReg sur features) ──
+        signal, prob_up = _compute_signal_v4(ohlcv_5m_win, ohlcv_1h_win, symbol)
+        trend = _compute_trend_v4(ohlcv_1h_win)
 
-        # Signal: short en bearish, long en bullish, flat sinon
-        signal = "flat"
-        if trend == "bearish":
-            signal = "short"
-        elif trend == "bullish":
-            signal = "long"
+        # ── Direction Gate ──
+        if signal == "long" and trend == "bearish":
+            signal = "flat"
+        elif signal == "short" and trend == "bullish":
+            signal = "flat"
 
-        # ── Ouverture de position ──
+        # ── Ouverture ──
         if signal != "flat" and position is None:
-            # Sizing contextuel
             risk_per_unit = (sl_mult * atr_1h) / entry_price if entry_price > 0 else 0.01
             max_risk = current_capital * (risk_pct / 100.0)
             risk_based = max_risk / risk_per_unit if risk_per_unit > 0 else current_capital * fraction
@@ -224,67 +176,126 @@ def run_backtest_v4(
 
             if signal == "long":
                 sl = entry_price - sl_mult * atr_1h
-                tp = entry_price + tp_mult * atr_1h
             else:
                 sl = entry_price + sl_mult * atr_1h
-                tp = entry_price - tp_mult * atr_1h
 
             position = {
-                "action": signal,
-                "entry": entry_price,
-                "sl": sl,
-                "tp": tp,
-                "size_usd": size_usd,
-                "entry_bar": i,
+                "action": signal, "entry": entry_price, "sl": sl,
+                "tp": 0, "size_usd": size_usd, "entry_bar": i,
             }
 
-    # 3) Calculer les métriques
-    n_trades = len(trades)
-    if n_trades == 0:
-        return BTResult(
-            symbol=symbol,
-            start=str(df_5m.index[0]),
-            end=str(df_5m.index[-1]),
-            initial_capital=capital,
-            final_capital=current_capital,
-            total_pnl=0, total_pnl_pct=0,
-            n_trades=0, win_rate=0, avg_win=0, avg_loss=0,
-            max_drawdown_pct=0, sharpe=0,
-            trades=[],
+    # ── Métriques ──
+    return _compute_metrics(trades, equity_curve, capital, current_capital, symbol, df_5m)
+
+
+def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
+    """Calcule le signal avec le VRAI LogReg (pas SMA)."""
+    try:
+        from quant.features import compute_features
+        from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
+        from quant.signal_model import SignalModel
+
+        features = compute_features(
+            ohlcv_5m,
+            feature_cols=list(DEFAULT_FEATURE_COLS),
+            config=PipelineConfig(),
         )
+        if features is None or len(features) < 100:
+            return "flat", 0.5
+
+        # Entraînement walk-forward
+        split = int(len(features) * 0.70)
+        train = features.iloc[:split]
+        if train.empty:
+            return "flat", 0.5
+
+        model = SignalModel(calibrate=True)
+        target = (ohlcv_5m["close"].shift(-48) > ohlcv_5m["close"]).astype(int)
+        target = target.loc[train.index]
+
+        valid_idx = train.index.intersection(target.dropna().index)
+        if len(valid_idx) < 50:
+            return "flat", 0.5
+
+        train_f = train.loc[valid_idx]
+        target_f = target.loc[valid_idx]
+
+        # Ne garder que les colonnes numériques
+        train_f = train_f.select_dtypes(include=[np.number])
+        if train_f.empty or len(train_f.columns) < 3:
+            return "flat", 0.5
+
+        model.fit(train_f, target_f)
+
+        last = features.iloc[-1:]
+        last_num = last.select_dtypes(include=[np.number])
+        if last_num.empty:
+            return "flat", 0.5
+
+        # Aligner les colonnes
+        common_cols = train_f.columns.intersection(last_num.columns)
+        if len(common_cols) < 3:
+            return "flat", 0.5
+
+        prob_up = float(model.predict_proba(last_num[common_cols])[:, 1][0])
+        prob_up = float(prob_up)
+
+        if prob_up >= 0.55:
+            return "long", prob_up
+        elif prob_up <= 0.45:
+            return "short", prob_up
+        return "flat", prob_up
+
+    except Exception as e:
+        logger.warning("Signal V4 failed: %s", e)
+        return "flat", 0.5
+
+
+def _compute_trend_v4(ohlcv_1h) -> str:
+    """Trend filter (SMA 20/50 sur 1h)."""
+    try:
+        if len(ohlcv_1h) < 55:
+            return "neutral"
+        close = ohlcv_1h["close"]
+        sma20 = float(close.rolling(20).mean().iloc[-1])
+        sma50 = float(close.rolling(50).mean().iloc[-1])
+        if sma20 > sma50:
+            return "bullish"
+        return "bearish"
+    except Exception:
+        return "neutral"
+
+
+def _compute_metrics(trades, equity, capital, final_cap, symbol, df) -> BTResult:
+    n = len(trades)
+    if n == 0:
+        return BTResult(symbol=symbol, start=str(df.index[0]), end=str(df.index[-1]),
+                        initial_capital=capital, final_capital=final_cap,
+                        total_pnl=0, total_pnl_pct=0, n_trades=0,
+                        win_rate=0, avg_win=0, avg_loss=0,
+                        max_drawdown_pct=0, sharpe=0)
 
     wins = [t for t in trades if t.pnl_usd > 0]
     losses = [t for t in trades if t.pnl_usd <= 0]
-    win_rate = len(wins) / n_trades * 100
+    win_rate = len(wins) / n * 100
     avg_win = sum(t.pnl_usd for t in wins) / len(wins) if wins else 0
     avg_loss = sum(t.pnl_usd for t in losses) / len(losses) if losses else 0
 
-    # Max drawdown
-    eq = pd.Series(equity_curve)
+    eq = pd.Series(equity)
     rolling_max = eq.cummax()
-    drawdown = (eq - rolling_max) / rolling_max * 100
-    max_dd = abs(float(drawdown.min()))
+    dd = (eq - rolling_max) / rolling_max * 100
+    max_dd = abs(float(dd.min()))
 
-    # Sharpe (approximé)
-    returns = pd.Series(equity_curve).pct_change().dropna()
-    sharpe = float(returns.mean() / returns.std() * np.sqrt(252 * 78)) if returns.std() > 0 else 0  # 78 = 5min bars/day
+    returns = pd.Series(equity).pct_change().dropna()
+    sharpe = float(returns.mean() / returns.std() * np.sqrt(252 * 78)) if returns.std() > 0 else 0
 
-    total_pnl = current_capital - capital
-    total_pnl_pct = total_pnl / capital * 100
-
+    total_pnl = final_cap - capital
     return BTResult(
-        symbol=symbol,
-        start=str(df_5m.index[0]),
-        end=str(df_5m.index[-1]),
-        initial_capital=capital,
-        final_capital=round(current_capital, 2),
-        total_pnl=round(total_pnl, 2),
-        total_pnl_pct=round(total_pnl_pct, 2),
-        n_trades=n_trades,
-        win_rate=round(win_rate, 1),
-        avg_win=round(avg_win, 2),
-        avg_loss=round(avg_loss, 2),
-        max_drawdown_pct=round(max_dd, 2),
-        sharpe=round(sharpe, 2),
+        symbol=symbol, start=str(df.index[0]), end=str(df.index[-1]),
+        initial_capital=capital, final_capital=round(final_cap, 2),
+        total_pnl=round(total_pnl, 2), total_pnl_pct=round(total_pnl / capital * 100, 2),
+        n_trades=n, win_rate=round(win_rate, 1),
+        avg_win=round(avg_win, 2), avg_loss=round(avg_loss, 2),
+        max_drawdown_pct=round(max_dd, 2), sharpe=round(sharpe, 2),
         trades=trades,
     )

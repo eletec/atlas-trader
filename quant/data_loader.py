@@ -67,7 +67,7 @@ def fetch_ohlcv(
     if symbol in _YAHOO_SYMBOLS:
         return _fetch_yahoo_latest(symbol, timeframe, limit)
 
-    exchange = getattr(ccxt, exchange_name)({"enableRateLimit": True})
+    exchange = getattr(ccxt, exchange_name)({"enableRateLimit": True, "options": {"defaultType": "spot"}})
     raw = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=limit)
     if not raw:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])

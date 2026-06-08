@@ -4070,19 +4070,12 @@ def main():
             from dashboard.multi_asset import render_asset_tabs
 
             def _render_for_asset(asset: str):
-                """Render complet pour un actif donné (utilisé par render_asset_tabs)."""
-                _lc = _get_recent_decisions(1, asset=asset)
-                # Ne pas fallback sur BTC : si aucune décision pour cet actif → état vide
-                _lc = _lc[0] if _lc else None
+                """Render complet pour un actif donné — V4 uniquement."""
                 _tr = _get_recent_trades(200, asset=asset)
-                _pf = _get_portfolio(asset=asset)   # portefeuille isolé pour cet actif
+                _pf = _get_portfolio(asset=asset)
                 render_portfolio(_pf)
-                render_climate_metrics(_lc)
-                render_v2_quant_state(asset)
-                render_last_decision(_lc)
                 render_trades_list(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
-                render_live_chart(asset)
                 render_live_logs(key=asset.replace('/', '_'), asset=asset)
 
             def _render_portfolio_first():

@@ -33,7 +33,12 @@ _USERS_FILE = Path(__file__).parent.parent / "config" / "users.yaml"
 # ─────────────────────────────────────────────────────────────────────────────
 # Store de sessions SQLite (survit aux redémarrages Streamlit et aux multi-workers)
 # ─────────────────────────────────────────────────────────────────────────────
+import os as _os
 _SESSION_DB = Path(__file__).parent.parent / "storage" / "atlas_sessions.db"
+# Forcer un chemin writable dans Docker (mount read-only /app/src)
+_DATA_DIR = _os.environ.get("V4_DATA_DIR", "/app/data")
+if str(_SESSION_DB).startswith("/app/src/"):
+    _SESSION_DB = Path(_DATA_DIR) / "atlas_sessions.db"
 _SESSION_LOCK = threading.Lock()
 
 

@@ -89,6 +89,10 @@ export function DAGCanvas() {
         default: "BTC/USDT", eth: "ETH/USDT", sol: "SOL/USDT", bnb: "BNB/USDT", xrp: "XRP/USDT",
       };
       const asset = assetMap[flowFromUrl] || "BTC/USDT";
+      const coin = asset.split("/")[0].toLowerCase();
+      const keywords: Record<string, string[]> = {
+        btc: ["bitcoin"], eth: ["ethereum"], sol: ["solana"], bnb: ["binance coin"], xrp: ["ripple"],
+      };
 
       const data = loadDAG(flowFromUrl);
       let loadedNodes: RFNode[] = [];
@@ -105,7 +109,7 @@ export function DAGCanvas() {
         loadedEdges = edges;
       }
 
-      // Patcher le nœud AssetDef avec le bon symbole
+      // Patcher le nœud AssetDef avec le bon symbole + keywords
       loadedNodes = loadedNodes.map((n) => {
         if (n.type === "AssetDef" || (n.data as any)?.nodeType === "AssetDef") {
           return {
@@ -113,7 +117,7 @@ export function DAGCanvas() {
             data: {
               ...n.data,
               label: asset,
-              params: { ...((n.data as any)?.params || {}), symbol: asset },
+              params: { ...((n.data as any)?.params || {}), symbol: asset, keywords: keywords[coin] || [coin] },
             },
           };
         }

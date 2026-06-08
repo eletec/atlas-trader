@@ -11,6 +11,9 @@ python-multipart>=0.0.9     # upload de fichiers DAG JSON
 ccxt>=4.3.0
 yfinance>=0.2.40
 
+# ---- Dashboard ----
+streamlit>=1.35.0
+
 # ---- Quant (V3 wrappé) ----
 numpy>=1.26.0
 pandas>=2.2.0

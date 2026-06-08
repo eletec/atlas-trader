@@ -77,6 +77,35 @@ services:
       - atlas-v4-api
 
   # ----------------------------------------------------------
+  # Dashboard — Streamlit (interface unifiée trades/logs/PNL)
+  # ----------------------------------------------------------
+  atlas-v4-dashboard:
+    build:
+      context: .
+      dockerfile: v4/Dockerfile.backend
+    container_name: atlas-v4-dashboard
+    command: streamlit run /app/src/dashboard/streamlit_app.py --server.port=8501 --server.address=0.0.0.0
+    restart: unless-stopped
+    networks: [v4_net]
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONPATH=/app/src
+      - V4_ENV=development
+      - V4_TESTNET=true
+      - OLLAMA_URL=http://atlas-v4-ollama:11434
+      - TZ=Europe/Paris
+      - DATABASE_URL=sqlite:////app/data/v4.db
+      - STREAMLIT_SERVER_PORT=8501
+    volumes:
+      - v4_storage:/app/data
+      - v4_config:/app/config
+      - .:/app/src:ro
+    depends_on:
+      - atlas-v4-api
+      - atlas-v4-ollama
+
+  # ----------------------------------------------------------
   # Ollama — modèles IA locaux
   # ----------------------------------------------------------
   atlas-v4-ollama:

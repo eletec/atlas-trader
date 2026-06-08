@@ -47,11 +47,17 @@ class TrendFilter(Node):
         return {"trend": "str", "sma20": "float", "sma50": "float", "slope": "float"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        ohlcv_1h: pd.DataFrame = inputs["ohlcv_1h"]
+        from v4.nodes.config_loader import load_v4_config
 
-        tf          = self.params.get("timeframe_resample", "4h")
-        sma_fast    = self.params.get("sma_fast", 20)
-        sma_slow    = self.params.get("sma_slow", 50)
+        ohlcv_1h: pd.DataFrame = inputs["ohlcv_1h"]
+        symbol = self.params.get("symbol", "")
+
+        _cfg = load_v4_config(symbol, "trend", {
+            "timeframe_resample": "4h", "sma_fast": 20, "sma_slow": 50,
+        })
+        tf          = self.params.get("timeframe_resample", _cfg["timeframe_resample"])
+        sma_fast    = self.params.get("sma_fast", _cfg["sma_fast"])
+        sma_slow    = self.params.get("sma_slow", _cfg["sma_slow"])
         min_bars    = self.params.get("min_bars", 50)
 
         if ohlcv_1h is None or len(ohlcv_1h) < 20:

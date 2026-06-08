@@ -69,10 +69,16 @@ class PositionManager(Node):
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         symbol = self.params.get("symbol", "BTC/USDT")
-        strategy = self.params.get("exit_strategy", "chandelier")
-        atr_mult = float(self.params.get("atr_mult") or self.params.get("trail_atr", 3.0))
-        atr_period = int(self.params.get("atr_period", 14))
-        lookback = int(self.params.get("chandelier_lookback", 22))
+
+        from v4.nodes.config_loader import load_v4_config
+        _cfg = load_v4_config(symbol, "exit", {
+            "strategy": "chandelier", "atr_mult": 3.0, "atr_period": 14,
+            "chandelier_lookback": 22,
+        })
+        strategy = self.params.get("exit_strategy", _cfg["strategy"])
+        atr_mult = float(self.params.get("atr_mult") or self.params.get("trail_atr", _cfg["atr_mult"]))
+        atr_period = int(self.params.get("atr_period", _cfg["atr_period"]))
+        lookback = int(self.params.get("chandelier_lookback", _cfg["chandelier_lookback"]))
         ohlcv_5m = inputs.get("ohlcv_5m")
         ohlcv_1h = inputs.get("ohlcv_1h")  # utilisé pour ATR + chandelier (timeframe plus large)
 

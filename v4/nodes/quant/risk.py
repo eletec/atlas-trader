@@ -11,32 +11,7 @@ from typing import Any
 import pandas as pd
 
 from v4.core.node import Node
-
-
-def _load_risk_defaults() -> dict:
-    """Charge les paramètres de risque globaux depuis config/settings.yaml.
-    Fallback aux défauts si le fichier est absent ou incomplet."""
-    defaults = {
-        "capital": 10_000,
-        "max_fraction": 0.02,
-        "risk_pct": 1.0,
-        "sl_mult": 2.0,
-        "tp_mult": 4.0,
-    }
-    try:
-        from pathlib import Path
-        import yaml
-        settings_path = Path(__file__).resolve().parent.parent.parent.parent / "config" / "settings.yaml"
-        if settings_path.exists():
-            with settings_path.open("r", encoding="utf-8") as fh:
-                data = yaml.safe_load(fh) or {}
-            risk_cfg = data.get("risk", {})
-            for k in defaults:
-                if k in risk_cfg:
-                    defaults[k] = risk_cfg[k]
-    except Exception:
-        pass
-    return defaults
+from v4.nodes.config_loader import load_v4_config
 
 
 class RiskATR(Node):
@@ -51,12 +26,12 @@ class RiskATR(Node):
     Outputs :
         decision  (dict  — {action, size_usd, entry_price, stop_loss, take_profit, reason})
 
-    Params :
-        sl_mult    : float — multiplicateur ATR pour SL (défaut 2.0)
-        tp_mult    : float — multiplicateur ATR pour TP (défaut 4.0)
-        fraction   : float — fraction max du capital par trade (défaut 0.02)
-        capital    : float — capital en USD (défaut 10000)
-        risk_pct   : float — % du capital risqué par trade (défaut 1.0)
+    Params (priorité: DAG > settings.yaml global > settings.yaml symbole > défaut) :
+        sl_mult    : float — multiplicateur ATR pour SL
+        tp_mult    : float — multiplicateur ATR pour TP
+        fraction   : float — fraction max du capital par trade
+        capital    : float — capital en USD
+        risk_pct   : float — % du capital risqué par trade
     """
 
     @property
@@ -79,11 +54,17 @@ class RiskATR(Node):
         capital: float = float(inputs.get("capital") or self.params.get("capital", 10_000.0))
 
         # ── Paramètres : priorité DAG → settings.yaml → défaut ──
-        _defaults = _load_risk_defaults()
-        sl_mult  = float(self.params.get("sl_mult", _defaults.get("sl_mult", 2.0)))
-        tp_mult  = float(self.params.get("tp_mult", _defaults.get("tp_mult", 4.0)))
-        fraction = float(self.params.get("fraction", _defaults.get("max_fraction", 0.02)))
-        risk_pct = float(self.params.get("risk_pct", _defaults.get("risk_pct", 1.0)))
+        symbol = self.params.get("symbol", "")
+        _cfg = load_v4_config(symbol, "risk", {
+            "capital": 10_000, "max_fraction": 0.02, "risk_pct": 1.0,
+            "sl_mult": 2.0, "tp_mult": 4.0,
+        })
+        sl_mult  = float(self.params.get("sl_mult", _cfg["sl_mult"]))
+        tp_mult  = float(self.params.get("tp_mult", _cfg["tp_mult"]))
+        fraction = float(self.params.get("fraction", _cfg["max_fraction"]))
+        risk_pct = float(self.params.get("risk_pct", _cfg["risk_pct"]))
+        if not capital or capital <= 0:
+            capital = float(_cfg.get("capital", 10_000))
 
         if signal == "flat" or ohlcv_1h is None or ohlcv_1h.empty:
             return {"decision": {"action": "flat", "reason": "signal_flat"}}

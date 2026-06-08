@@ -61,15 +61,21 @@ class SignalLogReg(Node):
         from quant.pipeline import DEFAULT_FEATURE_COLS, PipelineConfig
         from quant.signal_model import SignalModel
         from quant.strategy import Action, decide
+        from v4.nodes.config_loader import load_v4_config
 
         features_all: pd.DataFrame = inputs["features_all"]
         regime: str = inputs.get("regime", "TREND")
 
-        calibrate      = self.params.get("calibrate", True)
-        train_fraction = self.params.get("train_fraction", 0.70)
-        horizon_bars   = self.params.get("horizon_bars", 48)
-        p_up_thresh    = self.params.get("p_up_threshold", 0.55)
-        p_dn_thresh    = self.params.get("p_dn_threshold", 0.45)
+        symbol = self.params.get("symbol", "")
+        _cfg = load_v4_config(symbol, "signal", {
+            "calibrate": True, "train_fraction": 0.70, "horizon_bars": 48,
+            "p_up_threshold": 0.50, "p_dn_threshold": 0.50,
+        })
+        calibrate      = self.params.get("calibrate", _cfg["calibrate"])
+        train_fraction = self.params.get("train_fraction", _cfg["train_fraction"])
+        horizon_bars   = self.params.get("horizon_bars", _cfg["horizon_bars"])
+        p_up_thresh    = self.params.get("p_up_threshold", _cfg["p_up_threshold"])
+        p_dn_thresh    = self.params.get("p_dn_threshold", _cfg["p_dn_threshold"])
 
         feature_cols = list(DEFAULT_FEATURE_COLS)
         split = int(len(features_all) * train_fraction)

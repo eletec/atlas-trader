@@ -15,13 +15,61 @@ project:
   - LINK/USDT
   - DOT/USDT
 
-# ── Risk Management (V4) ──
+# ═══════════════════════════════════════════════════════════════
+# V4 — Configuration Globale
+# Tous les paramètres sont surchargeables par symbole dans
+# la section "assets". Priorité : paramètre du nœud DAG >
+# settings symbole > settings global > défaut code.
+# ═══════════════════════════════════════════════════════════════
+
+# ── Risk Management ──
 risk:
-  capital: 10000
-  max_fraction: 0.02
-  risk_pct: 1.0
-  sl_mult: 2.0
-  tp_mult: 4.0
+  capital: 10000           # capital total en USD
+  max_fraction: 0.02       # fraction max du capital par trade (2%)
+  risk_pct: 1.0            # % du capital risqué par trade
+  sl_mult: 2.0             # multiplicateur ATR pour Stop-Loss
+  tp_mult: 4.0             # multiplicateur ATR pour Take-Profit
+
+# ── Signal Model (LogReg) ──
+signal:
+  calibrate: true          # calibration Platt du score
+  train_fraction: 0.70     # fraction des données pour l'entraînement
+  horizon_bars: 48         # horizon de prédiction (barres)
+  p_up_threshold: 0.50     # seuil proba LONG  (≥ → long)
+  p_dn_threshold: 0.50     # seuil proba SHORT (≤ → short)
+
+# ── Trend Filter ──
+trend:
+  timeframe_resample: "4h" # timeframe pour la tendance
+  sma_fast: 20             # SMA rapide
+  sma_slow: 50             # SMA lente
+
+# ── Direction Gate ──
+gate:
+  allow_long: true
+  allow_short: true
+
+# ── Position Manager (exit strategy) ──
+exit:
+  strategy: "chandelier"   # "chandelier" | "trailing"
+  atr_mult: 3.0            # multiplicateur ATR pour le SL
+  atr_period: 14           # période ATR
+  chandelier_lookback: 22  # barres pour le chandelier exit
+
+# ── Data ──
+data:
+  days_5m: 90              # historique 5m
+  days_1h: 100             # historique 1h
+
+# ── Per-symbol overrides (optionnel) ──
+assets: {}
+  # BTC/USDT:
+  #   risk:
+  #     max_fraction: 0.03   # BTC plus agressif
+  #     sl_mult: 1.5
+  # ETH/USDT:
+  #   exit:
+  #     atr_mult: 2.5
 
 crawler:
   provider: duckduckgo

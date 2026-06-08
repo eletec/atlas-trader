@@ -16,7 +16,7 @@ import pandas as pd
 logger = logging.getLogger("zeitgeist.quant.data_loader")
 
 DEFAULT_EXCHANGE = "binance"
-DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "ohlcv"
+DEFAULT_CACHE_DIR = Path("/app/data/ohlcv")  # volume Docker writable
 
 # Actifs non disponibles sur Binance → routés vers yfinance
 _YAHOO_SYMBOLS: dict[str, str] = {

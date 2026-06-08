@@ -2876,7 +2876,8 @@ def render_live_logs(key: str = "global", asset: str | None = None):
                     "ORDER BY timestamp DESC"
                 ).fetchall()
     except Exception:
-        st.info(t("logs_unavailable"))
+        if not v4_logs:
+            st.info(t("logs_unavailable"))
         return
 
     if not all_rows:

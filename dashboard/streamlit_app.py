@@ -2815,6 +2815,32 @@ def _render_v4_config():
     st.caption("⚠️ Les modifications prennent effet au prochain redémarrage de l'API (ou au prochain cycle DAG).")
 
 
+def _render_ai_analysis(asset: str):
+    """Affiche la dernière analyse IA pour un actif depuis les résultats DAG."""
+    try:
+        import urllib.request, json as _json
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            dags = _json.loads(resp.read())
+        dag = next((d for d in dags if d.get("asset") == asset), None)
+        if not dag:
+            return
+        pfx = asset.split("/")[0].lower()[:3]
+        results = dag.get("last_results", {})
+        ai_node = results.get(f"{pfx}_ai", {})
+        if not isinstance(ai_node, dict):
+            return
+        ai_outputs = ai_node.get("outputs", {})
+        response = ai_outputs.get("response", "")
+        model = ai_outputs.get("model", "")
+        duration = ai_outputs.get("duration_ms", 0)
+        if response and not response.startswith("LLM_ERROR"):
+            with st.expander(f"🧠 Analyse IA ({model}, {duration/1000:.1f}s)", expanded=False):
+                st.markdown(response)
+    except Exception:
+        pass
+
+
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""
     col_title, col_del = st.columns([5, 1])
@@ -4074,6 +4100,7 @@ def main():
                 _tr = _get_recent_trades(200, asset=asset)
                 _pf = _get_portfolio(asset=asset)
                 render_portfolio(_pf)
+                _render_ai_analysis(asset)
                 render_trades_list(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_logs(key=asset.replace('/', '_'), asset=asset)

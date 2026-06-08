@@ -2774,6 +2774,58 @@ def render_agent_scores_chart(asset: str):
                     key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
 
 
+def _render_v4_config():
+    """Panneau de configuration globale V4 — risque, capital, sizing."""
+    import yaml
+    from pathlib import Path
+
+    st.markdown("### ⚙️ Configuration Globale V4")
+
+    settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
+
+    # Charger la config actuelle
+    cfg = {}
+    if settings_path.exists():
+        try:
+            with settings_path.open("r", encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+        except Exception:
+            pass
+
+    risk_cfg = cfg.get("risk", {})
+
+    st.markdown("#### 💰 Risk Management")
+    st.caption("Ces paramètres s'appliquent à tous les DAGs. Ils peuvent être surchargés par nœud dans le Canvas.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        capital = st.number_input("Capital total (USD)", value=float(risk_cfg.get("capital", 10000)), min_value=100, step=1000)
+        max_fraction = st.slider("Fraction max par trade", value=float(risk_cfg.get("max_fraction", 0.02)), min_value=0.001, max_value=0.20, step=0.001, format="%.1f%%")
+    with col2:
+        risk_pct = st.slider("Risque par trade", value=float(risk_cfg.get("risk_pct", 1.0)), min_value=0.1, max_value=10.0, step=0.1, format="%.1f%%")
+        sl_mult = st.slider("Multiplicateur SL (×ATR)", value=float(risk_cfg.get("sl_mult", 2.0)), min_value=1.0, max_value=6.0, step=0.5)
+    tp_mult = st.slider("Multiplicateur TP (×ATR)", value=float(risk_cfg.get("tp_mult", 4.0)), min_value=1.0, max_value=10.0, step=0.5)
+
+    if st.button("💾 Sauvegarder la configuration", type="primary", use_container_width=True):
+        cfg["risk"] = {
+            "capital": int(capital),
+            "max_fraction": round(max_fraction, 4),
+            "risk_pct": round(risk_pct, 1),
+            "sl_mult": round(sl_mult, 1),
+            "tp_mult": round(tp_mult, 1),
+        }
+        try:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            with settings_path.open("w", encoding="utf-8") as fh:
+                yaml.safe_dump(cfg, fh, allow_unicode=True, default_flow_style=False)
+            st.success("✅ Configuration sauvegardée. Redémarre l'API pour appliquer.")
+        except Exception as e:
+            st.error(f"Erreur d'écriture : {e}")
+
+    st.markdown("---")
+    st.caption("⚠️ Les modifications prennent effet au prochain redémarrage de l'API (ou au prochain cycle DAG).")
+
+
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""
     col_title, col_del = st.columns([5, 1])
@@ -3714,6 +3766,11 @@ def render_admin_panel():
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
     elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
+        # ── Config V4 native (pas d'iframe) ──
+        if _atab == "v4_admin":
+            _render_v4_config()
+            return
+
         _V4_URLS = {
             "v4_canvas":  "http://localhost:3000/canvas",
             "v4_monitor": "http://localhost:3000/monitoring",

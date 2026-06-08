@@ -325,9 +325,6 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
         return "flat", 0.5
 
 
-def _compute_trend_v4(ohlcv_1h) -> str:
-
-
 def _compute_signal_sma(ohlcv_1h) -> str:
     """Fallback ultime: signal basé sur SMA crossover."""
     try:

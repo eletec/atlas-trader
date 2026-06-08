@@ -2879,6 +2879,7 @@ def _render_backtest_v4():
     if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
         with st.spinner(f"Backtest {symbol} sur {days}j..."):
             try:
+                import traceback
                 from dashboard.backtest_v4 import run_backtest_v4
                 result = run_backtest_v4(
                     symbol=symbol, days=days, capital=capital,
@@ -2886,6 +2887,7 @@ def _render_backtest_v4():
                     fraction=fraction, exit_strategy=exit_strat,
                     exit_atr_mult=exit_atr, min_atr_dist=min_dist,
                 )
+                st.info(f"DEBUG: {result.n_trades} trades, PnL=${result.total_pnl}")
 
                 # Métriques
                 col_m1, col_m2, col_m3, col_m4 = st.columns(4)

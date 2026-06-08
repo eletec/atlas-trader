@@ -788,6 +788,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     try:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
+        st.warning(f"🔍 get_v4_trades({asset or 'ALL'}) = {len(v4_trades)} trades")
         for t in v4_trades:
             trades.append({
                 "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",
@@ -4081,7 +4082,6 @@ def main():
 
             def _render_global():
                 """Vue consolidée : PnL tous actifs + logs."""
-                st.warning("🔥 DEBUG: _render_global called")  # temporaire
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)
                 render_pnl_chart(_tr_all, key="pnl_chart_global")

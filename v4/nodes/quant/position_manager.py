@@ -121,6 +121,7 @@ class PositionManager(Node):
                 logger.info("High volatility: ATR=%.2f > %.1fx MA(%.2f) → SL x%.1f", atr, vol_threshold, atr_ma, vol_factor)
 
         # Appliquer le facteur de volatilité aux paramètres de sortie
+        min_atr_dist = float(self.params.get("min_atr_dist", 1.0))
         _exit_mult = atr_mult * vol_factor
         _min_dist = min_atr_dist * vol_factor
 

@@ -138,9 +138,9 @@ class LLMNode(Node):
             }
 
         duration_ms = (time.time() - t0) * 1000
-        response = body.get("response", "")
-        tokens_eval = body.get("eval_count", 0)
-        tokens_prompt = body.get("prompt_eval_count", 0)
+        response = response_text.strip()
+        tokens_eval = 0
+        tokens_prompt = 0
 
         # Tentative de parse JSON
         parsed = None

@@ -114,16 +114,19 @@ export const useDagRegistry = create<DAGRegistryState>()(
 
       ensureDefault: () => {
         const { dags } = get();
-        if (dags.length === 0) {
+        const required = [
+          { id: "default", name: "BTC/USDT" },
+          { id: "eth",    name: "ETH/USDT" },
+          { id: "sol",    name: "SOL/USDT" },
+          { id: "bnb",    name: "BNB/USDT" },
+          { id: "xrp",    name: "XRP/USDT" },
+        ];
+        const existing = new Set(dags.map((d) => d.id));
+        const missing = required.filter((r) => !existing.has(r.id));
+        if (missing.length > 0) {
+          const now = Date.now();
           set({
-            dags: [
-              { id: "default", name: "BTC/USDT", createdAt: Date.now() },
-              { id: "eth",    name: "ETH/USDT", createdAt: Date.now() },
-              { id: "sol",    name: "SOL/USDT", createdAt: Date.now() },
-              { id: "bnb",    name: "BNB/USDT", createdAt: Date.now() },
-              { id: "xrp",    name: "XRP/USDT", createdAt: Date.now() },
-            ],
-            activeId: "default",
+            dags: [...dags, ...missing.map((m) => ({ ...m, createdAt: now }))],
           });
         }
       },

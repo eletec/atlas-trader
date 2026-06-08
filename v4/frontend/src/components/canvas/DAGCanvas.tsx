@@ -81,25 +81,49 @@ export function DAGCanvas() {
   useEffect(() => {
     if (hydrated) {
       ensureDefault();
-      // Lire le flow depuis l'URL (?flow=eth)
       const urlParams = new URLSearchParams(window.location.search);
       const flowFromUrl = urlParams.get("flow") || activeId || "default";
-      if (flowFromUrl !== activeId) {
-        setActive(flowFromUrl);
-      }
+      if (flowFromUrl !== activeId) setActive(flowFromUrl);
+
+      const assetMap: Record<string, string> = {
+        default: "BTC/USDT", eth: "ETH/USDT", sol: "SOL/USDT", bnb: "BNB/USDT", xrp: "XRP/USDT",
+      };
+      const asset = assetMap[flowFromUrl] || "BTC/USDT";
+
       const data = loadDAG(flowFromUrl);
+      let loadedNodes: RFNode[] = [];
+      let loadedEdges: RFEdge[] = [];
+
       if (data && data.nodes && data.nodes.length > 0) {
-        setNodes(data.nodes as RFNode[]);
-        setEdges(data.edges as RFEdge[]);
-        setDagId(flowFromUrl);
+        loadedNodes = data.nodes as RFNode[];
+        loadedEdges = data.edges as RFEdge[];
       } else if (nodes.length === 0) {
-        const defNodes = getDefaultNodes();
-        const defEdges = getDefaultEdges();
-        setNodes(defNodes);
-        setEdges(defEdges);
-        setDagId("default");
-        saveDAG("default", { nodes: defNodes, edges: defEdges, asset: "BTC/USDT" });
+        loadedNodes = getDefaultNodes();
+        loadedEdges = getDefaultEdges();
+      } else {
+        loadedNodes = nodes;
+        loadedEdges = edges;
       }
+
+      // Patcher le nœud AssetDef avec le bon symbole
+      loadedNodes = loadedNodes.map((n) => {
+        if (n.type === "AssetDef" || (n.data as any)?.nodeType === "AssetDef") {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              label: asset,
+              params: { ...((n.data as any)?.params || {}), symbol: asset },
+            },
+          };
+        }
+        return n;
+      });
+
+      setNodes(loadedNodes);
+      setEdges(loadedEdges);
+      setDagId(flowFromUrl);
+      saveDAG(flowFromUrl, { nodes: loadedNodes, edges: loadedEdges, asset });
     }
   }, [hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
 

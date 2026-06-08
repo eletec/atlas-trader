@@ -3637,7 +3637,9 @@ def render_admin_panel():
             # 2) Effacer l'historique des trades
             try:
                 from storage.database import get_connection
+                from storage.paper_trader import _ensure_table
                 with get_connection() as conn:
+                    _ensure_table(conn)
                     conn.execute("DELETE FROM v4_trades")
                     conn.commit()
                 st.success("✅ Historique des trades effacé.")

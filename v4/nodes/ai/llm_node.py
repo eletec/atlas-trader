@@ -54,6 +54,53 @@ class LLMNode(Node):
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         from v4.nodes.config_loader import load_v4_config
 
+        # ── Mode async : fire-and-forget, retour immédiat ──
+        async_mode = bool(self.params.get("async_mode", True))
+        dag_id = self.params.get("dag_id", "unknown")
+        cache_key = f"llm_{dag_id}_{self.node_id}"
+
+        if async_mode:
+            from v4.core.async_tasks import dispatch, get_result, is_pending
+
+            # Récupérer le résultat du cycle précédent (sera None au 1er cycle)
+            cached = get_result(cache_key)
+
+            # Lancer le nouvel appel en arrière-plan (capture les inputs actuels)
+            _inputs_snapshot = dict(inputs)  # copie pour le thread
+            _params_snapshot = dict(self.params)
+            _node_id = self.node_id
+
+            def _async_call():
+                # Ré-exécuter run() en mode sync pour ce snapshot
+                import copy
+                # On évite la récursion infinie : on appelle directement le code sync
+                return self._run_sync(_inputs_snapshot)
+
+            dispatch(cache_key, _async_call)
+
+            if cached and "error" not in cached:
+                cached["_async"] = True
+                cached["_pending_next"] = is_pending(cache_key)
+                return cached
+            else:
+                # Premier cycle : pas encore de résultat
+                return {
+                    "response": "⏳ Analyse en cours...",
+                    "parsed": {"status": "pending", "message": "L'IA analyse le marché, résultat au prochain cycle."},
+                    "tokens_used": 0,
+                    "model": self.params.get("model", "?"),
+                    "duration_ms": 0,
+                    "_async": True,
+                    "_pending_next": True,
+                }
+
+        # ── Mode sync (fallback) ──
+        return self._run_sync(inputs)
+
+    def _run_sync(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Exécution synchrone du LLM (utilisée par async mode en background)."""
+        from v4.nodes.config_loader import load_v4_config
+
         # ── Modèle : priorité DAG → settings.yaml global → défaut ──
         _llm_cfg = load_v4_config(None, "llm", {
             "provider": "deepseek", "model": "deepseek-v4-pro",

@@ -72,13 +72,15 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  params={"max_lessons": 5, "min_pnl_abs": 1.0}),
         # ── Colonne 9 : AI Analyst ──
         NodeSpec(id=f"{pfx}_ai", type="LLMNode",
-                 params={"system_prompt": "You are a crypto trading analyst.",
+                 params={"dag_id": dag_id, "async_mode": True,
+                          "system_prompt": "You are a crypto trading analyst.",
                           "user_prompt": "{reflections}\n\nMarket: {inputs}",
                           "temperature": 0.3,
                           "max_tokens": 512, "timeout_s": 60}),
         # ── Colonne 9b : Débat Bull vs Bear ──
         NodeSpec(id=f"{pfx}_debate", type="DebateNode",
-                 params={"temperature": 0.4, "max_tokens": 512,
+                 params={"dag_id": dag_id, "async_mode": True,
+                          "temperature": 0.4, "max_tokens": 512,
                           "timeout_s": 90}),
     ]
 

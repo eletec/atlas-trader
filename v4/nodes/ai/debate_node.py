@@ -165,14 +165,51 @@ class DebateNode(Node):
         return {"call": "neutral", "confidence": 0.0, "argument": raw[:200]}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        from v4.nodes.config_loader import load_v4_config
-
         skip = bool(self.params.get("skip_debate", False))
         if skip:
             return {
                 "decision": "neutral", "confidence": 0.5,
                 "bull_argument": "", "bear_argument": "", "verdict": "Debate skipped",
             }
+
+        # ── Mode async : fire-and-forget, retour immédiat ──
+        async_mode = bool(self.params.get("async_mode", True))
+        dag_id = self.params.get("dag_id", "unknown")
+        cache_key = f"debate_{dag_id}_{self.node_id}"
+
+        if async_mode:
+            from v4.core.async_tasks import dispatch, get_result, is_pending
+
+            cached = get_result(cache_key)
+
+            _inputs_snapshot = dict(inputs)
+            _params_snapshot = dict(self.params)
+
+            def _async_call():
+                return self._run_sync(_inputs_snapshot)
+
+            dispatch(cache_key, _async_call)
+
+            if cached and "error" not in cached:
+                cached["_async"] = True
+                cached["_pending_next"] = is_pending(cache_key)
+                return cached
+            else:
+                return {
+                    "decision": "neutral",
+                    "confidence": 0.5,
+                    "bull_argument": "⏳ Débat en cours...",
+                    "bear_argument": "⏳ Débat en cours...",
+                    "verdict": "L'IA débat, verdict au prochain cycle.",
+                    "_async": True,
+                    "_pending_next": True,
+                }
+
+        return self._run_sync(inputs)
+
+    def _run_sync(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Exécution synchrone du débat (utilisée par async mode en background)."""
+        from v4.nodes.config_loader import load_v4_config
 
         _llm_cfg = load_v4_config(None, "llm", {
             "provider": "deepseek", "model": "deepseek-v4-pro",

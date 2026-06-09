@@ -3855,12 +3855,12 @@ def render_admin_panel():
             # Filtrer
             filtered = all_trades
             if _h_asset != "Tous":
-                filtered = [t for t in filtered if t.get("symbol") == _h_asset]
+                filtered = [tr for tr in filtered if tr.get("symbol") == _h_asset]
             if _h_action != "Toutes":
-                filtered = [t for t in filtered if t.get("action") == _h_action]
+                filtered = [tr for tr in filtered if tr.get("action") == _h_action]
             if _h_status != "Tous":
                 _st = "open" if _h_status == "open" else "closed"
-                filtered = [t for t in filtered if t.get("status") == _st]
+                filtered = [tr for tr in filtered if tr.get("status") == _st]
 
             if not filtered:
                 st.info("Aucune transaction avec ces filtres.")
@@ -3868,11 +3868,11 @@ def render_admin_panel():
 
             # Stats
             n_total = len(filtered)
-            n_open = sum(1 for t in filtered if t.get("status") == "open")
-            n_closed = sum(1 for t in filtered if t.get("status") == "closed")
-            total_pnl = sum(float(t.get("pnl_usd", 0) or 0) for t in filtered if t.get("status") == "closed")
-            wins = sum(1 for t in filtered if t.get("status") == "closed" and float(t.get("pnl_usd", 0) or 0) > 0)
-            losses = sum(1 for t in filtered if t.get("status") == "closed" and float(t.get("pnl_usd", 0) or 0) < 0)
+            n_open = sum(1 for tr in filtered if tr.get("status") == "open")
+            n_closed = sum(1 for tr in filtered if tr.get("status") == "closed")
+            total_pnl = sum(float(tr.get("pnl_usd", 0) or 0) for tr in filtered if tr.get("status") == "closed")
+            wins = sum(1 for tr in filtered if tr.get("status") == "closed" and float(tr.get("pnl_usd", 0) or 0) > 0)
+            losses = sum(1 for tr in filtered if tr.get("status") == "closed" and float(tr.get("pnl_usd", 0) or 0) < 0)
             win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
 
             _hc1, _hc2, _hc3, _hc4, _hc5, _hc6 = st.columns(6)
@@ -3888,19 +3888,19 @@ def render_admin_panel():
             # Tableau
             import pandas as _hpd
             rows = []
-            for t in filtered:
-                pnl = float(t.get("pnl_usd", 0) or 0)
+            for tr in filtered:
+                pnl = float(tr.get("pnl_usd", 0) or 0)
                 rows.append({
-                    "Date": (t.get("timestamp") or "")[:19].replace("T", " "),
-                    "Actif": t.get("symbol", "—"),
-                    "Action": (t.get("action") or "").upper(),
-                    "Entrée": f"${float(t.get('entry_price', 0)):,.2f}" if t.get("entry_price") else "—",
-                    "SL": f"${float(t.get('stop_loss', 0)):,.2f}" if t.get("stop_loss") else "—",
-                    "TP": f"${float(t.get('take_profit', 0)):,.2f}" if t.get("take_profit") else "—",
-                    "Taille": f"${float(t.get('size_usd', 0)):,.0f}" if t.get("size_usd") else "—",
-                    "P&L": f"${pnl:+,.2f}" if t.get("status") == "closed" else "⏳",
-                    "Statut": "✅ fermé" if t.get("status") == "closed" else "⏳ ouvert",
-                    "DAG": t.get("dag_id", "—"),
+                    "Date": (tr.get("timestamp") or "")[:19].replace("T", " "),
+                    "Actif": tr.get("symbol", "—"),
+                    "Action": (tr.get("action") or "").upper(),
+                    "Entrée": f"${float(tr.get('entry_price', 0)):,.2f}" if tr.get("entry_price") else "—",
+                    "SL": f"${float(tr.get('stop_loss', 0)):,.2f}" if tr.get("stop_loss") else "—",
+                    "TP": f"${float(tr.get('take_profit', 0)):,.2f}" if tr.get("take_profit") else "—",
+                    "Taille": f"${float(tr.get('size_usd', 0)):,.0f}" if tr.get("size_usd") else "—",
+                    "P&L": f"${pnl:+,.2f}" if tr.get("status") == "closed" else "⏳",
+                    "Statut": "✅ fermé" if tr.get("status") == "closed" else "⏳ ouvert",
+                    "DAG": tr.get("dag_id", "—"),
                 })
 
             _h_df = _hpd.DataFrame(rows)

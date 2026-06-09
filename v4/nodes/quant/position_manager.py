@@ -61,13 +61,14 @@ class PositionManager(Node):
             return lowest + atr_mult * atr
 
     def _calc_trailing_sl(
-        self, price: float, action: str, atr: float, atr_mult: float
+        self, price: float, action: str, atr: float, trail_mult: float
     ) -> float:
-        """Trailing stop : SL = prix ± K×ATR."""
+        """Trailing stop : SL = prix ± trail_mult×ATR.
+        trail_mult est typiquement 0.5–1.0 (plus serré que chandelier)."""
         if action == "long":
-            return price - atr_mult * atr
+            return price - trail_mult * atr
         else:
-            return price + atr_mult * atr
+            return price + trail_mult * atr
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         symbol = self.params.get("symbol", "BTC/USDT")
@@ -123,6 +124,8 @@ class PositionManager(Node):
         # Appliquer le facteur de volatilité aux paramètres de sortie
         min_atr_dist = float(self.params.get("min_atr_dist", 0.5))
         _exit_mult = atr_mult * vol_factor
+        # Trailing : utiliser un multiplicateur plus serré (min_atr_dist ou trail_mult)
+        _trail_mult = float(self.params.get("trail_mult", min_atr_dist))
         _min_dist = min_atr_dist * vol_factor
 
         # Prix actuels (5m pour détection intra-barre)
@@ -143,7 +146,7 @@ class PositionManager(Node):
             if strategy == "chandelier":
                 new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, _exit_mult)
             else:
-                new_sl = self._calc_trailing_sl(current_close, action, atr, _exit_mult)
+                new_sl = self._calc_trailing_sl(current_close, action, atr, _trail_mult)
 
             logger.info(
                 "posmgr [%s] %s %s: entry=%.2f cur_sl=%.2f new_sl=%.2f atr=%.2f vol=%.1f",

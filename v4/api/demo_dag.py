@@ -33,8 +33,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         # ── Colonne 1c : Position Manager (trailing exit) ──
         NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
                  params={"symbol": symbol, "exit_strategy": "trailing",
-                          "atr_mult": 1.5, "min_atr_dist": 0.5,
-                          "chandelier_lookback": 12}),
+                          "atr_mult": 3.0, "trail_mult": 0.5,
+                          "min_atr_dist": 0.5, "chandelier_lookback": 12}),
         # ── Colonne 2 : Features techniques ──
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
         # ── Colonne 3 : Normalisation ──

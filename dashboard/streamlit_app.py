@@ -2447,7 +2447,7 @@ def render_trades_list(trades: list[dict]):
 
 @st.fragment
 def render_trades_list_sortable(trades: list[dict]):
-    """Historique global des trades — triable et cliquable pour voir le détail."""
+    """Historique global des trades — thème sombre/clair automatique."""
     st.markdown(
         f'<h3 style="margin:16px 0 12px;font-size:18px;">'
         f'<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
@@ -2458,6 +2458,16 @@ def render_trades_list_sortable(trades: list[dict]):
         st.info(t("no_trades"))
         return
 
+    theme = _get_theme()
+    if theme == "light":
+        tbl_bg   = "#ffffff"; tbl_fg   = "#212529"
+        head_bg  = "#f1f3f5"; row_alt  = "#f8f9fa"
+        border   = "#dee2e6"; sep      = "#e9ecef"
+    else:
+        tbl_bg   = "#161b22"; tbl_fg   = "#e6edf3"
+        head_bg  = "#0d1117"; row_alt  = "#1b2129"
+        border   = "rgba(255,255,255,0.08)"; sep = "rgba(255,255,255,0.05)"
+
     col_date   = t("col_date")
     col_asset  = t("col_asset")
     col_action = t("col_action")
@@ -2467,11 +2477,22 @@ def render_trades_list_sortable(trades: list[dict]):
     col_score  = t("col_score")
 
     import json as _json_tr
-    rows = []
-    for trade in trades:
+    cols = [col_date, col_asset, col_action, "Signal", col_entry, col_size, "SL", "TP", col_pnl, col_score]
+    header_cells = "".join(
+        f'<th style="padding:9px 12px;font-size:12px;font-weight:600;'
+        f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
+        f'opacity:.65;background:{head_bg};white-space:nowrap;'
+        f'border-bottom:2px solid {border};">{c}</th>'
+        for c in cols
+    )
+
+    rows_html = ""
+    for i, trade in enumerate(trades):
         pnl    = trade.get("result_24h")
         action = trade.get("action", "")
-        # Extraire signal_detail depuis decision_context
+        bg     = row_alt if i % 2 == 1 else tbl_bg
+
+        # Extraire signal_detail
         _sig_detail = ""
         _raw_dc = trade.get("decision_context")
         if _raw_dc:
@@ -2480,74 +2501,68 @@ def render_trades_list_sortable(trades: list[dict]):
                 _sig_detail = ((_dc.get("agents") or {}).get("synthesis") or {}).get("signal_detail") or ""
             except Exception:
                 pass
-        rows.append({
-            col_date:   trade.get("timestamp", "")[:16].replace("T", " "),
-            col_asset:  trade.get("asset", "—"),
-            col_action: action,
-            "Signal":   _sig_detail,
-            col_entry:  trade.get("entry_price"),
-            col_size:   trade.get("position_size_usd") if trade.get("position_size_usd") is not None else trade.get("position_size"),
-            "SL":       trade.get("sl_price"),
-            "TP":       trade.get("tp_price"),
-            col_pnl:    pnl,
-            col_score:  trade.get("score"),
-        })
 
-    df = pd.DataFrame(rows)
+        # Couleurs action
+        if action == "BUY":
+            action_html = f'<span style="color:#2ecc71;font-weight:bold;">BUY</span>'
+        elif action == "SELL":
+            action_html = f'<span style="color:#e74c3c;font-weight:bold;">SELL</span>'
+        else:
+            action_html = f'<span style="color:{tbl_fg};">{action}</span>'
 
-    def _action_color(v):
-        if v == "BUY":  return "color: #2ecc71; font-weight: bold"
-        if v == "SELL": return "color: #e74c3c; font-weight: bold"
-        return ""
+        # Couleur Signal
+        if _sig_detail in ("STRONG_BUY",):
+            sig_html = f'<span style="color:#00e676;font-weight:700;">{_sig_detail}</span>'
+        elif _sig_detail in ("BUY",):
+            sig_html = f'<span style="color:#69f0ae;">{_sig_detail}</span>'
+        elif _sig_detail in ("HOLD",):
+            sig_html = f'<span style="color:#ffb74d;">{_sig_detail}</span>'
+        elif _sig_detail in ("SELL",):
+            sig_html = f'<span style="color:#ef9a9a;">{_sig_detail}</span>'
+        elif _sig_detail in ("STRONG_SELL",):
+            sig_html = f'<span style="color:#e53935;font-weight:700;">{_sig_detail}</span>'
+        else:
+            sig_html = f'<span style="opacity:0.4;">{_sig_detail or "—"}</span>'
 
-    def _signal_color(v):
-        if v in ("STRONG_BUY",):  return "color: #00e676; font-weight: 700"
-        if v in ("BUY",):         return "color: #69f0ae"
-        if v in ("HOLD",):        return "color: #ffb74d"
-        if v in ("SELL",):        return "color: #ef9a9a"
-        if v in ("STRONG_SELL",): return "color: #e53935; font-weight: 700"
-        return "opacity: 0.4"
-
-    def _pnl_color(v):
+        # PnL
         try:
-            return "color: #2ecc71; font-weight: 600" if float(v) >= 0 else "color: #e74c3c; font-weight: 600"
-        except Exception:
-            return ""
+            pnl_val = float(pnl) if pnl is not None else None
+        except (ValueError, TypeError):
+            pnl_val = None
+        if pnl_val is None:
+            pnl_str = f'<span style="opacity:.45;">{t("pending")}</span>'
+        elif pnl_val >= 0:
+            pnl_str = f'<span style="color:#2ecc71;font-weight:600;">${pnl_val:+,.2f}</span>'
+        else:
+            pnl_str = f'<span style="color:#e74c3c;font-weight:600;">${pnl_val:+,.2f}</span>'
 
-    styled = (
-        df.style
-        .map(_action_color, subset=[col_action])
-        .map(_signal_color, subset=["Signal"])
-        .map(_pnl_color, subset=[col_pnl])
-    )
+        cells = [
+            trade.get("timestamp", "")[:16].replace("T", " "),
+            trade.get("asset", "—"),
+            action_html,
+            sig_html,
+            f'${trade.get("entry_price", 0):,.2f}' if trade.get("entry_price") else "—",
+            f'${(trade.get("position_size_usd") if trade.get("position_size_usd") is not None else trade.get("position_size", 0)):,.0f}'
+                if (trade.get("position_size_usd") is not None or trade.get("position_size")) else "—",
+            f'${trade.get("sl_price", 0):,.2f}' if trade.get("sl_price") else "—",
+            f'${trade.get("tp_price", 0):,.2f}' if trade.get("tp_price") else "—",
+            pnl_str,
+            f'{trade.get("score", 0):.0f}/100',
+        ]
+        td_style = (f'padding:8px 12px;font-size:13px;color:{tbl_fg};'
+                    f'white-space:nowrap;border-bottom:1px solid {sep};')
+        tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
+        rows_html += f'<tr style="background:{bg};">{tds}</tr>'
 
-    st.caption(t("click_row_detail"))
-    event = st.dataframe(
-        styled,
-        use_container_width=True,
-        height=min(480, 36 * (len(trades) + 2)),
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        column_config={
-            col_entry: st.column_config.NumberColumn(format="$%.2f"),
-            col_size:  st.column_config.NumberColumn(format="$%.0f"),
-            "SL":      st.column_config.NumberColumn(format="$%.2f"),
-            "TP":      st.column_config.NumberColumn(format="$%.2f"),
-            col_pnl:   st.column_config.NumberColumn(format="$%.2f"),
-            col_score: st.column_config.NumberColumn(format="%.0f /100"),
-        },
-    )
-
-    selected_rows = []
-    try:
-        selected_rows = event.selection.rows or []
-    except Exception:
-        pass
-    if selected_rows:
-        idx = selected_rows[0]
-        if 0 <= idx < len(trades):
-            _show_trade_detail_dialog(trades[idx])
+    html = f"""
+<div style="overflow-y:auto;max-height:520px;border:1px solid {border};
+            border-radius:10px;background:{tbl_bg};margin-bottom:24px;">
+  <table style="border-collapse:collapse;width:100%;min-width:900px;">
+    <thead><tr>{header_cells}</tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+</div>"""
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_last_decision(last_cycle: dict | None):

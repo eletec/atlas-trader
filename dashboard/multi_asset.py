@@ -381,6 +381,28 @@ function poll(){{
 }}
 setInterval(poll,3000);
 poll();
+// Poll DAG status every 30s for position/trend updates
+function pollDag(){{
+  fetch(apiUrl()+'/dag/status').then(function(r){{return r.json()}}).then(function(dags){{
+    dags.forEach(function(dag){{
+      var sym=dag.asset;if(!sym)return;
+      var uid=sym.replace(/\\//g,'_');
+      var posEl=document.getElementById('pos_'+uid);
+      var results=dag.last_results||{{}};
+      var pfx=sym.split('/')[0].toLowerCase().slice(0,3);
+      // Position
+      var pm=results[pfx+'_posmgr'];
+      if(pm&&pm.outputs&&pm.outputs.open_positions&&pm.outputs.open_positions.length){{
+        var p0=pm.outputs.open_positions[0];
+        POSDATA[sym]={{action:p0.action,entry:p0.entry_price,size:p0.size_usd}};
+      }}
+      // Trigger price poll to refresh PnL
+      poll();
+    }});
+  }}).catch(function(){{}});
+}}
+setInterval(pollDag,30000);
+pollDag();
 </script>
 </body></html>""", height=200)
 

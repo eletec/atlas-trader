@@ -61,7 +61,7 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_risk", type="RiskATR",
                  params={"sl_mult": 2.0, "tp_mult": 4.0, "fraction": 0.02,
                           "risk_pct": 1.0, "capital": 10000}),
-        # ── Colonne 8 : PaperTrader LONG ──
+        # ── Colonne 8 : PaperTrader ──
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id}),
         # ── Colonne 8b : Record DB ──
@@ -80,23 +80,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         NodeSpec(id=f"{pfx}_debate", type="DebateNode",
                  params={"temperature": 0.4, "max_tokens": 512,
                           "timeout_s": 90}),
-
-        # ═══ Lane SHORT forcée (démo) ═══
-        NodeSpec(id=f"{pfx}_short_sig", type="SignalConstant",
-                 params={"signal": "short"}),
-        NodeSpec(id=f"{pfx}_short_gate", type="DirectionGate",
-                 params={"allow_long": False, "allow_short": True}),
-        NodeSpec(id=f"{pfx}_short_risk", type="RiskATR",
-                 params={"sl_mult": 3.0, "tp_mult": 6.0, "fraction": 0.015,
-                          "risk_pct": 1.0, "capital": 10000}),
-        NodeSpec(id=f"{pfx}_short_paper", type="PaperTrader",
-                 params={"symbol": symbol, "dag_id": dag_id}),
-        NodeSpec(id=f"{pfx}_short_alert", type="AlertOnly",
-                 params={"channels": ["log"]}),
     ]
 
     edges = [
-        # ── Lane LONG ──
+        # ── Lane unifiée (XGBoost décide long/short/flat) ──
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_data", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_5m",
@@ -137,25 +124,6 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_paper", target_port="max_positions"),
         EdgeSpec(source_node=f"{pfx}_risk", source_port="decision",
                  target_node=f"{pfx}_record", target_port="decision"),
-        # ── Lane SHORT ──
-        EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
-                 target_node=f"{pfx}_short_risk", target_port="ohlcv_1h"),
-        EdgeSpec(source_node=f"{pfx}_asset", source_port="capital",
-                 target_node=f"{pfx}_short_risk", target_port="capital"),
-        EdgeSpec(source_node=f"{pfx}_short_sig", source_port="signal",
-                 target_node=f"{pfx}_short_gate", target_port="signal"),
-        EdgeSpec(source_node=f"{pfx}_trend", source_port="trend",
-                 target_node=f"{pfx}_short_gate", target_port="trend"),
-        EdgeSpec(source_node=f"{pfx}_short_gate", source_port="signal",
-                 target_node=f"{pfx}_short_risk", target_port="signal"),
-        EdgeSpec(source_node=f"{pfx}_short_risk", source_port="decision",
-                 target_node=f"{pfx}_short_paper", target_port="decision"),
-        EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
-                 target_node=f"{pfx}_short_paper", target_port="symbol"),
-        EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
-                 target_node=f"{pfx}_short_paper", target_port="max_positions"),
-        EdgeSpec(source_node=f"{pfx}_short_risk", source_port="decision",
-                 target_node=f"{pfx}_short_alert", target_port="decision"),
         # ── AI Analyst ──
         EdgeSpec(source_node=f"{pfx}_risk", source_port="decision",
                  target_node=f"{pfx}_ai", target_port="decision"),

@@ -14,6 +14,7 @@ Pas de TP fixe — on laisse courir tant que la tendance est favorable.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import numpy as np
@@ -171,22 +172,69 @@ class PositionManager(Node):
                 new_sl = max(new_sl, current_close + _min_dist * atr)
                 hit_raw = current_sl > 0 and current_high >= current_sl
 
-            # ── Multi-TF filter : ne fermer que si la tendance 1h confirme ──
+            # ── Multi-TF : modulateur adaptatif du SL (remplace l'ancien bloqueur) ──
+            # Le 1h trend ne bloque PLUS la sortie. Il ajuste l'agressivité du trailing :
+            #   - confirmé (short+bearish, long+bullish) → SL ×0.7 (serré, protège le profit)
+            #   - neutre                                     → SL ×1.0
+            #   - opposé  (short+bullish, long+bearish)     → SL ×1.5 (large, laisse respirer)
             use_multi_tf = bool(self.params.get("use_multi_tf", True))
             hit = hit_raw
-            if hit_raw and use_multi_tf and ohlcv_1h is not None and len(ohlcv_1h) >= 55:
+            _tf_mult = 1.0
+            _tf_label = "neutral"
+            if use_multi_tf and ohlcv_1h is not None and len(ohlcv_1h) >= 55:
                 close_1h = ohlcv_1h["close"]
                 sma20 = float(close_1h.rolling(20).mean().iloc[-1])
                 sma50 = float(close_1h.rolling(50).mean().iloc[-1])
                 trend_1h = "bullish" if sma20 > sma50 else "bearish"
-                # Ne fermer un SHORT que si la tendance 1h passe bullish
-                # Ne fermer un LONG que si la tendance 1h passe bearish
-                if action == "short" and trend_1h != "bullish":
-                    hit = False
-                    logger.info("posmgr multi-TF: SL hit but 1h trend still %s → HOLD", trend_1h)
-                elif action == "long" and trend_1h != "bearish":
-                    hit = False
-                    logger.info("posmgr multi-TF: SL hit but 1h trend still %s → HOLD", trend_1h)
+                if action == "short":
+                    if trend_1h == "bearish":
+                        _tf_mult = 0.7; _tf_label = "confirmed"
+                    else:
+                        _tf_mult = 1.5; _tf_label = "opposed"
+                else:  # long
+                    if trend_1h == "bullish":
+                        _tf_mult = 0.7; _tf_label = "confirmed"
+                    else:
+                        _tf_mult = 1.5; _tf_label = "opposed"
+                # Recalculer le SL avec le modulateur de tendance
+                _trail_adj = _trail_mult * _tf_mult
+                if strategy == "chandelier":
+                    new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, _exit_mult * _tf_mult)
+                else:
+                    new_sl = self._calc_trailing_sl(current_close, action, atr, _trail_adj)
+                # Ré-appliquer les contraintes de non-régression avec le nouveau SL
+                if action == "long":
+                    new_sl = max(new_sl, current_sl) if current_sl > 0 else max(new_sl, 0.01)
+                    new_sl = min(new_sl, current_close - _min_dist * atr)
+                else:
+                    if current_sl > 0:
+                        new_sl = min(new_sl, current_sl)
+                    new_sl = max(new_sl, current_close + _min_dist * atr)
+                logger.info("posmgr multi-TF: trend_1h=%s action=%s → SL×%.1f (%s)", trend_1h, action, _tf_mult, _tf_label)
+
+            # ── Time-stop : fermer les positions dormantes (>48h, <0.5% profit) ──
+            if not hit:
+                ts_str = pos.get("timestamp", "")
+                if ts_str:
+                    try:
+                        opened_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        age = datetime.now(timezone.utc) - opened_at
+                        max_age_h = float(self.params.get("time_stop_hours", 48))
+                        min_profit_pct = float(self.params.get("time_stop_min_profit_pct", 0.5))
+                        if age > timedelta(hours=max_age_h):
+                            if action == "long":
+                                unreal_pnl_pct = (current_close - entry) / entry * 100
+                            else:
+                                unreal_pnl_pct = (entry - current_close) / entry * 100
+                            if unreal_pnl_pct < min_profit_pct:
+                                hit = True
+                                new_sl = current_close  # sortie au marché
+                                logger.info(
+                                    "posmgr time-stop: %s open %.1fh, pnl=%.2f%% < %.1f%% → CLOSE",
+                                    trade_id, age.total_seconds()/3600, unreal_pnl_pct, min_profit_pct,
+                                )
+                    except (ValueError, OSError):
+                        pass
 
             # ── Percent giveback : tracker le gain max ──
             giveback_pct = float(self.params.get("giveback_pct", 0.0))
@@ -207,7 +255,13 @@ class PositionManager(Node):
                         logger.info("posmgr giveback: gave back %.1f%% → CLOSE", giveback_pct)
 
             if hit:
-                close_price = current_sl
+                # Prix de clôture : SL touché → prix du SL, sinon → prix actuel
+                if hit_raw:
+                    close_price = current_sl
+                elif new_sl and new_sl != current_close:
+                    close_price = new_sl   # giveback SL ou autre SL calculé
+                else:
+                    close_price = current_close  # time-stop → marché
                 if action == "long":
                     pnl = (close_price - entry) / entry * float(pos.get("size_usd", 0))
                 else:
@@ -215,12 +269,14 @@ class PositionManager(Node):
 
                 # Raison détaillée pour les logs
                 reason_parts = [strategy]
-                if use_multi_tf:
-                    reason_parts.append("multiTF")
+                if use_multi_tf and _tf_label != "neutral":
+                    reason_parts.append(f"tf_{_tf_label}")
                 if giveback_pct > 0:
                     reason_parts.append(f"giveback{giveback_pct:.0f}%")
                 if vol_factor > 1.0:
                     reason_parts.append(f"vol{vol_factor:.1f}x")
+                if hit and not hit_raw:
+                    reason_parts.append("time_stop")
                 reason = "+".join(reason_parts)
 
                 close_position(trade_id, close_price, round(pnl, 4), reason)

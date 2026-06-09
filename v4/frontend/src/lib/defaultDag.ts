@@ -1,22 +1,17 @@
 /**
  * v4/frontend/src/lib/defaultDag.ts
  *
- * DAG démo par défaut — utilise TOUS les nœuds V4 dans 2 lanes.
+ * DAG démo par défaut — pipeline quant unifié, XGBoost décide long/short/flat.
  *
- * Lane 1 (LONG) : pipeline quant complet avec TrendFilter + DirectionGate auto
- * Lane 2 (SHORT forcé) : SignalConstant + DirectionGate SHORT-only + AlertOnly
- *
- * Layout : colonnes espacées de 280px, lanes espacées de 200px.
+ * Layout : colonnes espacées de 280px.
  */
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
 
 const COL_W = 280;
-const ROW_H = 200;
 
-// Positions par colonne (x) et lane (y)
+// Positions par colonne (x)
 const X = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => 50 + i * COL_W);
 const Y_TOP = 50;
-const Y_BOT = Y_TOP + ROW_H;
 
 interface NodeSpec {
   id: string;
@@ -46,7 +41,7 @@ function makeNode(spec: NodeSpec): RFNode {
 
 const NODES_SPEC: NodeSpec[] = [
   // ═══════════════════════════════════════════════════════════════
-  // LANE 1 — Pipeline Quant complet (LONG autorisé, SHORT filtré)
+  // Pipeline Quant unifié — XGBoost décide long/short/flat
   // ═══════════════════════════════════════════════════════════════
 
   // Col 0 : Actif
@@ -131,40 +126,10 @@ const NODES_SPEC: NodeSpec[] = [
     },
     inputPorts: ["decision", "regime", "trend"], outputPorts: ["response", "parsed", "tokens_used", "model", "duration_ms"],
   },
-
-  // ═══════════════════════════════════════════════════════════════
-  // LANE 2 — SHORT forcé (démo SignalConstant + DirectionGate)
-  // ═══════════════════════════════════════════════════════════════
-
-  // Col 5 : Signal fixe SHORT
-  {
-    id: "short_signal", type: "SignalConstant", x: X[5], y: Y_BOT, label: "SHORT Forcé",
-    params: { signal: "short" }, inputPorts: [], outputPorts: ["signal", "prob_up"],
-  },
-
-  // Col 6 : Gate SHORT-only
-  {
-    id: "short_gate", type: "DirectionGate", x: X[6], y: Y_BOT, label: "Gate SHORT-only",
-    params: { allow_long: false, allow_short: true },
-    inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"],
-  },
-
-  // Col 7 : Risk SHORT
-  {
-    id: "short_risk", type: "RiskATR", x: X[7], y: Y_BOT, label: "Risk ATR (3:1 SHORT)",
-    params: { sl_mult: 3.0, tp_mult: 6.0, fraction: 0.003, capital: 10000 },
-    inputPorts: ["signal", "ohlcv_1h", "capital"], outputPorts: ["decision"],
-  },
-
-  // Col 8 : Alerte
-  {
-    id: "short_alert", type: "AlertOnly", x: X[8], y: Y_BOT, label: "Alert (Telegram)",
-    params: { channels: ["log", "telegram"] }, inputPorts: ["decision"], outputPorts: [],
-  },
 ];
 
 const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: string }> = [
-  // ── Lane 1 : Pipeline complet ──────────────────────────────────
+  // ── Pipeline unifié ─────────────────────────────────────────
   { src: "btc_asset", dst: "btc_data", srcPort: "symbol", dstPort: "symbol" },
 
   // Data → Features
@@ -196,18 +161,6 @@ const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: 
   { src: "btc_risk", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "symbol", dstPort: "symbol" },
   { src: "btc_risk", dst: "btc_record", srcPort: "decision", dstPort: "decision" },
-
-  // ── Lane 2 : SHORT forcé ──────────────────────────────────────
-  // SignalConstant → Gate SHORT
-  { src: "short_signal", dst: "short_gate", srcPort: "signal", dstPort: "signal" },
-
-  // Gate → Risk
-  { src: "short_gate", dst: "short_risk", srcPort: "signal", dstPort: "signal" },
-  { src: "btc_data", dst: "short_risk", srcPort: "ohlcv_1h", dstPort: "ohlcv_1h" },
-  { src: "btc_asset", dst: "short_risk", srcPort: "capital", dstPort: "capital" },
-
-  // Risk → Alerte
-  { src: "short_risk", dst: "short_alert", srcPort: "decision", dstPort: "decision" },
 
   // ── Lane 3 : AI Analyst ────────────────────────────────────────
   { src: "btc_risk", dst: "ai_analyst", srcPort: "decision", dstPort: "decision" },

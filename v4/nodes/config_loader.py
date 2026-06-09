@@ -19,20 +19,41 @@ _cache_mtime: float = 0.0
 
 
 def _get_settings() -> dict:
-    """Charge settings.yaml avec cache (invalidation si fichier modifié)."""
+    """Charge settings.yaml + secrets.yaml avec cache (invalidation si fichier modifié)."""
     global _cache, _cache_mtime
     settings_path = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
+    secrets_path = Path(__file__).resolve().parent.parent.parent / "config" / "secrets.yaml"
     try:
         mtime = settings_path.stat().st_mtime if settings_path.exists() else 0
+        # aussi vérifier secrets.yaml
+        if secrets_path.exists():
+            mtime = max(mtime, secrets_path.stat().st_mtime)
         if _cache is not None and mtime == _cache_mtime:
             return _cache
         import yaml
-        with settings_path.open("r", encoding="utf-8") as fh:
-            _cache = yaml.safe_load(fh) or {}
+        cfg: dict = {}
+        if settings_path.exists():
+            with settings_path.open("r", encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+        # Fusionner secrets.yaml (priorité sur settings.yaml)
+        if secrets_path.exists():
+            with secrets_path.open("r", encoding="utf-8") as fh:
+                secrets = yaml.safe_load(fh) or {}
+            _deep_merge(cfg, secrets)
+        _cache = cfg
         _cache_mtime = mtime
         return _cache
     except Exception:
         return _cache or {}
+
+
+def _deep_merge(base: dict, override: dict) -> None:
+    """Fusionne override dans base (modifie base in-place, priorité override)."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
 
 
 def load_v4_config(symbol: str | None, section: str, defaults: dict[str, Any] | None = None) -> dict[str, Any]:

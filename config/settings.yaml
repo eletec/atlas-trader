@@ -516,7 +516,7 @@ llm:
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
-  deepseek_api_key: [REDACTED]
+  # deepseek_api_key → voir config/secrets.yaml
 post_mortem:
   enabled: true
   delay_hours: 24

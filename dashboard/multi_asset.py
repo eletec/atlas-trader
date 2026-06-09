@@ -242,7 +242,7 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live — polling AJAX toutes les 3s, pas de refresh page."""
+    """Grille de prix live — polling AJAX 3s (prix+PnL) + 30s (DAG)."""
     import streamlit as st
     import json as _json
 
@@ -254,18 +254,15 @@ def render_global_live_prices() -> None:
         dag_assets = ["BTC/USDT"]
 
     prices = _fetch_v4_prices()
+    st.markdown("### 📡 Prix temps réel")
 
-    st.markdown(f"### 📡 Prix temps réel")
-
-    # Construire les cartes HTML avec data-attrs pour le JS
     cards = ""
-    pos_data = {}  # sym → {action, entry, size}
+    pos_data = {}
     for asset in dag_assets:
         icon = _asset_icon(asset)
         pdata = prices.get(asset, {})
         price = pdata.get("price")
         price_str = _fmt_price(price)
-        init_price = price or 0
 
         dag = next((d for d in dags if d.get("asset") == asset), None)
         trend_label = sig_label = pos_html = "—"
@@ -280,45 +277,37 @@ def render_global_live_prices() -> None:
             trend_label = trend.upper() if trend else "—"
             sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
 
-            # Position ouverte ?
             pm = results.get(f"{pfx}_posmgr", {})
             open_pos = pm.get("outputs", {}).get("open_positions", []) if isinstance(pm, dict) else []
             if isinstance(open_pos, list) and open_pos:
                 p0 = open_pos[0] if isinstance(open_pos[0], dict) else {}
                 p_action = p0.get("action", "")
                 p_entry = p0.get("entry_price", 0)
-                p_size = p0.get("size_usd", 0)
-                pos_data[asset] = {"action": p_action, "entry": p_entry, "size": p_size}
-                # PnL latent initial
+                pos_data[asset] = {"action": p_action, "entry": p_entry}
                 if p_entry and price:
-                    if p_action == "short":
-                        pnl_pct = (p_entry - price) / p_entry * 100
-                    else:
-                        pnl_pct = (price - p_entry) / p_entry * 100
-                    pnl_col = "#2ecc71" if pnl_pct >= 0 else "#e74c3c"
-                    pos_html = f'<span style="color:{pnl_col}">{p_action.upper()} {pnl_pct:+.1f}%</span>'
+                    pnl_pct = ((p_entry - price) if p_action == "short" else (price - p_entry)) / p_entry * 100
+                    c = "#2ecc71" if pnl_pct >= 0 else "#e74c3c"
+                    pos_html = f'<span style="color:{c}">{p_action.upper()} {pnl_pct:+.1f}%</span>'
                 else:
                     pos_html = p_action.upper()
 
         uid = asset.replace("/", "_")
         cards += (
-            f'<div class="px-card" id="card_{uid}" data-init="{init_price}"'
-            f' style="display:inline-block;text-align:center;'
-            f'padding:10px 16px;margin:4px;border-radius:10px;min-width:140px;'
-            f'border:1px solid rgba(255,255,255,0.08);">'
+            f'<div class="px-card" id="card_{uid}"'
+            f' style="display:inline-block;text-align:center;padding:10px 16px;margin:4px;'
+            f'border-radius:10px;min-width:140px;border:1px solid rgba(255,255,255,0.08);">'
             f'<div style="font-size:18px;">{icon}</div>'
             f'<div style="font-size:11px;opacity:0.6;">{asset}</div>'
-            f'<div class="px-price" id="px_{uid}" style="font-size:22px;font-weight:700;'
-            f'font-variant-numeric:tabular-nums;">{price_str}</div>'
+            f'<div class="px-price" id="px_{uid}" style="font-size:22px;font-weight:700;">{price_str}</div>'
             f'<div class="px-chg" id="chg_{uid}" style="font-size:12px;margin:2px 0;font-weight:600;">—</div>'
             f'<div class="px-pos" id="pos_{uid}" style="font-size:12px;font-weight:600;">{pos_html}</div>'
             f'<div class="px-info" id="info_{uid}" style="font-size:10px;opacity:0.6;margin-top:2px;">{trend_label} | {sig_label}</div>'
             f'</div>'
         )
 
-    symbols_js = _json.dumps(dag_assets)
-    pos_data_js = _json.dumps(pos_data)
-    api_url_js  = _json.dumps(_PUBLIC_API_URL)
+    sym_js   = _json.dumps(dag_assets)
+    pos_js   = _json.dumps(pos_data)
+    api_js   = _json.dumps(_PUBLIC_API_URL)
 
     st.components.v1.html(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
@@ -327,92 +316,58 @@ body{{margin:0;padding:6px;font-family:system-ui,sans-serif;background:transpare
 .px-card.up{{background:rgba(46,204,113,.12)!important;}}
 .px-card.dn{{background:rgba(231,76,60,.12)!important;}}
 </style></head><body>
-<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">
-{cards}
-</div>
+<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">{cards}</div>
 <script>
-var SYMBOLS={symbols_js};
-var POSDATA={pos_data_js};
-var API_URL={api_url_js};
-var LAST={{}}, FIRST={{}};
+var S={sym_js},P={pos_js},A={api_js},L={{}},F={{}};
+function f(p){{if(p==null)return'—';if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:4,maximumFractionDigits:4}});}}
+function fp(v){{return(v>=0?'+':'')+v.toFixed(2)+'%';}}
 function poll(){{
-  fetch(API_URL+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(data){{
-  if(p==null)return'—';
-  if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
-  if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});
-  return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:4,maximumFractionDigits:4}});
-}}
-function fmtPct(v){{return(v>=0?'+':'')+v.toFixed(2)+'%';}}
-function poll(){{
-  fetch(apiUrl()+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(data){{
-    SYMBOLS.forEach(function(sym){{
-      var obj=data[sym];if(!obj)return;
-      var p=(typeof obj==='object')?obj.price:obj;
-      if(!p)return;
-      var uid=sym.replace(/\\//g,'_');
-      var el=document.getElementById('px_'+uid);
-      var chgEl=document.getElementById('chg_'+uid);
-      var posEl=document.getElementById('pos_'+uid);
-      var card=document.getElementById('card_'+uid);
+  fetch(A+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(d){{
+    S.forEach(function(s){{
+      var o=d[s];if(!o)return;var p=typeof o==='object'?o.price:o;if(!p)return;
+      var u=s.replace(/\\//g,'_');
+      var el=document.getElementById('px_'+u),ce=document.getElementById('chg_'+u);
+      var pe=document.getElementById('pos_'+u),cd=document.getElementById('card_'+u);
       if(!el)return;
-
-      // Variation %
-      var first=FIRST[sym];
-      if(!first){{first=p;FIRST[sym]=p;}}
-      var chgPct=(p-first)/first*100;
-      var arrow=chgPct>0.05?'▲':(chgPct<-0.05?'▼':'◆');
-      var chgCol=chgPct>0.05?'#2ecc71':(chgPct<-0.05?'#e74c3c':'#888');
-      if(chgEl)chgEl.innerHTML='<span style="color:'+chgCol+'">'+arrow+' '+fmtPct(chgPct)+'</span>';
-
-      // Flash
-      var old=LAST[sym];
-      if(old&&p>old){{card.classList.add('up');setTimeout(function(){{card.classList.remove('up')}},400);}}
-      if(old&&p<old){{card.classList.add('dn');setTimeout(function(){{card.classList.remove('dn')}},400);}}
-      LAST[sym]=p;
-      el.textContent=fmt(p);
-
-      // Position PnL latent
-      var pos=POSDATA[sym];
-      if(pos&&posEl){{
-        var pnlPct=pos.action==='short'?(pos.entry-p)/pos.entry*100:(p-pos.entry)/pos.entry*100;
-        var col=pnlPct>=0?'#2ecc71':'#e74c3c';
-        posEl.innerHTML='<span style="color:'+col+'">'+pos.action.toUpperCase()+' '+((pnlPct>=0)?'+':'')+pnlPct.toFixed(1)+'%</span>';
+      var fr=F[s];if(!fr){{fr=p;F[s]=p;}}
+      var cp=(p-fr)/fr*100;
+      var ar=cp>0.05?'▲':(cp<-0.05?'▼':'◆');
+      var cc=cp>0.05?'#2ecc71':(cp<-0.05?'#e74c3c':'#888');
+      if(ce)ce.innerHTML='<span style="color:'+cc+'">'+ar+' '+fp(cp)+'</span>';
+      var oo=L[s];if(oo&&p>oo){{cd.classList.add('up');setTimeout(function(){{cd.classList.remove('up')}},400);}}
+      if(oo&&p<oo){{cd.classList.add('dn');setTimeout(function(){{cd.classList.remove('dn')}},400);}}
+      L[s]=p;el.textContent=f(p);
+      var po=P[s];if(po&&pe){{
+        var pp=po.action==='short'?(po.entry-p)/po.entry*100:(p-po.entry)/po.entry*100;
+        var pc=pp>=0?'#2ecc71':'#e74c3c';
+        pe.innerHTML='<span style="color:'+pc+'">'+po.action.toUpperCase()+' '+(pp>=0?'+':'')+pp.toFixed(1)+'%</span>';
       }}
     }});
   }}).catch(function(){{}});
 }}
-setInterval(poll,3000);
-poll();
-// Poll DAG status every 30s for position/trend updates
-function pollDag(){{
-  fetch(apiUrl()+'/dag/status').then(function(r){{return r.json()}}).then(function(dags){{
-    dags.forEach(function(dag){{
-      var sym=dag.asset;if(!sym)return;
-      var uid=sym.replace(/\\//g,'_');
-      var posEl=document.getElementById('pos_'+uid);
-      var infoEl=document.getElementById('info_'+uid);
-      var results=dag.last_results||{{}};
-      var pfx=sym.split('/')[0].toLowerCase().slice(0,3);
-      // Trend + Signal
-      var tn=results[pfx+'_trend'];
-      var sn=results[pfx+'_signal'];
-      var trend='—',signal='—',prob=null;
-      if(tn&&tn.outputs)trend=(tn.outputs.trend||'—').toUpperCase();
-      if(sn&&sn.outputs){{signal=sn.outputs.signal||'—';prob=sn.outputs.prob_up;}}
-      var sigLabel=signal!=='—'&&prob!=null?signal+' '+(prob*100).toFixed(0)+'%':'—';
-      if(infoEl)infoEl.textContent=trend+' | '+sigLabel;
-      // Position
-      var pm=results[pfx+'_posmgr'];
+setInterval(poll,3000);poll();
+function pdag(){{
+  fetch(A+'/dag/status').then(function(r){{return r.json()}}).then(function(ds){{
+    ds.forEach(function(dg){{
+      var s=dg.asset;if(!s)return;var u=s.replace(/\\//g,'_');
+      var ie=document.getElementById('info_'+u);
+      var rs=dg.last_results||{{}},pf=s.split('/')[0].toLowerCase().slice(0,3);
+      var tn=rs[pf+'_trend'],sn=rs[pf+'_signal'];
+      var tr='—',si='—',pb=null;
+      if(tn&&tn.outputs)tr=(tn.outputs.trend||'—').toUpperCase();
+      if(sn&&sn.outputs){{si=sn.outputs.signal||'—';pb=sn.outputs.prob_up;}}
+      var sl=si!=='—'&&pb!=null?si+' '+(pb*100).toFixed(0)+'%':'—';
+      if(ie)ie.textContent=tr+' | '+sl;
+      var pm=rs[pf+'_posmgr'];
       if(pm&&pm.outputs&&pm.outputs.open_positions&&pm.outputs.open_positions.length){{
         var p0=pm.outputs.open_positions[0];
-        POSDATA[sym]={{action:p0.action,entry:p0.entry_price,size:p0.size_usd}};
+        P[s]={{action:p0.action,entry:p0.entry_price}};
       }}
       poll();
     }});
   }}).catch(function(){{}});
 }}
-setInterval(pollDag,30000);
-pollDag();
+setInterval(pdag,30000);pdag();
 </script>
 </body></html>""", height=200)
 

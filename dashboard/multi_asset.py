@@ -367,7 +367,7 @@ function pdag(){{
     }});
   }}).catch(function(){{}});
 }}
-setInterval(pdag,30000);pdag();
+setInterval(pdag,30000);setTimeout(pdag,2000);
 </script>
 </body></html>""", height=200)
 

@@ -118,11 +118,7 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_gate", target_port="prob_up"),
         EdgeSpec(source_node=f"{pfx}_trend", source_port="trend",
                  target_node=f"{pfx}_gate", target_port="trend"),
-        # ── Fusion : IA + microstructure ──
-        EdgeSpec(source_node=f"{pfx}_debate", source_port="decision",
-                 target_node=f"{pfx}_gate", target_port="debate_signal"),
-        EdgeSpec(source_node=f"{pfx}_debate", source_port="confidence",
-                 target_node=f"{pfx}_gate", target_port="debate_conf"),
+        # ── Fusion : microstructure (CrossTF ne crée pas de cycle) ──
         EdgeSpec(source_node=f"{pfx}_crosstf", source_port="signal",
                  target_node=f"{pfx}_gate", target_port="crosstf_signal"),
         EdgeSpec(source_node=f"{pfx}_crosstf", source_port="confidence",

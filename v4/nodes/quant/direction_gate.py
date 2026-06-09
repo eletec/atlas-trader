@@ -108,9 +108,24 @@ class DirectionGate(Node):
             elif trend == "bearish":
                 score -= w_trend
 
-            # ── Débat IA (10%) — depuis cache async ──
+            # ── Débat IA (10%) — lu depuis le cache async (pas d'edge car cyclique) ──
             debate_signal = inputs.get("debate_signal", "")
-            debate_conf = float(inputs.get("debate_conf", 0.5))
+            debate_conf = float(inputs.get("debate_conf", 0.0))
+            # Si pas connecté, tenter de lire le cache async directement
+            if not debate_signal:
+                try:
+                    from v4.core.async_tasks import get_result
+                    dag_id = self.params.get("dag_id", "")
+                    # Déduire le node_id du débat depuis la convention {pfx}_debate
+                    debate_node = self.node_id.replace("_gate", "_debate") if self.node_id.endswith("_gate") else ""
+                    if debate_node:
+                        cache_key = f"debate_{dag_id}_{debate_node}"
+                        cached = get_result(cache_key)
+                        if cached and "error" not in cached:
+                            debate_signal = cached.get("decision", "")
+                            debate_conf = float(cached.get("confidence", 0.5))
+                except Exception:
+                    pass
             if debate_signal == "bullish":
                 score += w_debate * debate_conf
             elif debate_signal == "bearish":

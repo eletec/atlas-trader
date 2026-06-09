@@ -307,9 +307,9 @@ def render_global_live_prices() -> None:
             f'<div style="font-size:11px;opacity:0.6;">{asset}</div>'
             f'<div class="px-price" id="px_{uid}" style="font-size:22px;font-weight:700;'
             f'font-variant-numeric:tabular-nums;">{price_str}</div>'
-            f'<div class="px-chg" id="chg_{uid}" style="font-size:11px;margin:2px 0;">—</div>'
-            f'<div class="px-pos" id="pos_{uid}" style="font-size:10px;opacity:0.7;">{pos_html}</div>'
-            f'<div style="font-size:9px;opacity:0.45;">{trend_label} | {sig_label}</div>'
+            f'<div class="px-chg" id="chg_{uid}" style="font-size:12px;margin:2px 0;font-weight:600;">—</div>'
+            f'<div class="px-pos" id="pos_{uid}" style="font-size:12px;font-weight:600;">{pos_html}</div>'
+            f'<div style="font-size:10px;opacity:0.6;margin-top:2px;">{trend_label} | {sig_label}</div>'
             f'</div>'
         )
 
@@ -382,7 +382,7 @@ function poll(){{
 setInterval(poll,3000);
 poll();
 </script>
-</body></html>""", height=170)
+</body></html>""", height=200)
 
 
 

@@ -77,7 +77,7 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                           "max_tokens": 512, "timeout_s": 60}),
         # ── Colonne 9b : Débat Bull vs Bear ──
         NodeSpec(id=f"{pfx}_debate", type="DebateNode",
-                 params={"temperature": 0.4, "max_tokens": 256,
+                 params={"temperature": 0.4, "max_tokens": 512,
                           "timeout_s": 90}),
 
         # ═══ Lane SHORT forcée (démo) ═══

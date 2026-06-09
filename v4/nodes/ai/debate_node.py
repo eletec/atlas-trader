@@ -97,12 +97,12 @@ class DebateNode(Node):
             "verdict": "str",
         }
 
-    def _call_llm(
+    def _call_llm_raw(
         self, system: str, prompt: str, provider: str, model: str,
         temperature: float, max_tokens: int, ollama_url: str, timeout_s: int,
         api_key: str = "",
-    ) -> dict:
-        """Appelle le LLM et retourne le JSON parsé."""
+    ) -> str:
+        """Appelle le LLM et retourne le texte brut."""
         payload = {
             "model": model,
             "system": system,
@@ -141,9 +141,9 @@ class DebateNode(Node):
                 response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""
         except Exception as exc:
             logger.warning("Debate LLM call failed: %s", exc)
-            return {"call": "neutral", "confidence": 0.0, "argument": f"Error: {exc}"}
+            return f'{{"call": "neutral", "confidence": 0.0, "argument": "Error: {exc}"}}'
 
-        return self._parse_json_response(response_text)
+        return response_text
 
     def _parse_json_response(self, text: str) -> dict:
         """Extrait le JSON d'une réponse LLM."""
@@ -181,7 +181,7 @@ class DebateNode(Node):
         provider = self.params.get("provider") or _llm_cfg.get("provider", "ollama")
         model = self.params.get("model") or _llm_cfg.get("model", "phi4:latest")
         temperature = float(self.params.get("temperature", 0.4))
-        max_tokens = int(self.params.get("max_tokens", 256))
+        max_tokens = int(self.params.get("max_tokens", 512))
         ollama_url = self.params.get("ollama_url", _llm_cfg.get("ollama_url", "http://atlas-v4-ollama:11434"))
         timeout_s = int(self.params.get("timeout_s", 90))
         api_key = _llm_cfg.get("deepseek_api_key", "") or _llm_cfg.get("api_key", "")
@@ -200,17 +200,21 @@ class DebateNode(Node):
         # ── Phase 1 : Bull & Bear ──
         t0 = time.time()
         logger.info("Debate: calling Bull analyst...")
-        bull_result = self._call_llm(
+        bull_raw = self._call_llm_raw(
             BULL_SYSTEM, prompt, provider, model,
             temperature, max_tokens, ollama_url, timeout_s, api_key,
         )
+        bull_result = self._parse_json_response(bull_raw)
+        logger.info("Debate: Bull raw=%.120s", bull_raw)
         logger.info("Debate: Bull → %s (conf=%.2f)", bull_result.get("call"), bull_result.get("confidence", 0))
 
         logger.info("Debate: calling Bear analyst...")
-        bear_result = self._call_llm(
+        bear_raw = self._call_llm_raw(
             BEAR_SYSTEM, prompt, provider, model,
             temperature, max_tokens, ollama_url, timeout_s, api_key,
         )
+        bear_result = self._parse_json_response(bear_raw)
+        logger.info("Debate: Bear raw=%.120s", bear_raw)
         logger.info("Debate: Bear → %s (conf=%.2f)", bear_result.get("call"), bear_result.get("confidence", 0))
 
         # ── Phase 2 : Juge ──
@@ -220,10 +224,11 @@ class DebateNode(Node):
             "Who wins? Respond in JSON."
         )
         logger.info("Debate: calling Judge...")
-        judge_result = self._call_llm(
+        judge_raw = self._call_llm_raw(
             JUDGE_SYSTEM, judge_prompt, provider, model,
             temperature, max_tokens, ollama_url, timeout_s, api_key,
         )
+        judge_result = self._parse_json_response(judge_raw)
 
         winner = judge_result.get("winner", "neutral")
         verdict = judge_result.get("verdict", "Could not decide")

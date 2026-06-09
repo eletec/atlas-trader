@@ -37,7 +37,7 @@ class PaperTrader(Node):
 
     @staticmethod
     def input_schema() -> dict[str, str]:
-        return {"decision": "dict", "symbol": "str"}
+        return {"decision": "dict", "symbol": "str", "max_positions": "int"}
 
     @staticmethod
     def output_schema() -> dict[str, str]:

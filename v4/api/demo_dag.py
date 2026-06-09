@@ -75,6 +75,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                           "user_prompt": "{reflections}\n\nMarket: {inputs}",
                           "temperature": 0.3,
                           "max_tokens": 512, "timeout_s": 60}),
+        # ── Colonne 9b : Débat Bull vs Bear ──
+        NodeSpec(id=f"{pfx}_debate", type="DebateNode",
+                 params={"temperature": 0.4, "max_tokens": 256,
+                          "timeout_s": 90}),
 
         # ═══ Lane SHORT forcée (démo) ═══
         NodeSpec(id=f"{pfx}_short_sig", type="SignalConstant",
@@ -158,6 +162,17 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_ai", target_port="cross_tf_signal"),
         EdgeSpec(source_node=f"{pfx}_reflect", source_port="lessons",
                  target_node=f"{pfx}_ai", target_port="lessons"),
+        # ── Débat Bull vs Bear ──
+        EdgeSpec(source_node=f"{pfx}_risk", source_port="decision",
+                 target_node=f"{pfx}_debate", target_port="decision"),
+        EdgeSpec(source_node=f"{pfx}_regime", source_port="regime",
+                 target_node=f"{pfx}_debate", target_port="regime"),
+        EdgeSpec(source_node=f"{pfx}_trend", source_port="trend",
+                 target_node=f"{pfx}_debate", target_port="trend"),
+        EdgeSpec(source_node=f"{pfx}_crosstf", source_port="signal",
+                 target_node=f"{pfx}_debate", target_port="cross_tf_signal"),
+        EdgeSpec(source_node=f"{pfx}_reflect", source_port="lessons",
+                 target_node=f"{pfx}_debate", target_port="lessons"),
     ]
 
     return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)

@@ -239,102 +239,116 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live enrichie — données V4 (WebSocket Binance + DAG)."""
+    """Grille de prix live — polling AJAX toutes les 3s, pas de refresh page."""
     import streamlit as st
+    import json as _json
 
     dags = _fetch_v4_dags()
     if not dags:
         return
-
-    st.markdown(f"### {'📡 Prix temps réel'}")
-
-    prices = _fetch_v4_prices()
-
-    # Extraire les actifs des DAGs actifs
     dag_assets = list({d.get("asset", "") for d in dags if d.get("asset")})
     if not dag_assets:
         dag_assets = ["BTC/USDT"]
 
-    cols = st.columns(min(len(dag_assets), 5))
-    for i, asset in enumerate(dag_assets):
+    prices = _fetch_v4_prices()
+
+    st.markdown(f"### 📡 Prix temps réel")
+
+    # Construire les cartes HTML
+    cards = ""
+    for asset in dag_assets:
         icon = _asset_icon(asset)
         pdata = prices.get(asset, {})
-        price = pdata.get("price") if pdata else None
+        price = pdata.get("price")
+        price_str = _fmt_price(price)
 
-        with cols[i % len(cols)]:
-            if price and price > 0:
-                # Formater le prix
-                if price >= 1000:
-                    price_str = f"${price:,.0f}"
-                elif price >= 1:
-                    price_str = f"${price:,.2f}"
-                else:
-                    price_str = f"${price:.4f}"
-                st.metric(label=f"{icon} {asset}", value=price_str)
+        dag = next((d for d in dags if d.get("asset") == asset), None)
+        trend_label = "—"
+        sig_label = "—"
+        if dag:
+            pfx = asset.split("/")[0].lower()[:3]
+            results = dag.get("last_results", {})
+            tn = results.get(f"{pfx}_trend", {})
+            trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
+            sn = results.get(f"{pfx}_signal", {})
+            signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
+            prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
+            trend_label = trend.upper() if trend else "—"
+            sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
 
-                # Récupérer le signal/trend du DAG
-                dag = next((d for d in dags if d.get("asset") == asset), None)
-                if dag:
-                    pfx = asset.split("/")[0].lower()[:3]
-                    results = dag.get("last_results", {})
+        uid = asset.replace("/", "_")
+        cards += (
+            f'<div class="px-card" style="display:inline-block;text-align:center;'
+            f'padding:12px 18px;margin:4px;border-radius:10px;min-width:130px;'
+            f'border:1px solid rgba(255,255,255,0.08);">'
+            f'<div style="font-size:20px;">{icon}</div>'
+            f'<div style="font-size:11px;opacity:0.6;">{asset}</div>'
+            f'<div class="px-price" id="px_{uid}" style="font-size:22px;font-weight:700;'
+            f'font-variant-numeric:tabular-nums;">{price_str}</div>'
+            f'<div style="font-size:10px;opacity:0.5;">{trend_label} | {sig_label}</div>'
+            f'</div>'
+        )
 
-                    # Trend
-                    trend_node = results.get(f"{pfx}_trend", {})
-                    if isinstance(trend_node, dict):
-                        trend = trend_node.get("outputs", {}).get("trend", "")
-                    else:
-                        trend = ""
+    symbols_js = _json.dumps(dag_assets)
 
-                    # Signal
-                    signal_node = results.get(f"{pfx}_signal", {})
-                    if isinstance(signal_node, dict):
-                        signal = signal_node.get("outputs", {}).get("signal", "")
-                        prob = signal_node.get("outputs", {}).get("prob_up")
-                    else:
-                        signal = ""
-                        prob = None
+    st.components.v1.html(f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body{{margin:0;padding:6px;font-family:system-ui,sans-serif;background:transparent;color:#e6edf3;}}
+.px-card{{transition:background .3s;}}
+.px-card.up{{background:rgba(46,204,113,.15)!important;}}
+.px-card.dn{{background:rgba(231,76,60,.15)!important;}}
+</style></head><body>
+<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">
+{cards}
+</div>
+<script>
+var SYMBOLS={symbols_js};
+var LAST={{}};
+function apiUrl(){{
+  try{{var h=window.top.location.hostname;if(h)return'http://'+h+':8000';}}catch(e){{}}
+  return'http://192.168.1.80:8000';
+}}
+function fmt(p){{
+  if(p==null)return'—';
+  if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
+  if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});
+  return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:4,maximumFractionDigits:4}});
+}}
+function poll(){{
+  fetch(apiUrl()+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(data){{
+    SYMBOLS.forEach(function(sym){{
+      var obj=data[sym];
+      if(!obj)return;
+      var p=(typeof obj==='object')?obj.price:obj;
+      if(p===undefined)return;
+      var el=document.getElementById('px_'+sym.replace(/\\//g,'_'));
+      if(!el)return;
+      var old=LAST[sym];
+      var card=el.parentElement;
+      if(old&&p>old){{card.classList.add('up');setTimeout(function(){{card.classList.remove('up')}},400);}}
+      if(old&&p<old){{card.classList.add('dn');setTimeout(function(){{card.classList.remove('dn')}},400);}}
+      LAST[sym]=p;
+      el.textContent=fmt(p);
+    }});
+  }}).catch(function(){{}});
+}}
+setInterval(poll,3000);
+poll();
+</script>
+</body></html>""", height=140)
 
-                    # Position ouverte ? (depuis le posmgr)
-                    posmgr_node = results.get(f"{pfx}_posmgr", {})
-                    open_positions = []
-                    if isinstance(posmgr_node, dict):
-                        open_positions = posmgr_node.get("outputs", {}).get("open_positions", [])
-                    if not isinstance(open_positions, list):
-                        open_positions = []
 
-                    # Calculer le PnL latent
-                    pnl_parts = []
-                    for p in open_positions:
-                        entry = p.get("entry_price", 0) if isinstance(p, dict) else 0
-                        action = p.get("action", "") if isinstance(p, dict) else ""
-                        if entry and price:
-                            if action == "long":
-                                pnl_pct = (price - entry) / entry * 100
-                            else:
-                                pnl_pct = (entry - price) / entry * 100
-                            pnl_parts.append(f"{action[:1].upper()}{'+' if pnl_pct >= 0 else ''}{pnl_pct:.1f}%")
 
-                    # Construire la ligne de detail
-                    parts = []
-                    if trend:
-                        parts.append(trend.upper())
-                    if signal:
-                        sig_str = signal
-                        if prob is not None:
-                            sig_str += f" {float(prob):.0%}"
-                        parts.append(sig_str)
-                    if pnl_parts:
-                        parts.append(" | ".join(pnl_parts))
-                    elif open_positions:
-                        parts.append("open")
-                    else:
-                        parts.append("flat")
 
-                    st.caption(" | ".join(parts) if parts else "—")
-            else:
-                st.metric(label=f"{icon} {asset}", value="—")
-                st.caption("connexion...")
-    st.markdown("---")
+def _fmt_price(price: float | None) -> str:
+    """Formate un prix pour affichage."""
+    if price is None:
+        return "—"
+    if price >= 1000:
+        return f"${price:,.0f}"
+    if price >= 1:
+        return f"${price:,.2f}"
+    return f"${price:.4f}"
 
 
 # ---------------------------------------------------------------------------

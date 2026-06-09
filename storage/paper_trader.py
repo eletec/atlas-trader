@@ -31,6 +31,7 @@ def _ensure_table(conn) -> None:
             status          TEXT    DEFAULT 'open', -- open | closed | cancelled
             closed_at       TEXT,
             pnl_usd         REAL    DEFAULT 0,
+            context_json    TEXT,                   -- JSON : décision complète (signal, trend, regime...)
             testnet         INTEGER DEFAULT 1
         )
     """)

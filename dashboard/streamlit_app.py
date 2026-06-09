@@ -3827,103 +3827,114 @@ def render_admin_panel():
             st.success("✅ Reset complet effectué — DAGs arrêtés, trades effacés. Redémarrage en cours...")
             st.balloons()
 
-    elif _atab == "historique":  # Historique des décisions V2
+    elif _atab == "historique":  # Historique des transactions V4
         st.markdown(
             '<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'
-            ' Historique des Décisions V2</h4>',
+            ' Historique des Transactions V4</h4>',
             unsafe_allow_html=True,
         )
         try:
+            from storage.paper_trader import get_v4_trades
             from storage.database import get_connection as _hget_conn
-            _h_col1, _h_col2, _h_col3, _h_col4 = st.columns([2, 1, 1, 1])
-            try:
-                from utils.config import get_active_assets as _h_get_all
-                _h_assets_raw = _h_get_all()
-            except Exception:
-                _h_assets_raw = settings.get("project", {}).get("active_assets", [])
-            _h_assets_list = ["Tous"] + (list(_h_assets_raw) if _h_assets_raw else ["BTC/USDT"])
+
+            # Filtres
+            _h_col1, _h_col2, _h_col3 = st.columns([2, 1, 1])
             with _h_col1:
-                _h_asset = st.selectbox("Actif", _h_assets_list, key="hist_asset")
+                _h_asset = st.selectbox("Actif", ["Tous", "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"], key="hist_asset")
             with _h_col2:
-                _h_action = st.selectbox("Action", ["Toutes", "long", "short", "flat"], key="hist_action")
+                _h_action = st.selectbox("Action", ["Toutes", "long", "short"], key="hist_action")
             with _h_col3:
-                _h_regime = st.selectbox("Régime", ["Tous", "TREND", "RANGE", "PANIC"], key="hist_regime")
-            with _h_col4:
-                _h_n = int(st.number_input("Lignes max", 50, 5000, 500, 50, key="hist_n"))
+                _h_status = st.selectbox("Statut", ["Tous", "open", "closed"], key="hist_status")
 
-            _h_where, _h_params = [], []
+            # Récupérer les trades V4
+            all_trades = get_v4_trades(n=2000)
+            if not all_trades:
+                st.info("📊 Aucune transaction V4 enregistrée. Les trades apparaîtront ici automatiquement.")
+                return
+
+            # Filtrer
+            filtered = all_trades
             if _h_asset != "Tous":
-                _h_where.append("asset = ?"); _h_params.append(_h_asset)
+                filtered = [t for t in filtered if t.get("symbol") == _h_asset]
             if _h_action != "Toutes":
-                _h_where.append("action = ?"); _h_params.append(_h_action)
-            if _h_regime != "Tous":
-                _h_where.append("regime = ?"); _h_params.append(_h_regime)
-            _h_where_sql = ("WHERE " + " AND ".join(_h_where)) if _h_where else ""
+                filtered = [t for t in filtered if t.get("action") == _h_action]
+            if _h_status != "Tous":
+                _st = "open" if _h_status == "open" else "closed"
+                filtered = [t for t in filtered if t.get("status") == _st]
 
-            with _hget_conn() as _hconn:
-                _tbl_exists = _hconn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='v2_decisions'"
-                ).fetchone()
-                if not _tbl_exists:
-                    st.info("📊 La table d'historique sera créée automatiquement au prochain cycle du trader.")
-                else:
-                    _h_stats = _hconn.execute(
-                        f"""SELECT COUNT(*) as total,
-                               SUM(CASE WHEN action='long'  THEN 1 ELSE 0 END) as n_long,
-                               SUM(CASE WHEN action='short' THEN 1 ELSE 0 END) as n_short,
-                               SUM(CASE WHEN action='flat'  THEN 1 ELSE 0 END) as n_flat,
-                               SUM(CASE WHEN regime='TREND' THEN 1 ELSE 0 END) as n_trend,
-                               SUM(CASE WHEN regime='RANGE' THEN 1 ELSE 0 END) as n_range,
-                               SUM(CASE WHEN regime='PANIC' THEN 1 ELSE 0 END) as n_panic
-                           FROM v2_decisions {_h_where_sql}""",
-                        _h_params,
-                    ).fetchone()
-                    if _h_stats and _h_stats[0] > 0:
-                        _h_total = _h_stats[0]
-                        _hc1, _hc2, _hc3, _hc4, _hc5, _hc6, _hc7 = st.columns(7)
-                        _hc1.metric("Total cycles", _h_total)
-                        _hc2.metric("LONG",  f"{_h_stats[1]} ({_h_stats[1]/_h_total*100:.0f}%)")
-                        _hc3.metric("SHORT", f"{_h_stats[2]} ({_h_stats[2]/_h_total*100:.0f}%)")
-                        _hc4.metric("FLAT",  f"{_h_stats[3]} ({_h_stats[3]/_h_total*100:.0f}%)")
-                        _hc5.metric("TREND", f"{_h_stats[4]} ({_h_stats[4]/_h_total*100:.0f}%)")
-                        _hc6.metric("RANGE", f"{_h_stats[5]} ({_h_stats[5]/_h_total*100:.0f}%)")
-                        _hc7.metric("PANIC", f"{_h_stats[6]} ({_h_stats[6]/_h_total*100:.0f}%)")
-                        st.markdown("---")
-                        _h_rows = _hconn.execute(
-                            f"""SELECT ts, asset, bar_ts, close_price, regime, prob_up,
-                                       action, reason, atr_14, sl_price, tp_price, capital
-                                FROM v2_decisions {_h_where_sql}
-                                ORDER BY ts DESC LIMIT ?""",
-                            _h_params + [_h_n],
-                        ).fetchall()
-                        import pandas as _hpd
-                        _h_df = _hpd.DataFrame(
-                            _h_rows,
-                            columns=["Horodatage", "Actif", "Barre", "Prix", "Régime",
-                                     "P(up)", "Action", "Raison", "ATR", "SL", "TP", "Capital"],
+            if not filtered:
+                st.info("Aucune transaction avec ces filtres.")
+                return
+
+            # Stats
+            n_total = len(filtered)
+            n_open = sum(1 for t in filtered if t.get("status") == "open")
+            n_closed = sum(1 for t in filtered if t.get("status") == "closed")
+            total_pnl = sum(float(t.get("pnl_usd", 0) or 0) for t in filtered if t.get("status") == "closed")
+            wins = sum(1 for t in filtered if t.get("status") == "closed" and float(t.get("pnl_usd", 0) or 0) > 0)
+            losses = sum(1 for t in filtered if t.get("status") == "closed" and float(t.get("pnl_usd", 0) or 0) < 0)
+            win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+
+            _hc1, _hc2, _hc3, _hc4, _hc5, _hc6 = st.columns(6)
+            _hc1.metric("Total", n_total)
+            _hc2.metric("Ouverts", n_open)
+            _hc3.metric("Fermés", n_closed)
+            _hc4.metric("P&L total", f"${total_pnl:+,.2f}")
+            _hc5.metric("Gagnés", wins)
+            _hc6.metric("Win rate", f"{win_rate:.0f}%")
+
+            st.markdown("---")
+
+            # Tableau
+            import pandas as _hpd
+            rows = []
+            for t in filtered:
+                pnl = float(t.get("pnl_usd", 0) or 0)
+                rows.append({
+                    "Date": (t.get("timestamp") or "")[:19].replace("T", " "),
+                    "Actif": t.get("symbol", "—"),
+                    "Action": (t.get("action") or "").upper(),
+                    "Entrée": f"${float(t.get('entry_price', 0)):,.2f}" if t.get("entry_price") else "—",
+                    "SL": f"${float(t.get('stop_loss', 0)):,.2f}" if t.get("stop_loss") else "—",
+                    "TP": f"${float(t.get('take_profit', 0)):,.2f}" if t.get("take_profit") else "—",
+                    "Taille": f"${float(t.get('size_usd', 0)):,.0f}" if t.get("size_usd") else "—",
+                    "P&L": f"${pnl:+,.2f}" if t.get("status") == "closed" else "⏳",
+                    "Statut": "✅ fermé" if t.get("status") == "closed" else "⏳ ouvert",
+                    "DAG": t.get("dag_id", "—"),
+                })
+
+            _h_df = _hpd.DataFrame(rows)
+            st.dataframe(_h_df, use_container_width=True, hide_index=True, height=min(600, 35 * len(rows) + 38))
+
+            # Export CSV
+            _h_csv = _h_df.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Exporter CSV", _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
+
+            # Réflexions (leçons apprises)
+            try:
+                with _hget_conn() as _hconn:
+                    _hconn.execute("""
+                        CREATE TABLE IF NOT EXISTS v4_reflections (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            trade_id TEXT UNIQUE, symbol TEXT, action TEXT,
+                            entry_price REAL, close_price REAL,
+                            pnl_usd REAL, pnl_pct REAL, lesson TEXT, created_at TEXT
                         )
-                        _h_df["Horodatage"] = _h_df["Horodatage"].apply(lambda x: x[:19] if x else "")
-                        _h_df["Barre"]      = _h_df["Barre"].apply(lambda x: x[:16] if x else "")
-                        _h_df["P(up)"]      = _h_df["P(up)"].apply(lambda x: f"{x:.3f}" if x is not None else "N/A")
-                        _h_df["Prix"]       = _h_df["Prix"].apply(lambda x: f"{x:.4f}" if x else "—")
-                        _h_df["ATR"]        = _h_df["ATR"].apply(lambda x: f"{x:.6f}" if x else "—")
-                        _h_df["SL"]         = _h_df["SL"].apply(lambda x: f"{x:.4f}" if x else "—")
-                        _h_df["TP"]         = _h_df["TP"].apply(lambda x: f"{x:.4f}" if x else "—")
-                        _h_df["Capital"]    = _h_df["Capital"].apply(lambda x: f"{x:.2f}$" if x else "—")
-                        st.dataframe(_h_df, use_container_width=True, hide_index=True)
-                        # Export CSV
-                        _h_csv = _h_df.to_csv(index=False).encode("utf-8")
-                        st.download_button(
-                            "⬇️ Exporter CSV",
-                            _h_csv,
-                            file_name="v2_decisions.csv",
-                            mime="text/csv",
-                            key="hist_dl_csv",
-                        )
-                    else:
-                        st.info("Aucune décision enregistrée avec ces filtres.")
+                    """)
+                    _ref_rows = _hconn.execute(
+                        "SELECT symbol, action, pnl_usd, lesson, created_at FROM v4_reflections ORDER BY created_at DESC LIMIT 50"
+                    ).fetchall()
+                if _ref_rows:
+                    st.markdown("---")
+                    st.markdown("#### 🧠 Leçons apprises (ReflectionNode)")
+                    for r in _ref_rows:
+                        emoji = "✅" if (r[2] or 0) > 0 else "❌"
+                        st.caption(f"{emoji} {r[0]} {r[1]}: {r[3]} (${r[2]:+.2f})")
+            except Exception:
+                pass
+
         except Exception as _he:
-            st.error(f"Erreur lecture historique : {_he}")
+            st.error(f"Erreur lecture historique V4 : {_he}")
 
     # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset et Historique)
     if _atab not in ("backup", "flux", "peractif", "reset", "historique"):

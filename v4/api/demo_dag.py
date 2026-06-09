@@ -31,10 +31,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  params={"mode": "divergence", "momentum_5m": 6,
                           "momentum_1h": 4, "threshold": 0.15,
                           "strong_threshold": 0.40}),
-        # ── Colonne 1c : Position Manager (trailing exit) ──
+        # ── Colonne 1c : Position Manager (trailing exit optimisé) ──
         NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
                  params={"symbol": symbol, "exit_strategy": "trailing",
-                          "atr_mult": 3.0, "trail_mult": 0.5,
+                          "atr_mult": 4.0, "trail_mult": 0.5,
                           "min_atr_dist": 0.5, "chandelier_lookback": 12}),
         # ── Colonne 2 : Features techniques ──
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
@@ -61,9 +61,9 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                           "w_xgb": 0.50, "w_trend": 0.25,
                           "w_debate": 0.10, "w_crosstf": 0.10,
                           "w_regime": 0.05, "threshold": 0.30}),
-        # ── Colonne 7 : Risk ATR ──
+        # ── Colonne 7 : Risk ATR (optimisé SL 3:1, TP 6:1) ──
         NodeSpec(id=f"{pfx}_risk", type="RiskATR",
-                 params={"sl_mult": 2.0, "tp_mult": 4.0, "fraction": 0.02,
+                 params={"sl_mult": 3.0, "tp_mult": 6.0, "fraction": 0.02,
                           "risk_pct": 1.0, "capital": 10000}),
         # ── Colonne 8 : PaperTrader ──
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",

@@ -221,6 +221,17 @@ def run_backtest_v4(
                     # Regime passthrough = toujours TREND → +0.05
                     score += w_regime * 0.5
 
+                    # ── IA simulée (remplace DebateNode absent en backtest) ──
+                    # Logique : l'IA suit la tendance dominante avec confiance modérée
+                    w_ia = 0.10  # même poids qu'en production
+                    if trend == "bullish":
+                        score += w_ia * 0.6   # IA bullish modéré
+                    elif trend == "bearish":
+                        score -= w_ia * 0.6   # IA bearish modéré
+                    # Si XGBoost contredit la trend → IA réduit sa confiance
+                    if (signal == "long" and trend == "bearish") or (signal == "short" and trend == "bullish"):
+                        score += (w_ia * 0.2) if signal == "long" else (-w_ia * 0.2)
+
                     score = max(-1.0, min(1.0, score))
 
                     if score > threshold:

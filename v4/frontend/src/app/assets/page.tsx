@@ -13,6 +13,7 @@ interface AssetEntry {
   capital_usd: number;
   fraction: number;
   fee_rate: number;
+  max_positions: number;
   keywords: string;
 }
 
@@ -22,6 +23,7 @@ const DEFAULT: AssetEntry = {
   capital_usd: 10000,
   fraction: 0.005,
   fee_rate: 0.0004,
+  max_positions: 3,
   keywords: "bitcoin,BTC",
 };
 
@@ -51,7 +53,7 @@ export default function AssetsPage() {
         <table className="w-full text-xs">
           <thead className="bg-canvas-grid text-slate-400">
             <tr>
-              {["Symbole", "Exchange", "Capital $", "Fraction", "Fee", "Keywords", ""].map((h) => (
+              {["Symbole", "Exchange", "Capital $", "Fraction", "Max Pos", "Fee", "Keywords", ""].map((h) => (
                 <th key={h} className="px-4 py-2 text-left">{h}</th>
               ))}
             </tr>
@@ -63,6 +65,7 @@ export default function AssetsPage() {
                 <td className="px-4 py-2">{a.exchange}</td>
                 <td className="px-4 py-2">${a.capital_usd.toLocaleString()}</td>
                 <td className="px-4 py-2">{(a.fraction * 100).toFixed(2)}%</td>
+                <td className="px-4 py-2">{a.max_positions ?? 3}</td>
                 <td className="px-4 py-2">{(a.fee_rate * 100).toFixed(3)}%</td>
                 <td className="px-4 py-2 text-slate-500">{a.keywords}</td>
                 <td className="px-4 py-2">

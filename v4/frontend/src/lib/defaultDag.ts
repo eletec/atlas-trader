@@ -52,8 +52,8 @@ const NODES_SPEC: NodeSpec[] = [
   // Col 0 : Actif
   {
     id: "btc_asset", type: "AssetDef", x: X[0], y: Y_TOP, label: "BTC/USDT",
-    params: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02, keywords: ["bitcoin"] },
-    inputPorts: [], outputPorts: ["symbol", "exchange", "capital", "fraction"],
+    params: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02, max_positions: 3, keywords: ["bitcoin"] },
+    inputPorts: [], outputPorts: ["symbol", "exchange", "capital", "fraction", "max_positions"],
   },
 
   // Col 1 : Données

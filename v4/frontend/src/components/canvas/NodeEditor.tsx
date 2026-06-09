@@ -11,7 +11,7 @@ import { useDagStore } from "@/store/dagStore";
 import { useCallback, useState } from "react";
 
 const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
-  AssetDef: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02 },
+  AssetDef: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02, max_positions: 3 },
   LoadMultiTF: { symbol: "BTC/USDT", days_5m: 90, days_1h: 100, exchange: "binance" },
   ComputeFeatures: {},
   Normalize: { window: 500 },

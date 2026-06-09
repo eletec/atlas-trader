@@ -239,8 +239,9 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live — mise à jour auto toutes les 10s via JS."""
+    """Grille de prix live — polling AJAX toutes les 3s, pas de refresh page."""
     import streamlit as st
+    import json as _json
 
     dags = _fetch_v4_dags()
     if not dags:
@@ -253,39 +254,87 @@ def render_global_live_prices() -> None:
 
     st.markdown(f"### 📡 Prix temps réel")
 
-    cols = st.columns(min(len(dag_assets), 5))
-    for i, asset in enumerate(dag_assets):
+    # Construire les cartes HTML
+    cards = ""
+    for asset in dag_assets:
         icon = _asset_icon(asset)
         pdata = prices.get(asset, {})
-        price = pdata.get("price") if pdata else None
+        price = pdata.get("price")
+        price_str = _fmt_price(price)
 
-        with cols[i % len(cols)]:
-            if price and price > 0:
-                price_str = _fmt_price(price)
-                st.metric(label=f"{icon} {asset}", value=price_str)
+        dag = next((d for d in dags if d.get("asset") == asset), None)
+        trend_label = "—"
+        sig_label = "—"
+        if dag:
+            pfx = asset.split("/")[0].lower()[:3]
+            results = dag.get("last_results", {})
+            tn = results.get(f"{pfx}_trend", {})
+            trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
+            sn = results.get(f"{pfx}_signal", {})
+            signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
+            prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
+            trend_label = trend.upper() if trend else "—"
+            sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
 
-                # Info DAG
-                dag = next((d for d in dags if d.get("asset") == asset), None)
-                if dag:
-                    pfx = asset.split("/")[0].lower()[:3]
-                    results = dag.get("last_results", {})
-                    tn = results.get(f"{pfx}_trend", {})
-                    trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
-                    sn = results.get(f"{pfx}_signal", {})
-                    signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
-                    prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
-                    trend_label = trend.upper() if trend else "—"
-                    sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
-                    st.caption(f"{trend_label} | {sig_label}")
-            else:
-                st.metric(label=f"{icon} {asset}", value="—")
-                st.caption("connexion...")
+        uid = asset.replace("/", "_")
+        cards += (
+            f'<div class="px-card" style="display:inline-block;text-align:center;'
+            f'padding:12px 18px;margin:4px;border-radius:10px;min-width:130px;'
+            f'border:1px solid rgba(255,255,255,0.08);">'
+            f'<div style="font-size:20px;">{icon}</div>'
+            f'<div style="font-size:11px;opacity:0.6;">{asset}</div>'
+            f'<div class="px-price" id="px_{uid}" style="font-size:22px;font-weight:700;'
+            f'font-variant-numeric:tabular-nums;">{price_str}</div>'
+            f'<div style="font-size:10px;opacity:0.5;">{trend_label} | {sig_label}</div>'
+            f'</div>'
+        )
 
-    # Auto-refresh toutes les 10 secondes
-    st.components.v1.html("""
+    symbols_js = _json.dumps(dag_assets)
+
+    st.components.v1.html(f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+body{{margin:0;padding:6px;font-family:system-ui,sans-serif;background:transparent;color:#e6edf3;}}
+.px-card{{transition:background .3s;}}
+.px-card.up{{background:rgba(46,204,113,.15)!important;}}
+.px-card.dn{{background:rgba(231,76,60,.15)!important;}}
+</style></head><body>
+<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">
+{cards}
+</div>
 <script>
-setTimeout(function(){ window.top.location.reload(); }, 10000);
-</script>""", height=0)
+var SYMBOLS={symbols_js};
+var LAST={{}};
+function apiUrl(){{
+  try{{var h=window.top.location.hostname;if(h)return'http://'+h+':8000';}}catch(e){{}}
+  return'http://192.168.1.80:8000';
+}}
+function fmt(p){{
+  if(p==null)return'—';
+  if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
+  if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});
+  return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:4,maximumFractionDigits:4}});
+}}
+function poll(){{
+  fetch(apiUrl()+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(data){{
+    SYMBOLS.forEach(function(sym){{
+      var p=data[sym];
+      if(p===undefined)return;
+      var el=document.getElementById('px_'+sym.replace(/\\//g,'_'));
+      if(!el)return;
+      var old=LAST[sym];
+      var card=el.parentElement;
+      if(old&&p>old){{card.classList.add('up');setTimeout(function(){{card.classList.remove('up')}},400);}}
+      if(old&&p<old){{card.classList.add('dn');setTimeout(function(){{card.classList.remove('dn')}},400);}}
+      LAST[sym]=p;
+      el.textContent=fmt(p);
+    }});
+  }}).catch(function(){{}});
+}}
+setInterval(poll,3000);
+poll();
+</script>
+</body></html>""", height=140)
+
 
 
 

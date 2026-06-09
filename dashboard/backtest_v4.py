@@ -520,6 +520,7 @@ def optimize_params(
     symbol: str = "BTC/USDT",
     days: int = 30,
     capital: float = 10_000,
+    **kwargs,
 ) -> list[dict]:
     """Grid search rapide pour trouver les meilleurs paramètres.
 
@@ -544,6 +545,7 @@ def optimize_params(
                 symbol=symbol, days=days, capital=capital,
                 risk_pct=rpct, sl_mult=sl, tp_mult=tp, fraction=frac,
                 exit_strategy=estrat, exit_atr_mult=exit_atr, min_atr_dist=min_dist,
+                **kwargs,
             )
             # Score composite : Sharpe pondéré par survie (1 - maxDD)
             score = r.sharpe * max(0, 1 - r.max_drawdown_pct / 100.0) if r.n_trades > 0 else -999

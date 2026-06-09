@@ -2990,7 +2990,8 @@ def _render_backtest_v4():
         with st.spinner(f"Optimisation {symbol} sur {days}j (8 combinaisons)..."):
             try:
                 from dashboard.backtest_v4 import optimize_params
-                results = optimize_params(symbol=symbol, days=days, capital=capital)
+                results = optimize_params(symbol=symbol, days=days, capital=capital,
+                                          gate_mode=gate_mode, fusion_threshold=fusion_threshold)
                 if results:
                     st.success(f"Meilleure config: SL={results[0]['sl_mult']} TP={results[0]['tp_mult']} Exit={results[0]['exit_strat']} ATR={results[0]['exit_atr']}")
                     st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)

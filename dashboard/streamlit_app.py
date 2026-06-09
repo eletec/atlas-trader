@@ -495,6 +495,32 @@ def _inject_theme_css():
         [data-testid="stTable"] tbody tr:hover td {
             background-color: #21262d !important;
         }
+        /* ── Expanders — fond sombre, header focus sans blanc ── */
+        [data-testid="stExpander"] {
+            background-color: #161b22 !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+        }
+        [data-testid="stExpanderHeader"],
+        [data-testid="stExpander"] summary {
+            background-color: #161b22 !important;
+            color: #FAFAFA !important;
+        }
+        /* Supprimer le fond blanc au focus/actif */
+        [data-testid="stExpanderHeader"]:focus,
+        [data-testid="stExpanderHeader"]:active,
+        [data-testid="stExpander"] summary:focus,
+        [data-testid="stExpander"] summary:active {
+            background-color: #21262d !important;
+            color: #FAFAFA !important;
+            outline: none !important;
+        }
+        [data-testid="stExpanderHeader"]:hover,
+        [data-testid="stExpander"] summary:hover {
+            background-color: #21262d !important;
+        }
+        [data-testid="stExpanderDetails"] {
+            background-color: #0d1117 !important;
+        }
         /* Tabs navigation — sticky sous la navbar */
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background-color: #0e1117 !important;

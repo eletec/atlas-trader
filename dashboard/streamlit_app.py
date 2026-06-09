@@ -2817,8 +2817,12 @@ def _render_v4_config():
     st.caption("⚠️ Les modifications prennent effet au prochain redémarrage de l'API (ou au prochain cycle DAG).")
 
 
-def _render_ai_analysis(asset: str):
-    """Affiche la dernière analyse IA pour un actif depuis les résultats DAG."""
+def _render_ai_analysis(asset: str, expanded: bool = False):
+    """Affiche la dernière analyse IA pour un actif depuis les résultats DAG.
+    Args:
+        asset: symbole (ex: "BTC/USDT")
+        expanded: si True, l'expander est ouvert par défaut
+    """
     try:
         import urllib.request, json as _json
         req = urllib.request.Request(f"{_API_BASE}/dag/status")
@@ -2839,8 +2843,16 @@ def _render_ai_analysis(asset: str):
         if response:
             is_error = response.startswith("LLM_ERROR")
             icon = "⚠️" if is_error else "🧠"
-            with st.expander(f"{icon} Analyse IA ({model}, {duration/1000:.1f}s)", expanded=not is_error):
-                st.text(response)
+            label = f"{icon} {asset} ({model}, {duration/1000:.1f}s)"
+            with st.expander(label, expanded=expanded):
+                # Texte réduit, couleurs adaptées au thème (clair/sombre)
+                st.markdown(
+                    f'<div style="font-size:12px;line-height:1.5;'
+                    f'color:var(--text-color, #e0e0e0);'
+                    f'white-space:pre-wrap;word-break:break-word;">'
+                    f'{response}</div>',
+                    unsafe_allow_html=True,
+                )
     except Exception:
         pass
 
@@ -4222,8 +4234,9 @@ def main():
             def _render_global():
                 """Vue consolidée : PnL tous actifs + analyses IA."""
                 st.markdown("### 🧠 Dernières analyses IA")
-                for asset in (_active_assets_v4() or ["BTC/USDT"]):
-                    _render_ai_analysis(asset)
+                assets = _active_assets_v4() or ["BTC/USDT"]
+                for i, asset in enumerate(assets):
+                    _render_ai_analysis(asset, expanded=(i == 0))
                 st.markdown("---")
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)

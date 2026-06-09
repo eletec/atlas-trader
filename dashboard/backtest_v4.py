@@ -205,7 +205,7 @@ def run_backtest_v4(
                     w_xgb = 0.55
                     w_trend = 0.35
                     w_regime = 0.10
-                    threshold = 0.30
+                    threshold = float(kwargs.get("fusion_threshold", 0.30))
 
                     score = 0.0
                     if signal == "long":

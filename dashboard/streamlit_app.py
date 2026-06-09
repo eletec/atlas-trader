@@ -2922,6 +2922,11 @@ def _render_backtest_v4():
 
     gate_mode = st.selectbox("Mode DirectionGate", ["fusion", "veto"],
                               help="fusion = scoring pondéré (XGBoost+Trend+Regime), veto = blocage binaire")
+    if gate_mode == "fusion":
+        fusion_threshold = st.slider("Seuil fusion (±)", 0.05, 0.50, 0.30, 0.05,
+                                      help="Score > +seuil → LONG, < -seuil → SHORT, entre les deux → flat")
+    else:
+        fusion_threshold = 0.30  # non utilisé en veto
 
     if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
         with st.spinner(f"Backtest {symbol} sur {days}j..."):
@@ -2933,7 +2938,7 @@ def _render_backtest_v4():
                     risk_pct=risk_pct, sl_mult=sl_mult, tp_mult=tp_mult,
                     fraction=fraction, exit_strategy=exit_strat,
                     exit_atr_mult=exit_atr, min_atr_dist=min_dist,
-                    gate_mode=gate_mode,
+                    gate_mode=gate_mode, fusion_threshold=fusion_threshold,
                 )
                 st.info(f"DEBUG: {result.n_trades} trades, PnL=${result.total_pnl}")
 

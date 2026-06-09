@@ -315,7 +315,13 @@ const SYMBOLS = {symbols_js};
 let lastPrices = {{}};
 
 function getApiUrl() {{
-  return 'http://' + window.location.hostname + ':8000';
+  // srcdoc iframe: location.hostname peut être vide → utiliser top
+  var host = window.location.hostname || '';
+  if (!host || host === 'about') {{
+    try {{ host = window.top.location.hostname; }} catch(e) {{}}
+  }}
+  if (!host) host = '192.168.1.80';
+  return 'http://' + host + ':8000';
 }}
 
 function fmtPrice(p) {{

@@ -97,7 +97,7 @@ def _score_bar(score: float, theme: str = "dark") -> str:
 
 _ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=5)
 def _fetch_v4_dags() -> list[dict]:
     """Récupère le statut de tous les DAGs V4."""
     try:

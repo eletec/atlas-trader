@@ -239,9 +239,8 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live — SSE temps réel via JavaScript (pas de refresh)."""
+    """Grille de prix live — mise à jour auto toutes les 10s via JS."""
     import streamlit as st
-    import json as _json
 
     dags = _fetch_v4_dags()
     if not dags:
@@ -250,119 +249,44 @@ def render_global_live_prices() -> None:
     if not dag_assets:
         dag_assets = ["BTC/USDT"]
 
-    # Fetch initial prices for the first render
     prices = _fetch_v4_prices()
 
-    # Construire les cartes HTML initiales
-    cards_html = ""
-    for asset in dag_assets:
+    st.markdown(f"### 📡 Prix temps réel")
+
+    cols = st.columns(min(len(dag_assets), 5))
+    for i, asset in enumerate(dag_assets):
         icon = _asset_icon(asset)
         pdata = prices.get(asset, {})
-        price = pdata.get("price")
-        price_str = _fmt_price(price) if price else "—"
+        price = pdata.get("price") if pdata else None
 
-        # Info DAG (non-live)
-        dag = next((d for d in dags if d.get("asset") == asset), None)
-        trend = signal = ""
-        prob = None
-        if dag:
-            pfx = asset.split("/")[0].lower()[:3]
-            results = dag.get("last_results", {})
-            tn = results.get(f"{pfx}_trend", {})
-            if isinstance(tn, dict):
-                trend = tn.get("outputs", {}).get("trend", "")
-            sn = results.get(f"{pfx}_signal", {})
-            if isinstance(sn, dict):
-                signal = sn.get("outputs", {}).get("signal", "")
-                prob = sn.get("outputs", {}).get("prob_up")
+        with cols[i % len(cols)]:
+            if price and price > 0:
+                price_str = _fmt_price(price)
+                st.metric(label=f"{icon} {asset}", value=price_str)
 
-        trend_label = trend.upper() if trend else "—"
-        signal_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
-        asset_id = asset.replace("/", "_")
+                # Info DAG
+                dag = next((d for d in dags if d.get("asset") == asset), None)
+                if dag:
+                    pfx = asset.split("/")[0].lower()[:3]
+                    results = dag.get("last_results", {})
+                    tn = results.get(f"{pfx}_trend", {})
+                    trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
+                    sn = results.get(f"{pfx}_signal", {})
+                    signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
+                    prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
+                    trend_label = trend.upper() if trend else "—"
+                    sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
+                    st.caption(f"{trend_label} | {sig_label}")
+            else:
+                st.metric(label=f"{icon} {asset}", value="—")
+                st.caption("connexion...")
 
-        cards_html += f"""
-<div class="price-card" id="card_{asset_id}"
-     style="background:var(--card-bg,#161b22);border:1px solid var(--card-border,rgba(255,255,255,0.1));
-            border-radius:10px;padding:16px;text-align:center;min-width:140px;">
-  <div style="font-size:22px;margin-bottom:4px;">{icon}</div>
-  <div style="font-size:12px;opacity:0.7;margin-bottom:6px;">{asset}</div>
-  <div class="price-value" id="price_{asset_id}"
-       style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;">{price_str}</div>
-  <div style="font-size:11px;opacity:0.6;margin-top:6px;">
-    <span>{trend_label}</span> &nbsp;|&nbsp;
-    <span>{signal_label}</span>
-  </div>
-</div>"""
-
-    symbols_js = _json.dumps(dag_assets)
-
-    st.markdown(f"### 📡 Prix temps réel")
-    st.components.v1.html(f"""
-<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-  body {{ margin:0; padding:8px; font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-         background:transparent; color:#e6edf3; }}
-  .price-grid {{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }}
-  .price-card {{ transition:background .3s; }}
-  .price-card.flash-up {{ background:#1a3a1a !important; }}
-  .price-card.flash-dn {{ background:#3a1a1a !important; }}
-</style></head><body>
-<div class="price-grid">
-{cards_html}
-</div>
+    # Auto-refresh toutes les 10 secondes
+    st.components.v1.html("""
 <script>
-const SYMBOLS = {symbols_js};
-let lastPrices = {{}};
+setTimeout(function(){ window.top.location.reload(); }, 10000);
+</script>""", height=0)
 
-function getApiUrl() {{
-  // srcdoc iframe: location.hostname peut être vide → utiliser top
-  var host = window.location.hostname || '';
-  if (!host || host === 'about') {{
-    try {{ host = window.top.location.hostname; }} catch(e) {{}}
-  }}
-  if (!host) host = '192.168.1.80';
-  return 'http://' + host + ':8000';
-}}
-
-function fmtPrice(p) {{
-  if (p === null || p === undefined) return '—';
-  if (p >= 1000) return '$' + p.toLocaleString('en-US', {{maximumFractionDigits:0}});
-  if (p >= 1) return '$' + p.toLocaleString('en-US', {{minimumFractionDigits:2, maximumFractionDigits:2}});
-  return '$' + p.toLocaleString('en-US', {{minimumFractionDigits:4, maximumFractionDigits:4}});
-}}
-
-function connectSSE() {{
-  const query = SYMBOLS.map(encodeURIComponent).join(',');
-  const url = getApiUrl() + '/prices/stream?symbols=' + query;
-  const es = new EventSource(url);
-  es.onmessage = function(e) {{
-    try {{
-      const data = JSON.parse(e.data);
-      for (const sym of SYMBOLS) {{
-        const p = data[sym];
-        if (p === undefined) continue;
-        const elId = 'price_' + sym.replace(/\\//g, '_');
-        const el = document.getElementById(elId);
-        if (!el) continue;
-        const old = lastPrices[sym];
-        if (old && p > old) {{
-          const card = document.getElementById('card_' + sym.replace(/\\//g, '_'));
-          if (card) {{ card.classList.add('flash-up'); setTimeout(function(){{card.classList.remove('flash-up')}}, 300); }}
-        }} else if (old && p < old) {{
-          const card = document.getElementById('card_' + sym.replace(/\\//g, '_'));
-          if (card) {{ card.classList.add('flash-dn'); setTimeout(function(){{card.classList.remove('flash-dn')}}, 300); }}
-        }}
-        lastPrices[sym] = p;
-        el.textContent = fmtPrice(p);
-      }}
-    }} catch(err) {{}}
-  }};
-  es.onerror = function() {{ es.close(); setTimeout(connectSSE, 5000); }};
-}}
-connectSSE();
-</script>
-</body></html>
-""", height=160)
 
 
 def _fmt_price(price: float | None) -> str:

@@ -30,10 +30,11 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  params={"mode": "divergence", "momentum_5m": 6,
                           "momentum_1h": 4, "threshold": 0.15,
                           "strong_threshold": 0.40}),
-        # ── Colonne 1c : Position Manager (chandelier exit) ──
+        # ── Colonne 1c : Position Manager (trailing exit) ──
         NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
-                 params={"symbol": symbol, "exit_strategy": "chandelier",
-                          "atr_mult": 3.0, "chandelier_lookback": 22}),
+                 params={"symbol": symbol, "exit_strategy": "trailing",
+                          "atr_mult": 1.5, "min_atr_dist": 0.5,
+                          "chandelier_lookback": 12}),
         # ── Colonne 2 : Features techniques ──
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
         # ── Colonne 3 : Normalisation ──

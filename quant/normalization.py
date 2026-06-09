@@ -24,6 +24,9 @@ def rolling_quantile_normalize(
     Pour chaque point t : rang de x[t] parmi les `window` valeurs précédentes
     (strictement antérieures à t, pas de leakage).
 
+    Optimisation : utilise NumPy sliding window + comparaison vectorisée
+    au lieu de rolling().apply() + np.sort() qui est O(n × w log w).
+
     Args:
         series: série d'entrée
         window: taille de la fenêtre glissante (en nombre de barres)
@@ -36,26 +39,63 @@ def rolling_quantile_normalize(
     if min_periods is None:
         min_periods = max(30, window // 4)
 
-    # ATTENTION : rank() inclut la valeur courante. On veut le rang de x[t] dans
-    # l'historique STRICTEMENT antérieur. On utilise donc une rolling-apply qui,
-    # pour chaque fenêtre [t-window+1 : t] (incluant t), calcule le rang de x[t]
-    # parmi les valeurs PRÉCÉDENTES uniquement.
-    def _rank_of_last(window_vals: np.ndarray) -> float:
-        if len(window_vals) < 2:
-            return np.nan
-        current = window_vals[-1]
-        past = window_vals[:-1]
-        valid = past[~np.isnan(past)]
-        if len(valid) < min_periods - 1:
-            return np.nan
-        if np.isnan(current):
-            return np.nan
-        # rang percentile de `current` parmi `valid`
-        return float(np.searchsorted(np.sort(valid), current, side="right")) / len(valid)
+    vals = series.values.astype(np.float64)
+    n = len(vals)
+    result = np.full(n, np.nan, dtype=np.float64)
 
-    return series.rolling(window=window + 1, min_periods=min_periods + 1).apply(
-        _rank_of_last, raw=True
-    )
+    if n <= window:
+        return pd.Series(result, index=series.index)
+
+    # Approche vectorisée : pour chaque position i ≥ window,
+    # percentile = proportion des valeurs passées < valeur courante
+    # Utilise np.lib.stride_tricks.sliding_window_view pour O(1) extraction
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    # Construire les fenêtres glissantes : shape (n - window, window)
+    windows = sliding_window_view(vals, window_shape=window)
+
+    # Pour chaque fenêtre, comparer chaque élément au dernier élément de la fenêtre SUIVANTE
+    # La fenêtre i contient vals[i : i+window], on compare à vals[i+window]
+    future_vals = vals[window:]  # shape (n - window,)
+
+    # Comparaison vectorisée : pour chaque fenêtre, count < future_val
+    # Petit hack pour éviter O(n*w) memory:
+    # On traite par batch si nécessaire, mais pour crypto ~25K barres ça tient
+    if n - window > 20000:
+        # Gros dataset : traiter par blocs de 5000 fenêtres
+        batch_size = 5000
+        for start in range(0, n - window, batch_size):
+            end = min(start + batch_size, n - window)
+            batch_windows = windows[start:end]       # (batch, window)
+            batch_future = future_vals[start:end]    # (batch,)
+            # Pour chaque fenêtre, count past values < future value
+            # On ignore NaN dans la fenêtre
+            valid_mask = ~np.isnan(batch_windows)
+            # Comparaison broadcast : (batch, window) < (batch, 1)
+            less_than = (batch_windows < batch_future[:, np.newaxis]) & valid_mask
+            valid_counts = valid_mask.sum(axis=1)  # (batch,)
+            less_counts = less_than.sum(axis=1)    # (batch,)
+            # Éviter division par zéro
+            pct = np.where(
+                valid_counts >= min_periods,
+                less_counts / valid_counts,
+                np.nan,
+            )
+            result[window + start:window + end] = pct
+    else:
+        # Petit dataset : tout en une fois
+        valid_mask = ~np.isnan(windows)
+        less_than = (windows < future_vals[:, np.newaxis]) & valid_mask
+        valid_counts = valid_mask.sum(axis=1)
+        less_counts = less_than.sum(axis=1)
+        pct = np.where(
+            valid_counts >= min_periods,
+            less_counts / valid_counts,
+            np.nan,
+        )
+        result[window:] = pct
+
+    return pd.Series(result, index=series.index)
 
 
 def normalize_features(

@@ -81,7 +81,11 @@ class Normalize(Node):
         from quant.normalization import normalize_features
 
         features: pd.DataFrame = inputs["features"]
-        norm_window = self.params.get("norm_window", 8640)
+        # Priorité : norm_window > window (compat DAG legacy) > défaut 500
+        norm_window = int(
+            self.params.get("norm_window")
+            or self.params.get("window", 500)
+        )
 
         features_norm = normalize_features(
             features,

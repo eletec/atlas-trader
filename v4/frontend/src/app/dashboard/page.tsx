@@ -244,7 +244,7 @@ export default function DashboardPage() {
       </section>
 
       {/* ── DAG Overview ── */}
-      <section>
+      <section className="mb-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
           DAGs actifs
         </h2>
@@ -305,6 +305,81 @@ export default function DashboardPage() {
           </div>
         )}
       </section>
+
+      {/* ── Analyses IA ── */}
+      <section className="mb-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
+          🧠 Dernières analyses IA
+        </h2>
+        <div className="space-y-2">
+          {dags.map(d => {
+            const pfx = d.asset.split("/")[0].toLowerCase().slice(0, 3);
+            const ai = d.last_results?.[`${pfx}_ai`]?.outputs as Record<string, unknown> | undefined;
+            const response = ai?.response as string | undefined;
+            if (!response || response.startsWith("LLM_ERROR")) return null;
+            const model = (ai?.model as string) || "?";
+            const dur = ((ai?.duration_ms as number) || 0) / 1000;
+            const icon = SYMBOL_ICONS[d.asset] || "◈";
+            return (
+              <details key={d.dag_id} className="rounded-lg border border-canvas-border bg-canvas-node">
+                <summary className="px-4 py-2 text-sm font-semibold cursor-pointer hover:bg-canvas-grid transition-colors">
+                  {icon} {d.asset} ({model}, {dur.toFixed(1)}s)
+                </summary>
+                <div className="px-4 py-3 text-xs text-slate-300 whitespace-pre-wrap max-h-64 overflow-y-auto border-t border-canvas-border">
+                  {response}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Logs live ── */}
+      <LogsSection />
     </div>
+  );
+}
+
+// ── Logs Section ──────────────────────────────────────────────────────────
+function LogsSection() {
+  const [logs, setLogs] = useState<Array<{ ts: string; level: string; dag_id: string; message: string }>>([]);
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const r = await fetch(`${API_URL}/dag/logs?n=30`);
+        if (r.ok) setLogs(await r.json());
+      } catch { /* */ }
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
+        ⚡ Logs temps réel
+      </h2>
+      {logs.length === 0 ? (
+        <p className="text-slate-500 text-xs">Aucun log.</p>
+      ) : (
+        <div className="overflow-auto rounded-lg border border-canvas-border bg-canvas-node max-h-60">
+          <div className="font-mono text-[11px] leading-relaxed">
+            {logs.map((l, i) => (
+              <div key={i} className="flex gap-2 px-3 py-1 border-b border-canvas-border/30 hover:bg-slate-800/30">
+                <span className="text-slate-600 shrink-0 w-[72px]">{l.ts?.slice(11, 19) || ""}</span>
+                <span className={cn(
+                  "shrink-0 w-10 font-semibold",
+                  l.level === "ERROR" ? "text-canvas-danger" : l.level === "WARNING" ? "text-amber-400" : "text-slate-500"
+                )}>{l.level}</span>
+                <span className="text-slate-500 shrink-0 w-20 truncate">{l.dag_id}</span>
+                <span className="text-slate-300 truncate">{l.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

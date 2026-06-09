@@ -3936,6 +3936,8 @@ def render_admin_panel():
             )
 
             # Export CSV
+            import pandas as _hpd
+            _h_df = _hpd.DataFrame(rows)
             _h_csv = _h_df.to_csv(index=False).encode("utf-8")
             st.download_button("⬇️ Exporter CSV", _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
 

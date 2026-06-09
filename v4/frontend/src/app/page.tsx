@@ -12,11 +12,12 @@ export default function HomePage() {
 
       <nav className="grid grid-cols-2 gap-4 md:grid-cols-3">
         {[
+          { href: "/dashboard", label: "📡 Dashboard", desc: "Prix & P&L temps réel" },
           { href: "/canvas", label: "Canvas", desc: "Éditeur de DAG" },
+          { href: "/monitoring", label: "Monitoring", desc: "Performance live" },
+          { href: "/trades", label: "Trades", desc: "Journal paper trading" },
           { href: "/arena", label: "Arena V4.1", desc: "Comparaison de stratégies" },
           { href: "/assets", label: "Actifs", desc: "Gestion des AssetDef" },
-          { href: "/trades", label: "Trades", desc: "Journal paper trading" },
-          { href: "/monitoring", label: "Monitoring", desc: "Performance live" },
           { href: "/admin", label: "Admin", desc: "Configuration système" },
         ].map(({ href, label, desc }) => (
           <Link

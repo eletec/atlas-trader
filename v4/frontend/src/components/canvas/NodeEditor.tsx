@@ -45,6 +45,9 @@ export function NodeEditor() {
   const nodeData = node?.data as Record<string, unknown> | undefined;
   const params = (nodeData?.params ?? {}) as Record<string, unknown>;
   const nodeType = (nodeData?.nodeType ?? "") as string;
+  // Fusionner avec les défauts du type pour montrer les champs manquants
+  const defaults = TYPE_DEFAULTS[nodeType] ?? {};
+  const displayParams = { ...defaults, ...params };
 
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
@@ -93,7 +96,7 @@ export function NodeEditor() {
     );
   }
 
-  const entries = Object.entries(params);
+  const entries = Object.entries(displayParams);
 
   return (
     <div className="w-72 border-l border-canvas-border bg-canvas-node flex flex-col" style={{ height: "100vh" }}>

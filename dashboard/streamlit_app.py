@@ -2833,11 +2833,7 @@ def _render_v4_config():
 
 
 def _render_ai_analysis(asset: str, expanded: bool = False):
-    """Affiche la dernière analyse IA pour un actif depuis les résultats DAG.
-    Args:
-        asset: symbole (ex: "BTC/USDT")
-        expanded: si True, l'expander est ouvert par défaut
-    """
+    """Affiche la dernière analyse IA pour un actif depuis les résultats DAG."""
     try:
         import urllib.request, json as _json
         req = urllib.request.Request(f"{_API_BASE}/dag/status")
@@ -2858,12 +2854,7 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
         if response and not response.startswith("LLM_ERROR"):
             label = f"🧠 {asset} ({model}, {duration/1000:.1f}s)"
             with st.expander(label, expanded=expanded):
-                # Limiter la hauteur et permettre le scroll via CSS sur le conteneur
-                st.markdown(
-                    f'<div style="max-height:350px;overflow-y:auto;font-size:13px;">'
-                    f'{response}</div>',
-                    unsafe_allow_html=True,
-                )
+                st.markdown(response)
     except Exception:
         pass
 

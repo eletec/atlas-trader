@@ -4276,15 +4276,6 @@ def main():
             # ── V4 — État des DAGs (si l'API est accessible) ─────────────────
             _render_v4_status()
 
-            # Auto-refresh doux toutes les 60s (prix déjà en AJAX 3s)
-            st.components.v1.html("""<script>
-var _ar=setInterval(function(){window.location.reload();},60000);
-document.addEventListener('visibilitychange',function(){
-  if(document.hidden)clearInterval(_ar);
-  else{clearInterval(_ar);_ar=setInterval(function(){window.location.reload();},60000);}
-});
-</script>""", height=0)
-
             st.markdown(
                 '<div style="text-align:center;padding:24px 0 8px;'
                 'font-size:11px;opacity:0.35;">Atlas Trader &mdash; by Jako 2026</div>',

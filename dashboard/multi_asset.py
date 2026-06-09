@@ -17,9 +17,6 @@ from utils.i18n import t
 # ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
 import os as _os
 _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
-# URL publique pour le JS dans le navigateur (dérivée de V4_FRONTEND_URL)
-_frontend_url = _os.environ.get("V4_FRONTEND_URL", "http://localhost:3000")
-_PUBLIC_API_URL = _frontend_url.replace(":3000", ":8000")
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +94,7 @@ def _score_bar(score: float, theme: str = "dark") -> str:
 
 _ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=30)
 def _fetch_v4_dags() -> list[dict]:
     """Récupère le statut de tous les DAGs V4."""
     try:
@@ -242,152 +239,102 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live — polling AJAX 3s (prix+PnL) + 30s (DAG)."""
+    """Grille de prix live enrichie — données V4 (WebSocket Binance + DAG)."""
     import streamlit as st
-    import json as _json
 
     dags = _fetch_v4_dags()
     if not dags:
         return
+
+    st.markdown(f"### {'📡 Prix temps réel'}")
+
+    prices = _fetch_v4_prices()
+
+    # Extraire les actifs des DAGs actifs
     dag_assets = list({d.get("asset", "") for d in dags if d.get("asset")})
     if not dag_assets:
         dag_assets = ["BTC/USDT"]
 
-    prices = _fetch_v4_prices()
-    st.markdown("### 📡 Prix temps réel")
-
-    cards = ""
-    pos_data = {}
-    for asset in dag_assets:
+    cols = st.columns(min(len(dag_assets), 5))
+    for i, asset in enumerate(dag_assets):
         icon = _asset_icon(asset)
         pdata = prices.get(asset, {})
-        price = pdata.get("price")
-        price_str = _fmt_price(price)
+        price = pdata.get("price") if pdata else None
 
-        dag = next((d for d in dags if d.get("asset") == asset), None)
-        trend_label = sig_label = pos_html = "—"
-        if dag:
-            pfx = asset.split("/")[0].lower()[:3]
-            results = dag.get("last_results", {})
-            tn = results.get(f"{pfx}_trend", {})
-            trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
-            sn = results.get(f"{pfx}_signal", {})
-            signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
-            prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
-            trend_label = trend.upper() if trend else "—"
-            sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
-
-            pm = results.get(f"{pfx}_posmgr", {})
-            open_pos = pm.get("outputs", {}).get("open_positions", []) if isinstance(pm, dict) else []
-            if isinstance(open_pos, list) and open_pos:
-                p0 = open_pos[0] if isinstance(open_pos[0], dict) else {}
-                p_action = p0.get("action", "")
-                p_entry = p0.get("entry_price", 0)
-                pos_data[asset] = {"action": p_action, "entry": p_entry}
-                if p_entry and price:
-                    pnl_pct = ((p_entry - price) if p_action == "short" else (price - p_entry)) / p_entry * 100
-                    c = "#2ecc71" if pnl_pct >= 0 else "#e74c3c"
-                    pos_html = f'<span style="color:{c}">{p_action.upper()} {pnl_pct:+.1f}%</span>'
+        with cols[i % len(cols)]:
+            if price and price > 0:
+                # Formater le prix
+                if price >= 1000:
+                    price_str = f"${price:,.0f}"
+                elif price >= 1:
+                    price_str = f"${price:,.2f}"
                 else:
-                    pos_html = p_action.upper()
+                    price_str = f"${price:.4f}"
+                st.metric(label=f"{icon} {asset}", value=price_str)
 
-        uid = asset.replace("/", "_")
-        cards += (
-            f'<div class="px-card" id="card_{uid}"'
-            f' style="display:inline-block;text-align:center;padding:10px 16px;margin:4px;'
-            f'border-radius:10px;min-width:140px;border:1px solid rgba(255,255,255,0.08);">'
-            f'<div style="font-size:18px;">{icon}</div>'
-            f'<div style="font-size:11px;opacity:0.6;">{asset}</div>'
-            f'<div class="px-price" id="px_{uid}" style="font-size:22px;font-weight:700;">{price_str}</div>'
-            f'<div class="px-chg" id="chg_{uid}" style="font-size:12px;margin:2px 0;font-weight:600;">—</div>'
-            f'<div class="px-pos" id="pos_{uid}" style="font-size:12px;font-weight:600;">{pos_html}</div>'
-            f'<div class="px-info" id="info_{uid}" style="font-size:10px;opacity:0.6;margin-top:2px;">{trend_label} | {sig_label}</div>'
-            f'</div>'
-        )
+                # Récupérer le signal/trend du DAG
+                dag = next((d for d in dags if d.get("asset") == asset), None)
+                if dag:
+                    pfx = asset.split("/")[0].lower()[:3]
+                    results = dag.get("last_results", {})
 
-    sym_js   = _json.dumps(dag_assets)
-    pos_js   = _json.dumps(pos_data)
-    api_js   = _json.dumps(_PUBLIC_API_URL)
+                    # Trend
+                    trend_node = results.get(f"{pfx}_trend", {})
+                    if isinstance(trend_node, dict):
+                        trend = trend_node.get("outputs", {}).get("trend", "")
+                    else:
+                        trend = ""
 
-    st.components.v1.html(f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><style>
-body{{margin:0;padding:6px;font-family:system-ui,sans-serif;background:transparent;color:#e6edf3;}}
-.px-card{{transition:background .3s;}}
-.px-card.up{{background:rgba(46,204,113,.12)!important;}}
-.px-card.dn{{background:rgba(231,76,60,.12)!important;}}
-</style></head><body>
-<div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">{cards}</div>
-<script>
-var S={sym_js},P={pos_js},A={api_js},L={{}},F={{}};
-function f(p){{if(p==null)return'—';if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:4,maximumFractionDigits:4}});}}
-function fp(v){{return(v>=0?'+':'')+v.toFixed(2)+'%';}}
-function poll(){{
-  fetch(A+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(d){{
-    S.forEach(function(s){{
-      var o=d[s];if(!o)return;var p=typeof o==='object'?o.price:o;if(!p)return;
-      var u=s.replace(/\\//g,'_');
-      var el=document.getElementById('px_'+u),ce=document.getElementById('chg_'+u);
-      var pe=document.getElementById('pos_'+u),cd=document.getElementById('card_'+u);
-      if(!el)return;
-      var fr=F[s];if(!fr){{fr=p;F[s]=p;}}
-      var cp=(p-fr)/fr*100;
-      var ar=cp>0.05?'▲':(cp<-0.05?'▼':'◆');
-      var cc=cp>0.05?'#2ecc71':(cp<-0.05?'#e74c3c':'#888');
-      if(ce)ce.innerHTML='<span style="color:'+cc+'">'+ar+' '+fp(cp)+'</span>';
-      var oo=L[s];if(oo&&p>oo){{cd.classList.add('up');setTimeout(function(){{cd.classList.remove('up')}},400);}}
-      if(oo&&p<oo){{cd.classList.add('dn');setTimeout(function(){{cd.classList.remove('dn')}},400);}}
-      L[s]=p;el.textContent=f(p);
-      var po=P[s];if(po&&pe){{
-        var pp=po.action==='short'?(po.entry-p)/po.entry*100:(p-po.entry)/po.entry*100;
-        var pc=pp>=0?'#2ecc71':'#e74c3c';
-        pe.innerHTML='<span style="color:'+pc+'">'+po.action.toUpperCase()+' '+(pp>=0?'+':'')+pp.toFixed(1)+'%</span>';
-      }}
-    }});
-  }}).catch(function(){{}});
-}}
-setInterval(poll,3000);poll();
-function pdag(){{
-  fetch(A+'/dag/status').then(function(r){{return r.json()}}).then(function(ds){{
-    ds.forEach(function(dg){{
-      var s=dg.asset;if(!s)return;var u=s.replace(/\\//g,'_');
-      var ie=document.getElementById('info_'+u);
-      var rs=dg.last_results||{{}},pf=s.split('/')[0].toLowerCase().slice(0,3);
-      var tn=rs[pf+'_trend'],sn=rs[pf+'_signal'];
-      var tr='—',si='—',pb=null;
-      if(tn&&tn.outputs)tr=(tn.outputs.trend||'—').toUpperCase();
-      if(sn&&sn.outputs){{si=sn.outputs.signal||'—';pb=sn.outputs.prob_up;}}
-      var sl=si!=='—'&&pb!=null?si+' '+(pb*100).toFixed(0)+'%':'—';
-      if(ie)ie.textContent=tr+' | '+sl;
-      var pm=rs[pf+'_posmgr'];
-      if(pm&&pm.outputs&&pm.outputs.open_positions&&pm.outputs.open_positions.length){{
-        var p0=pm.outputs.open_positions[0];
-        P[s]={{action:p0.action,entry:p0.entry_price}};
-      }}
-      poll();
-    }});
-  }}).catch(function(){{}});
-}}
-setInterval(pdag,30000);setTimeout(pdag,2000);
-// Trigger pdag after first successful price poll too (fallback)
-var _dagDone=false;
-var _origPoll=poll;
-poll=function(){{_origPoll();if(!_dagDone){{_dagDone=true;setTimeout(pdag,1000);}}}};
-</script>
-</body></html>""", height=200)
+                    # Signal
+                    signal_node = results.get(f"{pfx}_signal", {})
+                    if isinstance(signal_node, dict):
+                        signal = signal_node.get("outputs", {}).get("signal", "")
+                        prob = signal_node.get("outputs", {}).get("prob_up")
+                    else:
+                        signal = ""
+                        prob = None
 
+                    # Position ouverte ? (depuis le posmgr)
+                    posmgr_node = results.get(f"{pfx}_posmgr", {})
+                    open_positions = []
+                    if isinstance(posmgr_node, dict):
+                        open_positions = posmgr_node.get("outputs", {}).get("open_positions", [])
+                    if not isinstance(open_positions, list):
+                        open_positions = []
 
+                    # Calculer le PnL latent
+                    pnl_parts = []
+                    for p in open_positions:
+                        entry = p.get("entry_price", 0) if isinstance(p, dict) else 0
+                        action = p.get("action", "") if isinstance(p, dict) else ""
+                        if entry and price:
+                            if action == "long":
+                                pnl_pct = (price - entry) / entry * 100
+                            else:
+                                pnl_pct = (entry - price) / entry * 100
+                            pnl_parts.append(f"{action[:1].upper()}{'+' if pnl_pct >= 0 else ''}{pnl_pct:.1f}%")
 
+                    # Construire la ligne de detail
+                    parts = []
+                    if trend:
+                        parts.append(trend.upper())
+                    if signal:
+                        sig_str = signal
+                        if prob is not None:
+                            sig_str += f" {float(prob):.0%}"
+                        parts.append(sig_str)
+                    if pnl_parts:
+                        parts.append(" | ".join(pnl_parts))
+                    elif open_positions:
+                        parts.append("open")
+                    else:
+                        parts.append("flat")
 
-
-def _fmt_price(price: float | None) -> str:
-    """Formate un prix pour affichage."""
-    if price is None:
-        return "—"
-    if price >= 1000:
-        return f"${price:,.0f}"
-    if price >= 1:
-        return f"${price:,.2f}"
-    return f"${price:.4f}"
+                    st.caption(" | ".join(parts) if parts else "—")
+            else:
+                st.metric(label=f"{icon} {asset}", value="—")
+                st.caption("connexion...")
+    st.markdown("---")
 
 
 # ---------------------------------------------------------------------------

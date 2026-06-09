@@ -110,8 +110,10 @@ def _fetch_v4_dags() -> list[dict]:
 
 
 def render_global_overview() -> None:
-    """Remplacé par la section overview dans le composant AJAX (render_global_live_prices)."""
-    pass  # l'overview est maintenant dans l'iframe AJAX avec les prix
+    """Titre de la section — le tableau est maintenant dans l'iframe AJAX (render_global_live_prices)."""
+    import streamlit as st
+    st.markdown("### 🌐 Vue Globale V4")
+    st.caption("Tableau mis à jour en temps réel ci-dessous ↓")
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +308,7 @@ setInterval(pdag,5000);setTimeout(pdag,2000);
 var _dagDone=false;var _origPoll=poll;
 poll=function(){{_origPoll();if(!_dagDone){{_dagDone=true;setTimeout(pdag,1000);}}}};
 </script>
-</body></html>""", height=360)
+</body></html>""", height=440)
 
 
 

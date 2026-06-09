@@ -2920,6 +2920,9 @@ def _render_backtest_v4():
     exit_atr = st.slider("Exit ATR mult", 1.0, 6.0, 3.0, 0.5)
     min_dist = st.slider("Breathing room (×ATR)", 0.0, 3.0, 1.0, 0.5)
 
+    gate_mode = st.selectbox("Mode DirectionGate", ["fusion", "veto"],
+                              help="fusion = scoring pondéré (XGBoost+Trend+Regime), veto = blocage binaire")
+
     if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
         with st.spinner(f"Backtest {symbol} sur {days}j..."):
             try:
@@ -2930,6 +2933,7 @@ def _render_backtest_v4():
                     risk_pct=risk_pct, sl_mult=sl_mult, tp_mult=tp_mult,
                     fraction=fraction, exit_strategy=exit_strat,
                     exit_atr_mult=exit_atr, min_atr_dist=min_dist,
+                    gate_mode=gate_mode,
                 )
                 st.info(f"DEBUG: {result.n_trades} trades, PnL=${result.total_pnl}")
 

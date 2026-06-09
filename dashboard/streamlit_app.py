@@ -2856,14 +2856,18 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
         model = ai_outputs.get("model", "")
         duration = ai_outputs.get("duration_ms", 0)
         if response:
+            theme = _get_theme()
+            text_color = "#212529" if theme == "light" else "#e6edf3"
+            bg_color   = "#ffffff" if theme == "light" else "#0d1117"
             is_error = response.startswith("LLM_ERROR")
             icon = "⚠️" if is_error else "🧠"
             label = f"{icon} {asset} ({model}, {duration/1000:.1f}s)"
             with st.expander(label, expanded=expanded):
-                # Texte réduit, couleurs adaptées au thème (clair/sombre)
                 st.markdown(
                     f'<div style="font-size:12px;line-height:1.5;'
-                    f'color:var(--text-color, #e0e0e0);'
+                    f'color:{text_color};background:{bg_color};'
+                    f'padding:12px;border-radius:6px;'
+                    f'max-height:400px;overflow-y:auto;'
                     f'white-space:pre-wrap;word-break:break-word;">'
                     f'{response}</div>',
                     unsafe_allow_html=True,

@@ -3886,25 +3886,54 @@ def render_admin_panel():
             st.markdown("---")
 
             # Tableau
-            import pandas as _hpd
-            rows = []
-            for tr in filtered:
-                pnl = float(tr.get("pnl_usd", 0) or 0)
-                rows.append({
-                    "Date": (tr.get("timestamp") or "")[:19].replace("T", " "),
-                    "Actif": tr.get("symbol", "—"),
-                    "Action": (tr.get("action") or "").upper(),
-                    "Entrée": f"${float(tr.get('entry_price', 0)):,.2f}" if tr.get("entry_price") else "—",
-                    "SL": f"${float(tr.get('stop_loss', 0)):,.2f}" if tr.get("stop_loss") else "—",
-                    "TP": f"${float(tr.get('take_profit', 0)):,.2f}" if tr.get("take_profit") else "—",
-                    "Taille": f"${float(tr.get('size_usd', 0)):,.0f}" if tr.get("size_usd") else "—",
-                    "P&L": f"${pnl:+,.2f}" if tr.get("status") == "closed" else "⏳",
-                    "Statut": "✅ fermé" if tr.get("status") == "closed" else "⏳ ouvert",
-                    "DAG": tr.get("dag_id", "—"),
-                })
+            # Tableau HTML (thème-aware, pas de fond blanc)
+            theme = _get_theme()
+            if theme == "light":
+                tbl_bg, tbl_fg, head_bg, border = "#ffffff", "#212529", "#f1f3f5", "#dee2e6"
+                row_alt, sep = "#f8f9fa", "#e9ecef"
+            else:
+                tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
+                row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
 
-            _h_df = _hpd.DataFrame(rows)
-            st.dataframe(_h_df, use_container_width=True, hide_index=True, height=min(600, 35 * len(rows) + 38))
+            cols = ["Date", "Actif", "Action", "Entrée", "SL", "TP", "Taille", "P&L", "Statut", "DAG"]
+            header = "".join(
+                f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
+                f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};opacity:.65;'
+                f'background:{head_bg};white-space:nowrap;border-bottom:2px solid {border};">{c}</th>'
+                for c in cols
+            )
+            rows_html = ""
+            for i, tr in enumerate(filtered):
+                bg = row_alt if i % 2 else tbl_bg
+                pnl = float(tr.get("pnl_usd", 0) or 0)
+                pnl_str = f"${pnl:+,.2f}" if tr.get("status") == "closed" else "⏳"
+                pnl_color = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else tbl_fg)
+                action = (tr.get("action") or "").upper()
+                action_color = "#2ecc71" if action == "LONG" else ("#e74c3c" if action == "SHORT" else tbl_fg)
+                cells = [
+                    (tr.get("timestamp") or "")[:19].replace("T", " "),
+                    tr.get("symbol", "—"),
+                    f'<span style="color:{action_color};font-weight:600;">{action}</span>',
+                    f'${float(tr.get("entry_price", 0)):,.2f}' if tr.get("entry_price") else "—",
+                    f'${float(tr.get("stop_loss", 0)):,.2f}' if tr.get("stop_loss") else "—",
+                    f'${float(tr.get("take_profit", 0)):,.2f}' if tr.get("take_profit") else "—",
+                    f'${float(tr.get("size_usd", 0)):,.0f}' if tr.get("size_usd") else "—",
+                    f'<span style="color:{pnl_color};font-weight:600;">{pnl_str}</span>',
+                    "✅ fermé" if tr.get("status") == "closed" else "⏳ ouvert",
+                    tr.get("dag_id", "—"),
+                ]
+                td_style = f'padding:5px 10px;font-size:12px;color:{tbl_fg};white-space:nowrap;border-bottom:1px solid {sep};'
+                tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
+                rows_html += f'<tr style="background:{bg};">{tds}</tr>'
+
+            st.markdown(
+                f'<div style="overflow:auto;max-height:600px;border:1px solid {border};'
+                f'border-radius:10px;background:{tbl_bg};margin-bottom:24px;">'
+                f'<table style="border-collapse:collapse;width:100%;min-width:900px;">'
+                f'<thead><tr>{header}</tr></thead>'
+                f'<tbody>{rows_html}</tbody></table></div>',
+                unsafe_allow_html=True,
+            )
 
             # Export CSV
             _h_csv = _h_df.to_csv(index=False).encode("utf-8")

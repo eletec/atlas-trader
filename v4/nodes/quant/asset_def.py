@@ -56,6 +56,7 @@ class AssetDef(Node):
             "fraction": "float",
             "fee_rate": "float",
             "keywords": "list",
+            "max_positions": "int",
         }
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -66,4 +67,5 @@ class AssetDef(Node):
             "fraction": float(self.params.get("fraction", 0.005)),
             "fee_rate": float(self.params.get("fee_rate", 0.0004)),
             "keywords": list(self.params.get("keywords", [])),
+            "max_positions": int(self.params.get("max_positions", 3)),
         }

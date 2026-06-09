@@ -55,7 +55,8 @@ class PaperTrader(Node):
             return {"trade_result": {"status": "flat", "symbol": symbol}}
 
         # ── Limite de positions simultanées (pyramiding control) ──
-        max_positions = int(self.params.get("max_positions", 1))
+        # Priorité : input AssetDef > params DAG > défaut 1
+        max_positions = int(inputs.get("max_positions") or self.params.get("max_positions", 1))
         if max_positions > 0:
             try:
                 from storage.paper_trader import get_open_positions

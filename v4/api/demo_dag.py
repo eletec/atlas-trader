@@ -20,7 +20,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         # ── Colonne 0 : Définition de l'actif ──
         NodeSpec(id=f"{pfx}_asset", type="AssetDef",
                  params={"symbol": symbol, "exchange": "binance",
-                          "capital_usd": 10000, "fraction": 0.02}),
+                          "capital_usd": 10000, "fraction": 0.02,
+                          "max_positions": 3}),
         # ── Colonne 1 : Données OHLCV ──
         NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
                  params={"symbol": symbol, "days_5m": 90, "days_1h": 100,
@@ -62,8 +63,7 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                           "risk_pct": 1.0, "capital": 10000}),
         # ── Colonne 8 : PaperTrader LONG ──
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
-                 params={"symbol": symbol, "dag_id": dag_id,
-                          "max_positions": 3}),
+                 params={"symbol": symbol, "dag_id": dag_id}),
         # ── Colonne 8b : Record DB ──
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
                  params={"db_path": "/app/data/v4_decisions.db"}),
@@ -90,8 +90,7 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  params={"sl_mult": 3.0, "tp_mult": 6.0, "fraction": 0.015,
                           "risk_pct": 1.0, "capital": 10000}),
         NodeSpec(id=f"{pfx}_short_paper", type="PaperTrader",
-                 params={"symbol": symbol, "dag_id": dag_id,
-                          "max_positions": 3}),
+                 params={"symbol": symbol, "dag_id": dag_id}),
         NodeSpec(id=f"{pfx}_short_alert", type="AlertOnly",
                  params={"channels": ["log"]}),
     ]
@@ -134,6 +133,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_paper", target_port="decision"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_paper", target_port="symbol"),
+        EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
+                 target_node=f"{pfx}_paper", target_port="max_positions"),
         EdgeSpec(source_node=f"{pfx}_risk", source_port="decision",
                  target_node=f"{pfx}_record", target_port="decision"),
         # ── Lane SHORT ──
@@ -151,6 +152,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_short_paper", target_port="decision"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_short_paper", target_port="symbol"),
+        EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
+                 target_node=f"{pfx}_short_paper", target_port="max_positions"),
         EdgeSpec(source_node=f"{pfx}_short_risk", source_port="decision",
                  target_node=f"{pfx}_short_alert", target_port="decision"),
         # ── AI Analyst ──

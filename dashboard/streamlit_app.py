@@ -2855,38 +2855,15 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
         response = ai_outputs.get("response", "")
         model = ai_outputs.get("model", "")
         duration = ai_outputs.get("duration_ms", 0)
-        if response:
-            theme = _get_theme()
-            if theme == "light":
-                text_c = "#212529"; bg_c = "#ffffff"; border_c = "#dee2e6"
-                head_c = "#f1f3f5"; hover_c = "#e9ecef"
-            else:
-                text_c = "#e6edf3"; bg_c = "#0d1117"; border_c = "rgba(255,255,255,0.1)"
-                head_c = "#161b22"; hover_c = "#1b2129"
-
-            is_error = response.startswith("LLM_ERROR")
-            icon = "⚠️" if is_error else "🧠"
-            label = f"{icon} {asset} ({model}, {duration/1000:.1f}s)"
-            uid = f"ai_{pfx}"
-
-            # HTML pur : détails/summary natif + scroll
-            open_attr = " open" if expanded else ""
-            html = f"""
-<details{open_attr} style="margin:4px 0;border:1px solid {border_c};border-radius:8px;
-    background:{bg_c};font-family:inherit;">
-  <summary style="padding:10px 14px;font-size:13px;font-weight:600;color:{text_c};
-      background:{head_c};cursor:pointer;border-radius:8px;user-select:none;
-      transition:background .15s;"
-      onmouseover="this.style.background='{hover_c}'"
-      onmouseout="this.style.background='{head_c}'">
-    {label}
-  </summary>
-  <div style="padding:12px 16px;font-size:12px;line-height:1.6;color:{text_c};
-      max-height:380px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">
-{response}
-  </div>
-</details>"""
-            st.markdown(html, unsafe_allow_html=True)
+        if response and not response.startswith("LLM_ERROR"):
+            label = f"🧠 {asset} ({model}, {duration/1000:.1f}s)"
+            with st.expander(label, expanded=expanded):
+                # Limiter la hauteur et permettre le scroll via CSS sur le conteneur
+                st.markdown(
+                    f'<div style="max-height:350px;overflow-y:auto;font-size:13px;">'
+                    f'{response}</div>',
+                    unsafe_allow_html=True,
+                )
     except Exception:
         pass
 

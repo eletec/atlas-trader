@@ -66,10 +66,13 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         # ── Colonne 8b : Record DB ──
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
                  params={"db_path": "/app/data/v4_decisions.db"}),
+        # ── Colonne 8c : Reflection (mémoire des trades) ──
+        NodeSpec(id=f"{pfx}_reflect", type="ReflectionNode",
+                 params={"max_lessons": 5, "min_pnl_abs": 1.0}),
         # ── Colonne 9 : AI Analyst ──
         NodeSpec(id=f"{pfx}_ai", type="LLMNode",
                  params={"system_prompt": "You are a crypto trading analyst.",
-                          "user_prompt": "Market: {inputs}",
+                          "user_prompt": "{reflections}\n\nMarket: {inputs}",
                           "temperature": 0.3,
                           "max_tokens": 512, "timeout_s": 60}),
 
@@ -153,6 +156,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  target_node=f"{pfx}_ai", target_port="trend"),
         EdgeSpec(source_node=f"{pfx}_crosstf", source_port="signal",
                  target_node=f"{pfx}_ai", target_port="cross_tf_signal"),
+        EdgeSpec(source_node=f"{pfx}_reflect", source_port="lessons",
+                 target_node=f"{pfx}_ai", target_port="lessons"),
     ]
 
     return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)

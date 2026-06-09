@@ -8,6 +8,7 @@ from v4.nodes.quant.direction_gate import DirectionGate
 from v4.nodes.quant.load_multi_tf import LoadMultiTF
 from v4.nodes.quant.output import AlertOnly, PaperTrader, RecordDecision
 from v4.nodes.quant.position_manager import PositionManager
+from v4.nodes.quant.reflection import ReflectionNode
 from v4.nodes.quant.regime import RegimeHMM, RegimePassthrough
 from v4.nodes.quant.risk import RiskATR
 from v4.nodes.quant.signal import SignalLogReg
@@ -32,6 +33,7 @@ __all__ = [
     "AlertOnly",
     "RecordDecision",
     "PositionManager",
+    "ReflectionNode",
     "TrendFilter",
 ]
 
@@ -45,6 +47,7 @@ NODE_REGISTRY: dict[str, type] = {
         SignalConstant, SignalLogReg, SignalXGB,
         RiskATR, PaperTrader, AlertOnly, RecordDecision,
         PositionManager,
+        ReflectionNode,
         TrendFilter,
     ]
 }

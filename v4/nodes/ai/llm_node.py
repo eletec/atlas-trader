@@ -69,10 +69,17 @@ class LLMNode(Node):
         timeout_s     = int(self.params.get("timeout_s", 60))
 
         # Substitution des placeholders dans le user_prompt
+        # Injecter les leçons de reflection si présentes
+        reflections = inputs.get("lessons") or inputs.get("reflections", "")
+        if reflections:
+            formatted_prompt = user_prompt.replace("{reflections}", str(reflections))
+        else:
+            formatted_prompt = user_prompt.replace("{reflections}", "")
+
         try:
-            formatted_prompt = user_prompt.format(**inputs, inputs=json.dumps(inputs, default=str))
+            formatted_prompt = formatted_prompt.format(**inputs, inputs=json.dumps(inputs, default=str))
         except (KeyError, ValueError):
-            formatted_prompt = user_prompt.replace("{inputs}", json.dumps(inputs, default=str))
+            formatted_prompt = formatted_prompt.replace("{inputs}", json.dumps(inputs, default=str))
 
         payload = {
             "model": model,

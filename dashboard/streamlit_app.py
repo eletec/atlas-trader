@@ -2837,6 +2837,7 @@ def _render_v4_config():
         risk_pct = st.slider("Risque par trade", value=float(risk_cfg.get("risk_pct", 1.0)), min_value=0.1, max_value=10.0, step=0.1, format="%.1f%%")
         sl_mult = st.slider("Multiplicateur SL (×ATR)", value=float(risk_cfg.get("sl_mult", 2.0)), min_value=1.0, max_value=6.0, step=0.5)
     tp_mult = st.slider("Multiplicateur TP (×ATR)", value=float(risk_cfg.get("tp_mult", 4.0)), min_value=1.0, max_value=10.0, step=0.5)
+    max_positions = st.slider("Max positions simultanées par actif", value=int(risk_cfg.get("max_positions", 3)), min_value=1, max_value=10, step=1)
 
     if st.button("💾 Sauvegarder la configuration", type="primary", use_container_width=True):
         cfg["risk"] = {
@@ -2845,6 +2846,7 @@ def _render_v4_config():
             "risk_pct": round(risk_pct, 1),
             "sl_mult": round(sl_mult, 1),
             "tp_mult": round(tp_mult, 1),
+            "max_positions": int(max_positions),
         }
         try:
             settings_path.parent.mkdir(parents=True, exist_ok=True)

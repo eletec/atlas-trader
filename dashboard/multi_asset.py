@@ -368,6 +368,10 @@ function pdag(){{
   }}).catch(function(){{}});
 }}
 setInterval(pdag,30000);setTimeout(pdag,2000);
+// Trigger pdag after first successful price poll too (fallback)
+var _dagDone=false;
+var _origPoll=poll;
+poll=function(){{_origPoll();if(!_dagDone){{_dagDone=true;setTimeout(pdag,1000);}}}};
 </script>
 </body></html>""", height=200)
 

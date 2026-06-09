@@ -110,10 +110,119 @@ def _fetch_v4_dags() -> list[dict]:
 
 
 def render_global_overview() -> None:
-    """Titre de la section — le tableau est maintenant dans l'iframe AJAX (render_global_live_prices)."""
+    """
+    Tableau consolidé multi-actifs — données V4 live.
+    Affiche l'état de chaque DAG actif : signal, tendance, dernier trade, statut.
+    """
     import streamlit as st
-    st.markdown("### 🌐 Vue Globale V4")
-    st.caption("Tableau mis à jour en temps réel ci-dessous ↓")
+
+    dags = _fetch_v4_dags()
+    if not dags:
+        # Fallback V3 silencieux — ne rien afficher plutôt que des données obsolètes
+        return
+
+    theme = st.query_params.get("theme", "dark")
+
+    st.markdown(f"### {'🌐 Vue Globale V4'}")
+
+    html_rows = ""
+    for d in dags:
+        dag_id = d.get("dag_id", "?")
+        asset = d.get("asset", "?")
+        running = d.get("running", False)
+        last_ts = d.get("last_run_at")
+        results = d.get("last_results", {})
+
+        ts_str = ""
+        if last_ts:
+            from datetime import datetime as _dt
+            try:
+                ts_str = _dt.fromtimestamp(last_ts).strftime("%H:%M:%S")
+            except Exception:
+                ts_str = "—"
+        else:
+            ts_str = "—"
+
+        icon = _asset_icon(asset) if asset else "◈"
+
+        # Extraire signal, trend, trade des résultats avec le bon préfixe
+        pfx = asset.split("/")[0].lower()[:3] if asset else "btc"
+        signal_node = results.get(f"{pfx}_signal", {}) or results.get("signal", {})
+        trend_node = results.get(f"{pfx}_trend", {})
+        risk_node = results.get(f"{pfx}_risk", {})
+        short_risk = results.get(f"{pfx}_short_risk", {})
+        paper_node = results.get(f"{pfx}_paper", {})
+
+        signal_out = signal_node.get("outputs", {}) if isinstance(signal_node, dict) else {}
+        trend_out = trend_node.get("outputs", {}) if isinstance(trend_node, dict) else {}
+        risk_out = risk_node.get("outputs", {}) if isinstance(risk_node, dict) else {}
+        short_out = short_risk.get("outputs", {}) if isinstance(short_risk, dict) else {}
+        paper_out = paper_node.get("outputs", {}) if isinstance(paper_node, dict) else {}
+
+        signal = signal_out.get("signal", "—")
+        prob_up = signal_out.get("prob_up")
+        trend = trend_out.get("trend", "—")
+        risk_decision = risk_out.get("decision", {})
+        short_decision = short_out.get("decision", {})
+        trade_result = paper_out.get("trade_result", {})
+
+        if isinstance(risk_decision, str):
+            risk_decision = {}
+        if isinstance(short_decision, str):
+            short_decision = {}
+        if isinstance(trade_result, str):
+            trade_result = {}
+
+        # Score = prob_up × 100 ou 50 si flat
+        if signal == "long":
+            score = int((prob_up or 0.75) * 100)
+        elif signal == "short":
+            score = int(((1 - (prob_up or 0.5)) * 100))
+        else:
+            score = 50
+
+        # Trade info
+        trade_action = risk_decision.get("action") or short_decision.get("action")
+        trade_price = risk_decision.get("entry_price") or short_decision.get("entry_price")
+        if trade_action and trade_action != "flat" and trade_price:
+            trade_str = f'{trade_action.upper()} @ ${trade_price:,.0f}'
+        elif trade_action == "flat" or not trade_action:
+            trade_str = "—"
+        else:
+            trade_str = str(trade_action or "—")
+
+        # Statut du DAG
+        status_icon = "🟢" if running else "⚫"
+        status_text = "actif" if running else "arrêté"
+
+        html_rows += (
+            f"<tr>"
+            f"<td style='padding:6px 10px;'>{icon} {asset}</td>"
+            f"<td style='padding:6px 10px;'>{_action_badge(signal)}</td>"
+            f"<td style='padding:6px 10px;'>{_score_bar(score, theme)}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts_str}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{trade_str}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{trend.upper() if trend else '—'}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{status_icon} {status_text}</td>"
+            f"</tr>"
+        )
+
+    st.markdown(
+        f"""<table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:12px;opacity:.6;">
+          <th style="padding:4px 10px;text-align:left;">Actif</th>
+          <th style="padding:4px 10px;text-align:left;">Signal</th>
+          <th style="padding:4px 10px;text-align:left;">Direction</th>
+          <th style="padding:4px 10px;text-align:left;">Dernier run</th>
+          <th style="padding:4px 10px;text-align:left;">Trade</th>
+          <th style="padding:4px 10px;text-align:left;">Tendance</th>
+          <th style="padding:4px 10px;text-align:left;">Statut</th>
+        </tr></thead>
+        <tbody>{html_rows}</tbody>
+        </table>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
 
 
 # ---------------------------------------------------------------------------
@@ -200,46 +309,14 @@ def render_global_live_prices() -> None:
     pos_js   = _json.dumps(pos_data)
     api_js   = _json.dumps(_PUBLIC_API_URL)
 
-    # ── Tableau overview intégré dans l'iframe ──
-    ov_rows = ""
-    for asset in dag_assets:
-        uid = asset.replace("/", "_")
-        icon = _asset_icon(asset)
-        ov_rows += (
-            f'<tr>'
-            f'<td style="padding:4px 8px;">{icon} {asset}</td>'
-            f'<td class="ov-sig" id="ovsig_{uid}" style="padding:4px 8px;">—</td>'
-            f'<td id="ovsc_{uid}" style="padding:4px 8px;">50</td>'
-            f'<td class="ov-ts" id="ovts_{uid}" style="padding:4px 8px;font-size:11px;opacity:.7;">—</td>'
-            f'<td class="ov-trade" id="ovtr_{uid}" style="padding:4px 8px;font-size:11px;">—</td>'
-            f'<td class="ov-trend" id="ovtn_{uid}" style="padding:4px 8px;font-size:11px;">—</td>'
-            f'<td style="padding:4px 8px;font-size:11px;">🟢 actif</td>'
-            f'</tr>'
-        )
-
     st.components.v1.html(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
 body{{margin:0;padding:6px;font-family:system-ui,sans-serif;background:transparent;color:#e6edf3;}}
 .px-card{{transition:background .3s;}}
 .px-card.up{{background:rgba(46,204,113,.12)!important;}}
 .px-card.dn{{background:rgba(231,76,60,.12)!important;}}
-.ov-sig{{font-weight:600;font-size:12px;}}
-.ov-sig.long{{color:#2ecc71;}}.ov-sig.short{{color:#e74c3c;}}
 </style></head><body>
 <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">{cards}</div>
-<div style="margin-top:12px;">
-<table style="width:100%;border-collapse:collapse;font-size:12px;">
-<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);opacity:.6;">
-<th style="padding:4px 8px;text-align:left;">Actif</th>
-<th style="padding:4px 8px;text-align:left;">Signal</th>
-<th style="padding:4px 8px;text-align:left;">Dir</th>
-<th style="padding:4px 8px;text-align:left;">Run</th>
-<th style="padding:4px 8px;text-align:left;">Trade</th>
-<th style="padding:4px 8px;text-align:left;">Tendance</th>
-<th style="padding:4px 8px;text-align:left;">Statut</th>
-</tr></thead>
-<tbody>{ov_rows}</tbody>
-</table></div>
 <script>
 var S={sym_js},P={pos_js},A={api_js},L={{}},F={{}};
 function f(p){{if(p==null)return'—';if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:4,maximumFractionDigits:4}});}}
@@ -273,8 +350,8 @@ function pdag(){{
   fetch(A+'/dag/status').then(function(r){{return r.json()}}).then(function(ds){{
     ds.forEach(function(dg){{
       var s=dg.asset;if(!s)return;var u=s.replace(/\\//g,'_');
-      var ie=document.getElementById('info_'+u),rs=dg.last_results||{{}},pf=s.split('/')[0].toLowerCase().slice(0,3);
-      // Price card info
+      var ie=document.getElementById('info_'+u);
+      var rs=dg.last_results||{{}},pf=s.split('/')[0].toLowerCase().slice(0,3);
       var tn=rs[pf+'_trend'],sn=rs[pf+'_signal'];
       var tr='—',si='—',pb=null;
       if(tn&&tn.outputs)tr=(tn.outputs.trend||'—').toUpperCase();
@@ -283,33 +360,20 @@ function pdag(){{
       if(ie)ie.textContent=tr+' | '+sl;
       var pm=rs[pf+'_posmgr'];
       if(pm&&pm.outputs&&pm.outputs.open_positions&&pm.outputs.open_positions.length){{
-        P[s]={{action:pm.outputs.open_positions[0].action,entry:pm.outputs.open_positions[0].entry_price}};
+        var p0=pm.outputs.open_positions[0];
+        P[s]={{action:p0.action,entry:p0.entry_price}};
       }}
-      // Overview table
-      var se=document.getElementById('ovsig_'+u),sc=document.getElementById('ovsc_'+u);
-      var st=document.getElementById('ovts_'+u),sr=document.getElementById('ovtr_'+u);
-      var so=document.getElementById('ovtn_'+u);
-      if(se){{se.textContent=si;se.className='ov-sig '+(si==='long'?'long':si==='short'?'short':'');}}
-      if(sc)sc.textContent=si==='long'?Math.round((pb||0.75)*100):(si==='short'?Math.round((1-(pb||0.5))*100):50);
-      if(st){{var t=dg.last_run_at;st.textContent=t?new Date(t*1000).toLocaleTimeString().slice(0,8):'—';}}
-      if(sr){{
-        var rk=rs[pf+'_risk'],sk=rs[pf+'_short_risk'];
-        var rd=rk&&rk.outputs?rk.outputs.decision:null;
-        var sd=sk&&sk.outputs?sk.outputs.decision:null;
-        var a=(rd||sd||{{}}).action,ep=(rd||sd||{{}}).entry_price;
-        sr.textContent=a&&a!=='flat'&&ep?a.toUpperCase()+' @ $'+Math.round(ep):'—';
-      }}
-      if(so)so.textContent=tr;
       poll();
     }});
   }}).catch(function(){{}});
 }}
-setInterval(pdag,5000);setTimeout(pdag,2000);
-var _dagDone=false;var _origPoll=poll;
+setInterval(pdag,30000);setTimeout(pdag,2000);
+// Trigger pdag after first successful price poll too (fallback)
+var _dagDone=false;
+var _origPoll=poll;
 poll=function(){{_origPoll();if(!_dagDone){{_dagDone=true;setTimeout(pdag,1000);}}}};
 </script>
-</body></html>""", height=440)
-
+</body></html>""", height=200)
 
 
 

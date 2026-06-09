@@ -3824,7 +3824,15 @@ def render_admin_panel():
             except Exception as e:
                 st.error(f"Erreur DB : {e}")
 
-            st.success("✅ Reset complet effectué — DAGs arrêtés, trades effacés. Redémarrage en cours...")
+            # 3) Redémarrer les DAGs démo
+            try:
+                resp = _j4.loads(_ur4.urlopen(
+                    _ur4.Request(f"{_API_BASE}/dag/restart-demo", method="POST")
+                ).read())
+                st.success(f"✅ {resp['count']} DAG(s) redémarré(s) — cycle 300s.")
+            except Exception as e:
+                st.warning(f"⚠️ Redémarrage DAGs échoué : {e}")
+
             st.balloons()
 
     elif _atab == "historique":  # Historique des transactions V4

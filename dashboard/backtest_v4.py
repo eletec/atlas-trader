@@ -58,6 +58,7 @@ def run_backtest_v4(
     exit_strategy: str = "chandelier",
     exit_atr_mult: float = 3.0,
     min_atr_dist: float = 1.0,
+    **kwargs,
 ) -> BTResult:
     """Backtest V4 avec les vrais nœuds DAG."""
     from quant.data_loader import fetch_history
@@ -194,14 +195,48 @@ def run_backtest_v4(
                     confidence = 0.0
                     source = "sma"
 
-            # ── Direction Gate (only for ML signals, not SMA which is self-consistent) ──
+            # ── Direction Gate ──
             if source != "sma":
-                if signal == "long" and trend == "bearish":
-                    logger.debug("Direction Gate: long blocked by bearish trend")
-                    signal = "flat"
-                elif signal == "short" and trend == "bullish":
-                    logger.debug("Direction Gate: short blocked by bullish trend")
-                    signal = "flat"
+                gate_mode = kwargs.get("gate_mode", "fusion")  # "veto" | "fusion"
+                _sig_before_gate = signal
+                if gate_mode == "fusion":
+                    # Scoring pondéré : XGBoost (0.55) + Trend (0.35) + Regime (0.10)
+                    # (IA non dispo en backtest → poids redistribués)
+                    w_xgb = 0.55
+                    w_trend = 0.35
+                    w_regime = 0.10
+                    threshold = 0.30
+
+                    score = 0.0
+                    if signal == "long":
+                        score += w_xgb * prob_up
+                    elif signal == "short":
+                        score -= w_xgb * (1.0 - prob_up)
+
+                    if trend == "bullish":
+                        score += w_trend
+                    elif trend == "bearish":
+                        score -= w_trend
+
+                    # Regime passthrough = toujours TREND → +0.05
+                    score += w_regime * 0.5
+
+                    score = max(-1.0, min(1.0, score))
+
+                    if score > threshold:
+                        signal = "long"
+                    elif score < -threshold:
+                        signal = "short"
+                    else:
+                        signal = "flat"
+
+                    logger.debug("Fusion i=%d: score=%.2f sig_before=%s → sig_after=%s", i, score, _sig_before_gate, signal)
+                else:
+                    # Mode veto (comportement original)
+                    if signal == "long" and trend == "bearish":
+                        signal = "flat"
+                    elif signal == "short" and trend == "bullish":
+                        signal = "flat"
 
             last_signal = signal
             last_prob_up = prob_up

@@ -317,7 +317,9 @@ function fmt(p){{
 function poll(){{
   fetch(apiUrl()+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(data){{
     SYMBOLS.forEach(function(sym){{
-      var p=data[sym];
+      var obj=data[sym];
+      if(!obj)return;
+      var p=(typeof obj==='object')?obj.price:obj;
       if(p===undefined)return;
       var el=document.getElementById('px_'+sym.replace(/\\//g,'_'));
       if(!el)return;

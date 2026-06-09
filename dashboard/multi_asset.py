@@ -17,6 +17,9 @@ from utils.i18n import t
 # ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
 import os as _os
 _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
+# URL publique pour le JS dans le navigateur (dérivée de V4_FRONTEND_URL)
+_frontend_url = _os.environ.get("V4_FRONTEND_URL", "http://localhost:3000")
+_PUBLIC_API_URL = _frontend_url.replace(":3000", ":8000")
 
 
 # ---------------------------------------------------------------------------
@@ -309,12 +312,13 @@ def render_global_live_prices() -> None:
             f'font-variant-numeric:tabular-nums;">{price_str}</div>'
             f'<div class="px-chg" id="chg_{uid}" style="font-size:12px;margin:2px 0;font-weight:600;">—</div>'
             f'<div class="px-pos" id="pos_{uid}" style="font-size:12px;font-weight:600;">{pos_html}</div>'
-            f'<div style="font-size:10px;opacity:0.6;margin-top:2px;">{trend_label} | {sig_label}</div>'
+            f'<div class="px-info" id="info_{uid}" style="font-size:10px;opacity:0.6;margin-top:2px;">{trend_label} | {sig_label}</div>'
             f'</div>'
         )
 
     symbols_js = _json.dumps(dag_assets)
     pos_data_js = _json.dumps(pos_data)
+    api_url_js  = _json.dumps(_PUBLIC_API_URL)
 
     st.components.v1.html(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
@@ -329,12 +333,10 @@ body{{margin:0;padding:6px;font-family:system-ui,sans-serif;background:transpare
 <script>
 var SYMBOLS={symbols_js};
 var POSDATA={pos_data_js};
+var API_URL={api_url_js};
 var LAST={{}}, FIRST={{}};
-function apiUrl(){{
-  try{{var h=window.top.location.hostname;if(h)return'http://'+h+':8000';}}catch(e){{}}
-  return'http://192.168.1.80:8000';
-}}
-function fmt(p){{
+function poll(){{
+  fetch(API_URL+'/prices/snapshot').then(function(r){{return r.json()}}).then(function(data){{
   if(p==null)return'—';
   if(p>=1000)return'$'+p.toLocaleString('en-US',{{maximumFractionDigits:0}});
   if(p>=1)return'$'+p.toLocaleString('en-US',{{minimumFractionDigits:2,maximumFractionDigits:2}});
@@ -388,15 +390,23 @@ function pollDag(){{
       var sym=dag.asset;if(!sym)return;
       var uid=sym.replace(/\\//g,'_');
       var posEl=document.getElementById('pos_'+uid);
+      var infoEl=document.getElementById('info_'+uid);
       var results=dag.last_results||{{}};
       var pfx=sym.split('/')[0].toLowerCase().slice(0,3);
+      // Trend + Signal
+      var tn=results[pfx+'_trend'];
+      var sn=results[pfx+'_signal'];
+      var trend='—',signal='—',prob=null;
+      if(tn&&tn.outputs)trend=(tn.outputs.trend||'—').toUpperCase();
+      if(sn&&sn.outputs){{signal=sn.outputs.signal||'—';prob=sn.outputs.prob_up;}}
+      var sigLabel=signal!=='—'&&prob!=null?signal+' '+(prob*100).toFixed(0)+'%':'—';
+      if(infoEl)infoEl.textContent=trend+' | '+sigLabel;
       // Position
       var pm=results[pfx+'_posmgr'];
       if(pm&&pm.outputs&&pm.outputs.open_positions&&pm.outputs.open_positions.length){{
         var p0=pm.outputs.open_positions[0];
         POSDATA[sym]={{action:p0.action,entry:p0.entry_price,size:p0.size_usd}};
       }}
-      // Trigger price poll to refresh PnL
       poll();
     }});
   }}).catch(function(){{}});

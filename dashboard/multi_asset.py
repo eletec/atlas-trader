@@ -295,7 +295,6 @@ def render_global_live_prices() -> None:
 </div>"""
 
     symbols_js = _json.dumps(dag_assets)
-    api_base_js = _json.dumps(_API_BASE)
 
     st.markdown(f"### 📡 Prix temps réel")
     st.components.v1.html(f"""
@@ -313,29 +312,17 @@ def render_global_live_prices() -> None:
 </div>
 <script>
 const SYMBOLS = {symbols_js};
-const API_BASE = {api_base_js};
 let lastPrices = {{}};
+
+function getApiUrl() {{
+  return 'http://' + window.location.hostname + ':8000';
+}}
 
 function fmtPrice(p) {{
   if (p === null || p === undefined) return '—';
   if (p >= 1000) return '$' + p.toLocaleString('en-US', {{maximumFractionDigits:0}});
   if (p >= 1) return '$' + p.toLocaleString('en-US', {{minimumFractionDigits:2, maximumFractionDigits:2}});
   return '$' + p.toLocaleString('en-US', {{minimumFractionDigits:4, maximumFractionDigits:4}});
-}}
-
-function getApiUrl() {{
-  // Try parent window (Streamlit dashboard URL), fallback to passed API_BASE
-  try {{
-    if (window.parent && window.parent.location.hostname) {{
-      const host = window.parent.location.hostname;
-      return window.parent.location.protocol + '//' + host + ':8000';
-    }}
-  }} catch(e) {{}}
-  // Fallback: use Python-provided API_BASE, or derive from current location
-  if (API_BASE && API_BASE !== 'http://atlas-v4-api:8000' && API_BASE !== 'http://host.docker.internal:8000') {{
-    return API_BASE;
-  }}
-  return 'http://' + window.location.hostname + ':8000';
 }}
 
 function connectSSE() {{

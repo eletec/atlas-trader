@@ -56,7 +56,7 @@ async def _auto_schedule_demo():
     """Démarre automatiquement le DAG démo et les tickers prix au boot."""
     # 1) DAGs démo (BTC, ETH, SOL, BNB, XRP)
     try:
-        from v5.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
+        from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
         from v4.api.dag_registry import DAGRegistry
         registry = DAGRegistry.instance()
         existing_ids = {e.dag_id for e in registry.status()}

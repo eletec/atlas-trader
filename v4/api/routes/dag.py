@@ -97,8 +97,8 @@ async def stop_dag(dag_id: str):
 
 @router.post("/restart-demo")
 async def restart_demo_dags():
-    """Redémarre les 7 DAGs démo V5 (MetaGate + CircuitBreaker)."""
-    from v5.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
+    """Redémarre les 7 DAGs démo (après un reset par exemple)."""
+    from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
 
     registry = DAGRegistry.instance()
     restarted = []

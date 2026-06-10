@@ -4184,9 +4184,18 @@ def _get_v4_dags() -> list[dict]:
         return []
 
 
-def _render_v4_status():
-    """Section V4 dans le dashboard front office."""
+def _render_v4_status(asset_filter: str | None = None):
+    """Section V4 dans le dashboard front office. Filtrable par actif."""
     dags = _get_v4_dags()
+    if not dags:
+        return
+
+    # Filtrer par actif si demandé (via nav asset ou paramètre explicite)
+    if asset_filter is None:
+        asset_filter = st.query_params.get("_asset", "")
+    if asset_filter and asset_filter != "Global":
+        asset_filter_clean = asset_filter.replace("_", "/")
+        dags = [d for d in dags if d.get("asset") == asset_filter_clean]
     if not dags:
         return
 
@@ -4341,8 +4350,8 @@ def main():
                 """Vue consolidée : PnL tous actifs + analyses IA."""
                 st.markdown("### 🧠 Dernières analyses IA")
                 assets = _active_assets_v4() or ["BTC/USDT"]
-                for i, asset in enumerate(assets):
-                    _render_ai_analysis(asset, expanded=(i == 0))
+                for asset in assets:
+                    _render_ai_analysis(asset, expanded=False)
                 st.markdown("---")
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)

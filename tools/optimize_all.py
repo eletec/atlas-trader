@@ -91,7 +91,7 @@ def main():
                     all_results.append(row)
                     logger.info(
                         "  %s sl=%.1f tp=%.1f %s atr=%.1f → %d trades sharpe=%.2f pnl=$%.0f score=%.2f",
-                        estrat, sl, tp, exit_strat, exit_atr, r.n_trades, r.sharpe, r.total_pnl, s,
+                        estrat, sl, tp, estrat, exit_atr, r.n_trades, r.sharpe, r.total_pnl, s,
                     )
                 except Exception as e:
                     logger.warning("  SKIP %s %dj: %s", symbol, days, e)

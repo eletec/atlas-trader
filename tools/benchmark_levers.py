@@ -26,12 +26,15 @@ logger = logging.getLogger("benchmark_levers")
 from dashboard.backtest_v4 import run_backtest_v4
 
 # ── Actifs testés ──
-ASSETS = ["BTC/USDT", "ETH/USDT"]
+ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+EXTRA_ASSETS = ["LINK/USDT", "DOT/USDT", "AVAX/USDT"]
 
 # ── Paramètres communs ──
 COMMON = dict(capital=10_000, risk_pct=1.0, fraction=0.02,
               exit_strategy="chandelier", exit_atr_mult=3.0, min_atr_dist=0.5,
               gate_mode="fusion", fusion_threshold=0.15)
+
+DAYS = 180  # test longue durée
 
 # ── Définition des leviers ──
 
@@ -84,7 +87,7 @@ def more_assets_test(assets, days):
 
 
 def main():
-    days = 60
+    days = DAYS
     levers = {
         "Baseline V4": lambda s: baseline(s, days),
         "Multi-horizon XGB": lambda s: multi_horizon(s, days),
@@ -97,7 +100,7 @@ def main():
 
     for name, fn in levers.items():
         logger.info("=" * 50)
-        logger.info("Testing: %s", name)
+        logger.info("Testing: %s (%dj)", name, days)
         for symbol in ASSETS:
             try:
                 r = fn(symbol)
@@ -147,10 +150,9 @@ def main():
 
     # ── Test multi-actifs ──
     logger.info("\n" + "=" * 80)
-    logger.info("TEST MULTI-ACTIFS (BTC, ETH, ADA, DOGE, LINK)")
-    extra_assets = ["ADA/USDT", "DOGE/USDT", "LINK/USDT"]
-    all_symbols = ASSETS + extra_assets
-    multi_results = more_assets_test(all_symbols, days)
+    logger.info("TEST MULTI-ACTIFS (%dj)", DAYS)
+    all_symbols = ASSETS + EXTRA_ASSETS
+    multi_results = more_assets_test(all_symbols, DAYS)
     for sym, r in multi_results.items():
         logger.info("  %s: %d trades, PnL=$%.0f, Sharpe=%.2f", sym, r.n_trades, r.total_pnl, r.sharpe)
 

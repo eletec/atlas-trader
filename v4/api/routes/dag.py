@@ -97,12 +97,12 @@ async def stop_dag(dag_id: str):
 
 @router.post("/restart-demo")
 async def restart_demo_dags():
-    """Redémarre les 5 DAGs démo (après un reset par exemple)."""
-    from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP
+    """Redémarre les 7 DAGs démo (après un reset par exemple)."""
+    from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
 
     registry = DAGRegistry.instance()
     restarted = []
-    for dag in (DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP):
+    for dag in (DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE):
         try:
             # Forcer l'arrêt si déjà en cours, puis redémarrer
             registry.stop(dag.dag_id)

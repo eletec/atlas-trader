@@ -67,3 +67,29 @@ XRP/USDT:
   exit_atr: 3.0
   trail_mult: 0.5
   min_atr_dist: 0.5
+
+# ADA/USDT — 30 trades/60j, Sharpe 0.96 (ajouté le 2026-06-10)
+ADA/USDT:
+  p_up: 0.52
+  p_dn: 0.48
+  fusion_th: 0.20
+  sl_mult: 2.0
+  tp_mult: 4.0
+  max_pos: 3
+  exit_strat: chandelier
+  exit_atr: 3.0
+  trail_mult: 0.5
+  min_atr_dist: 0.5
+
+# DOGE/USDT — 5 trades/60j, Sharpe 1.38 (ajouté le 2026-06-10)
+DOGE/USDT:
+  p_up: 0.52
+  p_dn: 0.48
+  fusion_th: 0.20
+  sl_mult: 2.0
+  tp_mult: 4.0
+  max_pos: 3
+  exit_strat: chandelier
+  exit_atr: 3.0
+  trail_mult: 0.5
+  min_atr_dist: 0.5

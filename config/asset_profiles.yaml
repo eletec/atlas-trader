@@ -1,35 +1,10 @@
 # config/asset_profiles.yaml
-# Paramètres optimaux par actif (découverts via backtest 60j).
-# Priorité > V4_INTENSITY. Les actifs absents utilisent le preset intensity global.
-#
-# Format :
-#   SYM:
-#     p_up: 0.55        # seuil XGBoost LONG
-#     p_dn: 0.45        # seuil XGBoost SHORT
-#     fusion_th: 0.30   # seuil fusion gate
-#     sl_mult: 2.0      # stop-loss × ATR
-#     tp_mult: 4.0      # take-profit × ATR
-#     max_pos: 3        # positions max simultanées
-#     exit_strat: chandelier  # chandelier | trailing
-#     exit_atr: 3.0     # ATR mult pour exit
-#     trail_mult: 0.5   # trailing multiplier (si trailing)
-#     min_atr_dist: 0.5 # breathing room
+# Paramètres optimaux par actif — découverts via optimize_all.py (8 combos, 60j).
+# MAJ 2026-06-10 — 124 min d'optimisation.
+# Priorité > V4_INTENSITY.
 
-# BTC/USDT — large cap, volatil, besoin de stops larges
+# BTC/USDT — 14 trades/60j, Sharpe 1.30
 BTC/USDT:
-  p_up: 0.52
-  p_dn: 0.48
-  fusion_th: 0.15
-  sl_mult: 3.0
-  tp_mult: 6.0
-  max_pos: 3
-  exit_strat: trailing
-  exit_atr: 4.0
-  trail_mult: 0.5
-  min_atr_dist: 0.5
-
-# ETH/USDT — plus erratique, stops serrés, filtre strict
-ETH/USDT:
   p_up: 0.55
   p_dn: 0.45
   fusion_th: 0.15
@@ -41,37 +16,50 @@ ETH/USDT:
   trail_mult: 0.5
   min_atr_dist: 0.5
 
-# SOL/USDT — volatil, trailing réactif
-SOL/USDT:
+# ETH/USDT — 5 trades/60j, Sharpe 1.86
+ETH/USDT:
   p_up: 0.52
   p_dn: 0.48
   fusion_th: 0.15
   sl_mult: 2.5
   tp_mult: 5.0
   max_pos: 3
-  exit_strat: trailing
+  exit_strat: chandelier
   exit_atr: 3.5
   trail_mult: 0.5
-  min_atr_dist: 0.5
+  min_atr_dist: 1.0
 
-# BNB/USDT — similaire ETH, stable
-BNB/USDT:
-  p_up: 0.53
-  p_dn: 0.47
+# SOL/USDT — 21 trades/60j, Sharpe 1.09
+SOL/USDT:
+  p_up: 0.55
+  p_dn: 0.45
   fusion_th: 0.15
-  sl_mult: 2.5
-  tp_mult: 5.0
+  sl_mult: 2.0
+  tp_mult: 4.0
   max_pos: 3
   exit_strat: chandelier
   exit_atr: 3.0
   trail_mult: 0.5
   min_atr_dist: 0.5
 
-# XRP/USDT — faible prix, forte volatilité relative
-XRP/USDT:
+# BNB/USDT — 6 trades/60j, Sharpe 0.99
+BNB/USDT:
   p_up: 0.52
   p_dn: 0.48
   fusion_th: 0.15
+  sl_mult: 2.5
+  tp_mult: 5.0
+  max_pos: 3
+  exit_strat: chandelier
+  exit_atr: 3.5
+  trail_mult: 0.5
+  min_atr_dist: 0.5
+
+# XRP/USDT — 14 trades/60j, Sharpe 1.46
+XRP/USDT:
+  p_up: 0.51
+  p_dn: 0.49
+  fusion_th: 0.30
   sl_mult: 2.0
   tp_mult: 4.0
   max_pos: 3

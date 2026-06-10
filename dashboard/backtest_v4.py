@@ -419,7 +419,7 @@ def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:
         if last.isna().any(axis=1).iloc[0]:
             return "flat", 0.5
 
-        prob_up = float(model.predict_proba(last))
+        prob_up = float(model.predict_proba(last).iloc[0]) if hasattr(model.predict_proba(last), 'iloc') else float(model.predict_proba(last))
         prob_up = float(prob_up)
 
         if prob_up >= 0.55:

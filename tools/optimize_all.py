@@ -33,17 +33,30 @@ from dashboard.backtest_v4 import run_backtest_v4
 SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
 HORIZONS = [60, 180]  # jours
 
-# Grille de paramètres à tester
+# Grille de paramètres à tester (16 combinaisons)
 PARAM_GRID = [
     # (p_up, p_dn, fusion_th, sl_mult, tp_mult, exit_strat, exit_atr, min_dist)
-    (0.55, 0.45, 0.15, 2.0, 4.0, "chandelier", 3.0, 0.5),
-    (0.52, 0.48, 0.15, 2.5, 5.0, "chandelier", 3.5, 1.0),
-    (0.52, 0.48, 0.15, 3.0, 6.0, "trailing",   4.0, 0.5),
-    (0.51, 0.49, 0.10, 2.5, 5.0, "trailing",   3.5, 0.5),
+    # ── fusion 0.30 ──
     (0.55, 0.45, 0.30, 2.0, 4.0, "chandelier", 3.0, 0.5),
     (0.52, 0.48, 0.30, 3.0, 6.0, "trailing",   4.0, 0.5),
     (0.51, 0.49, 0.30, 2.0, 4.0, "chandelier", 3.0, 0.5),
+    # ── fusion 0.15 ──
+    (0.55, 0.45, 0.15, 2.0, 4.0, "chandelier", 3.0, 0.5),
+    (0.52, 0.48, 0.15, 2.5, 5.0, "chandelier", 3.5, 1.0),
+    (0.52, 0.48, 0.15, 3.0, 6.0, "trailing",   4.0, 0.5),
+    (0.51, 0.49, 0.15, 2.5, 5.0, "trailing",   3.5, 0.5),
+    # ── fusion 0.10 ──
+    (0.52, 0.48, 0.10, 2.5, 5.0, "chandelier", 3.0, 0.5),
+    (0.52, 0.48, 0.10, 3.0, 6.0, "trailing",   4.0, 0.5),
+    (0.51, 0.49, 0.10, 2.5, 5.0, "trailing",   3.5, 0.5),
     (0.51, 0.49, 0.10, 3.0, 6.0, "trailing",   4.0, 1.0),
+    # ── fusion 0.05 ──
+    (0.52, 0.48, 0.05, 2.5, 5.0, "chandelier", 3.0, 0.5),
+    (0.51, 0.49, 0.05, 2.5, 5.0, "trailing",   3.5, 0.5),
+    (0.51, 0.49, 0.05, 3.0, 6.0, "trailing",   4.0, 0.5),
+    # ── fusion 0.20 ──
+    (0.52, 0.48, 0.20, 2.5, 5.0, "chandelier", 3.5, 0.5),
+    (0.51, 0.49, 0.20, 3.0, 6.0, "trailing",   4.0, 0.5),
 ]
 
 

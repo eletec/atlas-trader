@@ -139,22 +139,33 @@ class DirectionGate(Node):
             elif crosstf_signal == "short":
                 score -= w_crosstf * crosstf_conf
 
-            # ── Regime (5%) ──
+            # ── Regime (5%) + Adaptation ──
             regime = inputs.get("regime", "")
-            if isinstance(regime, str) and regime.upper() == "TREND":
-                score += w_regime * 0.5
+            if isinstance(regime, str):
+                r = regime.upper()
+                if r == "TREND":
+                    score += w_regime * 0.5
+                elif r == "CHOP":
+                    # CHOP = ne pas trader (block all new trades)
+                    return {"signal": "flat", "blocked": True,
+                            "reason": f"regime=CHOP (no new trades)", "score": 0.0}
+
+            # ── Regime-aware threshold adaptation ──
+            _threshold = threshold
+            if isinstance(regime, str) and regime.upper() == "RANGE":
+                _threshold = threshold + 0.10  # plus sélectif en range
 
             score = max(-1.0, min(1.0, score))
 
-            if score > threshold:
+            if score > _threshold:
                 return {"signal": "long", "blocked": False,
                         "reason": f"fusion={score:.2f}", "score": round(score, 4)}
-            elif score < -threshold:
+            elif score < -_threshold:
                 return {"signal": "short", "blocked": False,
                         "reason": f"fusion={score:.2f}", "score": round(score, 4)}
             else:
                 return {"signal": "flat", "blocked": True,
-                        "reason": f"fusion={score:.2f} < ±{threshold}", "score": round(score, 4)}
+                        "reason": f"fusion={score:.2f} < ±{_threshold}", "score": round(score, 4)}
 
         # ═══════════════════════════════════════════════════════════════
         # MODE VETO — comportement existant (inchangé)

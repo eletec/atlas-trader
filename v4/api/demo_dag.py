@@ -8,20 +8,39 @@ from __future__ import annotations
 from v4.api.models import DAGSpec, NodeSpec, EdgeSpec
 
 
-def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
+def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
     """Fabrique un DAG complet pour un symbole donné.
 
     Les nœuds sont préfixés par les 3 premières lettres du symbole
     (ex: btc_asset, eth_data, sol_signal...).
+
+    intensity : "conservative" | "balanced" | "aggressive"
     """
     pfx = symbol.split("/")[0].lower()[:3]  # "btc", "eth", "sol", "bnb", "xrp"
+
+    # ── Presets d'intensité ──
+    PRESETS = {
+        "conservative": dict(
+            p_up=0.55, p_dn=0.45, fusion_th=0.35,
+            sl_mult=2.0, tp_mult=4.0, max_pos=1, exit_strat="chandelier", exit_atr=3.0,
+        ),
+        "balanced": dict(
+            p_up=0.52, p_dn=0.48, fusion_th=0.30,
+            sl_mult=3.0, tp_mult=6.0, max_pos=3, exit_strat="trailing", exit_atr=4.0,
+        ),
+        "aggressive": dict(
+            p_up=0.51, p_dn=0.49, fusion_th=0.15,
+            sl_mult=3.0, tp_mult=8.0, max_pos=5, exit_strat="trailing", exit_atr=4.0,
+        ),
+    }
+    p = PRESETS.get(intensity, PRESETS["balanced"])
 
     nodes = [
         # ── Colonne 0 : Définition de l'actif ──
         NodeSpec(id=f"{pfx}_asset", type="AssetDef",
                  params={"symbol": symbol, "exchange": "binance",
                           "capital_usd": 10000, "fraction": 0.02,
-                          "max_positions": 3}),
+                          "max_positions": p["max_pos"]}),
         # ── Colonne 1 : Données OHLCV ──
         NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
                  params={"symbol": symbol, "days_5m": 90, "days_1h": 100,
@@ -31,10 +50,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                  params={"mode": "divergence", "momentum_5m": 6,
                           "momentum_1h": 4, "threshold": 0.15,
                           "strong_threshold": 0.40}),
-        # ── Colonne 1c : Position Manager (trailing exit optimisé) ──
+        # ── Colonne 1c : Position Manager ──
         NodeSpec(id=f"{pfx}_posmgr", type="PositionManager",
-                 params={"symbol": symbol, "exit_strategy": "trailing",
-                          "atr_mult": 4.0, "trail_mult": 0.5,
+                 params={"symbol": symbol, "exit_strategy": p["exit_strat"],
+                          "atr_mult": p["exit_atr"], "trail_mult": 0.5,
                           "min_atr_dist": 0.5, "chandelier_lookback": 12}),
         # ── Colonne 2 : Features techniques ──
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
@@ -50,8 +69,8 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
         # ── Colonne 5 : Signal XGBoost ──
         NodeSpec(id=f"{pfx}_signal", type="SignalXGB",
                  params={"calibrate": True, "train_fraction": 0.70,
-                          "horizon_bars": 48, "p_up_threshold": 0.52,
-                          "p_dn_threshold": 0.48, "retrain_cycle": 120,
+                          "horizon_bars": 48, "p_up_threshold": p["p_up"],
+                          "p_dn_threshold": p["p_dn"], "retrain_cycle": 120,
                           "max_depth": 5, "n_estimators": 100,
                           "lag_features": 3}),
         # ── Colonne 6 : Gate directionnel (mode fusion) ──
@@ -60,10 +79,10 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
                           "fusion": True,
                           "w_xgb": 0.50, "w_trend": 0.25,
                           "w_debate": 0.10, "w_crosstf": 0.10,
-                          "w_regime": 0.05, "threshold": 0.30}),
-        # ── Colonne 7 : Risk ATR (optimisé SL 3:1, TP 6:1) ──
+                          "w_regime": 0.05, "threshold": p["fusion_th"]}),
+        # ── Colonne 7 : Risk ATR ──
         NodeSpec(id=f"{pfx}_risk", type="RiskATR",
-                 params={"sl_mult": 3.0, "tp_mult": 6.0, "fraction": 0.02,
+                 params={"sl_mult": p["sl_mult"], "tp_mult": p["tp_mult"], "fraction": 0.02,
                           "risk_pct": 1.0, "capital": 10000}),
         # ── Colonne 8 : PaperTrader ──
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
@@ -165,8 +184,11 @@ def _make_dag(dag_id: str, symbol: str) -> DAGSpec:
 
 
 # ── DAGs par actif ──────────────────────────────────────────────────────────
-DEMO_DAG  = _make_dag("demo_v4",  "BTC/USDT")
-DEMO_ETH  = _make_dag("demo_eth", "ETH/USDT")
-DEMO_SOL  = _make_dag("demo_sol", "SOL/USDT")
-DEMO_BNB  = _make_dag("demo_bnb", "BNB/USDT")
-DEMO_XRP  = _make_dag("demo_xrp", "XRP/USDT")
+import os
+_V4_INTENSITY = os.environ.get("V4_INTENSITY", "balanced")  # "conservative" | "balanced" | "aggressive"
+
+DEMO_DAG  = _make_dag("demo_v4",  "BTC/USDT", intensity=_V4_INTENSITY)
+DEMO_ETH  = _make_dag("demo_eth", "ETH/USDT", intensity=_V4_INTENSITY)
+DEMO_SOL  = _make_dag("demo_sol", "SOL/USDT", intensity=_V4_INTENSITY)
+DEMO_BNB  = _make_dag("demo_bnb", "BNB/USDT", intensity=_V4_INTENSITY)
+DEMO_XRP  = _make_dag("demo_xrp", "XRP/USDT", intensity=_V4_INTENSITY)

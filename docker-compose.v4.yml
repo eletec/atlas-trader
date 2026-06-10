@@ -50,6 +50,7 @@ services:
       - OLLAMA_URL=http://atlas-v4-ollama:11434
       - TZ=Europe/Paris
       - DATABASE_URL=sqlite:////app/data/v4.db
+      - V4_INTENSITY=balanced     # conservative | balanced | aggressive
     depends_on:
       - atlas-v4-ollama
     healthcheck:

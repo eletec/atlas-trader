@@ -88,11 +88,12 @@ const NODES_SPEC: NodeSpec[] = [
     inputPorts: ["features_all", "regime"], outputPorts: ["signal", "prob_up", "reason"],
   },
 
-  // Col 6 : DirectionGate (auto — suit le TrendFilter)
+  // Col 6 : Gate — MetaGate V5 (LogisticRegression apprise)
   {
-    id: "btc_gate", type: "DirectionGate", x: X[6], y: Y_TOP, label: "Gate AUTO (TrendFilter)",
-    params: { allow_long: true, allow_short: true },
-    inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"],
+    id: "btc_gate", type: "MetaGate", x: X[6], y: Y_TOP, label: "MetaGate V5",
+    params: { threshold: 0.20, model_path: "/app/data/models/meta_btc.pkl" },
+    inputPorts: ["signal", "prob_up", "trend", "debate_signal", "debate_conf", "crosstf_signal", "crosstf_conf", "regime"],
+    outputPorts: ["signal", "blocked", "reason", "score"],
   },
 
   // Col 7 : Risk

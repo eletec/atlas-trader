@@ -26,6 +26,10 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   AlertOnly: { channels: ["log"] },
   RecordDecision: { db_path: "/app/data/v4_decisions.db" },
   LLMNode: { model: "phi4:latest", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },
+  // ── V5 ──
+  MetaGate: { threshold: 0.20, model_path: "/app/data/models/meta_btc.pkl" },
+  CircuitBreaker: { dd_warn_pct: -3.0, dd_kill_pct: -5.0 },
+  PortfolioRisk: { max_cluster_pct: 30.0, max_total_pct: 150.0, capital: 10000 },
 };
 
 function inferType(value: unknown): "string" | "number" | "boolean" | "array" {

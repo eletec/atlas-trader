@@ -15,6 +15,7 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
     (ex: btc_asset, eth_data, sol_signal...).
 
     intensity : "conservative" | "balanced" | "aggressive"
+    Priorité : config/asset_profiles.yaml > intensity preset
     """
     pfx = symbol.split("/")[0].lower()[:3]  # "btc", "eth", "sol", "bnb", "xrp"
 
@@ -23,17 +24,36 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
         "conservative": dict(
             p_up=0.55, p_dn=0.45, fusion_th=0.35,
             sl_mult=2.0, tp_mult=4.0, max_pos=1, exit_strat="chandelier", exit_atr=3.0,
+            trail_mult=0.5, min_atr_dist=0.5,
         ),
         "balanced": dict(
             p_up=0.52, p_dn=0.48, fusion_th=0.30,
             sl_mult=3.0, tp_mult=6.0, max_pos=3, exit_strat="trailing", exit_atr=4.0,
+            trail_mult=0.5, min_atr_dist=0.5,
         ),
         "aggressive": dict(
             p_up=0.51, p_dn=0.49, fusion_th=0.15,
             sl_mult=3.0, tp_mult=8.0, max_pos=5, exit_strat="trailing", exit_atr=4.0,
+            trail_mult=0.5, min_atr_dist=0.5,
         ),
     }
-    p = PRESETS.get(intensity, PRESETS["balanced"])
+    p = dict(PRESETS.get(intensity, PRESETS["balanced"]))
+
+    # ── Override par actif (config/asset_profiles.yaml) ──
+    try:
+        import yaml, os
+        _profile_path = os.environ.get("ASSET_PROFILES_PATH", "/app/src/config/asset_profiles.yaml")
+        if os.path.exists(_profile_path):
+            with open(_profile_path) as fh:
+                profiles = yaml.safe_load(fh) or {}
+            if symbol in profiles:
+                over = profiles[symbol]
+                for k in ("p_up", "p_dn", "fusion_th", "sl_mult", "tp_mult",
+                          "max_pos", "exit_strat", "exit_atr", "trail_mult", "min_atr_dist"):
+                    if k in over:
+                        p[k] = over[k]
+    except Exception:
+        pass  # fichier absent → utiliser les presets
 
     nodes = [
         # ── Colonne 0 : Définition de l'actif ──

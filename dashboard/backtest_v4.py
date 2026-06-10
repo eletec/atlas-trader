@@ -173,7 +173,9 @@ def run_backtest_v4(
 
             # Cascade: XGBoost → LogReg → SMA (each triggers if previous returns "flat")
             try:
-                signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol)
+                p_up_th = float(kwargs.get("p_up_threshold", 0.55))
+                p_dn_th = float(kwargs.get("p_dn_threshold", 0.45))
+                signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol, p_up_th, p_dn_th)
                 if signal != "flat":
                     source = "xgb"
             except Exception as exc_xgb:
@@ -301,7 +303,7 @@ def run_backtest_v4(
     return _compute_metrics(trades, equity_curve, capital, current_capital, symbol, df_5m)
 
 
-def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
+def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, p_up_th=0.55, p_dn_th=0.45) -> tuple[str, float, float]:
     """Calcule le signal avec XGBoost (meilleur que LogReg)."""
     try:
         from quant.features import compute_features
@@ -363,9 +365,9 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float, float]:
         prob_up = float(proba[1]) if len(proba) > 1 else float(proba[0])
         confidence = abs(prob_up - 0.5) * 2.0
 
-        if prob_up >= 0.55:
+        if prob_up >= p_up_th:
             return "long", prob_up, confidence
-        elif prob_up <= 0.45:
+        elif prob_up <= p_dn_th:
             return "short", prob_up, confidence
         return "flat", prob_up, confidence
 

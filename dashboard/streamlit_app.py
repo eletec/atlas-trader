@@ -2928,6 +2928,14 @@ def _render_backtest_v4():
     else:
         fusion_threshold = 0.30  # non utilisé en veto
 
+    col_xgb1, col_xgb2 = st.columns(2)
+    with col_xgb1:
+        p_up_th = st.slider("XGBoost seuil LONG", 0.51, 0.65, 0.52, 0.01,
+                            help="prob_up ≥ seuil → signal LONG")
+    with col_xgb2:
+        p_dn_th = st.slider("XGBoost seuil SHORT", 0.35, 0.49, 0.48, 0.01,
+                            help="prob_up ≤ seuil → signal SHORT")
+
     if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
         with st.spinner(f"Backtest {symbol} sur {days}j..."):
             try:
@@ -2939,6 +2947,7 @@ def _render_backtest_v4():
                     fraction=fraction, exit_strategy=exit_strat,
                     exit_atr_mult=exit_atr, min_atr_dist=min_dist,
                     gate_mode=gate_mode, fusion_threshold=fusion_threshold,
+                    p_up_threshold=p_up_th, p_dn_threshold=p_dn_th,
                 )
                 st.info(f"DEBUG: {result.n_trades} trades, PnL=${result.total_pnl}")
 

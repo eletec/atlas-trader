@@ -3003,7 +3003,13 @@ def _render_backtest_v4():
                                           gate_mode=gate_mode, fusion_threshold=fusion_threshold,
                                           p_up_threshold=p_up_th, p_dn_threshold=p_dn_th)
                 if results:
-                    st.success(f"Meilleure config: SL={results[0]['sl_mult']} TP={results[0]['tp_mult']} Exit={results[0]['exit_strat']} ATR={results[0]['exit_atr']}")
+                    best = results[0]
+                    st.success(
+                        f"Meilleure config: SL={best['sl_mult']} TP={best['tp_mult']} "
+                        f"Exit={best['exit_strat']} ATR={best['exit_atr']} "
+                        f"| XGB∈[{p_dn_th},{p_up_th}] fusion={fusion_threshold} "
+                        f"→ Sharpe={best['sharpe']} PnL=${best['pnl']:.0f}"
+                    )
                     st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
             except Exception as e:
                 st.error(f"Erreur optimisation: {e}")

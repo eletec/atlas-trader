@@ -56,11 +56,11 @@ async def _auto_schedule_demo():
     """Démarre automatiquement le DAG démo et les tickers prix au boot."""
     # 1) DAGs démo (BTC, ETH, SOL, BNB, XRP)
     try:
-        from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP
+        from v4.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
         from v4.api.dag_registry import DAGRegistry
         registry = DAGRegistry.instance()
         existing_ids = {e.dag_id for e in registry.status()}
-        for dag in (DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP):
+        for dag in (DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE):
             if dag.dag_id not in existing_ids:
                 registry.schedule(dag, cycle_s=300)
                 logging.getLogger("v4.api.main").info("DAG '%s' schedulé (cycle=300s)", dag.dag_id)
@@ -70,7 +70,7 @@ async def _auto_schedule_demo():
     # 2) Tickers prix (Binance WS) pour les symboles par défaut
     try:
         from v4.api.routes.prices import ensure_ticker
-        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]:
+        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]:
             ensure_ticker(sym)
         logging.getLogger("v4.api.main").info("Tickers prix démarrés (BTC, ETH, SOL, BNB, XRP)")
     except Exception as exc:

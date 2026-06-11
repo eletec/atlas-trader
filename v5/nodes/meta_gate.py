@@ -70,14 +70,18 @@ class MetaGate(Node):
 
     def _load_model(self) -> bool:
         path = self.params.get("model_path", "")
-        if not path or not Path(path).exists():
+        if not path:
+            logger.warning("MetaGate [%s] no model_path in params", self.node_id)
+            return False
+        if not Path(path).exists():
+            logger.warning("MetaGate [%s] model not found: %s", self.node_id, path)
             return False
         try:
             self._model = pickle.loads(Path(path).read_bytes())
             logger.info("MetaGate [%s] model loaded: %s", self.node_id, path)
             return True
         except Exception as e:
-            logger.warning("MetaGate load failed: %s", e)
+            logger.warning("MetaGate [%s] load failed: %s", self.node_id, e)
             return False
 
     def _encode(self, inputs: dict) -> list[float]:

@@ -128,44 +128,47 @@ def train_xgb_signal(feats: pd.DataFrame, labels: pd.Series) -> pd.Series:
         from xgboost import XGBClassifier
     except ImportError:
         logger.warning("XGBoost indisponible — fallback LogisticRegression")
-        from sklearn.linear_model import LogisticRegression as XGBClassifier
+        from sklearn.linear_model import LogisticRegression
 
     feature_cols = [c for c in feats.columns if feats[c].notna().sum() > 100]
     prob_up = pd.Series(0.5, index=feats.index, dtype=float)
 
-    # Walk-forward: train sur premiers 70%, prédit sur derniers 30%
-    split = int(len(feats) * 0.70)
-    if split < 200:
-        split = max(50, int(len(feats) * 0.50))
+    # Aligner features et labels sur un index commun sans NaN
+    common = feats[feature_cols].notna().all(axis=1) & labels.notna()
+    feats_clean = feats.loc[common, feature_cols]
+    labs_clean = labels.loc[common]
 
-    X_train = feats[feature_cols].iloc[:split].dropna()
-    y_train = labels.iloc[:split].loc[X_train.index]
-    X_pred = feats[feature_cols].iloc[split:].dropna()
-
-    if len(y_train) < 50 or len(X_pred) < 10:
+    if len(feats_clean) < 100:
+        return prob_up
+    if len(np.unique(labs_clean)) < 2:
         return prob_up
 
-    valid = y_train.notna()
-    X_train, y_train = X_train.loc[valid], y_train.loc[valid]
+    # Walk-forward: train 70%, predict 30%
+    split = int(len(feats_clean) * 0.70)
+    X_train = feats_clean.iloc[:split].values.astype(np.float64)
+    y_train = labs_clean.iloc[:split].values.astype(int)
+    X_pred = feats_clean.iloc[split:].values.astype(np.float64)
+    pred_idx = feats_clean.iloc[split:].index
 
-    if len(np.unique(y_train)) < 2:
+    if len(y_train) < 50 or len(X_pred) < 10:
         return prob_up
 
     try:
         model = XGBClassifier(
             n_estimators=100, max_depth=5, learning_rate=0.05,
             objective="binary:logistic", verbosity=0, random_state=42,
-        ) if "XGBClassifier" in str(type(None)) else XGBClassifier(
-            C=0.1, max_iter=200, class_weight="balanced", random_state=42,
         )
-        # Actually just use XGBoost if available
-        from xgboost import XGBClassifier as XGB
-        model = XGB(n_estimators=100, max_depth=5, learning_rate=0.05,
-                    objective="binary:logistic", verbosity=0, random_state=42)
-        model.fit(X_train.values, y_train.values)
-        prob_up.iloc[X_pred.index] = model.predict_proba(X_pred.values)[:, 1]
+        model.fit(X_train, y_train)
+        prob_up.loc[pred_idx] = model.predict_proba(X_pred)[:, 1]
     except Exception as e:
-        logger.warning("XGB train failed: %s", e)
+        logger.warning("XGB train failed: %s — fallback LR", e)
+        from sklearn.linear_model import LogisticRegression
+        lr = LogisticRegression(C=0.1, max_iter=300, random_state=42)
+        try:
+            lr.fit(X_train, y_train)
+            prob_up.loc[pred_idx] = lr.predict_proba(X_pred)[:, 1]
+        except Exception as e2:
+            logger.warning("Fallback LR also failed: %s", e2)
 
     return prob_up.clip(0.01, 0.99)
 

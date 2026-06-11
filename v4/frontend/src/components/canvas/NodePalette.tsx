@@ -34,6 +34,7 @@ const NODE_CATALOG = [
     nodes: [
       { type: "RegimeHMM", label: "Regime HMM", inputPorts: ["features_all"], outputPorts: ["regime", "regime_state"] },
       { type: "RegimePassthrough", label: "Regime Passthrough", inputPorts: [], outputPorts: ["regime", "regime_state"] },
+      { type: "RegimeDetector", label: "Regime Detector V5", inputPorts: ["ohlcv_1h"], outputPorts: ["regime", "adx", "chop", "atr_pct"] },
     ],
   },
   {
@@ -48,6 +49,9 @@ const NODE_CATALOG = [
     nodes: [
       { type: "TrendFilter", label: "Trend Filter 4h", inputPorts: ["ohlcv_1h"], outputPorts: ["trend", "sma20", "sma50", "slope"] },
       { type: "DirectionGate", label: "Direction Gate", inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"] },
+      { type: "MetaGate", label: "MetaGate V5", inputPorts: ["signal", "prob_up", "trend", "debate_signal", "debate_conf", "crosstf_signal", "crosstf_conf", "regime"], outputPorts: ["signal", "blocked", "reason", "score"] },
+      { type: "CircuitBreaker", label: "CircuitBreaker V5", inputPorts: ["decision"], outputPorts: ["decision", "blocked", "reason"] },
+      { type: "PortfolioRisk", label: "PortfolioRisk V5", inputPorts: ["decision", "symbol"], outputPorts: ["decision", "blocked", "reason"] },
     ],
   },
   {

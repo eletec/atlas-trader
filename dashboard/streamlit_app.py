@@ -983,7 +983,7 @@ def _force_run_background(asset: str, log_q) -> None:
         import urllib.request, json
         req = urllib.request.Request(
             f"{_API_BASE}/dag/run",
-            data=json.dumps({"dag_id": "demo_v4", "asset": asset}).encode(),
+            data=json.dumps({"dag_id": "demo_v5", "asset": asset}).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -2920,8 +2920,8 @@ def _render_backtest_v4():
     exit_atr = st.slider("Exit ATR mult", 1.0, 6.0, 3.0, 0.5)
     min_dist = st.slider("Breathing room (×ATR)", 0.0, 3.0, 1.0, 0.5)
 
-    gate_mode = st.selectbox("Mode DirectionGate", ["fusion", "veto"],
-                              help="fusion = scoring pondéré (XGBoost+Trend+Regime), veto = blocage binaire")
+    gate_mode = st.selectbox("Mode Gate (MetaGate V5 / DirectionGate V4)", ["fusion", "veto"],
+                              help="fusion = scoring pondéré (XGBoost+Trend+Regime), veto = blocage binaire. MetaGate V5 utilise un modèle appris.")
     if gate_mode == "fusion":
         fusion_threshold = st.slider("Seuil fusion (±)", 0.05, 0.50, 0.30, 0.05,
                                       help="Score > +seuil → LONG, < -seuil → SHORT, entre les deux → flat")

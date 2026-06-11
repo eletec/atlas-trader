@@ -197,11 +197,26 @@ def run_backtest_v4(
                     confidence = 0.0
                     source = "sma"
 
-            # ── Direction Gate ──
+            # ── Direction Gate / MetaGate ──
             if source != "sma":
-                gate_mode = kwargs.get("gate_mode", "fusion")  # "veto" | "fusion"
+                gate_mode = kwargs.get("gate_mode", "fusion")
                 _sig_before_gate = signal
-                if gate_mode == "fusion":
+
+                # ── V5 MetaGate (LogisticRegression apprise) ──
+                if gate_mode == "meta":
+                    try:
+                        regime = _compute_regime_backtest(ohlcv_1h_win)
+                    except Exception:
+                        regime = "TREND"
+                    pfx = symbol.split("/")[0].lower()[:3]
+                    model_path = f"/app/data/models/meta_{pfx}.pkl"
+                    threshold = float(kwargs.get("fusion_threshold", 0.20))
+                    signal, score, reason = _compute_meta_score(
+                        signal, prob_up, trend, regime, model_path, threshold,
+                    )
+                    logger.debug("MetaGate i=%d: sig=%s score=%.3f regime=%s", i, signal, score, regime)
+
+                elif gate_mode == "fusion":
                     # Scoring pondéré : XGBoost (0.55) + Trend (0.35) + Regime (0.10)
                     # (IA non dispo en backtest → poids redistribués)
                     w_xgb = 0.55
@@ -463,6 +478,93 @@ def _compute_trend_v4(ohlcv_1h) -> str:
         return "bearish"
     except Exception:
         return "neutral"
+
+
+def _compute_regime_backtest(ohlcv_1h) -> str:
+    """Regime detection (ADX 14 + Choppiness 14 sur 1h) — V5 RegimeDetector."""
+    try:
+        from v4.nodes.quant.regime_detector import RegimeDetector
+        detector = RegimeDetector(params={
+            "adx_period": 14, "chop_period": 14,
+            "trend_threshold": 25, "range_threshold": 20, "chop_threshold": 61.8,
+        })
+        result = detector.run({"ohlcv_1h": ohlcv_1h})
+        return str(result.get("regime", "TREND"))
+    except Exception:
+        try:
+            high, low, close = ohlcv_1h["high"], ohlcv_1h["low"], ohlcv_1h["close"]
+            tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+            atr = tr.rolling(14).mean()
+            dm_plus = high.diff().clip(lower=0)
+            dm_minus = (-low.diff()).clip(lower=0)
+            di_plus = 100 * dm_plus.rolling(14).mean() / atr
+            di_minus = 100 * dm_minus.rolling(14).mean() / atr
+            dx = 100 * ((di_plus - di_minus).abs() / (di_plus + di_minus + 1e-10))
+            adx = float(dx.rolling(14).mean().iloc[-1])
+            if not np.isnan(adx):
+                if adx > 25:
+                    return "TREND"
+                elif adx < 20:
+                    return "CHOP"
+            return "RANGE"
+        except Exception:
+            return "TREND"
+
+
+def _compute_meta_score(signal, prob_up, trend, regime, model_path, threshold=0.20):
+    """Calcule le score MetaGate à partir du modèle entraîné."""
+    import pickle
+    from pathlib import Path
+
+    if signal == "flat":
+        return "flat", 0.0, ""
+
+    if not Path(model_path).exists():
+        score = 0.0
+        if signal == "long":
+            score += 0.55 * prob_up
+        elif signal == "short":
+            score -= 0.55 * (1.0 - prob_up)
+        if trend == "bullish":
+            score += 0.35
+        elif trend == "bearish":
+            score -= 0.35
+        score = max(-1.0, min(1.0, score))
+    else:
+        try:
+            model = pickle.loads(Path(model_path).read_bytes())
+            X = np.array([[
+                prob_up,
+                1.0 if trend == "bullish" else 0.0,
+                1.0 if trend == "bearish" else 0.0,
+                1.0 if regime.upper() == "TREND" else 0.0,
+                1.0 if regime.upper() == "RANGE" else 0.0,
+                1.0 if regime.upper() == "CHOP" else 0.0,
+            ]], dtype=np.float64)
+            proba = model.predict_proba(X)[0]
+            classes = list(model.classes_)
+            p_long = float(proba[classes.index(1)]) if 1 in classes else 0.33
+            p_short = float(proba[classes.index(0)]) if 0 in classes else 0.33
+            score = p_long - p_short
+            score = max(-1.0, min(1.0, score))
+        except Exception as e:
+            logger.warning("MetaGate backtest scoring failed: %s", e)
+            score = 0.0
+            if signal == "long":
+                score += 0.55 * prob_up
+            elif signal == "short":
+                score -= 0.55 * (1.0 - prob_up)
+            if trend == "bullish":
+                score += 0.35
+            elif trend == "bearish":
+                score -= 0.35
+            score = max(-1.0, min(1.0, score))
+
+    if score > threshold:
+        return "long", score, f"meta={score:.2f}"
+    elif score < -threshold:
+        return "short", score, f"meta={score:.2f}"
+    return "flat", score, f"meta={score:.2f}"
 
 
 def _compute_metrics(trades, equity, capital, final_cap, symbol, df) -> BTResult:

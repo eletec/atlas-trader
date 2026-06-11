@@ -87,22 +87,16 @@ class MetaGate(Node):
     def _encode(self, inputs: dict) -> list[float]:
         prob_up = float(inputs.get("prob_up", 0.5))
         trend = inputs.get("trend", "")
-        db_sig = inputs.get("debate_signal", "")
-        db_conf = float(inputs.get("debate_conf", 0.5))
-        ct_sig = inputs.get("crosstf_signal", "")
-        ct_conf = float(inputs.get("crosstf_conf", 0.5))
         regime = str(inputs.get("regime", ""))
+        # 6 features alignées avec train_meta_gate.py:
+        # [prob_up, trend_bull, trend_bear, regime_TREND, regime_RANGE, regime_CHOP]
         return [
             prob_up,
             1.0 if trend == "bullish" else 0.0,
             1.0 if trend == "bearish" else 0.0,
-            1.0 if db_sig == "bullish" else 0.0,
-            1.0 if db_sig == "bearish" else 0.0,
-            db_conf,
-            1.0 if ct_sig == "long" else 0.0,
-            1.0 if ct_sig == "short" else 0.0,
-            ct_conf,
             1.0 if regime.upper() == "TREND" else 0.0,
+            1.0 if regime.upper() == "RANGE" else 0.0,
+            1.0 if regime.upper() == "CHOP" else 0.0,
         ]
 
     def _fallback(self, inputs: dict, threshold: float) -> dict:

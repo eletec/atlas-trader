@@ -2807,11 +2807,11 @@ def render_agent_scores_chart(asset: str):
 
 
 def _render_v4_config():
-    """Panneau de configuration globale V4 — risque, capital, sizing."""
+    """Panneau de configuration globale — risque, capital, sizing."""
     import yaml
     from pathlib import Path
 
-    st.markdown("### ⚙️ Configuration Globale V4")
+    st.markdown("### ⚙️ Configuration Globale")
 
     settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
 
@@ -2900,8 +2900,8 @@ def _active_assets_v4() -> list[str]:
 
 
 def _render_backtest_v4():
-    """Panneau de backtest V4 — teste la stratégie sur données historiques."""
-    st.markdown("### 🧪 Backtest V4")
+    """Panneau de backtest — teste la stratégie sur données historiques."""
+    st.markdown("### 🧪 Backtest")
     st.caption("Teste la stratégie DAG sur des données historiques Binance.")
 
     symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"])
@@ -3051,7 +3051,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
     if v4_logs:
         st.markdown(
             '<p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#4f6ef7;">'
-            '⚡ V4 — Exécution DAG</p>',
+            '⚡ Atlas — Exécution DAG</p>',
             unsafe_allow_html=True,
         )
         theme = _get_theme()
@@ -3193,11 +3193,11 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
-        # ── V4 — Moteur DAG ──────────────────────────────────────────────
-        (None, None,      "V4 — Moteur DAG"),
+        # ── Moteur DAG ──────────────────────────────────────────────
+        (None, None,      "Moteur DAG"),
         ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  "Canvas DAG"),
-        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring V4"),
-        ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades V4"),
+        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring"),
+        ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
         ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config V4"),
         # ── Infra & Monitoring ───────────────────────────────────────────
@@ -3824,7 +3824,7 @@ def render_admin_panel():
         st.warning(t("reset_warning"))
 
         # ── Reset V4 (DAGs + trades) ──────────────────────────────────────
-        st.markdown(f"#### V4 — Remise à zéro")
+        st.markdown(f"#### Remise à zéro")
         st.caption("Arrête tous les DAGs, efface l'historique des trades. Les DAGs redémarreront automatiquement.")
 
         confirm = st.checkbox(
@@ -3873,10 +3873,10 @@ def render_admin_panel():
 
             st.balloons()
 
-    elif _atab == "historique":  # Historique des transactions V4
+    elif _atab == "historique":  # Historique des transactions
         st.markdown(
             '<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'
-            ' Historique des Transactions V4</h4>',
+            ' Historique des Transactions</h4>',
             unsafe_allow_html=True,
         )
         try:
@@ -3892,7 +3892,7 @@ def render_admin_panel():
             with _h_col3:
                 _h_status = st.selectbox("Statut", ["Tous", "open", "closed"], key="hist_status")
 
-            # Récupérer les trades V4
+            # Récupérer les trades
             all_trades = get_v4_trades(n=2000)
             if not all_trades:
                 st.info("📊 Aucune transaction V4 enregistrée. Les trades apparaîtront ici automatiquement.")
@@ -4027,7 +4027,7 @@ def render_admin_panel():
         if _atab == "v4_admin":
             _render_v4_config()
             return
-        # ── Trades V4 natif (depuis la DB) ──
+        # ── Trades natif (depuis la DB) ──
         if _atab == "v4_trades":
             st.markdown("### 📋 Journal des trades")
             st.caption("Mode : paper trading (testnet uniquement)")

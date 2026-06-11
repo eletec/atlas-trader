@@ -79,4 +79,23 @@ async def _auto_schedule_demo():
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "version": "4.0.0"}
+    return {"status": "ok", "version": "5.0.0"}
+
+
+@app.post("/optimize/v5")
+async def optimize_v5(days: int = 180):
+    """Lance l'optimiseur V5 MetaGate en arrière-plan."""
+    import subprocess, sys, uuid, threading
+    task_id = str(uuid.uuid4())[:8]
+
+    def _run():
+        try:
+            subprocess.run(
+                [sys.executable, "/app/src/tools/optimize_v5.py", "--days", str(days)],
+                capture_output=True, text=True, timeout=3600,
+            )
+        except Exception as e:
+            logging.getLogger("v4.api.main").warning("Optimize V5 failed: %s", e)
+
+    threading.Thread(target=_run, daemon=True, name=f"opt_v5_{task_id}").start()
+    return {"ok": True, "task_id": task_id, "message": "Optimisation V5 lancée"}

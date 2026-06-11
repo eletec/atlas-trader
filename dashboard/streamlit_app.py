@@ -3015,14 +3015,16 @@ def _render_backtest_v4():
                 st.error(f"Erreur optimisation: {e}")
 
     if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
-                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE). ⚠️ 10-20 min."):
-        st.info("L'optimisation V5 tourne en arrière-plan dans le conteneur API. Consultez les logs Docker.")
-        import subprocess, os as _os2
+                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
+        import urllib.request, json as _json2
         try:
-            _cmd = ["docker", "exec", "atlas-v4-api", "python", "src/tools/optimize_v5.py",
-                    "--days", str(days)]
-            subprocess.Popen(_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            st.success("✅ Optimisation V5 lancée. `docker logs -f atlas-v4-api` pour suivre.")
+            req = urllib.request.Request(f"{_API_BASE}/optimize/v5?days={days}", method="POST")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = _json2.loads(resp.read())
+            if result.get("ok"):
+                st.success(f"✅ Optimisation V5 lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
+            else:
+                st.error(f"Erreur API: {result.get('error','?')}")
         except Exception as _e2:
             st.error(f"Erreur lancement: {_e2}")
 

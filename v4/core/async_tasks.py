@@ -31,7 +31,7 @@ def dispatch(key: str, fn: Callable[[], dict[str, Any]]) -> None:
             result = fn()
             with _cache_lock:
                 _cache[key] = result
-            logger.debug("Async task %s completed (%d keys in cache)", key, len(_cache))
+            logger.info("Async task %s completed (%d keys in cache)", key, len(_cache))
         except Exception as exc:
             logger.warning("Async task %s failed: %s", key, exc)
             with _cache_lock:
@@ -44,9 +44,11 @@ def dispatch(key: str, fn: Callable[[], dict[str, Any]]) -> None:
         # Ne pas relancer si déjà en cours
         if key in _pending:
             if not _pending[key].done():
+                logger.info("Async task %s still pending, skipping dispatch", key)
                 return  # déjà en cours, laisser finir
         future = _pool.submit(_run_and_store)
         _pending[key] = future
+        logger.info("Async task %s dispatched (pending=%d)", key, len(_pending))
 
 
 def get_result(key: str) -> dict[str, Any] | None:

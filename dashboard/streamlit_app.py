@@ -3014,6 +3014,18 @@ def _render_backtest_v4():
             except Exception as e:
                 st.error(f"Erreur optimisation: {e}")
 
+    if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
+                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE). ⚠️ 10-20 min."):
+        st.info("L'optimisation V5 tourne en arrière-plan dans le conteneur API. Consultez les logs Docker.")
+        import subprocess, os as _os2
+        try:
+            _cmd = ["docker", "exec", "atlas-v4-api", "python", "src/tools/optimize_v5.py",
+                    "--days", str(days)]
+            subprocess.Popen(_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            st.success("✅ Optimisation V5 lancée. `docker logs -f atlas-v4-api` pour suivre.")
+        except Exception as _e2:
+            st.error(f"Erreur lancement: {_e2}")
+
 
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""

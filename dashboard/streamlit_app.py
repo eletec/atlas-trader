@@ -3199,13 +3199,13 @@ def render_admin_panel():
         ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring"),
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
         ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
-        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config V4"),
+        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Configuration"),
         # ── Infra & Monitoring ───────────────────────────────────────────
         (None, None,      "Infra & Monitoring"),
         ('<i class="fas fa-database"></i>',        "sources",    "Sources de données"),
         ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
         ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset_v2")),
-        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest V4"),
+        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
         ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
         ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
         ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
@@ -3812,7 +3812,7 @@ def render_admin_panel():
         except Exception as _lb_exc:
             st.caption(f"{t('bkp_list_error')} {_lb_exc}")
 
-    elif _atab == "backtest":  # Backtest V4
+    elif _atab == "backtest":  # Backtest
         _render_backtest_v4()
 
     elif _atab == "reset":  # Purge des données
@@ -4023,7 +4023,7 @@ def render_admin_panel():
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
     elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
-        # ── Config V4 native ──
+        # ── Configuration ──
         if _atab == "v4_admin":
             _render_v4_config()
             return

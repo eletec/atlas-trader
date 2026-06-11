@@ -34,7 +34,7 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
                 profiles = yaml.safe_load(fh) or {}
             if symbol in profiles:
                 for k in ("p_up", "p_dn", "fusion_th", "sl_mult", "tp_mult",
-                          "max_pos", "exit_strat", "exit_atr"):
+                          "max_pos", "exit_strat", "exit_atr", "fraction"):
                     if k in profiles[symbol]:
                         p[k] = profiles[symbol][k]
                         if k == "fusion_th":
@@ -48,7 +48,7 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
     nodes = [
         NodeSpec(id=f"{pfx}_asset", type="AssetDef",
                  params={"symbol": symbol, "exchange": "binance",
-                          "capital_usd": 10000, "fraction": 0.02,
+                          "capital_usd": 10000, "fraction": p.get("fraction", 0.05),
                           "max_positions": p["max_pos"]}),
         NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
                  params={"symbol": symbol, "days_5m": 90, "days_1h": 100,
@@ -78,7 +78,8 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
         NodeSpec(id=f"{pfx}_gate", type="MetaGate",
                  params={"threshold": p["meta_th"], "model_path": model_path}),
         NodeSpec(id=f"{pfx}_risk", type="RiskATR",
-                 params={"sl_mult": p["sl_mult"], "tp_mult": p["tp_mult"], "fraction": 0.02,
+                 params={"sl_mult": p["sl_mult"], "tp_mult": p["tp_mult"],
+                          "fraction": p.get("fraction", 0.05),
                           "risk_pct": 1.0, "capital": 10000}),
         # ── V5: CircuitBreaker entre RiskATR et PaperTrader ──
         NodeSpec(id=f"{pfx}_breaker", type="CircuitBreaker",

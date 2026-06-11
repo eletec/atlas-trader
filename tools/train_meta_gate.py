@@ -191,11 +191,12 @@ def train_meta_gate(symbol: str, days: int = DAYS) -> tuple[object, dict] | None
     pfx = symbol.split("/")[0].lower()[:3]
     logger.info("=== Training MetaGate for %s (%s) ===", symbol, pfx)
 
-    # 1. Charger OHLCV
-    logger.info("Loading OHLCV 5m + 1h...")
+    # 1. Charger OHLCV (paginé pour dépasser la limite 1000 bougies Binance)
+    logger.info("Loading OHLCV 5m + 1h (%d days)...", days)
     try:
-        df_5m = fetch_ohlcv(symbol, timeframe="5m", limit=min(days * 288, 1000))
-        df_1h = fetch_ohlcv(symbol, timeframe="1h", limit=min(days * 24, 1000))
+        from quant.data_loader import fetch_history
+        df_5m = fetch_history(symbol, timeframe="5m", days=days, cache=True)
+        df_1h = fetch_history(symbol, timeframe="1h", days=days, cache=True)
     except Exception as e:
         logger.error("OHLCV fetch failed for %s: %s", symbol, e)
         return None

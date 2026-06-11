@@ -54,6 +54,16 @@ class PortfolioRisk(Node):
         reason       : str
     """
 
+    # ── Shared state across all instances ──
+    _exposure_by_symbol: dict[str, float] = {}
+    _total_exposure: float = 0.0
+
+    @classmethod
+    def update_exposure(cls, symbol: str, size_usd: float):
+        """Called by PaperTrader or externally to track live exposure."""
+        cls._exposure_by_symbol[symbol] = abs(size_usd)
+        cls._total_exposure = sum(cls._exposure_by_symbol.values())
+
     @property
     def node_type(self) -> str:
         return "PortfolioRisk"
@@ -75,7 +85,8 @@ class PortfolioRisk(Node):
             return {"decision": decision, "blocked": False, "reason": ""}
 
         symbol = inputs.get("symbol", "BTC/USDT")
-        total_exposure = float(inputs.get("total_exposure", 0))
+        # Use shared state if no total_exposure provided
+        total_exposure = float(inputs.get("total_exposure", PortfolioRisk._total_exposure))
 
         # ── Déterminer le cluster ──
         cluster = "OTHER"

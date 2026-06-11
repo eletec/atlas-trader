@@ -4,6 +4,7 @@ v5/nodes/meta_gate.py — MetaGate V5.
 Remplace la fusion à poids fixes par LogisticRegression entraînée.
 Modèle sauvegardé en pickle, chargé par le DAG live.
 Sans modèle → fallback simple (XGB + Trend).
+Support DualMemory (anchor + adapter online) si use_dual_memory=True.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from v4.core.node import Node
+from v5.core.dual_memory import DualMemoryModel
 
 logger = logging.getLogger("v5.nodes.meta_gate")
 
@@ -42,6 +44,29 @@ class MetaGate(Node):
     def __init__(self, node_id: str = "", params: dict | None = None, **kwargs):
         super().__init__(node_id=node_id, params=params, **kwargs)
         self._model = None
+        self._dual_memory: DualMemoryModel | None = None
+        self._use_dual = bool(self.params.get("use_dual_memory", True))
+
+    def _load_dual_memory(self) -> bool:
+        """Charge ou crée le DualMemory (anchor + adapter online)."""
+        if self._dual_memory is not None:
+            return True
+        try:
+            anchor_path = self.params.get("anchor_model_path",
+                           self.params.get("model_path", "").replace("meta_", "anchor_"))
+            self._dual_memory = DualMemoryModel(
+                anchor_model_path=anchor_path,
+                adapter_lr=float(self.params.get("adapter_lr", 0.01)),
+                adapter_reg=float(self.params.get("adapter_reg", 1.0)),
+                anchor_weight=float(self.params.get("anchor_weight", 0.70)),
+                drift_threshold=float(self.params.get("drift_threshold", 0.15)),
+            )
+            logger.info("MetaGate [%s] DualMemory ready (anchor=%s)",
+                        self.node_id, self._dual_memory.ready)
+            return True
+        except Exception as e:
+            logger.warning("MetaGate DualMemory init failed: %s", e)
+            return False
 
     def _load_model(self) -> bool:
         path = self.params.get("model_path", "")
@@ -103,6 +128,27 @@ class MetaGate(Node):
 
         threshold = float(self.params.get("threshold", 0.30))
 
+        # ── V5: DualMemory prioritaire ──
+        if self._use_dual:
+            if self._dual_memory is None:
+                self._load_dual_memory()
+            if self._dual_memory is not None and self._dual_memory.ready:
+                try:
+                    features = self._encode(inputs)
+                    score = self._dual_memory.predict(features)
+                    if score > threshold:
+                        return {"signal": "long", "blocked": False,
+                                "reason": f"dm={score:.2f}", "score": round(score, 4)}
+                    elif score < -threshold:
+                        return {"signal": "short", "blocked": False,
+                                "reason": f"dm={score:.2f}", "score": round(score, 4)}
+                    else:
+                        return {"signal": "flat", "blocked": True,
+                                "reason": f"dm={score:.2f}", "score": round(score, 4)}
+                except Exception as e:
+                    logger.warning("MetaGate DualMemory predict: %s", e)
+
+        # ── Fallback: pickle model ──
         if self._model is None:
             self._load_model()
 

@@ -83,6 +83,10 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
         # ── V5: CircuitBreaker entre RiskATR et PaperTrader ──
         NodeSpec(id=f"{pfx}_breaker", type="CircuitBreaker",
                  params={"dd_warn_pct": -3.0, "dd_kill_pct": -5.0}),
+        # ── V5: PortfolioRisk contrôle exposition inter-actifs ──
+        NodeSpec(id=f"{pfx}_pfrisk", type="PortfolioRisk",
+                 params={"max_cluster_pct": 30.0, "max_total_pct": 150.0,
+                          "capital": 10000}),
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id}),
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
@@ -116,8 +120,6 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
                  target_node=f"{pfx}_norm", target_port="features"),
         EdgeSpec(source_node=f"{pfx}_norm", source_port="features_all",
                  target_node=f"{pfx}_signal", target_port="features_all"),
-        EdgeSpec(source_node=f"{pfx}_norm", source_port="features_all",
-                 target_node=f"{pfx}_regime", target_port="features_all"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
                  target_node=f"{pfx}_regime", target_port="ohlcv_1h"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
@@ -144,10 +146,14 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
                  target_node=f"{pfx}_risk", target_port="ohlcv_1h"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="capital",
                  target_node=f"{pfx}_risk", target_port="capital"),
-        # ── RiskATR → CircuitBreaker → PaperTrader ──
+        # ── RiskATR → CircuitBreaker → PortfolioRisk → PaperTrader ──
         EdgeSpec(source_node=f"{pfx}_risk", source_port="decision",
                  target_node=f"{pfx}_breaker", target_port="decision"),
         EdgeSpec(source_node=f"{pfx}_breaker", source_port="decision",
+                 target_node=f"{pfx}_pfrisk", target_port="decision"),
+        EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
+                 target_node=f"{pfx}_pfrisk", target_port="symbol"),
+        EdgeSpec(source_node=f"{pfx}_pfrisk", source_port="decision",
                  target_node=f"{pfx}_paper", target_port="decision"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_paper", target_port="symbol"),
@@ -182,10 +188,14 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
     return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)
 
 
-# ── DAGs par actif ──
-_V4_INTENSITY = os.environ.get("V4_INTENSITY", "balanced")
-DEMO_DAG  = _make_dag("demo_v4",  "BTC/USDT", intensity=_V4_INTENSITY)
-DEMO_ETH  = _make_dag("demo_eth", "ETH/USDT", intensity=_V4_INTENSITY)
-DEMO_SOL  = _make_dag("demo_sol", "SOL/USDT", intensity=_V4_INTENSITY)
-DEMO_BNB  = _make_dag("demo_bnb", "BNB/USDT", intensity=_V4_INTENSITY)
-DEMO_XRP  = _make_dag("demo_xrp", "XRP/USDT", intensity=_V4_INTENSITY)
+# ── DAGs par actif (V5) ──
+_V5_INTENSITY = os.environ.get("V5_INTENSITY", "balanced")
+DEMO_V5   = _make_dag("demo_v5",   "BTC/USDT", intensity=_V5_INTENSITY)
+DEMO_ETH  = _make_dag("demo_eth",  "ETH/USDT", intensity=_V5_INTENSITY)
+DEMO_SOL  = _make_dag("demo_sol",  "SOL/USDT", intensity=_V5_INTENSITY)
+DEMO_BNB  = _make_dag("demo_bnb",  "BNB/USDT", intensity=_V5_INTENSITY)
+DEMO_XRP  = _make_dag("demo_xrp",  "XRP/USDT", intensity=_V5_INTENSITY)
+DEMO_ADA  = _make_dag("demo_ada",  "ADA/USDT", intensity=_V5_INTENSITY)
+DEMO_DOGE = _make_dag("demo_doge", "DOGE/USDT", intensity=_V5_INTENSITY)
+# Alias backward-compat
+DEMO_DAG = DEMO_V5

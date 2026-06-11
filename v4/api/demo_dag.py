@@ -79,9 +79,11 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
         NodeSpec(id=f"{pfx}_features", type="ComputeFeatures", params={}),
         # ── Colonne 3 : Normalisation ──
         NodeSpec(id=f"{pfx}_norm", type="Normalize", params={"window": 500}),
-        # ── Colonne 4 : Régime (toujours TREND en mode agressif) ──
-        NodeSpec(id=f"{pfx}_regime", type="RegimePassthrough",
-                 params={"regime": "TREND"}),
+        # ── Colonne 4 : Régime (ADX + Choppiness) ──
+        NodeSpec(id=f"{pfx}_regime", type="RegimeDetector",
+                 params={"adx_period": 14, "chop_period": 14,
+                          "trend_threshold": 25, "range_threshold": 20,
+                          "chop_threshold": 61.8}),
         # ── Colonne 4b : Tendance SMA ──
         NodeSpec(id=f"{pfx}_trend", type="TrendFilter",
                  params={"timeframe_resample": "4h", "sma_fast": 20,
@@ -145,12 +147,14 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
                  target_node=f"{pfx}_norm", target_port="features"),
         EdgeSpec(source_node=f"{pfx}_norm", source_port="features_all",
                  target_node=f"{pfx}_signal", target_port="features_all"),
-        EdgeSpec(source_node=f"{pfx}_norm", source_port="features_all",
-                 target_node=f"{pfx}_regime", target_port="features_all"),
+        EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
+                 target_node=f"{pfx}_regime", target_port="ohlcv_1h"),
         EdgeSpec(source_node=f"{pfx}_data", source_port="ohlcv_1h",
                  target_node=f"{pfx}_trend", target_port="ohlcv_1h"),
         EdgeSpec(source_node=f"{pfx}_regime", source_port="regime",
                  target_node=f"{pfx}_signal", target_port="regime"),
+        EdgeSpec(source_node=f"{pfx}_regime", source_port="regime",
+                 target_node=f"{pfx}_gate", target_port="regime"),
         EdgeSpec(source_node=f"{pfx}_signal", source_port="signal",
                  target_node=f"{pfx}_gate", target_port="signal"),
         EdgeSpec(source_node=f"{pfx}_signal", source_port="prob_up",

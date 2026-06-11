@@ -9,6 +9,7 @@ from v4.nodes.quant.load_multi_tf import LoadMultiTF
 from v4.nodes.quant.output import AlertOnly, PaperTrader, RecordDecision
 from v4.nodes.quant.position_manager import PositionManager
 from v4.nodes.quant.reflection import ReflectionNode
+from v4.nodes.quant.regime_detector import RegimeDetector
 from v4.nodes.quant.regime import RegimeHMM, RegimePassthrough
 from v4.nodes.quant.risk import RiskATR
 from v4.nodes.quant.signal import SignalLogReg
@@ -25,6 +26,7 @@ __all__ = [
     "Normalize",
     "RegimeHMM",
     "RegimePassthrough",
+    "RegimeDetector",
     "RiskATR",
     "SignalConstant",
     "SignalLogReg",
@@ -43,7 +45,7 @@ NODE_REGISTRY: dict[str, type] = {
     for cls in [
         AssetDef, LoadMultiTF, ComputeFeatures, Normalize,
         CrossTFArb,
-        DirectionGate, RegimeHMM, RegimePassthrough,
+        DirectionGate, RegimeHMM, RegimePassthrough, RegimeDetector,
         SignalConstant, SignalLogReg, SignalXGB,
         RiskATR, PaperTrader, AlertOnly, RecordDecision,
         PositionManager,

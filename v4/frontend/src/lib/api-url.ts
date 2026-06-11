@@ -1,5 +1,5 @@
 /**
- * lib/api-url.ts — URL de l'API Atlas V4.
+ * lib/api-url.ts — URL de l'API Atlas.
  *
  * Priorité :
  * 1. Variable d'env NEXT_PUBLIC_API_URL (build-time)

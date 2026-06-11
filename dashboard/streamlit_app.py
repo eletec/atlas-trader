@@ -931,7 +931,7 @@ def _save_settings(settings: dict) -> bool:
 # ===========================================================
 
 def _summarize_node_output(node_id: str, output: dict) -> str:
-    """Résumé compact d'une sortie de nœud V4 pour le log."""
+    """Résumé compact d'une sortie de nœud pour le log."""
     if node_id.startswith("PaperTrader") or node_id.startswith("paper_trader"):
         action = output.get("action") or output.get("signal", "?")
         price = output.get("price") or output.get("entry_price", 0)
@@ -1014,10 +1014,10 @@ def _force_run_background(asset: str, log_q) -> None:
             for nid, nr in results.items():
                 if nr.get("status") == "error":
                     _log(f"  ⚠️ <b>{nid}</b>: {nr.get('error', '?')}")
-            msg = f"DAG V4 terminé ({errs} erreur(s)) — {dag_id} | {total_s:.1f}s"
+            msg = f"DAG terminé ({errs} erreur(s)) — {dag_id} | {total_s:.1f}s"
             log_q.put(("__done__", (False, msg)))
         else:
-            msg = f"DAG V4 OK — {dag_id} | {total_s:.1f}s"
+            msg = f"DAG OK — {dag_id} | {total_s:.1f}s"
             log_q.put(("__done__", (False, msg)))
 
     except Exception as exc:

@@ -45,7 +45,7 @@ function GlobalView() {
       <h2 className="text-sm font-semibold text-slate-300">Configuration globale</h2>
       <div className="rounded-lg border border-canvas-border bg-canvas-node p-4 max-w-md space-y-2">
         {[
-          ["Environnement", "Docker local (v4-dev)"],
+          ["Environnement", "Docker (v5-dev)"],
           ["API backend", "http://atlas-v4-api:8000"],
           ["Ollama", "http://atlas-v4-ollama:11434"],
           ["Modèle IA", "phi4:latest"],

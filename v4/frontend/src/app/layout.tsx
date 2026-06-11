@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Atlas Trader V4",
+  title: "Atlas Trader V5",
   description: "Moteur de trading algorithmique — DAG + plugins IA",
 };
 

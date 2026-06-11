@@ -1,5 +1,5 @@
 /**
- * Page Arena V4.1 — Comparaison de DAGs / stratégies.
+ * Page Arena — Comparaison de DAGs / stratégies.
  * Placeholder V4.0 : l'arène sera implémentée en V4.1.
  */
 export default function ArenaPage() {

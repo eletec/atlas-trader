@@ -22,7 +22,7 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   SignalConstant: { signal: "flat", prob_up: 0.5 },
   DirectionGate: { allow_long: true, allow_short: true, invert_trend: false },
   RiskATR: { sl_mult: 2.0, tp_mult: 4.0, fraction: 0.005, capital: 10000 },
-  PaperTrader: { symbol: "BTC/USDT", dag_id: "demo_v4" },
+  PaperTrader: { symbol: "BTC/USDT", dag_id: "demo_v5" },
   AlertOnly: { channels: ["log"] },
   RecordDecision: { db_path: "/app/data/v4_decisions.db" },
   LLMNode: { model: "phi4:latest", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },

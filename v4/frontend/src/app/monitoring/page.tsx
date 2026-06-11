@@ -151,7 +151,7 @@ export default function MonitoringPage() {
       {/* Logs d'exécution */}
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          Logs V4
+          Logs
         </h2>
         {logs.length === 0 ? (
           <p className="text-slate-500 text-xs">Aucun log. Lancez ▶ Run ou ⏱ Sched.</p>

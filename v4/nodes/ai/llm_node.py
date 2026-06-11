@@ -64,6 +64,10 @@ class LLMNode(Node):
 
             # Récupérer le résultat du cycle précédent (sera None au 1er cycle)
             cached = get_result(cache_key)
+            import logging
+            _logger = logging.getLogger("v4.nodes.ai.llm_node")
+            _logger.info("LLMNode [%s] cache_key=%s cached=%s", self.node_id, cache_key,
+                         "HIT" if cached else "MISS")
 
             # Lancer le nouvel appel en arrière-plan (capture les inputs actuels)
             _inputs_snapshot = dict(inputs)  # copie pour le thread
@@ -79,11 +83,15 @@ class LLMNode(Node):
             dispatch(cache_key, _async_call)
 
             if cached and "error" not in cached:
+                _logger.info("LLMNode [%s] returning cached result", self.node_id)
                 cached["_async"] = True
                 cached["_pending_next"] = is_pending(cache_key)
                 return cached
             else:
                 # Premier cycle : pas encore de résultat
+                _logger.info("LLMNode [%s] returning placeholder (cached=%s, has_error=%s)",
+                            self.node_id, cached is not None,
+                            "error" in (cached or {}))
                 return {
                     "response": "⏳ Analyse en cours...",
                     "parsed": {"status": "pending", "message": "L'IA analyse le marché, résultat au prochain cycle."},

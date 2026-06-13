@@ -517,13 +517,20 @@ def _compute_regime_backtest(ohlcv_1h) -> str:
             return "TREND"
 
 
-def _compute_meta_score(signal, prob_up, trend, regime, model_path, threshold=0.20):
-    """Calcule le score MetaGate à partir du modèle entraîné."""
+def _compute_meta_score(signal, prob_up, trend, regime, model_path, threshold=0.20, prob_up_12=None):
+    """Calcule le score MetaGate à partir du modèle entraîné (8 features)."""
     import pickle
     from pathlib import Path
 
     if signal == "flat":
         return "flat", 0.0, ""
+
+    # V6: 8 features = [prob_up_48, prob_up_12, trend_bull, trend_bear,
+    #                    regime_TREND, regime_RANGE, regime_CHOP, cross_horizon]
+    prob_up_48 = float(prob_up)
+    prob_up_12_val = float(prob_up_12) if prob_up_12 is not None else prob_up_48
+    cross_horizon = 1.0 if ((prob_up_12_val > 0.55 and prob_up_48 > 0.52) or
+                             (prob_up_12_val < 0.45 and prob_up_48 < 0.48)) else 0.0
 
     if not Path(model_path).exists():
         score = 0.0
@@ -540,12 +547,14 @@ def _compute_meta_score(signal, prob_up, trend, regime, model_path, threshold=0.
         try:
             model = pickle.loads(Path(model_path).read_bytes())
             X = np.array([[
-                prob_up,
+                prob_up_48,
+                prob_up_12_val,
                 1.0 if trend == "bullish" else 0.0,
                 1.0 if trend == "bearish" else 0.0,
                 1.0 if regime.upper() == "TREND" else 0.0,
                 1.0 if regime.upper() == "RANGE" else 0.0,
                 1.0 if regime.upper() == "CHOP" else 0.0,
+                cross_horizon,
             ]], dtype=np.float64)
             proba = model.predict_proba(X)[0]
             classes = list(model.classes_)

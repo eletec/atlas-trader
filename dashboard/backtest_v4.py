@@ -178,10 +178,14 @@ def run_backtest_v4(
             source = "none"
 
             # Cascade: XGBoost → LogReg → SMA (each triggers if previous returns "flat")
+            prob_up_12 = None  # V6 multi-horizon
             try:
                 p_up_th = float(kwargs.get("p_up_threshold", 0.55))
                 p_dn_th = float(kwargs.get("p_dn_threshold", 0.45))
-                signal, prob_up, confidence = _compute_signal_xgb(ohlcv_5m_win, ohlcv_1h_win, symbol, p_up_th, p_dn_th)
+                sig48, prob_up_48, prob_up_12, confidence = _compute_signal_xgb_dual(
+                    ohlcv_5m_win, ohlcv_1h_win, symbol, p_up_th, p_dn_th,
+                )
+                signal, prob_up = sig48, prob_up_48
                 if signal != "flat":
                     source = "xgb"
             except Exception as exc_xgb:
@@ -214,13 +218,19 @@ def run_backtest_v4(
                         regime = _compute_regime_backtest(ohlcv_1h_win)
                     except Exception:
                         regime = "TREND"
-                    pfx = symbol.split("/")[0].lower()[:3]
-                    model_path = f"/app/data/models/meta_{pfx}.pkl"
-                    threshold = float(kwargs.get("fusion_threshold", 0.20))
-                    signal, score, reason = _compute_meta_score(
-                        signal, prob_up, trend, regime, model_path, threshold,
-                    )
-                    logger.debug("MetaGate i=%d: sig=%s score=%.3f regime=%s", i, signal, score, regime)
+                    
+                    # V6: regime_filter — ne trade qu'en TREND
+                    if kwargs.get("regime_filter") and regime.upper() != "TREND":
+                        signal, score, reason = "flat", 0.0, f"regime_filter({regime})"
+                        logger.debug("MetaGate i=%d: BLOCKED regime=%s", i, regime)
+                    else:
+                        pfx = symbol.split("/")[0].lower()[:3]
+                        model_path = f"/app/data/models/meta_{pfx}.pkl"
+                        threshold = float(kwargs.get("fusion_threshold", 0.20))
+                        signal, score, reason = _compute_meta_score(
+                            signal, prob_up, trend, regime, model_path, threshold, prob_up_12,
+                        )
+                        logger.debug("MetaGate i=%d: sig=%s score=%.3f regime=%s", i, signal, score, regime)
 
                 elif gate_mode == "fusion":
                     # Scoring pondéré : XGBoost (0.55) + Trend (0.35) + Regime (0.10)
@@ -324,8 +334,12 @@ def run_backtest_v4(
     return _compute_metrics(trades, equity_curve, capital, current_capital, symbol, df_5m)
 
 
-def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, p_up_th=0.55, p_dn_th=0.45) -> tuple[str, float, float]:
-    """Calcule le signal avec XGBoost (meilleur que LogReg)."""
+def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, p_up_th=0.55, p_dn_th=0.45, horizon=48) -> tuple[str, float, float]:
+    """Calcule le signal avec XGBoost (meilleur que LogReg).
+    
+    Args:
+        horizon: nombre de barres 5m pour la cible (48=4h, 12=1h)
+    """
     try:
         from quant.features import compute_features
         import xgboost as xgb
@@ -353,8 +367,8 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, p_up_th=0.55, p_dn_th=0.45) 
             for col in feat_cols:
                 df[f"{col}_lag{lag}"] = df[col].shift(lag)
 
-        # Cible basée sur le VRAI close price (48 barres = 4h en 5m)
-        future = df["_close"].shift(-48)
+        # Cible basée sur le VRAI close price (horizon configurable)
+        future = df["_close"].shift(-horizon)
         target = (future > df["_close"]).astype(int)
 
         # Garder uniquement les lignes où la cible est définie
@@ -394,6 +408,23 @@ def _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, p_up_th=0.55, p_dn_th=0.45) 
 
     except Exception:
         raise  # let outer cascade handle fallback
+
+
+def _compute_signal_xgb_dual(ohlcv_5m, ohlcv_1h, symbol, p_up_th=0.55, p_dn_th=0.45) -> tuple:
+    """Retourne (signal_48b, prob_up_48, prob_up_12, confidence).
+    
+    V6: Multi-horizon — entraîne XGBoost 48b + 12b pour le MetaGate 8 features.
+    """
+    # Signal principal (48b = 4h)
+    sig48, prob48, conf = _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, p_up_th, p_dn_th, horizon=48)
+    
+    # Prob 12b (1h) — utilise le même modèle avec horizon court
+    try:
+        _, prob12, _ = _compute_signal_xgb(ohlcv_5m, ohlcv_1h, symbol, 0.51, 0.49, horizon=12)
+    except Exception:
+        prob12 = prob48  # fallback si l'entraînement 12b échoue
+    
+    return sig48, prob48, prob12, conf
 
 
 def _compute_signal_v4(ohlcv_5m, ohlcv_1h, symbol) -> tuple[str, float]:

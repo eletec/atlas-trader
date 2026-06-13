@@ -234,8 +234,15 @@ def optimize_optuna(
     days: int = 60,
     n_trials: int = 100,
     gate_mode: str = "meta",
+    regime_filter: bool = False,
+    regime_params: bool = False,
 ) -> dict | None:
-    """Optimisation bayésienne avec Optuna."""
+    """Optimisation bayésienne avec Optuna.
+    
+    Args:
+        regime_filter: ne trader qu'en TREND
+        regime_params: chercher SL/TP/fraction séparés par régime
+    """
     try:
         import optuna
     except ImportError:
@@ -252,8 +259,17 @@ def optimize_optuna(
         exit_strat = trial.suggest_categorical("exit_strat", ["chandelier", "trailing"])
         exit_atr = trial.suggest_float("exit_atr", 2.0, 5.0, step=0.5)
         
+        # V6: params par régime
+        sl_range = sl_mult
+        tp_range = tp_mult
+        frac_range = fraction
+        if regime_params:
+            sl_range = trial.suggest_float("sl_range", 1.0, 2.5, step=0.5)
+            tp_range = trial.suggest_float("tp_range", 2.0, 5.0, step=0.5)
+            frac_range = trial.suggest_float("frac_range", 0.001, 0.005, step=0.001)
+        
         try:
-            r = run_backtest_v4(
+            bt_kwargs = dict(
                 symbol=symbol, days=days, capital=10_000,
                 risk_pct=1.0, sl_mult=sl_mult, tp_mult=tp_mult,
                 fraction=fraction, exit_strategy=exit_strat,
@@ -261,7 +277,16 @@ def optimize_optuna(
                 gate_mode=gate_mode, fusion_threshold=meta_th,
                 p_up_threshold=0.52, p_dn_threshold=0.48,
             )
-            # Score = Sharpe pénalisé par drawdown (pas de bonus au nombre de trades)
+            if regime_filter:
+                bt_kwargs["regime_filter"] = True
+            if regime_params:
+                bt_kwargs["regime_params"] = True
+                bt_kwargs["sl_range"] = sl_range
+                bt_kwargs["tp_range"] = tp_range
+                bt_kwargs["frac_range"] = frac_range
+            
+            r = run_backtest_v4(**bt_kwargs)
+            # Score = Sharpe pénalisé par drawdown
             if r.n_trades == 0:
                 return -999
             dd_penalty = max(0.0, 1.0 - r.max_drawdown_pct / 100.0)
@@ -294,6 +319,9 @@ def main():
     parser.add_argument("--no-optuna", action="store_true", help="Skip Optuna, use defaults")
     parser.add_argument("--fast", action="store_true", help="Skip Optuna, use proven V4/V5 params")
     parser.add_argument("--optuna-days", type=int, default=60, help="Jours pour Optuna (default: 60)")
+    parser.add_argument("--regime-filter", action="store_true", help="V6: ne trader qu'en régime TREND")
+    parser.add_argument("--top-n", type=int, default=0, help="Sélection top N actifs par Sharpe IS (0=tous)")
+    parser.add_argument("--regime-params", action="store_true", help="V6: params SL/TP/fraction séparés par régime")
     args = parser.parse_args()
     
     symbols = [args.asset] if args.asset else SYMBOLS
@@ -306,16 +334,23 @@ def main():
     
     print("=" * 80)
     print("ATLAS V6 — Walk-Forward Validation Engine")
+    flags = []
+    if args.fast: flags.append("FAST")
+    if args.no_optuna: flags.append("NO-OPTUNA")
+    if args.regime_filter: flags.append("REGIME-FILTER")
+    if args.regime_params: flags.append("REGIME-PARAMS")
+    if args.top_n: flags.append(f"TOP-{args.top_n}")
     print(f"Symboles: {len(symbols)} | Jours: {args.days} | Mode: {args.mode} | Trials: {args.trials}")
-    if args.fast:
-        print("⚡ Mode FAST — Optuna skip, params V4/V5")
-    if args.no_optuna:
-        print("⚡ No Optuna — defaults only")
+    if flags:
+        print(f"Flags: {' '.join(flags)}")
     print("=" * 80)
     
     all_wf = []
     all_opt = []
     start = time.time()
+    
+    # V6: collecter les scores IS pour top-n
+    symbol_scores = {}
     
     for idx, symbol in enumerate(symbols):
         t_sym = time.time()
@@ -324,47 +359,80 @@ def main():
         # 1) Optuna — trouver les meilleurs params
         if args.fast:
             wf_kwargs = dict(FAST_PARAMS)
+            if args.regime_filter:
+                wf_kwargs["regime_filter"] = True
             logger.info("%s: ⚡ fast mode — params V4/V5", symbol)
         elif args.no_optuna:
-            wf_kwargs = {}
+            wf_kwargs = {"regime_filter": True} if args.regime_filter else {}
             logger.info("%s: no Optuna — defaults", symbol)
         else:
             logger.info("%s [%d/%d]: Optuna %d trials × %dj…", symbol, idx+1, len(symbols), args.trials, args.optuna_days)
-            opt = optimize_optuna(symbol, days=args.optuna_days, n_trials=args.trials, gate_mode=args.mode)
+            opt = optimize_optuna(symbol, days=args.optuna_days, n_trials=args.trials,
+                                  gate_mode=args.mode, regime_filter=args.regime_filter,
+                                  regime_params=args.regime_params)
             if opt:
                 all_opt.append(opt)
                 best_params = opt["best_params"]
+                symbol_scores[symbol] = opt["best_score"]
                 logger.info("%s: Optuna best score=%.2f params=%s (%.0fs)", symbol, opt["best_score"], best_params, time.time()-t_sym)
-            wf_kwargs = {}
+            wf_kwargs = {"regime_filter": True} if args.regime_filter else {}
             if best_params:
-                wf_kwargs = {
+                wf_kwargs.update({
                     "fusion_threshold": best_params["meta_th"],
                     "sl_mult": best_params["sl_mult"],
                     "tp_mult": best_params["tp_mult"],
                     "fraction": best_params["fraction"],
                     "exit_strategy": best_params["exit_strat"],
                     "exit_atr_mult": best_params["exit_atr"],
-                }
+                })
         
         # 2) Walk-Forward
         logger.info("%s: Walk-Forward %dj…", symbol, args.days)
         wf = walkforward(symbol, total_days=args.days, gate_mode=args.mode, **wf_kwargs)
         all_wf.append(wf)
-        logger.info("%s: done in %.0fs (windows=%d)", symbol, time.time()-t_sym, wf.windows)
+        logger.info("%s: done in %.0fs (windows=%d Sharpe=%.2f)", symbol, time.time()-t_sym, wf.windows, wf.sharpe_mean)
     
-    # ── Synthèse ──
+    # ── V6: Top-N filtering ──
+    if args.top_n > 0 and symbol_scores:
+        ranked = sorted(symbol_scores.items(), key=lambda x: x[1], reverse=True)
+        top_symbols = {s for s, _ in ranked[:args.top_n]}
+        logger.info("Top-%d actifs (IS): %s", args.top_n, ", ".join(top_symbols))
+        all_wf = [w for w in all_wf if w.symbol in top_symbols]
+    
+    # ── Synthèse individuelle ──
     elapsed = time.time() - start
     print("\n" + "=" * 80)
     print("RÉSULTATS WALK-FORWARD")
+    if args.regime_filter:
+        print(">>> Filtre TREND uniquement <<<")
     print("=" * 80)
     print(f"{'Symbole':<10} {'Fenêtres':>8} {'Sharpe μ':>9} {'Sharpe σ':>9} {'Stabilité':>9} {'% Profit':>9} {'PnL Total':>10}")
     print("-" * 80)
+    
+    total_pnl = 0.0
+    total_sharpes = []
     for wf in all_wf:
         if wf.windows > 0:
             pct_prof = wf.profitable_windows / wf.windows * 100
             print(f"{wf.symbol:<10} {wf.windows:>8} {wf.sharpe_mean:>9.2f} {wf.sharpe_std:>9.2f} "
                   f"{wf.stability_score:>9.1f} {pct_prof:>8.0f}% ${wf.pnl_total:>9.0f}")
+            total_pnl += wf.pnl_total
+            if wf.sharpe_mean != 0:
+                total_sharpes.append(wf.sharpe_mean)
     print("=" * 80)
+    
+    # ── V6: Portfolio consolidé ──
+    if len(all_wf) > 1:
+        n_assets = len([w for w in all_wf if w.windows > 0])
+        avg_sharpe = np.mean(total_sharpes) if total_sharpes else 0.0
+        print(f"\n📊 PORTFOLIO CONSOLIDÉ ({n_assets} actifs)")
+        print(f"   PnL Total:     ${total_pnl:>9.0f}")
+        print(f"   Sharpe moyen:  {avg_sharpe:>9.2f}")
+        print(f"   Sharpe médian: {np.median(total_sharpes):>9.2f}" if total_sharpes else "")
+        if total_sharpes:
+            profitable = sum(1 for s in total_sharpes if s > 0)
+            print(f"   Actifs >0:     {profitable}/{len(total_sharpes)}")
+        print(f"   Durée totale:  {elapsed:.0f}s")
     
     if all_opt:
         print("\nOPTUNA — Meilleurs paramètres par actif")

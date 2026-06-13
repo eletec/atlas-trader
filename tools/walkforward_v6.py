@@ -303,15 +303,30 @@ def main():
     start = time.time()
     
     for symbol in symbols:
-        # 1) Walk-Forward
-        wf = walkforward(symbol, total_days=args.days, gate_mode=args.mode)
-        all_wf.append(wf)
+        best_params = None
         
-        # 2) Optuna (si dispo)
+        # 1) Optuna — trouver les meilleurs params d'abord
         if not args.no_optuna:
             opt = optimize_optuna(symbol, days=60, n_trials=args.trials, gate_mode=args.mode)
             if opt:
                 all_opt.append(opt)
+                best_params = opt["best_params"]
+                logger.info("Optuna best params for %s: %s (score=%.2f)", symbol, best_params, opt["best_score"])
+        
+        # 2) Walk-Forward — avec les params optimisés (ou défauts si pas d'Optuna)
+        wf_kwargs = {}
+        if best_params:
+            wf_kwargs = {
+                "fusion_threshold": best_params["meta_th"],
+                "sl_mult": best_params["sl_mult"],
+                "tp_mult": best_params["tp_mult"],
+                "fraction": best_params["fraction"],
+                "exit_strategy": best_params["exit_strat"],
+                "exit_atr_mult": best_params["exit_atr"],
+            }
+        
+        wf = walkforward(symbol, total_days=args.days, gate_mode=args.mode, **wf_kwargs)
+        all_wf.append(wf)
     
     # ── Synthèse ──
     elapsed = time.time() - start

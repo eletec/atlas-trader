@@ -341,9 +341,11 @@ def main():
                             metrics["train_rows"], metrics["test_rows"])
                 # Print coefficients
                 coef = metrics["coef"]
-                logger.info("   coef: prob=%.3f bull=%.3f bear=%.3f TREND=%.3f RANGE=%.3f CHOP=%.3f int=%.3f",
-                            coef["prob_up"], coef["trend_bull"], coef["trend_bear"],
-                            coef["regime_TREND"], coef["regime_RANGE"], coef["regime_CHOP"],
+                logger.info("   coef: p48=%.3f p12=%.3f bull=%.3f bear=%.3f TREND=%.3f RANGE=%.3f CHOP=%.3f cross=%.3f int=%.3f",
+                            coef.get("prob_up_48", 0), coef.get("prob_up_12", 0),
+                            coef.get("trend_bull", 0), coef.get("trend_bear", 0),
+                            coef.get("regime_TREND", 0), coef.get("regime_RANGE", 0),
+                            coef.get("regime_CHOP", 0), coef.get("cross_horizon", 0),
                             metrics["intercept"])
             else:
                 logger.warning("❌ %s — SKIPPED (not enough data)", symbol)

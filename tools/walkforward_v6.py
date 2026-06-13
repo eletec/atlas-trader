@@ -270,7 +270,7 @@ def optimize_optuna(
             return -999
     
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
     
     return {
         "symbol": symbol,
@@ -283,50 +283,74 @@ def optimize_optuna(
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)  # silence Optuna logs
+    
     parser = argparse.ArgumentParser(description="V6 Walk-Forward + Optuna")
     parser.add_argument("--asset", type=str, default=None)
     parser.add_argument("--days", type=int, default=365)
-    parser.add_argument("--trials", type=int, default=50)
+    parser.add_argument("--trials", type=int, default=30, help="Optuna trials (default: 30, réduire pour aller plus vite)")
     parser.add_argument("--mode", type=str, default="meta", choices=["meta", "fusion", "veto"])
-    parser.add_argument("--no-optuna", action="store_true")
+    parser.add_argument("--no-optuna", action="store_true", help="Skip Optuna, use defaults")
+    parser.add_argument("--fast", action="store_true", help="Skip Optuna, use proven V4/V5 params")
+    parser.add_argument("--optuna-days", type=int, default=60, help="Jours pour Optuna (default: 60)")
     args = parser.parse_args()
     
     symbols = [args.asset] if args.asset else SYMBOLS
     
+    # ── Params éprouvés V4/V5 (mode --fast) ──
+    FAST_PARAMS = {
+        "fusion_threshold": 0.15, "sl_mult": 2.0, "tp_mult": 4.0,
+        "fraction": 0.005, "exit_strategy": "chandelier", "exit_atr_mult": 3.0,
+    }
+    
     print("=" * 80)
     print("ATLAS V6 — Walk-Forward Validation Engine")
-    print(f"Symboles: {len(symbols)} | Jours: {args.days} | Mode: {args.mode}")
+    print(f"Symboles: {len(symbols)} | Jours: {args.days} | Mode: {args.mode} | Trials: {args.trials}")
+    if args.fast:
+        print("⚡ Mode FAST — Optuna skip, params V4/V5")
+    if args.no_optuna:
+        print("⚡ No Optuna — defaults only")
     print("=" * 80)
     
     all_wf = []
     all_opt = []
     start = time.time()
     
-    for symbol in symbols:
+    for idx, symbol in enumerate(symbols):
+        t_sym = time.time()
         best_params = None
         
-        # 1) Optuna — trouver les meilleurs params d'abord
-        if not args.no_optuna:
-            opt = optimize_optuna(symbol, days=60, n_trials=args.trials, gate_mode=args.mode)
+        # 1) Optuna — trouver les meilleurs params
+        if args.fast:
+            wf_kwargs = dict(FAST_PARAMS)
+            logger.info("%s: ⚡ fast mode — params V4/V5", symbol)
+        elif args.no_optuna:
+            wf_kwargs = {}
+            logger.info("%s: no Optuna — defaults", symbol)
+        else:
+            logger.info("%s [%d/%d]: Optuna %d trials × %dj…", symbol, idx+1, len(symbols), args.trials, args.optuna_days)
+            opt = optimize_optuna(symbol, days=args.optuna_days, n_trials=args.trials, gate_mode=args.mode)
             if opt:
                 all_opt.append(opt)
                 best_params = opt["best_params"]
-                logger.info("Optuna best params for %s: %s (score=%.2f)", symbol, best_params, opt["best_score"])
+                logger.info("%s: Optuna best score=%.2f params=%s (%.0fs)", symbol, opt["best_score"], best_params, time.time()-t_sym)
+            wf_kwargs = {}
+            if best_params:
+                wf_kwargs = {
+                    "fusion_threshold": best_params["meta_th"],
+                    "sl_mult": best_params["sl_mult"],
+                    "tp_mult": best_params["tp_mult"],
+                    "fraction": best_params["fraction"],
+                    "exit_strategy": best_params["exit_strat"],
+                    "exit_atr_mult": best_params["exit_atr"],
+                }
         
-        # 2) Walk-Forward — avec les params optimisés (ou défauts si pas d'Optuna)
-        wf_kwargs = {}
-        if best_params:
-            wf_kwargs = {
-                "fusion_threshold": best_params["meta_th"],
-                "sl_mult": best_params["sl_mult"],
-                "tp_mult": best_params["tp_mult"],
-                "fraction": best_params["fraction"],
-                "exit_strategy": best_params["exit_strat"],
-                "exit_atr_mult": best_params["exit_atr"],
-            }
-        
+        # 2) Walk-Forward
+        logger.info("%s: Walk-Forward %dj…", symbol, args.days)
         wf = walkforward(symbol, total_days=args.days, gate_mode=args.mode, **wf_kwargs)
         all_wf.append(wf)
+        logger.info("%s: done in %.0fs (windows=%d)", symbol, time.time()-t_sym, wf.windows)
     
     # ── Synthèse ──
     elapsed = time.time() - start

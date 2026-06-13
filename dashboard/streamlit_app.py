@@ -3032,25 +3032,6 @@ def _render_backtest_v4():
 
     if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
                  help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
-                    st.dataframe(df_trades, use_container_width=True, hide_index=True)
-
-                    # Courbe PnL
-                    st.markdown("#### 📈 Équité")
-                    cumulative = [result.initial_capital]
-                    for t in result.trades:
-                        cumulative.append(cumulative[-1] + t.pnl_usd)
-                    import plotly.graph_objects as go
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(y=cumulative, mode="lines", name="Équité"))
-                    fig.add_hline(y=result.initial_capital, line_dash="dash", line_color="gray")
-                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=0, b=0))
-                    st.plotly_chart(fig, use_container_width=True)
-
-            except Exception as e:
-                st.error(f"Erreur backtest: {e}")
-
-    if st.button(" Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
-                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
         import urllib.request, json as _json2
         try:
             req = urllib.request.Request(f"{_API_BASE}/optimize/v5?days={days}", method="POST")

@@ -3210,6 +3210,7 @@ def render_admin_panel():
         ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
         ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
         ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
+        ('<i class="fas fa-lightbulb"></i>',      "reflections", "🧠 Réflexions IA"),
         ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup")),
     ]
@@ -3736,6 +3737,46 @@ def render_admin_panel():
                         st.success(t("pa_save_success").format(slug=_paslug))
                     except Exception as _savexc:
                         st.error(f"{t('pa_save_error')} {_savexc}")
+
+    elif _atab == "reflections":  # 🧠 Réflexions IA (V6 ReflectionEngine)
+        st.markdown('<h4><i class="fas fa-lightbulb" style="margin-right:7px;color:#ffb74d;"></i>🧠 Réflexions IA — Analyse des trades perdants</h4>', unsafe_allow_html=True)
+        st.caption("L'IA analyse les trades perdants et suggère des ajustements de paramètres.")
+        
+        try:
+            import json
+            refl_path = "/app/data/v6_reflections.json"
+            if Path(refl_path).exists():
+                with open(refl_path) as f:
+                    reflections = json.load(f)
+                st.success(f"{len(reflections)} analyse(s) disponible(s)")
+                for ref in reversed(reflections[-10:]):
+                    ts = ref.get("timestamp", "?")[:16]
+                    n = ref.get("n_trades_analyzed", 0)
+                    symbols = ref.get("symbols", [])
+                    with st.expander(f"📅 {ts} — {n} trades analysés ({', '.join(symbols)})"):
+                        analysis = ref.get("analysis", "Pas d'analyse")
+                        st.markdown(analysis[:3000])
+                        suggestions = ref.get("suggestions", [])
+                        if suggestions:
+                            st.markdown("**🔧 Ajustements suggérés :**")
+                            for s in suggestions:
+                                st.info(f"`{s.get('param','?')}` : {s.get('current','?')} → **{s.get('suggested','?')}** — {s.get('reason','?')}")
+            else:
+                st.info("Aucune réflexion IA disponible. Les analyses apparaîtront automatiquement après quelques trades perdants.")
+                
+                if st.button("🔍 Lancer une analyse maintenant", type="secondary"):
+                    try:
+                        from v6.core.reflection_engine import ReflectionEngine
+                        engine = ReflectionEngine()
+                        result = engine.analyze()
+                        if result:
+                            st.success(f"Analyse lancée sur {result.get('n_trades',0)} trades")
+                        else:
+                            st.warning("Pas assez de trades perdants (<5) pour une analyse.")
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+        except Exception as e:
+            st.warning(f"Réflexions IA indisponibles: {e}")
 
     elif _atab == "backup":  # Sauvegarde / Restauration
         st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)

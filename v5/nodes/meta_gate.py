@@ -39,13 +39,15 @@ class MetaGate(Node):
 
     @staticmethod
     def output_schema() -> dict[str, str]:
-        return {"signal": "str", "blocked": "bool", "reason": "str", "score": "float"}
+        return {"signal": "str", "blocked": "bool", "reason": "str", "score": "float",
+                "regime_adapted": "bool", "size_multiplier": "float"}
 
     def __init__(self, node_id: str = "", params: dict | None = None, **kwargs):
         super().__init__(node_id=node_id, params=params, **kwargs)
         self._model = None
         self._dual_memory: DualMemoryModel | None = None
         self._use_dual = bool(self.params.get("use_dual_memory", True))
+        self._regime_adapter = None  # V6: lazy init
 
     def _load_dual_memory(self) -> bool:
         """Charge ou crée le DualMemory (anchor + adapter online)."""
@@ -121,12 +123,17 @@ class MetaGate(Node):
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         signal = inputs.get("signal", "flat")
+        regime = str(inputs.get("regime", "TREND"))
+        threshold = float(self.params.get("threshold", 0.20))
+        
         if signal == "flat":
-            return {"signal": "flat", "blocked": False, "reason": "", "score": 0.0}
-
-        threshold = float(self.params.get("threshold", 0.30))
+            return {"signal": "flat", "blocked": False, "reason": "", "score": 0.0,
+                    "regime_adapted": False, "size_multiplier": 1.0}
 
         # ── V5: DualMemory prioritaire ──
+        score = None
+        result = None
+        
         if self._use_dual:
             if self._dual_memory is None:
                 self._load_dual_memory()
@@ -134,37 +141,66 @@ class MetaGate(Node):
                 try:
                     features = self._encode(inputs)
                     score = self._dual_memory.predict(features)
-                    if score > threshold:
-                        return {"signal": "long", "blocked": False,
-                                "reason": f"dm={score:.2f}", "score": round(score, 4)}
-                    elif score < -threshold:
-                        return {"signal": "short", "blocked": False,
-                                "reason": f"dm={score:.2f}", "score": round(score, 4)}
-                    else:
-                        return {"signal": "flat", "blocked": True,
-                                "reason": f"dm={score:.2f}", "score": round(score, 4)}
                 except Exception as e:
                     logger.warning("MetaGate DualMemory predict: %s", e)
 
         # ── Fallback: pickle model ──
-        if self._model is None:
-            self._load_model()
+        if score is None:
+            if self._model is None:
+                self._load_model()
+            if self._model is not None:
+                try:
+                    X = np.array([self._encode(inputs)], dtype=np.float64)
+                    proba = self._model.predict_proba(X)[0]
+                    classes = list(self._model.classes_)
+                    p_long = proba[classes.index(1)] if 1 in classes else 0.33
+                    p_short = proba[classes.index(2)] if 2 in classes else 0.33
+                    score = p_long - p_short
+                except Exception as e:
+                    logger.warning("MetaGate predict: %s", e)
 
-        if self._model is not None:
-            try:
-                X = np.array([self._encode(inputs)], dtype=np.float64)
-                proba = self._model.predict_proba(X)[0]
-                classes = list(self._model.classes_)
-                p_long = proba[classes.index(1)] if 1 in classes else 0.33
-                p_short = proba[classes.index(2)] if 2 in classes else 0.33
-                score = p_long - p_short
-                if score > threshold:
-                    return {"signal": "long", "blocked": False, "reason": f"meta={score:.2f}", "score": round(score, 4)}
-                elif score < -threshold:
-                    return {"signal": "short", "blocked": False, "reason": f"meta={score:.2f}", "score": round(score, 4)}
-                else:
-                    return {"signal": "flat", "blocked": True, "reason": f"meta={score:.2f}", "score": round(score, 4)}
-            except Exception as e:
-                logger.warning("MetaGate predict: %s", e)
+        # ── Fallback ultime ──
+        if score is None:
+            return self._fallback(inputs, threshold)
 
-        return self._fallback(inputs, threshold)
+        # ── V6: RegimeAdapter — adapte le seuil et le sizing au régime ──
+        regime_adapted = False
+        size_mult = 1.0
+        
+        try:
+            from v6.core.regime_adapter import RegimeAdapter
+            if self._regime_adapter is None:
+                self._regime_adapter = RegimeAdapter()
+            self._regime_adapter.current_regime = regime
+            
+            if self._regime_adapter.should_block_entries():
+                logger.info("MetaGate [%s]: régime=%s → BLOCKED (no entries)", self.node_id, regime)
+                return {"signal": "flat", "blocked": True, 
+                        "reason": f"regime={regime} (no new trades)", "score": round(score, 4),
+                        "regime_adapted": True, "size_multiplier": 0.0}
+            
+            # Adapter le seuil au régime
+            adapted = self._regime_adapter.adapt_params({"threshold": threshold})
+            threshold = adapted["meta_threshold"]
+            size_mult = adapted["size_multiplier"]
+            
+            if size_mult != 1.0 or threshold != float(self.params.get("threshold", 0.20)):
+                regime_adapted = True
+                logger.info("MetaGate [%s]: régime=%s → th=%.2f size=%.0f%%", 
+                           self.node_id, regime, threshold, size_mult * 100)
+        except ImportError:
+            pass  # V6 non disponible, comportement V5 standard
+        
+        # ── Décision finale ──
+        prefix = "dm" if self._use_dual and self._dual_memory and self._dual_memory.ready else "meta"
+        if score > threshold:
+            return {"signal": "long", "blocked": False,
+                    "reason": f"{prefix}={score:.2f}", "score": round(score, 4),
+                    "regime_adapted": regime_adapted, "size_multiplier": size_mult}
+        elif score < -threshold:
+            return {"signal": "short", "blocked": False,
+                    "reason": f"{prefix}={score:.2f}", "score": round(score, 4),
+                    "regime_adapted": regime_adapted, "size_multiplier": size_mult}
+        return {"signal": "flat", "blocked": True,
+                "reason": f"{prefix}={score:.2f}", "score": round(score, 4),
+                "regime_adapted": regime_adapted, "size_multiplier": size_mult}

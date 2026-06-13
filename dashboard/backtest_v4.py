@@ -68,8 +68,10 @@ def run_backtest_v4(
     from quant.data_loader import fetch_history
 
     logger.info("Backtest %s: chargement %dj...", symbol, days)
-    df_5m = kwargs.pop("_df_5m_override", None) or fetch_history(symbol, "5m", days=days)
-    df_1h = kwargs.pop("_df_1h_override", None) or fetch_history(symbol, "1h", days=days)
+    _df5 = kwargs.pop("_df_5m_override", None)
+    _df1 = kwargs.pop("_df_1h_override", None)
+    df_5m = _df5 if _df5 is not None and not _df5.empty else fetch_history(symbol, "5m", days=days)
+    df_1h = _df1 if _df1 is not None and not _df1.empty else fetch_history(symbol, "1h", days=days)
     if df_5m.empty or df_1h.empty:
         raise ValueError(f"Pas de données pour {symbol}")
 

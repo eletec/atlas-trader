@@ -163,10 +163,16 @@ def walkforward(
         return result
     
     # ── Découpage en fenêtres walk-forward ──
+    # S'assurer que les timestamps sont timezone-aware (UTC)
+    if df_5m_full.index.tz is None:
+        df_5m_full.index = df_5m_full.index.tz_localize('UTC')
+    if df_1h_full.index.tz is None:
+        df_1h_full.index = df_1h_full.index.tz_localize('UTC')
+    
     end_date = df_5m_full.index[-1]
     start_date = end_date - timedelta(days=total_days)
     
-    # Générer les paires (train_end, test_end)
+    # Générer les paires (train_end, test_end) en UTC
     windows_dates = []
     cursor = start_date
     while cursor + timedelta(days=train_days + test_days) <= end_date:
@@ -184,17 +190,15 @@ def walkforward(
     
     for wi, (train_end, test_end) in enumerate(windows_dates):
         try:
-            # Découper les données
-            train_5m = df_5m_full[df_5m_full.index <= train_end].iloc[-train_days * 288:]
+            # Découper les données (index déjà UTC)
             test_5m = df_5m_full[(df_5m_full.index > train_end) & (df_5m_full.index <= test_end)]
             test_1h = df_1h_full[(df_1h_full.index > train_end) & (df_1h_full.index <= test_end)]
+            # Inclure 500 barres avant pour le warmup du backtest
+            warmup_5m = df_5m_full[df_5m_full.index <= test_end].iloc[-len(test_5m)-500:] if len(test_5m) > 0 else df_5m_full.iloc[-500:]
             
             if len(test_5m) < 200:
                 logger.info("  Fenêtre %d/%d SKIP: test trop petit (%d barres)", wi + 1, len(windows_dates), len(test_5m))
                 continue
-            
-            # Fusionner train+test pour le backtest (le backtest a besoin de warmup)
-            bt_df_5m = pd.concat([train_5m.iloc[-500:], test_5m]) if len(train_5m) > 500 else test_5m
             
             # Lancer le backtest sur cette fenêtre
             bt = run_backtest_v4(
@@ -203,7 +207,7 @@ def walkforward(
                 capital=10_000,
                 risk_pct=1.0,
                 gate_mode=gate_mode,
-                _df_5m_override=bt_df_5m,
+                _df_5m_override=warmup_5m,
                 _df_1h_override=test_1h,
                 **kwargs,
             )

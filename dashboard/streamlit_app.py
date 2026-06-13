@@ -3235,7 +3235,8 @@ def render_admin_panel():
         ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  "Canvas DAG"),
         ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring"),
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
-        ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
+        # Arena désactivée — sera réactivée quand la stratégie aura fait ses preuves
+        # ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Configuration"),
         # ── Infra & Monitoring ───────────────────────────────────────────
         (None, None,      "Infra & Monitoring"),

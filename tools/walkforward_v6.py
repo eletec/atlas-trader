@@ -136,43 +136,75 @@ def walkforward(
     gate_mode: str = "meta",
     **kwargs,
 ) -> WFResult:
-    """Walk-forward validation : optimise sur train, teste sur test, avance."""
+    """Walk-forward validation : optimise sur train, teste sur test, avance.
+    
+    Charge TOUT l'historique une fois, puis découpe en fenêtres glissantes.
+    Chaque fenêtre de test est strictement postérieure à sa fenêtre de train.
+    """
     from dashboard.backtest_v4 import run_backtest_v4
     from quant.data_loader import fetch_history
+    from datetime import timedelta
     
     result = WFResult(symbol=symbol, windows=0)
     
-    # Calculer les fenêtres
-    end_date = datetime.now()
+    # Charger tout l'historique nécessaire (train max + total_days)
+    total_needed = train_days + total_days
+    logger.info("Chargement historique %s (%dj)...", symbol, total_needed)
+    
+    try:
+        df_5m_full = fetch_history(symbol, "5m", days=total_needed, cache=True)
+        df_1h_full = fetch_history(symbol, "1h", days=total_needed, cache=True)
+    except Exception as e:
+        logger.error("Erreur chargement données: %s", e)
+        return result
+    
+    if len(df_5m_full) < 500:
+        logger.warning("%s: pas assez de données (%d barres)", symbol, len(df_5m_full))
+        return result
+    
+    # ── Découpage en fenêtres walk-forward ──
+    end_date = df_5m_full.index[-1]
     start_date = end_date - timedelta(days=total_days)
     
-    windows = []
+    # Générer les paires (train_end, test_end)
+    windows_dates = []
     cursor = start_date
     while cursor + timedelta(days=train_days + test_days) <= end_date:
         train_end = cursor + timedelta(days=train_days)
         test_end = train_end + timedelta(days=test_days)
-        windows.append((cursor, train_end, test_end))
+        windows_dates.append((train_end, test_end))
         cursor += timedelta(days=step_days)
     
-    if len(windows) < MIN_WINDOWS:
-        logger.warning("%s: seulement %d fenêtres (min=%d)", symbol, len(windows), MIN_WINDOWS)
+    if len(windows_dates) < MIN_WINDOWS:
+        logger.warning("%s: seulement %d fenêtres (min=%d)", symbol, len(windows_dates), MIN_WINDOWS)
         return result
     
     logger.info("=== Walk-Forward %s : %d fenêtres (train=%dj test=%dj step=%dj) ===",
-                symbol, len(windows), train_days, test_days, step_days)
+                symbol, len(windows_dates), train_days, test_days, step_days)
     
-    for wi, (w_start, w_train_end, w_test_end) in enumerate(windows):
-        test_days_actual = (w_test_end - w_train_end).days
-        if test_days_actual < 10:
-            continue
-        
+    for wi, (train_end, test_end) in enumerate(windows_dates):
         try:
+            # Découper les données
+            train_5m = df_5m_full[df_5m_full.index <= train_end].iloc[-train_days * 288:]
+            test_5m = df_5m_full[(df_5m_full.index > train_end) & (df_5m_full.index <= test_end)]
+            test_1h = df_1h_full[(df_1h_full.index > train_end) & (df_1h_full.index <= test_end)]
+            
+            if len(test_5m) < 200:
+                logger.info("  Fenêtre %d/%d SKIP: test trop petit (%d barres)", wi + 1, len(windows_dates), len(test_5m))
+                continue
+            
+            # Fusionner train+test pour le backtest (le backtest a besoin de warmup)
+            bt_df_5m = pd.concat([train_5m.iloc[-500:], test_5m]) if len(train_5m) > 500 else test_5m
+            
+            # Lancer le backtest sur cette fenêtre
             bt = run_backtest_v4(
                 symbol=symbol,
-                days=test_days_actual,
+                days=test_days,
                 capital=10_000,
                 risk_pct=1.0,
                 gate_mode=gate_mode,
+                _df_5m_override=bt_df_5m,
+                _df_1h_override=test_1h,
                 **kwargs,
             )
             
@@ -181,10 +213,12 @@ def walkforward(
             result.trades_oos.append(bt.n_trades)
             result.windows += 1
             
-            logger.info("  Fenêtre %d/%d : Sharpe=%.2f PnL=$%.0f Trades=%d",
-                        wi + 1, len(windows), bt.sharpe, bt.total_pnl, bt.n_trades)
+            logger.info("  Fenêtre %d/%d [%s→%s]: Sharpe=%.2f PnL=$%.0f Trades=%d",
+                        wi + 1, len(windows_dates),
+                        train_end.strftime("%Y-%m-%d"), test_end.strftime("%Y-%m-%d"),
+                        bt.sharpe, bt.total_pnl, bt.n_trades)
         except Exception as e:
-            logger.warning("  Fenêtre %d/%d SKIP: %s", wi + 1, len(windows), e)
+            logger.warning("  Fenêtre %d/%d SKIP: %s", wi + 1, len(windows_dates), e)
     
     return result
 

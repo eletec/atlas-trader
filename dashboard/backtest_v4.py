@@ -60,12 +60,16 @@ def run_backtest_v4(
     min_atr_dist: float = 1.0,
     **kwargs,
 ) -> BTResult:
-    """Backtest V4 avec les vrais nœuds DAG."""
+    """Backtest V4/V5 avec les vrais nœuds DAG.
+    
+    Accepte _df_5m_override et _df_1h_override pour le walk-forward
+    (permet de tester sur des fenêtres historiques spécifiques).
+    """
     from quant.data_loader import fetch_history
 
     logger.info("Backtest %s: chargement %dj...", symbol, days)
-    df_5m = fetch_history(symbol, "5m", days=days)
-    df_1h = fetch_history(symbol, "1h", days=days)
+    df_5m = kwargs.pop("_df_5m_override", None) or fetch_history(symbol, "5m", days=days)
+    df_1h = kwargs.pop("_df_1h_override", None) or fetch_history(symbol, "1h", days=days)
     if df_5m.empty or df_1h.empty:
         raise ValueError(f"Pas de données pour {symbol}")
 

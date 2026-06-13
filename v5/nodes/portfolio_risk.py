@@ -119,16 +119,17 @@ class PortfolioRisk(Node):
                 "reason": f"Cluster {cluster} saturé ({cluster_exposure_pct:.0f}%)",
             }
 
-        # ── Sizing ajusté ──
+        # ── Sizing ajusté par corrélation BTC (V6: recommandé par Claude, DeepSeek) ──
+        corr_btc = DEFAULT_CORR.get(("BTC/USDT", symbol), 0.5)
         decision_out = dict(decision)
-        if effective_exposure_pct > 15.0:
-            # Réduire le sizing si exposition effective trop élevée
-            scale = 15.0 / effective_exposure_pct
-            old_size = float(decision.get("size_usd", 0))
-            new_size = old_size * scale
-            decision_out["size_usd"] = round(new_size, 2)
-            decision_out["reason"] = decision.get("reason", "") + f" | sized_{scale:.1f}x"
-            logger.info("PortfolioRisk: %s sizing scaled %.2fx (%.0f→%.0f$)",
-                        symbol, scale, old_size, new_size)
+        
+        # Formule de Claude : size × (1 − avg_corr_BTC)
+        corr_discount = 1.0 - corr_btc * 0.7  # 70% de la corrélation est pénalisée
+        old_size = float(decision.get("size_usd", 0))
+        new_size = old_size * corr_discount
+        new_size = max(new_size, 10.0)  # minimum $10
+        decision_out["size_usd"] = round(new_size, 2)
+        decision_out["reason"] = (decision.get("reason", "") + 
+                                   f" | corr_btc={corr_btc:.2f}×{corr_discount:.2f}")
 
         return {"decision": decision_out, "blocked": False, "reason": ""}

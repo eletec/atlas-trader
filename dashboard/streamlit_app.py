@@ -2900,84 +2900,138 @@ def _active_assets_v4() -> list[str]:
 
 
 def _render_backtest_v4():
-    """Panneau de backtest — teste la stratégie sur données historiques."""
-    st.markdown("### 🧪 Backtest")
-    st.caption("Teste la stratégie DAG sur des données historiques Binance.")
+    """Panneau de backtest V6 — teste la stratégie sur données historiques."""
+    st.markdown("### 🧪 Backtest V6")
+    st.caption("Teste la stratégie DAG (MetaGate + RegimeAdapter) sur données historiques Binance.")
 
-    symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"])
-    days = st.slider("Jours d'historique", 7, 180, 60, 7)
+    symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
+    days = st.slider("Jours d'historique", 7, 365, 60, 7, help="60j pour test rapide, 180j+ pour walk-forward")
     capital = st.number_input("Capital initial ($)", 100, 1_000_000, 10_000, 1000)
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         risk_pct = st.slider("Risque/trade (%)", 0.1, 5.0, 1.0, 0.1)
         sl_mult = st.slider("SL (×ATR)", 1.0, 6.0, 2.0, 0.5)
     with col2:
-        fraction = st.slider("Fraction max capital", 0.005, 0.20, 0.02, 0.005)
+        fraction = st.slider("Fraction max capital", 0.005, 0.20, 0.05, 0.005)
         tp_mult = st.slider("TP (×ATR)", 1.0, 10.0, 4.0, 0.5)
+    with col3:
+        exit_strat = st.selectbox("Sortie", ["chandelier", "trailing"])
+        exit_atr = st.slider("Exit ATR", 1.0, 6.0, 3.0, 0.5)
 
-    exit_strat = st.selectbox("Stratégie de sortie", ["chandelier", "trailing"])
-    exit_atr = st.slider("Exit ATR mult", 1.0, 6.0, 3.0, 0.5)
-    min_dist = st.slider("Breathing room (×ATR)", 0.0, 3.0, 1.0, 0.5)
+    gate_mode = st.selectbox("Mode Gate", ["meta", "meta_regime", "fusion", "veto"], index=0,
+                              help="meta = MetaGate V5 | meta_regime = V6 avec adaptation régime | fusion/veto = V4 legacy")
+    
+    # V6: options avancées
+    with st.expander("⚙️ Options V6 avancées"):
+        use_regime_adapt = st.checkbox("Activer RegimeAdapter (TREND/RANGE/CHOP)", value=(gate_mode == "meta_regime"),
+                                        help="Adapte le seuil et sizing selon le régime détecté")
+        use_triple_barrier = st.checkbox("Labels Triple-Barrier (au lieu de binaire T+48)", value=False,
+                                          help="Label = 1er touché : TP, SL, ou time-stop")
+        min_dist = st.slider("Breathing room (×ATR)", 0.0, 3.0, 1.0, 0.5)
 
-    gate_mode = st.selectbox("Mode Gate", ["meta", "fusion", "veto"], index=0,
-                              help="meta = MetaGate V5 (LogisticRegression apprise), fusion = scoring pondéré, veto = blocage binaire")
-    if gate_mode == "fusion":
-        fusion_threshold = st.slider("Seuil fusion (±)", 0.05, 0.50, 0.30, 0.05,
-                                      help="Score > +seuil → LONG, < -seuil → SHORT, entre les deux → flat")
+    # Seuil MetaGate
+    if gate_mode in ("meta", "meta_regime"):
+        meta_threshold = st.slider("Seuil MetaGate", 0.05, 0.50, 0.20, 0.05,
+                                    help="Score > +seuil → LONG, < -seuil → SHORT")
+        fusion_threshold = meta_threshold
+    elif gate_mode == "fusion":
+        fusion_threshold = st.slider("Seuil fusion (±)", 0.05, 0.50, 0.30, 0.05)
     else:
-        fusion_threshold = 0.30  # non utilisé en veto
+        fusion_threshold = 0.30
 
     col_xgb1, col_xgb2 = st.columns(2)
     with col_xgb1:
-        p_up_th = st.slider("XGBoost seuil LONG", 0.51, 0.65, 0.52, 0.01,
-                            help="prob_up ≥ seuil → signal LONG")
+        p_up_th = st.slider("XGBoost seuil LONG", 0.51, 0.65, 0.52, 0.01)
     with col_xgb2:
-        p_dn_th = st.slider("XGBoost seuil SHORT", 0.35, 0.49, 0.48, 0.01,
-                            help="prob_up ≤ seuil → signal SHORT")
+        p_dn_th = st.slider("XGBoost seuil SHORT", 0.35, 0.49, 0.48, 0.01)
 
-    if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
-        with st.spinner(f"Backtest {symbol} sur {days}j..."):
+    bt_col1, bt_col2 = st.columns(2)
+    with bt_col1:
+        if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
+            with st.spinner(f"Backtest V6 {symbol} sur {days}j..."):
+                try:
+                    from dashboard.backtest_v4 import run_backtest_v4
+                    actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
+                    result = run_backtest_v4(
+                        symbol=symbol, days=days, capital=capital,
+                        risk_pct=risk_pct, sl_mult=sl_mult, tp_mult=tp_mult,
+                        fraction=fraction, exit_strategy=exit_strat,
+                        exit_atr_mult=exit_atr, min_atr_dist=min_dist,
+                        gate_mode=actual_gate, fusion_threshold=fusion_threshold,
+                        p_up_threshold=p_up_th, p_dn_threshold=p_dn_th,
+                        use_regime_adapter=use_regime_adapt,
+                        use_triple_barrier=use_triple_barrier,
+                    )
+                    st.success(f"{result.n_trades} trades | PnL=${result.total_pnl:.2f} | Sharpe={result.sharpe:.2f}")
+
+                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    col_m1.metric("P&L Total", f"${result.total_pnl:,.2f}", f"{result.total_pnl_pct:+.1f}%")
+                    col_m2.metric("Win Rate", f"{result.win_rate:.0f}%")
+                    col_m3.metric("Max Drawdown", f"{result.max_drawdown_pct:.1f}%")
+                    col_m4.metric("Sharpe", f"{result.sharpe:.2f}")
+                    col_m5, col_m6 = st.columns(2)
+                    col_m5.metric("Gain moyen", f"${result.avg_win:,.2f}")
+                    col_m6.metric("Perte moyenne", f"${result.avg_loss:,.2f}")
+                    st.metric("Trades", result.n_trades)
+
+                    if result.trades:
+                        st.markdown("---")
+                        st.markdown("#### 📋 Trades")
+                        df_trades = pd.DataFrame([{
+                            "Date": t.timestamp[:19],
+                            "Action": t.action.upper(),
+                            "Entry": f"${t.entry_price:,.2f}",
+                            "Exit": f"${t.exit_price:,.2f}",
+                            "PnL": f"${t.pnl_usd:+.2f}",
+                            "PnL%": f"{t.pnl_pct:+.2f}%",
+                            "Raison": t.exit_reason,
+                            "Barres": t.bars_held,
+                        } for t in result.trades])
+                        st.dataframe(df_trades, use_container_width=True, hide_index=True)
+                except Exception as e:
+                    st.error(f"Erreur backtest: {e}")
+
+    with bt_col2:
+        if st.button("🔬 Walk-Forward 365j", type="secondary", use_container_width=True,
+                     help="Validation robuste : 6 fenêtres glissantes Train 180j / Test 30j"):
+            with st.spinner(f"Walk-Forward V6 {symbol} sur 365j..."):
+                try:
+                    from tools.walkforward_v6 import walkforward
+                    actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
+                    wf = walkforward(symbol, total_days=365, gate_mode=actual_gate,
+                                     fusion_threshold=fusion_threshold,
+                                     p_up_threshold=p_up_th, p_dn_threshold=p_dn_th)
+                    if wf.windows > 0:
+                        st.success(f"{wf.windows} fenêtres | Sharpe μ={wf.sharpe_mean:.2f} σ={wf.sharpe_std:.2f} | {wf.profitable_windows}/{wf.windows} profitables")
+                        st.metric("Sharpe moyen OOS", f"{wf.sharpe_mean:.2f}")
+                        st.metric("Stabilité", f"{wf.stability_score:.1f}")
+                        st.metric("PnL Total OOS", f"${wf.pnl_total:.0f}")
+                        if wf.sharpe_oos:
+                            st.line_chart({f"F{i+1}": s for i, s in enumerate(wf.sharpe_oos)})
+                    else:
+                        st.warning("Pas assez de données pour le walk-forward.")
+                except ImportError:
+                    st.warning("Module V6 non disponible. `git checkout v6-dev`.")
+
+    # Bouton optimisation
+    if st.button("🔍 Optimiser (grid search)", type="secondary", use_container_width=True):
+        with st.spinner(f"Optimisation {symbol} sur {days}j..."):
             try:
-                import traceback
-                from dashboard.backtest_v4 import run_backtest_v4
-                result = run_backtest_v4(
-                    symbol=symbol, days=days, capital=capital,
-                    risk_pct=risk_pct, sl_mult=sl_mult, tp_mult=tp_mult,
-                    fraction=fraction, exit_strategy=exit_strat,
-                    exit_atr_mult=exit_atr, min_atr_dist=min_dist,
-                    gate_mode=gate_mode, fusion_threshold=fusion_threshold,
-                    p_up_threshold=p_up_th, p_dn_threshold=p_dn_th,
-                )
-                st.info(f"DEBUG: {result.n_trades} trades, PnL=${result.total_pnl}")
+                from dashboard.backtest_v4 import optimize_params
+                actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
+                results = optimize_params(symbol=symbol, days=days, capital=capital,
+                                          gate_mode=actual_gate, fusion_threshold=fusion_threshold,
+                                          p_up_threshold=p_up_th, p_dn_threshold=p_dn_th)
+                if results:
+                    best = results[0]
+                    st.success(f"Meilleure: SL={best['sl_mult']} TP={best['tp_mult']} Exit={best['exit_strat']} → Sharpe={best['sharpe']}")
+                    st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Erreur optimisation: {e}")
 
-                # Métriques
-                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                col_m1.metric("P&L Total", f"${result.total_pnl:,.2f}", f"{result.total_pnl_pct:+.1f}%")
-                col_m2.metric("Win Rate", f"{result.win_rate:.0f}%")
-                col_m3.metric("Max Drawdown", f"{result.max_drawdown_pct:.1f}%")
-                col_m4.metric("Sharpe", f"{result.sharpe:.2f}")
-
-                col_m5, col_m6 = st.columns(2)
-                col_m5.metric("Gain moyen", f"${result.avg_win:,.2f}")
-                col_m6.metric("Perte moyenne", f"${result.avg_loss:,.2f}")
-
-                st.metric("Trades", result.n_trades)
-
-                # Liste des trades
-                if result.trades:
-                    st.markdown("---")
-                    st.markdown("#### 📋 Trades")
-                    df_trades = pd.DataFrame([{
-                        "Date": t.timestamp[:19],
-                        "Action": t.action.upper(),
-                        "Entry": f"${t.entry_price:,.2f}",
-                        "Exit": f"${t.exit_price:,.2f}",
-                        "PnL": f"${t.pnl_usd:+.2f}",
-                        "PnL%": f"{t.pnl_pct:+.2f}%",
-                        "Raison": t.exit_reason,
-                        "Barres": t.bars_held,
-                    } for t in result.trades])
+    if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
+                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
                     st.dataframe(df_trades, use_container_width=True, hide_index=True)
 
                     # Courbe PnL
@@ -2995,26 +3049,7 @@ def _render_backtest_v4():
             except Exception as e:
                 st.error(f"Erreur backtest: {e}")
 
-    if st.button("🔍 Optimiser les paramètres (grid search)", type="secondary", use_container_width=True):
-        with st.spinner(f"Optimisation {symbol} sur {days}j (8 combinaisons)..."):
-            try:
-                from dashboard.backtest_v4 import optimize_params
-                results = optimize_params(symbol=symbol, days=days, capital=capital,
-                                          gate_mode=gate_mode, fusion_threshold=fusion_threshold,
-                                          p_up_threshold=p_up_th, p_dn_threshold=p_dn_th)
-                if results:
-                    best = results[0]
-                    st.success(
-                        f"Meilleure config: SL={best['sl_mult']} TP={best['tp_mult']} "
-                        f"Exit={best['exit_strat']} ATR={best['exit_atr']} "
-                        f"| XGB∈[{p_dn_th},{p_up_th}] fusion={fusion_threshold} "
-                        f"→ Sharpe={best['sharpe']} PnL=${best['pnl']:.0f}"
-                    )
-                    st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
-            except Exception as e:
-                st.error(f"Erreur optimisation: {e}")
-
-    if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
+    if st.button(" Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
                  help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
         import urllib.request, json as _json2
         try:

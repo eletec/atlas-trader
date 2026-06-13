@@ -31,7 +31,8 @@ class MetaGate(Node):
     @staticmethod
     def input_schema() -> dict[str, str]:
         return {
-            "signal": "str", "prob_up": "float", "trend": "str",
+            "signal": "str", "prob_up": "float", "prob_up_12": "float",
+            "trend": "str",
             "debate_signal": "str", "debate_conf": "float",
             "crosstf_signal": "str", "crosstf_conf": "float",
             "regime": "str",
@@ -87,18 +88,23 @@ class MetaGate(Node):
             return False
 
     def _encode(self, inputs: dict) -> list[float]:
-        prob_up = float(inputs.get("prob_up", 0.5))
+        prob_up_48 = float(inputs.get("prob_up", 0.5))
+        prob_up_12 = float(inputs.get("prob_up_12", prob_up_48))  # fallback=48b si 12b indispo
         trend = inputs.get("trend", "")
         regime = str(inputs.get("regime", ""))
-        # 6 features alignées avec train_meta_gate.py:
-        # [prob_up, trend_bull, trend_bear, regime_TREND, regime_RANGE, regime_CHOP]
+        # V6 Multi-horizon: 8 features
+        # [prob_up_48, prob_up_12, trend_bull, trend_bear, regime_TREND, regime_RANGE, regime_CHOP, cross_horizon]
+        cross_horizon = 1.0 if ((prob_up_12 > 0.55 and prob_up_48 > 0.52) or 
+                                 (prob_up_12 < 0.45 and prob_up_48 < 0.48)) else 0.0
         return [
-            prob_up,
+            prob_up_48,
+            prob_up_12,
             1.0 if trend == "bullish" else 0.0,
             1.0 if trend == "bearish" else 0.0,
             1.0 if regime.upper() == "TREND" else 0.0,
             1.0 if regime.upper() == "RANGE" else 0.0,
             1.0 if regime.upper() == "CHOP" else 0.0,
+            cross_horizon,  # feature de cohérence multi-horizon
         ]
 
     def _fallback(self, inputs: dict, threshold: float) -> dict:
@@ -190,6 +196,18 @@ class MetaGate(Node):
                            self.node_id, regime, threshold, size_mult * 100)
         except ImportError:
             pass  # V6 non disponible, comportement V5 standard
+        
+        # ── V6: IA Veto conditionnel ──
+        debate_signal = str(inputs.get("debate_signal", ""))
+        debate_conf = float(inputs.get("debate_conf", 0.0))
+        if debate_conf > 0.8:
+            if (score > 0 and debate_signal.lower() in ("bear", "bearish", "short")) or \
+               (score < 0 and debate_signal.lower() in ("bull", "bullish", "long")):
+                logger.info("MetaGate [%s]: IA VETO — score=%.2f contredit debate=%s conf=%.2f → flat",
+                           self.node_id, score, debate_signal, debate_conf)
+                return {"signal": "flat", "blocked": True,
+                        "reason": f"ia_veto={debate_signal}", "score": round(score, 4),
+                        "regime_adapted": regime_adapted, "size_multiplier": size_mult}
         
         # ── Décision finale ──
         prefix = "dm" if self._use_dual and self._dual_memory and self._dual_memory.ready else "meta"

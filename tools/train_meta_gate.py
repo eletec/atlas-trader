@@ -210,9 +210,19 @@ def train_meta_gate(symbol: str, days: int = DAYS) -> tuple[object, dict] | None
     feats = compute_features_5m(df_5m)
     labels = make_labels(df_5m)
 
-    # 3. XGBoost prob_up
-    logger.info("Training XGBoost signal...")
-    prob_up = train_xgb_signal(feats, labels)
+    # 3. XGBoost prob_up (48 barres = 4h)
+    logger.info("Training XGBoost 48b signal...")
+    prob_up_48 = train_xgb_signal(feats, labels)
+    
+    # 3b. XGBoost prob_up (12 barres = 1h) — V6 multi-horizon
+    logger.info("Training XGBoost 12b signal...")
+    labels_12 = make_labels(df_5m, horizon=12)
+    prob_up_12 = train_xgb_signal(feats, labels_12)
+    
+    # 3c. Feature de cohérence multi-horizon
+    cross_horizon = pd.Series(0.0, index=df_5m.index)
+    cross_horizon[((prob_up_12 > 0.55) & (prob_up_48 > 0.52)) | 
+                  ((prob_up_12 < 0.45) & (prob_up_48 < 0.48))] = 1.0
 
     # 4. Trend (1h) → resample to 5m
     trend_1h = compute_trend(df_1h)
@@ -222,12 +232,17 @@ def train_meta_gate(symbol: str, days: int = DAYS) -> tuple[object, dict] | None
     regime_1h = compute_regime(df_1h)
     regime_5m = regime_1h.reindex(df_5m.index, method="ffill").fillna("RANGE")
 
-    # 6. Build training dataset
+    # 6. Build training dataset (V6: 8 features multi-horizon)
     logger.info("Building MetaGate training set...")
     data = pd.DataFrame({
-        "prob_up": prob_up,
+        "prob_up_48": prob_up_48,
+        "prob_up_12": prob_up_12,
         "trend_bull": (trend_5m == 1).astype(int),
         "trend_bear": (trend_5m == -1).astype(int),
+        "regime_TREND": (regime_5m == "TREND").astype(int),
+        "regime_RANGE": (regime_5m == "RANGE").astype(int),
+        "regime_CHOP": (regime_5m == "CHOP").astype(int),
+        "cross_horizon": cross_horizon,
         "regime_TREND": (regime_5m == "TREND").astype(int),
         "regime_RANGE": (regime_5m == "RANGE").astype(int),
         "regime_CHOP": (regime_5m == "CHOP").astype(int),
@@ -245,7 +260,8 @@ def train_meta_gate(symbol: str, days: int = DAYS) -> tuple[object, dict] | None
     train = data.iloc[:split]
     test = data.iloc[split:]
 
-    feature_cols = ["prob_up", "trend_bull", "trend_bear", "regime_TREND", "regime_RANGE", "regime_CHOP"]
+    feature_cols = ["prob_up_48", "prob_up_12", "trend_bull", "trend_bear",
+                    "regime_TREND", "regime_RANGE", "regime_CHOP", "cross_horizon"]
     X_tr, y_tr = train[feature_cols].values, train["label"].values
     X_te, y_te = test[feature_cols].values, test["label"].values
 

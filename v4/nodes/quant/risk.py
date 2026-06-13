@@ -97,6 +97,28 @@ class RiskATR(Node):
         # Minimum $10 pour éviter les trades insignifiants
         size_usd = max(size_usd, 10.0)
 
+        # ── V6: Kelly Sizing (Half-Kelly pour crypto) ──
+        kelly_enabled = bool(self.params.get("use_kelly", True))
+        if kelly_enabled:
+            # Estimer edge et variance depuis le signal
+            prob_up = float(inputs.get("prob_up", 0.5))
+            confidence = abs(prob_up - 0.5) * 2.0  # 0-1
+            # Kelly f* = edge / variance, avec edge = confiance × (win_rate_estimate - 0.5)
+            # Simplifié : f* ≈ (2×prob_up - 1) si long, (1 - 2×prob_up) si short
+            if signal == "long":
+                kelly_f = max(0, 2 * prob_up - 1)  # ex: prob_up=0.60 → f*=0.20
+            else:
+                kelly_f = max(0, 1 - 2 * prob_up)  # ex: prob_up=0.40 → f*=0.20
+            # Half-Kelly (plus conservateur, recommandé pour crypto)
+            kelly_fraction = float(self.params.get("kelly_fraction", 0.5))
+            kelly_f *= kelly_fraction
+            # Appliquer Kelly au sizing : size × (1 + kelly_f × confidence)
+            kelly_mult = 1.0 + kelly_f * confidence
+            kelly_mult = min(kelly_mult, 2.0)  # cap à 2× le sizing de base
+            size_usd *= kelly_mult
+            size_usd = min(size_usd, capital * fraction)  # respecter le plafond
+            size_usd = max(size_usd, 10.0)
+
         if signal == "long":
             stop_loss   = entry_price - sl_mult * atr
             take_profit = entry_price + tp_mult * atr

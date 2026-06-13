@@ -248,7 +248,7 @@ def optimize_optuna(
         meta_th = trial.suggest_float("meta_th", 0.05, 0.40, step=0.05)
         sl_mult = trial.suggest_float("sl_mult", 1.5, 4.0, step=0.5)
         tp_mult = trial.suggest_float("tp_mult", 3.0, 8.0, step=0.5)
-        fraction = trial.suggest_float("fraction", 0.02, 0.08, step=0.01)
+        fraction = trial.suggest_float("fraction", 0.002, 0.010, step=0.001)
         exit_strat = trial.suggest_categorical("exit_strat", ["chandelier", "trailing"])
         exit_atr = trial.suggest_float("exit_atr", 2.0, 5.0, step=0.5)
         
@@ -261,11 +261,11 @@ def optimize_optuna(
                 gate_mode=gate_mode, fusion_threshold=meta_th,
                 p_up_threshold=0.52, p_dn_threshold=0.48,
             )
-            # Score composite
+            # Score = Sharpe pénalisé par drawdown (pas de bonus au nombre de trades)
             if r.n_trades == 0:
                 return -999
-            dd_penalty = max(0, 1 - r.max_drawdown_pct / 100.0)
-            return r.sharpe * dd_penalty * np.log(1 + r.n_trades)
+            dd_penalty = max(0.0, 1.0 - r.max_drawdown_pct / 100.0)
+            return r.sharpe * dd_penalty
         except Exception:
             return -999
     

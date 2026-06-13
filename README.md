@@ -91,7 +91,6 @@ Python 3.11 · FastAPI · Streamlit · Next.js 14 · XGBoost · scikit-learn · 
 
 ## Documentation
 
-- [`SYNTHESE_V5_AI_CRITIQUE.md`](SYNTHESE_V5_AI_CRITIQUE.md) — Round 1: 5 AI critiques, 30 proposals
-- [`SYNTHESE_V6_AI_CRITIQUE.md`](SYNTHESE_V6_AI_CRITIQUE.md) — Round 2: V6 analysis, 25 proposals, roadmap
-- [`ATLAS_V6_CRITIQUE_AI_PROMPT.md`](ATLAS_V6_CRITIQUE_AI_PROMPT.md) — Full V6 architecture for AI review
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System architecture
+- [`CDC.md`](CDC.md) — Cahier des charges
 - [`RESEARCH_HISTORY.md`](RESEARCH_HISTORY.md) — Development chronicle

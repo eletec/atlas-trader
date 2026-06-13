@@ -373,7 +373,7 @@ def main():
             p = opt["best_params"]
             print(f"{opt['symbol']:<10} th={p['meta_th']:.2f} sl={p['sl_mult']:.1f} "
                   f"tp={p['tp_mult']:.1f} exit={p['exit_strat']} atr={p['exit_atr']:.1f} "
-                  f"frac={p['fraction']:.2f} → score={opt['best_score']:.2f}")
+                  f"frac={p['fraction']:.3f} → score={opt['best_score']:.2f}")
     
     print(f"\n✅ Terminé en {elapsed:.0f}s")
 

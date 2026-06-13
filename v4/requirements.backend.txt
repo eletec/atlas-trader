@@ -30,6 +30,7 @@ pandas>=2.2.0
 scikit-learn>=1.5.0
 hmmlearn>=0.3.2
 xgboost>=2.0.0
+optuna>=3.6.0               # V6: Bayesian optimization
 
 # ---- IA / LLM ----
 litellm>=1.40.0             # proxy universel (Ollama, OpenAI, Anthropic...)

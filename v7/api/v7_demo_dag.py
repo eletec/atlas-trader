@@ -33,16 +33,26 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  params={"symbol": symbol, "capital": capital,
                           "fraction": 0.80, "min_funding": 0.00001,
                           "exit_after_hours": 168}),
+        # PaperTrader — exécute le signal carry
+        NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
+                 params={"symbol": symbol, "dag_id": dag_id}),
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
-                 params={"db_path": "/app/data/v7_carry.db"}),
+                 params={"db_path": "/app/data/v4.db"}),
     ]
 
     edges = [
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_data", target_port="symbol"),
-        # Carry node fetches its own funding data
-        EdgeSpec(source_node=f"{pfx}_carry", source_port="signal",
-                 target_node=f"{pfx}_record", target_port="signal"),
+        EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
+                 target_node=f"{pfx}_paper", target_port="symbol"),
+        EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
+                 target_node=f"{pfx}_paper", target_port="max_positions"),
+        # Carry → PaperTrader
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
+                 target_node=f"{pfx}_paper", target_port="decision"),
+        # PaperTrader → Record
+        EdgeSpec(source_node=f"{pfx}_paper", source_port="trade_result",
+                 target_node=f"{pfx}_record", target_port="trade_result"),
     ]
 
     return DAGSpec(dag_id=dag_id, nodes=nodes, edges=edges)

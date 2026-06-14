@@ -96,6 +96,7 @@ class FundingCarryNode:
             "confidence": "float", "reason": "str", "funding_rate": "float",
             "annual_funding_pct": "float", "position_open": "bool",
             "total_funding_received": "float", "n_payments": "int",
+            "decision": "dict",  # format PaperTrader: {action, size_usd, entry_price, ...}
         }
     
     @staticmethod
@@ -250,6 +251,23 @@ class FundingCarryNode:
         elapsed = time.time() - t0
         
         # ── Output ──
+        # Construire un "decision" compatible PaperTrader
+        decision = {
+            "action": "flat",
+            "size_usd": round(size_usd, 2),
+            "entry_price": spot_price,
+            "stop_loss": 0,
+            "take_profit": 0,
+            "atr": 0,
+            "carry_signal": signal,
+            "carry_expected_return": round(expected_return, 4),
+            "carry_annual_pct": round(annual_funding * 100, 2),
+        }
+        if signal == "open_carry":
+            decision["action"] = "short"  # shorter le perp pour recevoir le funding
+        elif signal == "close_carry":
+            decision["action"] = "close_short"
+        
         outputs = {
             "signal": signal,
             "size_usd": round(size_usd, 2),
@@ -263,6 +281,7 @@ class FundingCarryNode:
             "n_payments": self.state.n_payments,
             "basis_pct": round(basis_pct * 100, 4),
             "elapsed_s": round(elapsed, 3),
+            "decision": decision,
         }
         
         logger.debug("[%s] signal=%s funding=%.6f size=$%.0f reason=%s",

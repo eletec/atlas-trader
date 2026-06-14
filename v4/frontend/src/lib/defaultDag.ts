@@ -83,6 +83,7 @@ const NODES_SPEC: NodeSpec[] = [
 
 const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: string }> = [
   { src: "btc_asset", dst: "btc_data", srcPort: "symbol", dstPort: "symbol" },
+  { src: "btc_data", dst: "btc_carry", srcPort: "ohlcv_5m", dstPort: "spot_price" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "symbol", dstPort: "symbol" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "max_positions", dstPort: "max_positions" },
   { src: "btc_carry", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },

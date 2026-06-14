@@ -244,11 +244,6 @@ def render_global_overview() -> None:
         </table>""",
         unsafe_allow_html=True,
     )
-        </tr></thead>
-        <tbody>{html_rows}</tbody>
-        </table>""",
-        unsafe_allow_html=True,
-    )
     st.markdown("---")
 
 

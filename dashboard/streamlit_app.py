@@ -4083,98 +4083,61 @@ def render_admin_panel():
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
     elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
-        # ── V7 Native Canvas (plus d'iframe Next.js) ──
-        if _atab == "v4_canvas":
-            st.markdown("### 🧠 DAGs Actifs — Atlas V7 (Funding Carry)")
-            st.caption("Stratégie : Funding Rate Carry · Short Perp + Long Spot · Cycle 8h")
-            try:
-                import requests, json
-                resp = requests.get(f"{_API_BASE}/dag/status", timeout=10)
-                dags = resp.json() if resp.ok else []
-                
-                if dags:
-                    cols = st.columns([2, 2, 1, 1, 3])
-                    cols[0].markdown("**DAG**")
-                    cols[1].markdown("**Actif**")
-                    cols[2].markdown("**Statut**")
-                    cols[3].markdown("**Cycle**")
-                    cols[4].markdown("**Dernier signal**")
-                    
-                    for d in dags:
-                        cols = st.columns([2, 2, 1, 1, 3])
-                        name = d.get("dag_id", "?").replace("v7_", "").upper()
-                        asset = d.get("asset", "?")
-                        running = "🟢" if d.get("running") else "⚪"
-                        cycle = f"{d.get('cycle_s', 0)/3600:.0f}h" if d.get('cycle_s') else "—"
-                        
-                        # Extraire le dernier signal carry
-                        results = d.get("last_results", {})
-                        last_sig = "—"
-                        for nid, r in results.items():
-                            if "carry" in nid and r.get("outputs"):
-                                sig = r["outputs"].get("signal", "?")
-                                funding = r["outputs"].get("funding_rate", 0)
-                                last_sig = f"`{sig}` funding={funding*100:.3f}%"
-                        
-                        cols[0].markdown(f"**{name}**")
-                        cols[1].markdown(asset)
-                        cols[2].markdown(running)
-                        cols[3].markdown(cycle)
-                        cols[4].markdown(last_sig)
-                    
-                    st.metric("Total DAGs", len(dags))
-                else:
-                    st.warning("Aucun DAG trouvé — l'API est-elle en cours de démarrage ?")
-            except Exception as e:
-                st.error(f"Erreur API: {e}")
-            return
-        
-        # ── V7 Monitor ──
-        if _atab == "v4_monitor":
-            st.markdown("### 📊 Monitoring V7")
-            try:
-                import requests
-                resp = requests.get(f"{_API_BASE}/dag/status", timeout=10)
-                dags = resp.json() if resp.ok else []
-                
-                active = sum(1 for d in dags if d.get("running"))
-                total = len(dags)
-                st.metric("DAGs actifs", f"{active}/{total}")
-                
-                for d in dags:
-                    asset = d.get("asset", "?")
-                    results = d.get("last_results", {})
-                    done = sum(1 for r in results.values() if r.get("status") == "done")
-                    errors = sum(1 for r in results.values() if r.get("status") == "error")
-                    status = "✅" if errors == 0 else f"⚠️ {errors} erreurs"
-                    st.text(f"{asset}: {done} nœuds OK, {status}")
-            except Exception as e:
-                st.error(f"Erreur: {e}")
-            return
-        
         # ── Configuration ──
         if _atab == "v4_admin":
             _render_v4_config()
             return
-        
-        # ── Trades natif ──
+        # ── Trades natif (depuis la DB) ──
         if _atab == "v4_trades":
             st.markdown("### 📋 Journal des trades")
-            st.caption("Mode : paper trading — V7 Funding Carry")
+            st.caption("Mode : paper trading (testnet uniquement)")
             _tr = _get_recent_trades(200)
             if _tr:
-                # Filtrer pour montrer les trades V7 (CARRY_OPEN/CARRY_CLOSE)
-                v7_trades = [t for t in _tr if "CARRY" in str(t.get("action", "")) or "carry" in str(t.get("exit_reason", "")).lower()]
-                all_trades = [t for t in _tr if "CARRY" in str(t.get("action", ""))] if v7_trades else _tr
-                render_trades_list_sortable(all_trades)
+                render_trades_list_sortable(_tr)
             else:
                 st.info("Aucun trade enregistré.")
             return
-        
-        # ── Arena (désactivée en V7) ──
-        if _atab == "v4_arena":
-            st.info("L'Arena est désactivée en V7. Utilisez le backtest Funding Carry.")
-            return
+
+        _V4_URLS = {
+            "v4_canvas":  f"{_V4_FRONTEND}/canvas?v=7",
+            "v4_monitor": f"{_V4_FRONTEND}/monitoring",
+            "v4_trades":  f"{_V4_FRONTEND}/trades",
+            "v4_arena":   f"{_V4_FRONTEND}/arena",
+            "v4_admin":   f"{_V4_FRONTEND}/admin",
+        }
+        _v4_url = _V4_URLS[_atab]
+        # JS : wrapper fixed dans le document parent (Streamlit est dans une iframe)
+        import streamlit.components.v1 as _cv1
+        _cv1.html(f"""
+<script>
+(function() {{
+  var p = window.parent || window;
+  var d = p.document;
+  var HDR_H = 48;
+
+  // Supprimer les anciens wrappers V4 (cleanup)
+  d.querySelectorAll('[id$="_v4wrap"]').forEach(function(el) {{ el.remove(); }});
+
+  // Créer le wrapper
+  var wrap = d.createElement('div');
+  wrap.id = '{_atab}_v4wrap';
+  wrap.style.cssText = 'position:fixed;top:'+HDR_H+'px;left:0;right:0;bottom:0;z-index:5;background:#0f1117;';
+  var ifr = d.createElement('iframe');
+  ifr.src = '{_v4_url}';
+  ifr.style.cssText = 'width:100%;height:100%;border:none;';
+  ifr.allow = 'clipboard-read;clipboard-write';
+  ifr.allowFullscreen = true;
+  wrap.appendChild(ifr);
+  d.body.appendChild(wrap);
+
+  // Ajuster left selon la sidebar
+  var nav = d.getElementById('atlas-sidenav');
+  if (nav) {{
+    var c = nav.classList.contains('c');
+    wrap.style.left = c ? '44px' : '180px';
+  }}
+}})();
+</script>""", height=0)
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(f"✅ {t('config_saved')}")

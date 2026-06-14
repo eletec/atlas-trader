@@ -2822,7 +2822,7 @@ def _render_v4_config():
         fraction = st.slider("Fraction du capital en carry", value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
         cycle_hours = st.slider("Cycle DAG (heures)", value=8, min_value=1, max_value=48, step=1, help="Fréquence de vérification du funding")
     with col2:
-        min_funding = st.number_input("Funding minimum (% par 8h)", value=0.001, min_value=0.0001, max_value=0.1, step=0.001)
+        min_funding = st.number_input("Funding minimum (% par 8h)", value=0.001, min_value=0.0001, max_value=10.0, step=0.001, help="0.001% = presque tout funding positif")
         exit_hours = st.slider("Sortie si funding négatif > (heures)", value=168, min_value=24, max_value=720, step=24)
 
     st.info(f"💰 Rendement estimé : 5-15%/an selon funding · Max drawdown : 0.5-1%")
@@ -2910,7 +2910,7 @@ def _render_backtest_v4():
                         "--days", str(days),
                         "--capital", str(capital),
                         "--fraction", str(fraction),
-                        "--min-funding", str(min_funding),
+                        "--min-funding", str(min_funding / 100),  # % → décimal
                         "--exit-hours", str(exit_hours),
                     ]
                     result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)

@@ -28,6 +28,19 @@ interface DAGRegistryState {
 
 // Clé localStorage pour le registre
 const REGISTRY_KEY = "atlas_v4_dag_registry";
+const VERSION_KEY = "atlas_v4_dag_version";
+const CURRENT_VERSION = 7;  // V7 — bump to force recreation
+
+// Force clear si version mismatch
+if (typeof window !== "undefined") {
+  const storedVersion = parseInt(localStorage.getItem(VERSION_KEY) || "0", 10);
+  if (storedVersion < CURRENT_VERSION) {
+    // Clear all old DAG data
+    const keys = Object.keys(localStorage).filter(k => k.startsWith("atlas_v4_dag"));
+    keys.forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(VERSION_KEY, String(CURRENT_VERSION));
+  }
+}
 
 // Sauvegarder/charger un DAG complet depuis localStorage
 export function saveDAG(id: string, data: { nodes: unknown[]; edges: unknown[]; asset: string }) {
@@ -95,12 +108,15 @@ export const useDagRegistry = create<DAGRegistryState>()(
 
       ensureDefault: () => {
         const { dags } = get();
+        // V7 — 7 actifs
         const required = [
           { id: "default", name: "BTC/USDT" },
-          { id: "eth",    name: "ETH/USDT" },
-          { id: "sol",    name: "SOL/USDT" },
-          { id: "bnb",    name: "BNB/USDT" },
-          { id: "xrp",    name: "XRP/USDT" },
+          { id: "eth",     name: "ETH/USDT" },
+          { id: "sol",     name: "SOL/USDT" },
+          { id: "bnb",     name: "BNB/USDT" },
+          { id: "xrp",     name: "XRP/USDT" },
+          { id: "ada",     name: "ADA/USDT" },
+          { id: "doge",    name: "DOGE/USDT" },
         ];
         const existing = new Set(dags.map((d) => d.id));
         const missing = required.filter((r) => !existing.has(r.id));

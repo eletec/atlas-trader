@@ -33,22 +33,10 @@ import { getDefaultNodes, getDefaultEdges } from "@/lib/defaultDag";
 const CTX_NODES = [
   { type: "AssetDef",          label: "💰 Asset",          cat: "Actif" },
   { type: "LoadMultiTF",       label: "📊 Load Data",      cat: "Données" },
-  { type: "ComputeFeatures",   label: "🔢 Features",       cat: "Features" },
-  { type: "Normalize",         label: "📐 Normalize",      cat: "Features" },
-  { type: "RegimeHMM",         label: "📈 Regime HMM",     cat: "Régime" },
-  { type: "TrendFilter",       label: "📉 Trend 4h",       cat: "Filtres" },
-  { type: "SignalLogReg",      label: "🎯 Signal ML",      cat: "Signal" },
-  { type: "SignalConstant",    label: "📌 Signal Fixe",    cat: "Signal" },
-  { type: "DirectionGate",     label: "🚦 Gate",           cat: "Filtres" },
-  { type: "MetaGate",          label: "🧠 MetaGate V5",    cat: "Filtres" },
-  { type: "CircuitBreaker",    label: "⚡ Breaker V5",     cat: "Risque" },
-  { type: "PortfolioRisk",     label: "📊 PfRisk V5",      cat: "Risque" },
-  { type: "RegimeDetector",    label: "🔍 RegimeDetect",   cat: "Régime" },
-  { type: "RiskATR",           label: "🛡️ Risk ATR",       cat: "Risque" },
-  { type: "LLMNode",           label: "🤖 LLM AI",         cat: "IA" },
+  { type: "FundingCarryNode",  label: "💸 Funding Carry V7", cat: "V7" },
   { type: "PaperTrader",       label: "📋 Paper Trade",    cat: "Sortie" },
-  { type: "AlertOnly",         label: "🔔 Alert Only",     cat: "Sortie" },
   { type: "RecordDecision",    label: "💾 Record DB",      cat: "Sortie" },
+  { type: "LLMNode",           label: "🤖 LLM AI",         cat: "IA" },
 ];
 
 export function DAGCanvas() {

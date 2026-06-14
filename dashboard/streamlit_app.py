@@ -2820,6 +2820,7 @@ def _render_v4_config():
     with col1:
         capital_per_asset = st.number_input("Capital par actif (USD)", value=2000, min_value=100, step=500)
         fraction = st.slider("Fraction du capital en carry", value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
+        cycle_hours = st.slider("Cycle DAG (heures)", value=8, min_value=1, max_value=48, step=1, help="Fréquence de vérification du funding")
     with col2:
         min_funding = st.number_input("Funding minimum (% par 8h)", value=0.001, min_value=0.0001, max_value=0.1, step=0.001, format="%.3f%%")
         exit_hours = st.slider("Sortie si funding négatif > (heures)", value=168, min_value=24, max_value=720, step=24)

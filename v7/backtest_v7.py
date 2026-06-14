@@ -42,18 +42,73 @@ def fetch_funding_history(symbol: str, days: int = 365) -> pd.DataFrame:
         import ccxt
         exchange = ccxt.binance({"enableRateLimit": True})
         
+        # Binance: convertir BTC/USDT → BTC/USDT:USDT (linear perpetual)
+        if ":" not in symbol:
+            symbol_perp = f"{symbol}:USDT"
+        else:
+            symbol_perp = symbol
+        
         since = exchange.parse8601((datetime.now() - timedelta(days=days)).isoformat() + "Z")
         all_rates = []
         
-        while True:
-            rates = exchange.fetch_funding_rate_history(symbol, since=since, limit=1000)
-            if not rates:
-                break
-            all_rates.extend(rates)
-            since = rates[-1]["timestamp"] + 1
-            if len(rates) < 1000:
-                break
-            time.sleep(0.2)  # rate limit
+        logger.info("Fetching funding rates for %s (perpetual: %s)...", symbol, symbol_perp)
+        
+        # Try fetch_funding_rate_history first (some CCXT versions)
+        try:
+            while True:
+                rates = exchange.fetch_funding_rate_history(symbol_perp, since=since, limit=1000)
+                if not rates:
+                    break
+                all_rates.extend(rates)
+                since = rates[-1]["timestamp"] + 1
+                if len(rates) < 1000:
+                    break
+                time.sleep(0.2)
+        except Exception:
+            # Fallback: fetchFundingRates (alternative CCXT method)
+            logger.info("Trying fetchFundingRates...")
+            try:
+                rates = exchange.fetch_funding_rates(symbol_perp)
+                if rates:
+                    # This only returns current rate, not history
+                    logger.warning("fetchFundingRates only returns current rate, not history")
+            except Exception:
+                pass
+            
+            # Fallback 2: public endpoint
+            logger.info("Trying public endpoint...")
+            try:
+                # Binance public API for funding rate history
+                import requests
+                symbol_clean = symbol_perp.replace("/", "").replace(":", "")
+                # Remove USDT suffix if it's already there
+                if symbol_clean.endswith("USDT"):
+                    symbol_clean = symbol_clean
+                
+                end_time = int(datetime.now().timestamp() * 1000)
+                start_time = int((datetime.now() - timedelta(days=days)).timestamp() * 1000)
+                
+                url = "https://fapi.binance.com/fapi/v1/fundingRate"
+                params = {
+                    "symbol": symbol_clean,
+                    "startTime": start_time,
+                    "endTime": end_time,
+                    "limit": 1000,
+                }
+                resp = requests.get(url, params=params, timeout=30)
+                data = resp.json()
+                
+                if isinstance(data, list) and len(data) > 0:
+                    all_rates = [
+                        {"timestamp": int(r["fundingTime"]),
+                         "fundingRate": float(r["fundingRate"])}
+                        for r in data
+                    ]
+                    logger.info("Got %d rates from public endpoint", len(all_rates))
+                else:
+                    logger.warning("Public endpoint returned: %s", str(data)[:200])
+            except Exception as e2:
+                logger.error("All funding fetch methods failed: %s", e2)
         
         if not all_rates:
             logger.warning("No funding rate data for %s", symbol)

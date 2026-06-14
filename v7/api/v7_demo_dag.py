@@ -55,7 +55,7 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  target_node=f"{pfx}_record", target_port="decision"),
     ]
 
-    return DAGSpec(dag_id=dag_id, nodes=nodes, edges=edges)
+    return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)
 
 
 # ── DAGs pré-construits ──

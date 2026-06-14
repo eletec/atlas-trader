@@ -54,7 +54,7 @@ app.include_router(prices_router, prefix="/prices", tags=["prices"])
 @app.on_event("startup")
 async def _auto_schedule_demo():
     """Démarre automatiquement le DAG démo et les tickers prix au boot."""
-    # 1) DAGs démo (BTC, ETH, SOL, BNB, XRP)
+    # 1) DAGs démo (BTC, ETH, SOL, BNB, XRP, ADA, DOGE)
     try:
         from v5.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
         from v4.api.dag_registry import DAGRegistry
@@ -72,9 +72,34 @@ async def _auto_schedule_demo():
         from v4.api.routes.prices import ensure_ticker
         for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]:
             ensure_ticker(sym)
-        logging.getLogger("v4.api.main").info("Tickers prix démarrés (BTC, ETH, SOL, BNB, XRP)")
+        logging.getLogger("v4.api.main").info("Tickers prix démarrés (7 actifs)")
     except Exception as exc:
         logging.getLogger("v4.api.main").warning(f"Tickers prix non démarrés : {exc}")
+
+    # 3) V7 Funding Carry Scheduler (cycle 8h)
+    try:
+        from v7.live_carry import FundingCarryScheduler
+        import asyncio
+        carry = FundingCarryScheduler(capital_per_asset=2000)
+        
+        async def carry_loop():
+            while True:
+                try:
+                    carry.run_cycle()
+                    summary = carry.get_summary()
+                    if summary["active_carries"] > 0:
+                        logging.getLogger("v4.api.main").info(
+                            "V7 Carry: %d positions | size=$%.0f | funding=$%.4f",
+                            summary["active_carries"], summary["total_size_usd"],
+                            summary["total_funding_received"])
+                except Exception as exc:
+                    logging.getLogger("v4.api.main").warning("V7 Carry error: %s", exc)
+                await asyncio.sleep(8 * 3600)  # 8h
+        
+        asyncio.create_task(carry_loop())
+        logging.getLogger("v4.api.main").info("V7 Funding Carry scheduler démarré (cycle=8h)")
+    except Exception as exc:
+        logging.getLogger("v4.api.main").warning(f"V7 Carry non démarré : {exc}")
 
 
 @app.get("/health")

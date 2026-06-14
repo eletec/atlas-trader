@@ -60,22 +60,10 @@ services:
       retries: 3
 
   # ----------------------------------------------------------
-  # Frontend — Next.js + React Flow (DAG Canvas)
+  # Frontend — DÉSACTIVÉ (V7 utilise Streamlit natif)
   # ----------------------------------------------------------
-  atlas-v4-frontend:
-    build:
-      context: v4/frontend
-      dockerfile: Dockerfile
-    container_name: atlas-v4-frontend
-    restart: unless-stopped
-    networks: [v4_net]
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_SSE_URL=http://localhost:8000/prices/stream
-    depends_on:
-      - atlas-v4-api
+  # atlas-v4-frontend:
+  #   ... désactivé, canvas V7 est natif Streamlit
 
   # ----------------------------------------------------------
   # Dashboard — Streamlit (interface unifiée trades/logs/PNL)

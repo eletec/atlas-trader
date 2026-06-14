@@ -19,6 +19,8 @@ from typing import Any, Optional
 
 import numpy as np
 
+from v4.core.node import NodeRunResult, NodeStatus
+
 logger = logging.getLogger("funding_carry_node")
 
 
@@ -103,13 +105,25 @@ class FundingCarryNode:
     def input_schema() -> dict[str, str]:
         return {"spot_price": "float", "funding_rate": "float", "perp_price": "float"}
     
-    def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, inputs: dict[str, Any]) -> NodeRunResult:
         """Point d'entrée DAG framework → délègue à run()."""
         import time as _time
         t0 = _time.time()
-        outputs = self.run(inputs)
-        outputs["_duration_ms"] = (_time.time() - t0) * 1000
-        return outputs
+        try:
+            outputs = self.run(inputs)
+            return NodeRunResult(
+                node_id=self.node_id,
+                status=NodeStatus.DONE,
+                outputs=outputs,
+                duration_ms=(_time.time() - t0) * 1000,
+            )
+        except Exception as e:
+            return NodeRunResult(
+                node_id=self.node_id,
+                status=NodeStatus.ERROR,
+                error=str(e),
+                duration_ms=(_time.time() - t0) * 1000,
+            )
     
     # ── Data fetching ──
     

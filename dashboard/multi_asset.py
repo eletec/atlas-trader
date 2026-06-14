@@ -141,6 +141,7 @@ def render_global_overview() -> None:
             ts_str = "—"
 
         icon = _asset_icon(asset) if asset else "◈"
+        pfx = asset.split("/")[0].lower()[:3] if asset else "btc"
         is_v7 = dag_id.startswith("v7_")
 
         if is_v7:

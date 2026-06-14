@@ -115,6 +115,11 @@ def _make_dag(dag_id: str, symbol: str, intensity: str = "balanced") -> DAGSpec:
         # ── Colonne 8c : Reflection (mémoire des trades) ──
         NodeSpec(id=f"{pfx}_reflect", type="ReflectionNode",
                  params={"max_lessons": 5, "min_pnl_abs": 1.0}),
+        # ── V7 : Funding Carry (risk premium harvesting) ──
+        NodeSpec(id=f"{pfx}_carry", type="FundingCarryNode",
+                 params={"symbol": symbol, "capital": 2000,
+                          "fraction": 0.80, "min_funding": 0.00001,
+                          "exit_after_hours": 168}),
         # ── Colonne 9 : AI Analyst ──
         NodeSpec(id=f"{pfx}_ai", type="LLMNode",
                  params={"dag_id": dag_id, "async_mode": True,

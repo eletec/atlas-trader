@@ -91,10 +91,12 @@ export function DAGCanvas() {
       let loadedNodes: RFNode[] = [];
       let loadedEdges: RFEdge[] = [];
 
-      if (data && data.nodes && data.nodes.length > 0) {
+      // V7: force defaults si les données sauvegardées ont l'ancien format (>10 nœuds = V6)
+      const isV6Data = data && data.nodes && data.nodes.length > 10;
+      if (data && data.nodes && data.nodes.length > 0 && !isV6Data) {
         loadedNodes = data.nodes as RFNode[];
         loadedEdges = data.edges as RFEdge[];
-      } else if (nodes.length === 0) {
+      } else if (nodes.length === 0 || nodes.length > 10) {
         loadedNodes = getDefaultNodes();
         loadedEdges = getDefaultEdges();
       } else {

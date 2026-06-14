@@ -23,55 +23,29 @@ const NODE_CATALOG = [
     ],
   },
   {
-    category: "Features",
+    category: "V7 — Risk Premium",
     nodes: [
-      { type: "ComputeFeatures", label: "Compute Features", inputPorts: ["ohlcv"], outputPorts: ["features"] },
-      { type: "Normalize", label: "Normalize", inputPorts: ["features"], outputPorts: ["features_norm", "features_all"] },
+      { type: "FundingCarryNode", label: "Funding Carry", inputPorts: ["spot_price", "funding_rate"], outputPorts: ["signal", "decision", "size_usd"] },
     ],
   },
   {
-    category: "Régime",
+    category: "Exécution",
     nodes: [
-      { type: "RegimeHMM", label: "Regime HMM", inputPorts: ["features_all"], outputPorts: ["regime", "regime_state"] },
-      { type: "RegimePassthrough", label: "Regime Passthrough", inputPorts: [], outputPorts: ["regime", "regime_state"] },
-      { type: "RegimeDetector", label: "Regime Detector V5", inputPorts: ["ohlcv_1h"], outputPorts: ["regime", "adx", "chop", "atr_pct"] },
+      { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"] },
+      { type: "RecordDecision", label: "Record DB", inputPorts: ["decision"], outputPorts: [] },
     ],
   },
   {
-    category: "Signal",
+    category: "IA",
     nodes: [
-      { type: "SignalLogReg", label: "Signal LogReg", inputPorts: ["features_all", "regime"], outputPorts: ["signal", "prob_up", "reason"] },
-      { type: "SignalConstant", label: "Signal Constant", inputPorts: [], outputPorts: ["signal", "prob_up"] },
+      { type: "LLMNode", label: "LLM AI Analyst", inputPorts: ["decision"], outputPorts: ["response", "parsed"] },
     ],
   },
-  {
-    category: "Filtres",
-    nodes: [
-      { type: "TrendFilter", label: "Trend Filter 4h", inputPorts: ["ohlcv_1h"], outputPorts: ["trend", "sma20", "sma50", "slope"] },
+];
       { type: "DirectionGate", label: "Direction Gate", inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"] },
       { type: "MetaGate", label: "MetaGate V5", inputPorts: ["signal", "prob_up", "trend", "debate_signal", "debate_conf", "crosstf_signal", "crosstf_conf", "regime"], outputPorts: ["signal", "blocked", "reason", "score"] },
       { type: "CircuitBreaker", label: "CircuitBreaker V5", inputPorts: ["decision"], outputPorts: ["decision", "blocked", "reason"] },
       { type: "PortfolioRisk", label: "PortfolioRisk V5", inputPorts: ["decision", "symbol"], outputPorts: ["decision", "blocked", "reason"] },
-    ],
-  },
-  {
-    category: "Risque",
-    nodes: [
-      { type: "RiskATR", label: "Risk ATR", inputPorts: ["signal", "ohlcv_1h", "capital"], outputPorts: ["decision"] },
-    ],
-  },
-  {
-    category: "IA / LLM",
-    nodes: [
-      { type: "LLMNode", label: "LLM Node", inputPorts: [], outputPorts: ["response", "parsed", "tokens_used", "model", "duration_ms"] },
-    ],
-  },
-  {
-    category: "Sortie",
-    nodes: [
-      { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"] },
-      { type: "AlertOnly", label: "Alert Only", inputPorts: ["decision"], outputPorts: [] },
-      { type: "RecordDecision", label: "Record Decision", inputPorts: ["decision"], outputPorts: [] },
     ],
   },
 ];

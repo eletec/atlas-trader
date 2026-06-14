@@ -141,52 +141,76 @@ def render_global_overview() -> None:
             ts_str = "—"
 
         icon = _asset_icon(asset) if asset else "◈"
+        is_v7 = dag_id.startswith("v7_")
 
-        # Extraire signal, trend, trade des résultats avec le bon préfixe
-        pfx = asset.split("/")[0].lower()[:3] if asset else "btc"
-        signal_node = results.get(f"{pfx}_signal", {}) or results.get("signal", {})
-        trend_node = results.get(f"{pfx}_trend", {})
-        risk_node = results.get(f"{pfx}_risk", {})
-        short_risk = results.get(f"{pfx}_short_risk", {})
-        paper_node = results.get(f"{pfx}_paper", {})
-
-        signal_out = signal_node.get("outputs", {}) if isinstance(signal_node, dict) else {}
-        trend_out = trend_node.get("outputs", {}) if isinstance(trend_node, dict) else {}
-        risk_out = risk_node.get("outputs", {}) if isinstance(risk_node, dict) else {}
-        short_out = short_risk.get("outputs", {}) if isinstance(short_risk, dict) else {}
-        paper_out = paper_node.get("outputs", {}) if isinstance(paper_node, dict) else {}
-
-        signal = signal_out.get("signal", "—")
-        prob_up = signal_out.get("prob_up")
-        trend = trend_out.get("trend", "—")
-        risk_decision = risk_out.get("decision", {})
-        short_decision = short_out.get("decision", {})
-        trade_result = paper_out.get("trade_result", {})
-
-        if isinstance(risk_decision, str):
-            risk_decision = {}
-        if isinstance(short_decision, str):
-            short_decision = {}
-        if isinstance(trade_result, str):
-            trade_result = {}
-
-        # Score = prob_up × 100 ou 50 si flat
-        if signal == "long":
-            score = int((prob_up or 0.75) * 100)
-        elif signal == "short":
-            score = int(((1 - (prob_up or 0.5)) * 100))
+        if is_v7:
+            # ── V7: Funding Carry ──
+            carry_node = results.get(f"{pfx}_carry", {})
+            carry_out = carry_node.get("outputs", {}) if isinstance(carry_node, dict) else {}
+            carry_signal = carry_out.get("signal", "flat")
+            funding_rate = carry_out.get("funding_rate", 0)
+            annual_pct = carry_out.get("annual_funding_pct", 0)
+            size_usd = carry_out.get("size_usd", 0)
+            position_open = carry_out.get("position_open", False)
+            
+            score = int(50 + annual_pct * 10) if annual_pct > 0 else 50
+            score = min(100, max(0, score))
+            
+            if carry_signal == "open_carry" or position_open:
+                trade_str = f"🟢 CARRY ${size_usd:,.0f}"
+            elif funding_rate > 0:
+                trade_str = f"funding {funding_rate*100:.4f}%"
+            else:
+                trade_str = f"funding {funding_rate*100:.4f}%"
+            
+            trend = f"{annual_pct:+.1f}%/an" if annual_pct != 0 else "—"
+            signal_display = f"💸 {carry_signal}"
         else:
-            score = 50
+            # ── V5/V6 Legacy ──
+            signal_node = results.get(f"{pfx}_signal", {}) or results.get("signal", {})
+            trend_node = results.get(f"{pfx}_trend", {})
+            risk_node = results.get(f"{pfx}_risk", {})
+            short_risk = results.get(f"{pfx}_short_risk", {})
+            paper_node = results.get(f"{pfx}_paper", {})
 
-        # Trade info
-        trade_action = risk_decision.get("action") or short_decision.get("action")
-        trade_price = risk_decision.get("entry_price") or short_decision.get("entry_price")
-        if trade_action and trade_action != "flat" and trade_price:
-            trade_str = f'{trade_action.upper()} @ ${trade_price:,.0f}'
-        elif trade_action == "flat" or not trade_action:
-            trade_str = "—"
-        else:
-            trade_str = str(trade_action or "—")
+            signal_out = signal_node.get("outputs", {}) if isinstance(signal_node, dict) else {}
+            trend_out = trend_node.get("outputs", {}) if isinstance(trend_node, dict) else {}
+            risk_out = risk_node.get("outputs", {}) if isinstance(risk_node, dict) else {}
+            short_out = short_risk.get("outputs", {}) if isinstance(short_risk, dict) else {}
+            paper_out = paper_node.get("outputs", {}) if isinstance(paper_node, dict) else {}
+
+            signal = signal_out.get("signal", "—")
+            prob_up = signal_out.get("prob_up")
+            trend = trend_out.get("trend", "—")
+            risk_decision = risk_out.get("decision", {})
+            short_decision = short_out.get("decision", {})
+            trade_result = paper_out.get("trade_result", {})
+
+            if isinstance(risk_decision, str):
+                risk_decision = {}
+            if isinstance(short_decision, str):
+                short_decision = {}
+            if isinstance(trade_result, str):
+                trade_result = {}
+
+            # Score = prob_up × 100 ou 50 si flat
+            if signal == "long":
+                score = int((prob_up or 0.75) * 100)
+            elif signal == "short":
+                score = int(((1 - (prob_up or 0.5)) * 100))
+            else:
+                score = 50
+            signal_display = signal
+
+            # Trade info
+            trade_action = risk_decision.get("action") or short_decision.get("action")
+            trade_price = risk_decision.get("entry_price") or short_decision.get("entry_price")
+            if trade_action and trade_action != "flat" and trade_price:
+                trade_str = f'{trade_action.upper()} @ ${trade_price:,.0f}'
+            elif trade_action == "flat" or not trade_action:
+                trade_str = "—"
+            else:
+                trade_str = str(trade_action or "—")
 
         # Statut du DAG
         status_icon = "🟢" if running else "⚫"
@@ -195,25 +219,31 @@ def render_global_overview() -> None:
         html_rows += (
             f"<tr>"
             f"<td style='padding:6px 10px;'>{icon} {asset}</td>"
-            f"<td style='padding:6px 10px;'>{_action_badge(signal)}</td>"
+            f"<td style='padding:6px 10px;'>{_action_badge(signal_display)}</td>"
             f"<td style='padding:6px 10px;'>{_score_bar(score, theme)}</td>"
             f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{trade_str}</td>"
-            f"<td style='padding:6px 10px;font-size:12px;'>{trend.upper() if trend else '—'}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{trend if trend else '—'}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{status_icon} {status_text}</td>"
             f"</tr>"
         )
 
+    st.markdown(f"### 🌐 Vue Globale V7 — Funding Carry")
     st.markdown(
         f"""<table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:12px;opacity:.6;">
-          <th style="padding:4px 10px;text-align:left;">Actif</th>
-          <th style="padding:4px 10px;text-align:left;">Signal</th>
-          <th style="padding:4px 10px;text-align:left;">Direction</th>
-          <th style="padding:4px 10px;text-align:left;">Dernier run</th>
-          <th style="padding:4px 10px;text-align:left;">Trade</th>
-          <th style="padding:4px 10px;text-align:left;">Tendance</th>
-          <th style="padding:4px 10px;text-align:left;">Statut</th>
+        <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:11px;opacity:.6;">
+          <th style="padding:4px 8px;text-align:left;">Actif</th>
+          <th style="padding:4px 8px;text-align:left;">Signal</th>
+          <th style="padding:4px 8px;text-align:left;">Score</th>
+          <th style="padding:4px 8px;text-align:left;">Run</th>
+          <th style="padding:4px 8px;text-align:left;">Carry</th>
+          <th style="padding:4px 8px;text-align:left;">Rendement</th>
+          <th style="padding:4px 8px;text-align:left;">Statut</th>
+        </tr></thead>
+        <tbody>{html_rows}</tbody>
+        </table>""",
+        unsafe_allow_html=True,
+    )
         </tr></thead>
         <tbody>{html_rows}</tbody>
         </table>""",

@@ -47,12 +47,12 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  target_node=f"{pfx}_paper", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
                  target_node=f"{pfx}_paper", target_port="max_positions"),
-        # Carry → PaperTrader
+        # Carry → PaperTrader (execution)
         EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
                  target_node=f"{pfx}_paper", target_port="decision"),
-        # PaperTrader → Record
-        EdgeSpec(source_node=f"{pfx}_paper", source_port="trade_result",
-                 target_node=f"{pfx}_record", target_port="trade_result"),
+        # Carry → Record (logging)
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
+                 target_node=f"{pfx}_record", target_port="decision"),
     ]
 
     return DAGSpec(dag_id=dag_id, nodes=nodes, edges=edges)

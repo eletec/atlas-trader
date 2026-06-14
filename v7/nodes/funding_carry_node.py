@@ -59,7 +59,17 @@ class FundingCarryNode:
         kelly_fraction: float = 0.5,
         fee_bps: float = 5.0,
         slippage_bps: float = 2.0,
+        params: dict | None = None,  # DAG framework compatibility
     ):
+        # Si appelé via DAG framework (params dict), extraire les valeurs
+        if params is not None:
+            symbol = params.get("symbol", symbol)
+            capital = params.get("capital", capital)
+            fraction = params.get("fraction", fraction)
+            min_funding = params.get("min_funding", min_funding)
+            max_funding = params.get("max_funding", max_funding)
+            exit_after_hours = params.get("exit_after_hours", exit_after_hours)
+        
         self.node_id = node_id
         self.symbol = symbol
         self.capital = capital

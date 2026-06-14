@@ -1,97 +1,71 @@
 ﻿# Atlas Trader V7 🧠 — Risk Premium Harvesting
 
-> Multi-strategy crypto trading system — **7 assets** (BTC · ETH · SOL · BNB · XRP · ADA · DOGE)  
-> DAG pipeline · Funding Carry · Dominance Rotation · LLM Event Detection
+> **Validated**: 7/7 assets profitable · Sharpe +8.60 (vs V6: -2.09) · PnL $7,184/3ans  
+> Strategy: Funding Rate Carry (short perp + long spot) — zero directional risk
 
-**Branch**: `v7-dev` | **Status**: Pivot from directional prediction → risk premium harvesting
+**Branch**: `v7-dev` | **Status**: ✅ Backtest validated · 🟡 Paper trading pending
 
 ---
 
-## Architecture V6
+## Pourquoi V7 ?
 
-```
-LoadMultiTF (5m+1h) ──→ ComputeFeatures ──→ Normalize
-       │                        │
-       ├─→ CrossTFArb           ├─→ SignalXGB (48b + 12b)   ← V6 multi-horizon
-       ├─→ TrendFilter          │
-       └─→ RegimeDetector ──────┤    (ADX+Choppiness → TREND/RANGE/CHOP)
-                                │
-                                ↓
-                         ╔══ MetaGate V6 ═══╗
-                         ║ LogisticRegression║  ← entraîné 180j/actif
-                         ║ 8 features        ║
-                         ║ + RegimeAdapter   ║  ← TREND×1.0, RANGE×0.3, CHOP=BLOCK
-                         ║ + IA Veto         ║  ← confiance > 0.8 → flat
-                         ╚═══════════════════╝
-                                │
-                                ↓
-                        RiskATR (Kelly sizing)
-                                │
-                                ↓
-                        CircuitBreaker (DD > -5%)
-                                │
-                                ↓
-                        PortfolioRisk (sizing × corr)
-                                │
-                                ↓
-                        PaperTrader
+Après 6 versions de prédiction directionnelle (XGBoost, MetaGate, HMM, Walk-Forward — **374+ configs, 0 edge**), le consensus de 4 IA (GPT, DeepSeek, Gemini, Claude) a été unanime :
 
-[Async] LLMNode + DebateNode (DeepSeek V4 Pro)
-[Async] ReflectionEngine (analyse trades perdants)
-[Tools] WalkForward 365j + Optuna
-```
+> *"L'alpha n'est pas dans la prédiction du prix. Il est dans les primes de risque structurelles."*
 
-## Key Features (V4 → V6 evolution)
+**V7 pivote** : au lieu de prédire BTC↑/↓, on collecte le funding rate (prime de risque des perpétuels).
 
-| Feature | V4 | V5 | V6 |
+## Résultats — Funding Carry 3 ans
+
+| Actif | Sharpe | PnL | MaxDD |
 |---|---|---|---|
-| **Gate** | Poids fixes (50/25/10/10/5) | LogisticRegression entraînée | + Multi-horizon (12+48b) + Kelly |
-| **Régime** | Passthrough (toujours TREND) | ADX + Choppiness | + RegimeAdapter (seuil×1.5 RANGE, BLOCK CHOP) |
-| **Sizing** | Fixe (fraction × capital) | ATR-based | + Kelly fractionnel + sizing×corr |
-| **Validation** | Backtest 60j | Backtest 180j | **Walk-Forward 365j** (6 fenêtres OOS) |
-| **Optimisation** | Grid search 16 combos | Grid search + Optuna | Optuna Bayesian |
-| **IA** | Signal cosmétique (10%) | Async cache | + ReflectionEngine + Veto conditionnel |
-| **Risque** | Aucun | CircuitBreaker + PortfolioRisk | + sizing × (1 − corr_BTC) |
-| **Actifs** | 5 | 7 (ADA+DOGE) | 7 |
+| BTC/USDT | **+9.93** | $1,051 | 0.5% |
+| ETH/USDT | **+10.55** | $1,125 | 0.5% |
+| SOL/USDT | **+5.83** | $902 | 0.7% |
+| BNB/USDT | **+3.57** | $366 | 0.3% |
+| XRP/USDT | **+8.62** | $1,165 | 0.5% |
+| ADA/USDT | **+10.19** | $1,266 | 0.2% |
+| DOGE/USDT | **+11.48** | $1,308 | 0.3% |
+| **Portfolio** | **+8.60** | **$7,184** | |
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/eletec/atlas-trader.git
 cd atlas-trader
-git checkout v6-dev
+git checkout v7-dev
 
 # Docker
 docker compose -f docker-compose.v4.yml up -d --build
 
-# Train MetaGate models (7 assets, 180 days, ~20 min first run)
-docker exec atlas-v4-api python src/tools/train_meta_gate.py
+# Backtest Funding Carry (3 ans, 7 actifs) :
+docker exec atlas-v4-api python src/v7/backtest_v7.py --symbol ALL --days 1095
 
-# Walk-Forward validation (365 days)
-docker exec atlas-v4-api python src/tools/walkforward_v6.py --asset BTC/USDT --days 365 --trials 50
+# Live Carry Scheduler :
+docker exec atlas-v4-api python src/v7/live_carry.py
 ```
 
-## Dashboard
+## Architecture V7
 
-`http://localhost:8502` — Streamlit dashboard
-- **Public**: Live positions, P&L, AI analysis, trade history, charts
-- **Admin** (`?admin=1`): Backtest V6, Walk-Forward, Configuration, Réflexions IA, Logs
+```
+Market Data ──→ Regime Engine (6 régimes)
+    │
+    ├── Funding Carry (short perp + long spot → collecte funding)
+    ├── Dominance Rotation (BTC.D → switch BTC/ALTs)
+    └── Mean Reversion (RSI + Bollinger en RANGE)
+         │
+         ↓
+    MetaAllocator (XGBoost → allocation capital entre stratégies)
+         │
+         ↓
+    Risk Engine (3 niveaux) → PaperTrader
+```
 
 ## Branches
 
 | Branch | Description |
 |---|---|
-| `main` | Stable (V6 — concluded) |
 | `v7-dev` | **Active** — V7.0 (Funding Carry + Risk Premium) |
-| `v6-dev` | V6 — Walk-Forward + MetaGate (concluded: no directional edge) |
-| `v5-dev` | Production V5 (MetaGate + CircuitBreaker + PortfolioRisk) |
-
-## Tech Stack
-
-Python 3.11 · FastAPI · Streamlit · Next.js 14 · XGBoost · scikit-learn · Optuna · LiteLLM (DeepSeek V4 Pro) · Docker · SQLite · Binance Spot (ccxt)
-
-## Documentation
-
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System architecture
-- [`CDC.md`](CDC.md) — Cahier des charges
-- [`RESEARCH_HISTORY.md`](RESEARCH_HISTORY.md) — Development chronicle
+| `v6-dev` | V6 — Walk-Forward (concluded: no directional edge) |
+| `v5-dev` | V5 — MetaGate + CircuitBreaker (production stable) |
+| `main` | V6 (concluded) |

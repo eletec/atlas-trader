@@ -59,7 +59,8 @@ class FundingCarryNode:
         kelly_fraction: float = 0.5,
         fee_bps: float = 5.0,
         slippage_bps: float = 2.0,
-        params: dict | None = None,  # DAG framework compatibility
+        params: dict | None = None,
+        meta: object = None,  # DAG framework NodeMeta
     ):
         # Si appelé via DAG framework (params dict), extraire les valeurs
         if params is not None:
@@ -83,6 +84,25 @@ class FundingCarryNode:
         
         self.state = FundingCarryState(symbol=symbol)
         self._funding_cache: list[dict] = []  # historique récent
+    
+    # ── DAG framework compatibility ──
+    
+    @staticmethod
+    def output_schema() -> dict[str, str]:
+        return {
+            "signal": "str", "size_usd": "float", "expected_return": "float",
+            "confidence": "float", "reason": "str", "funding_rate": "float",
+            "annual_funding_pct": "float", "position_open": "bool",
+            "total_funding_received": "float", "n_payments": "int",
+        }
+    
+    def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Point d'entrée DAG framework → délègue à run()."""
+        import time as _time
+        t0 = _time.time()
+        outputs = self.run(inputs)
+        outputs["_duration_ms"] = (_time.time() - t0) * 1000
+        return outputs
     
     # ── Data fetching ──
     

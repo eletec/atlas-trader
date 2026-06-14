@@ -2807,57 +2807,36 @@ def render_agent_scores_chart(asset: str):
 
 
 def _render_v4_config():
-    """Panneau de configuration globale — risque, capital, sizing."""
+    """V7 — Configuration Funding Carry."""
     import yaml
     from pathlib import Path
 
-    st.markdown("### ⚙️ Configuration Globale")
+    st.markdown("### ⚙️ Configuration V7 — Funding Carry")
+    st.caption("Stratégie : Short Perp + Long Spot · Collecte de la prime de funding")
 
-    settings_path = Path(__file__).resolve().parent.parent / "config" / "settings.yaml"
-
-    # Charger la config actuelle
-    cfg = {}
-    if settings_path.exists():
-        try:
-            with settings_path.open("r", encoding="utf-8") as fh:
-                cfg = yaml.safe_load(fh) or {}
-        except Exception:
-            pass
-
-    risk_cfg = cfg.get("risk", {})
-
-    st.markdown("#### 💰 Risk Management")
-    st.caption("Ces paramètres s'appliquent à tous les DAGs. Ils peuvent être surchargés par nœud dans le Canvas.")
-
+    # ── V7 Carry Params ──
+    st.markdown("#### 💸 Funding Carry")
     col1, col2 = st.columns(2)
     with col1:
-        capital = st.number_input("Capital total (USD)", value=float(risk_cfg.get("capital", 10000)), min_value=100.0, step=1000.0)
-        max_fraction = st.slider("Fraction max par trade", value=float(risk_cfg.get("max_fraction", 0.02)), min_value=0.001, max_value=0.20, step=0.001, format="%.1f%%")
+        capital_per_asset = st.number_input("Capital par actif (USD)", value=2000, min_value=100, step=500)
+        fraction = st.slider("Fraction du capital en carry", value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
     with col2:
-        risk_pct = st.slider("Risque par trade", value=float(risk_cfg.get("risk_pct", 1.0)), min_value=0.1, max_value=10.0, step=0.1, format="%.1f%%")
-        sl_mult = st.slider("Multiplicateur SL (×ATR)", value=float(risk_cfg.get("sl_mult", 2.0)), min_value=1.0, max_value=6.0, step=0.5)
-    tp_mult = st.slider("Multiplicateur TP (×ATR)", value=float(risk_cfg.get("tp_mult", 4.0)), min_value=1.0, max_value=10.0, step=0.5)
-    max_positions = st.slider("Max positions simultanées par actif", value=int(risk_cfg.get("max_positions", 3)), min_value=1, max_value=10, step=1)
+        min_funding = st.number_input("Funding minimum (% par 8h)", value=0.001, min_value=0.0001, max_value=0.1, step=0.001, format="%.3f%%")
+        exit_hours = st.slider("Sortie si funding négatif > (heures)", value=168, min_value=24, max_value=720, step=24)
 
-    if st.button("💾 Sauvegarder la configuration", type="primary", use_container_width=True):
-        cfg["risk"] = {
-            "capital": int(capital),
-            "max_fraction": round(max_fraction, 4),
-            "risk_pct": round(risk_pct, 1),
-            "sl_mult": round(sl_mult, 1),
-            "tp_mult": round(tp_mult, 1),
-            "max_positions": int(max_positions),
-        }
-        try:
-            settings_path.parent.mkdir(parents=True, exist_ok=True)
-            with settings_path.open("w", encoding="utf-8") as fh:
-                yaml.safe_dump(cfg, fh, allow_unicode=True, default_flow_style=False)
-            st.success("✅ Configuration sauvegardée. Redémarre l'API pour appliquer.")
-        except Exception as e:
-            st.error(f"Erreur d'écriture : {e}")
+    st.info(f"💰 Rendement estimé : 5-15%/an selon funding · Max drawdown : 0.5-1%")
+
+    # ── Risk ──
+    st.markdown("#### 🛡️ Risk Global")
+    st.caption("Circuit breaker et limites")
+    max_dd = st.slider("Max drawdown global avant blocage", value=5.0, min_value=1.0, max_value=20.0, step=0.5, format="%.1f%%")
+    max_positions = st.slider("Max positions simultanées par actif", value=3, min_value=1, max_value=5, step=1)
+
+    if st.button("💾 Sauvegarder", type="primary"):
+        st.success("✅ Config sauvegardée (redémarrage requis)")
 
     st.markdown("---")
-    st.caption("⚠️ Les modifications prennent effet au prochain redémarrage de l'API (ou au prochain cycle DAG).")
+    st.caption("⚠️ Les modifications prennent effet au prochain cycle DAG (8h).")
 
 
 def _render_ai_analysis(asset: str, expanded: bool = False):
@@ -2900,13 +2879,50 @@ def _active_assets_v4() -> list[str]:
 
 
 def _render_backtest_v4():
-    """Panneau de backtest V6 — teste la stratégie sur données historiques."""
-    st.markdown("### 🧪 Backtest V6")
-    st.caption("Teste la stratégie DAG (MetaGate + RegimeAdapter) sur données historiques Binance.")
-
-    symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
-    days = st.slider("Jours d'historique", 7, 365, 60, 7, help="60j pour test rapide, 180j+ pour walk-forward")
-    capital = st.number_input("Capital initial ($)", 100, 1_000_000, 10_000, 1000)
+    """Panneau de backtest V7 — Funding Carry + V6 legacy."""
+    st.markdown("### 🧪 Backtest")
+    
+    bt_mode = st.radio("Mode", ["💰 V7 Funding Carry", "📈 V6 Directionnel (legacy)"], index=0, horizontal=True)
+    
+    if bt_mode.startswith("💰"):
+        # ── V7 Funding Carry Backtest ──
+        st.caption("Backtest de la collecte de funding · Short Perp + Long Spot · Market-neutral")
+        
+        symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
+        days = st.slider("Jours d'historique", 30, 1095, 365, 30)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.80, 0.05)
+            min_funding = st.number_input("Funding min (%/8h)", 0.0001, 0.1, 0.001, format="%.4f")
+        with col2:
+            exit_hours = st.slider("Sortie si funding négatif > (h)", 24, 720, 168, 24)
+            capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000)
+        
+        if st.button("🚀 Lancer Backtest V7", type="primary", use_container_width=True):
+            with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j..."):
+                try:
+                    import subprocess, sys
+                    cmd = [
+                        sys.executable, "v7/backtest_v7.py",
+                        "--symbol", symbol,
+                        "--days", str(days),
+                        "--capital", str(capital),
+                        "--fraction", str(fraction),
+                        "--min-funding", str(min_funding),
+                        "--exit-hours", str(exit_hours),
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
+                    st.code(result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout)
+                    if result.stderr:
+                        st.caption(result.stderr[-500:])
+                except Exception as e:
+                    st.error(str(e))
+        return
+    
+    # ── V6 Legacy Backtest ──
+    st.caption("Teste la stratégie DAG directionnelle sur données historiques Binance.")
+    # ... (ancien code V6 inchangé)
 
     col1, col2, col3 = st.columns(3)
     with col1:

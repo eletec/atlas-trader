@@ -39,12 +39,12 @@ class FundingCarryState:
 class FundingCarryNode:
     """Nœud DAG pour le funding carry.
     
-    Compatible avec le framework DAG Atlas (outputs dict).
+    Compatible avec le framework DAG Atlas.
+    Implémente l'interface minimale: run(inputs), execute(inputs), output_schema().
     
     Usage dans un DAG:
         node = FundingCarryNode(node_id="btc_carry", symbol="BTC/USDT", capital=5000)
-        outputs = node.run(inputs={"spot_price": 67000})
-        # outputs = {"signal": "open_carry", "size_usd": 2500, ...}
+        outputs = node.run({"spot_price": 67000})
     """
 
     def __init__(
@@ -72,6 +72,8 @@ class FundingCarryNode:
             exit_after_hours = params.get("exit_after_hours", exit_after_hours)
         
         self.node_id = node_id
+        self.params = params or {}       # DAG framework
+        self.meta = meta                 # DAG framework
         self.symbol = symbol
         self.capital = capital
         self.fraction = fraction
@@ -95,6 +97,10 @@ class FundingCarryNode:
             "annual_funding_pct": "float", "position_open": "bool",
             "total_funding_received": "float", "n_payments": "int",
         }
+    
+    @staticmethod
+    def input_schema() -> dict[str, str]:
+        return {"spot_price": "float", "funding_rate": "float", "perp_price": "float"}
     
     def execute(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Point d'entrée DAG framework → délègue à run()."""

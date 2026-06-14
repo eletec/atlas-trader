@@ -4126,8 +4126,7 @@ def render_admin_panel():
                 else:
                     st.warning("Aucun DAG trouvé — l'API est-elle en cours de démarrage ?")
             except Exception as e:
-                st.warning("🔄 API en cours de démarrage... (rafraîchissez dans 10s)")
-                st.caption(str(e)[:100])
+                st.error(f"Erreur API: {e}")
             return
         
         # ── V7 Monitor ──

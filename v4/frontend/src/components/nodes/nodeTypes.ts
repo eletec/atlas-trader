@@ -35,4 +35,5 @@ export const nodeTypes = {
   PaperTrader: BaseNode,
   AlertOnly: BaseNode,
   RecordDecision: BaseNode,
+  FundingCarryNode: BaseNode,   // V7
 };

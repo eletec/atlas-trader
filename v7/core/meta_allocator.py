@@ -37,7 +37,7 @@ class StrategyScore:
     score: float          # signal normalisé [-1, 1]
     confidence: float     # 0-1
     expected_return: float  # annualisé
-    recent_sharpe: float  # Sharpe glissant (30j)
+    recent_sharpe: float = 0.0  # Sharpe glissant (30j)
     active: bool = True
 
 

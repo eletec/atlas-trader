@@ -1,9 +1,9 @@
-﻿# Atlas Trader V6 🧠
+﻿# Atlas Trader V7 🧠 — Risk Premium Harvesting
 
-> Autonomous crypto trading system — **7 assets** (BTC · ETH · SOL · BNB · XRP · ADA · DOGE)  
-> DAG-based pipeline · MetaGate (ML) · RegimeDetector · Kelly sizing · Walk-Forward 365j
+> Multi-strategy crypto trading system — **7 assets** (BTC · ETH · SOL · BNB · XRP · ADA · DOGE)  
+> DAG pipeline · Funding Carry · Dominance Rotation · LLM Event Detection
 
-**Branch**: `v6-dev` | **Status**: Paper trading live on GX10 (Intel N100, 16 GB)
+**Branch**: `v7-dev` | **Status**: Pivot from directional prediction → risk premium harvesting
 
 ---
 
@@ -81,9 +81,10 @@ docker exec atlas-v4-api python src/tools/walkforward_v6.py --asset BTC/USDT --d
 
 | Branch | Description |
 |---|---|
-| `main` | Stable (V3 research) |
+| `main` | Stable (V6 — concluded) |
+| `v7-dev` | **Active** — V7.0 (Funding Carry + Risk Premium) |
+| `v6-dev` | V6 — Walk-Forward + MetaGate (concluded: no directional edge) |
 | `v5-dev` | Production V5 (MetaGate + CircuitBreaker + PortfolioRisk) |
-| `v6-dev` | **Active** — V6.1 (Multi-horizon + Kelly + IA Veto + WalkForward) |
 
 ## Tech Stack
 

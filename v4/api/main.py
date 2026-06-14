@@ -53,19 +53,34 @@ app.include_router(prices_router, prefix="/prices", tags=["prices"])
 
 @app.on_event("startup")
 async def _auto_schedule_demo():
-    """Démarre automatiquement le DAG démo et les tickers prix au boot."""
-    # 1) DAGs démo (BTC, ETH, SOL, BNB, XRP, ADA, DOGE)
+    """Démarre automatiquement les DAGs au boot."""
+    from v4.api.dag_registry import DAGRegistry
+    registry = DAGRegistry.instance()
+    existing_ids = {e.dag_id for e in registry.status()}
+    
+    # 1) V5 DAGs directionnels — capital réduit (monitoring uniquement)
     try:
         from v5.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
-        from v4.api.dag_registry import DAGRegistry
-        registry = DAGRegistry.instance()
-        existing_ids = {e.dag_id for e in registry.status()}
         for dag in (DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE):
             if dag.dag_id not in existing_ids:
+                # Override capital to $100 (symbolique — V7 carry est la vraie stratégie)
+                for node in dag.nodes:
+                    if node.type == "AssetDef":
+                        node.params["capital_usd"] = 100
                 registry.schedule(dag, cycle_s=300)
-                logging.getLogger("v4.api.main").info("DAG '%s' schedulé (cycle=300s)", dag.dag_id)
+                logging.getLogger("v4.api.main").info("DAG '%s' schedulé (monitoring, capital=$100)", dag.dag_id)
     except Exception as exc:
-        logging.getLogger("v4.api.main").warning(f"DAGs démo non schedulés : {exc}")
+        logging.getLogger("v4.api.main").warning(f"DAGs V5 non schedulés : {exc}")
+    
+    # 2) V7 DAGs Funding Carry (stratégie principale)
+    try:
+        from v7.api.v7_demo_dag import V7_DAGS
+        for dag in V7_DAGS:
+            if dag.dag_id not in existing_ids:
+                registry.schedule(dag, cycle_s=28800)  # 8h = cycle funding
+                logging.getLogger("v4.api.main").info("V7 DAG '%s' schedulé (carry, $2000)", dag.dag_id)
+    except Exception as exc:
+        logging.getLogger("v4.api.main").warning(f"DAGs V7 non schedulés : {exc}")
 
     # 2) Tickers prix (Binance WS) pour les symboles par défaut
     try:

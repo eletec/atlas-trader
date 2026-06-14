@@ -78,7 +78,8 @@ export function DAGCanvas() {
       if (flowFromUrl !== activeId) setActive(flowFromUrl);
 
       const assetMap: Record<string, string> = {
-        default: "BTC/USDT", eth: "ETH/USDT", sol: "SOL/USDT", bnb: "BNB/USDT", xrp: "XRP/USDT",
+        default: "BTC/USDT", eth: "ETH/USDT", sol: "SOL/USDT",
+        bnb: "BNB/USDT", xrp: "XRP/USDT", ada: "ADA/USDT", doge: "DOGE/USDT",
       };
       const asset = assetMap[flowFromUrl] || "BTC/USDT";
       const coin = asset.split("/")[0].toLowerCase();

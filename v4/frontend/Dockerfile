@@ -1,7 +1,7 @@
 FROM node:20-alpine AS base
 
 # V7 — force rebuild (change this line to bust cache)
-ARG CACHE_BUST=7
+ARG CACHE_BUST=8
 
 # Install dependencies
 FROM base AS deps

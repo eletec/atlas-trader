@@ -29,16 +29,20 @@ interface DAGRegistryState {
 // Clé localStorage pour le registre
 const REGISTRY_KEY = "atlas_v4_dag_registry";
 const VERSION_KEY = "atlas_v4_dag_version";
-const CURRENT_VERSION = 7;  // V7 — bump to force recreation
+const CURRENT_VERSION = 8;  // V7 — force clear all old DAG data
 
-// Force clear si version mismatch
+// Force clear si version mismatch (V6 → V7)
 if (typeof window !== "undefined") {
   const storedVersion = parseInt(localStorage.getItem(VERSION_KEY) || "0", 10);
   if (storedVersion < CURRENT_VERSION) {
-    // Clear all old DAG data
+    // Clear ALL atlas DAG data (registry + individual DAGs + old key)
     const keys = Object.keys(localStorage).filter(k => k.startsWith("atlas_v4_dag"));
     keys.forEach(k => localStorage.removeItem(k));
+    // Also clear the zustand persist store for dagStore
+    const zustandKeys = Object.keys(localStorage).filter(k => k.includes("dagStore") || k.includes("dag-store"));
+    zustandKeys.forEach(k => localStorage.removeItem(k));
     localStorage.setItem(VERSION_KEY, String(CURRENT_VERSION));
+    console.log("V7: cleared", keys.length, "old DAG keys from localStorage");
   }
 }
 

@@ -339,9 +339,12 @@ def main():
     parser.add_argument("--strategy", type=str, default="funding_carry",
                        choices=["funding_carry", "dominance_rotation", "all"])
     parser.add_argument("--capital", type=float, default=10_000)
-    parser.add_argument("--fraction", type=float, default=0.50)
-    parser.add_argument("--min-funding", type=float, default=0.00005,
-                       help="Funding minimum (% par 8h, défaut=0.005%)")
+    parser.add_argument("--fraction", type=float, default=0.80,
+                       help="Fraction du capital en carry (défaut=80%)")
+    parser.add_argument("--min-funding", type=float, default=0.00001,
+                       help="Funding minimum (défaut=0.001%%)")
+    parser.add_argument("--exit-hours", type=int, default=168,
+                       help="Heures avant sortie si funding négatif (défaut=168=7j)")
     args = parser.parse_args()
     
     symbols = [args.symbol]
@@ -366,6 +369,7 @@ def main():
                 capital=args.capital,
                 fraction=args.fraction,
                 min_funding=args.min_funding,
+                exit_after_negative_hours=args.exit_hours,
             )
             results.append(r)
             logger.info("%s: PnL=$%.2f (%.2f%%) Sharpe=%.2f DD=%.1f%% (%ds)",

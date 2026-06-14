@@ -60,19 +60,24 @@ const NODES_SPEC: NodeSpec[] = [
   {
     id: "btc_carry", type: "FundingCarryNode", x: X[2], y: Y_TOP, label: "Funding Carry V7",
     params: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168 },
-    inputPorts: ["spot_price", "funding_rate"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence"],
+    inputPorts: ["spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"],
   },
 
   // Col 3 : PaperTrader
   {
     id: "btc_paper", type: "PaperTrader", x: X[3], y: Y_TOP, label: "Paper Trader",
-    params: {}, inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"],
+    params: {}, inputPorts: ["decision", "symbol", "max_positions"], outputPorts: ["trade_result"],
   },
 
-  // Col 4 : Record DB
+  // Col 4 : Record DB + AI Analyst
   {
-    id: "btc_record", type: "RecordDecision", x: X[4], y: Y_TOP, label: "Record DB",
+    id: "btc_record", type: "RecordDecision", x: X[4], y: Y_TOP - 60, label: "Record DB",
     params: { db_path: "/app/data/v4.db" }, inputPorts: ["decision"], outputPorts: [],
+  },
+  {
+    id: "ai_analyst", type: "LLMNode", x: X[4], y: Y_TOP + 60, label: "AI Analyst",
+    params: { model: "deepseek", temperature: 0.3, max_tokens: 256 },
+    inputPorts: ["decision", "funding_rate", "annual_funding_pct"], outputPorts: ["response", "parsed"],
   },
 ];
 
@@ -82,6 +87,7 @@ const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: 
   { src: "btc_asset", dst: "btc_paper", srcPort: "max_positions", dstPort: "max_positions" },
   { src: "btc_carry", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },
   { src: "btc_carry", dst: "btc_record", srcPort: "decision", dstPort: "decision" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "annual_funding_pct", dstPort: "funding_rate" },
 ];
 
 export function getDefaultNodes(): RFNode[] {

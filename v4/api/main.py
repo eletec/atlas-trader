@@ -94,14 +94,33 @@ async def _auto_schedule_demo():
     # 3) V7 Funding Carry Scheduler (cycle 8h)
     try:
         from v7.live_carry import FundingCarryScheduler
-        import asyncio
+        import asyncio, json, sqlite3, os
         carry = FundingCarryScheduler(capital_per_asset=2000)
+        DB_PATH = os.environ.get("V4_DB_PATH", "/app/data/v4.db")
         
         async def carry_loop():
             while True:
                 try:
-                    carry.run_cycle()
+                    results = carry.run_cycle()
                     summary = carry.get_summary()
+                    
+                    # Écrire les positions carry dans la DB dashboard
+                    try:
+                        db = sqlite3.connect(DB_PATH)
+                        for r in results:
+                            if r["signal"] in ("open_carry", "close_carry"):
+                                db.execute(
+                                    "INSERT INTO v4_trades (timestamp, symbol, action, entry_price, size_usd, pnl_usd, exit_reason) VALUES (?,?,?,?,?,?,?)",
+                                    (datetime.now().isoformat(), r["symbol"],
+                                     "CARRY_OPEN" if r["signal"] == "open_carry" else "CARRY_CLOSE",
+                                     r["funding_rate"], r["size_usd"], 0.0,
+                                     f"V7 carry | funding={r['annual_funding_pct']:.1f}%/an")
+                                )
+                        db.commit()
+                        db.close()
+                    except Exception:
+                        pass
+                    
                     if summary["active_carries"] > 0:
                         logging.getLogger("v4.api.main").info(
                             "V7 Carry: %d positions | size=$%.0f | funding=$%.4f",

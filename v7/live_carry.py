@@ -61,8 +61,9 @@ class FundingCarryScheduler:
                 node_id=f"live_carry_{sym.replace('/', '_').lower()}",
                 symbol=sym,
                 capital=capital_per_asset,
-                fraction=0.50,
-                min_funding=0.00005,
+                fraction=0.80,           # 80% du capital
+                min_funding=0.00001,     # 0.001% (plus agressif)
+                exit_after_hours=168,    # 7 jours avant sortie
             )
             self.positions[sym] = CarryPosition(symbol=sym)
     

@@ -4099,7 +4099,7 @@ def render_admin_panel():
             return
 
         _V4_URLS = {
-            "v4_canvas":  f"{_V4_FRONTEND}/canvas",
+            "v4_canvas":  f"{_V4_FRONTEND}/canvas?v=7",
             "v4_monitor": f"{_V4_FRONTEND}/monitoring",
             "v4_trades":  f"{_V4_FRONTEND}/trades",
             "v4_arena":   f"{_V4_FRONTEND}/arena",

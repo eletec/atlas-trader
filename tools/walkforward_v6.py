@@ -162,37 +162,40 @@ def walkforward(
         logger.warning("%s: pas assez de données (%d barres)", symbol, len(df_5m_full))
         return result
     
-    # ── Découpage en fenêtres walk-forward ──
+    # ── Découpage en fenêtres walk-forward (PURGED: embargo 7j) ──
     # S'assurer que les timestamps sont timezone-aware (UTC)
     if df_5m_full.index.tz is None:
         df_5m_full.index = df_5m_full.index.tz_localize('UTC')
     if df_1h_full.index.tz is None:
         df_1h_full.index = df_1h_full.index.tz_localize('UTC')
     
+    PURGE_DAYS = 7  # embargo entre train et test (López de Prado)
+    
     end_date = df_5m_full.index[-1]
     start_date = end_date - timedelta(days=total_days)
     
-    # Générer les paires (train_end, test_end) en UTC
+    # Générer les paires (train_end, test_start, test_end) en UTC
     windows_dates = []
     cursor = start_date
-    while cursor + timedelta(days=train_days + test_days) <= end_date:
+    while cursor + timedelta(days=train_days + PURGE_DAYS + test_days) <= end_date:
         train_end = cursor + timedelta(days=train_days)
-        test_end = train_end + timedelta(days=test_days)
-        windows_dates.append((train_end, test_end))
+        test_start = train_end + timedelta(days=PURGE_DAYS)  # embargo
+        test_end = test_start + timedelta(days=test_days)
+        windows_dates.append((train_end, test_start, test_end))
         cursor += timedelta(days=step_days)
     
     if len(windows_dates) < MIN_WINDOWS:
         logger.warning("%s: seulement %d fenêtres (min=%d)", symbol, len(windows_dates), MIN_WINDOWS)
         return result
     
-    logger.info("=== Walk-Forward %s : %d fenêtres (train=%dj test=%dj step=%dj) ===",
-                symbol, len(windows_dates), train_days, test_days, step_days)
+    logger.info("=== Walk-Forward %s : %d fenêtres (train=%dj purge=%dj test=%dj step=%dj) ===",
+                symbol, len(windows_dates), train_days, PURGE_DAYS, test_days, step_days)
     
-    for wi, (train_end, test_end) in enumerate(windows_dates):
+    for wi, (train_end, test_start, test_end) in enumerate(windows_dates):
         try:
-            # Découper les données (index déjà UTC)
-            test_5m = df_5m_full[(df_5m_full.index > train_end) & (df_5m_full.index <= test_end)]
-            test_1h = df_1h_full[(df_1h_full.index > train_end) & (df_1h_full.index <= test_end)]
+            # Découper les données (index déjà UTC) — strictement après embargo
+            test_5m = df_5m_full[(df_5m_full.index >= test_start) & (df_5m_full.index <= test_end)]
+            test_1h = df_1h_full[(df_1h_full.index >= test_start) & (df_1h_full.index <= test_end)]
             # Inclure 500 barres avant pour le warmup du backtest
             warmup_5m = df_5m_full[df_5m_full.index <= test_end].iloc[-len(test_5m)-500:] if len(test_5m) > 0 else df_5m_full.iloc[-500:]
             
@@ -219,7 +222,7 @@ def walkforward(
             
             logger.info("  Fenêtre %d/%d [%s→%s]: Sharpe=%.2f PnL=$%.0f Trades=%d",
                         wi + 1, len(windows_dates),
-                        train_end.strftime("%Y-%m-%d"), test_end.strftime("%Y-%m-%d"),
+                        test_start.strftime("%Y-%m-%d"), test_end.strftime("%Y-%m-%d"),
                         bt.sharpe, bt.total_pnl, bt.n_trades)
         except Exception as e:
             logger.warning("  Fenêtre %d/%d SKIP: %s", wi + 1, len(windows_dates), e)
@@ -236,6 +239,7 @@ def optimize_optuna(
     gate_mode: str = "meta",
     regime_filter: bool = False,
     regime_params: bool = False,
+    slippage_bps: float = 5.0,
 ) -> dict | None:
     """Optimisation bayésienne avec Optuna.
     
@@ -276,6 +280,7 @@ def optimize_optuna(
                 exit_atr_mult=exit_atr, min_atr_dist=0.5,
                 gate_mode=gate_mode, fusion_threshold=meta_th,
                 p_up_threshold=0.52, p_dn_threshold=0.48,
+                slippage_bps=slippage_bps,
             )
             if regime_filter:
                 bt_kwargs["regime_filter"] = True
@@ -322,6 +327,7 @@ def main():
     parser.add_argument("--regime-filter", action="store_true", help="V6: ne trader qu'en régime TREND")
     parser.add_argument("--top-n", type=int, default=0, help="Sélection top N actifs par Sharpe IS (0=tous)")
     parser.add_argument("--regime-params", action="store_true", help="V6: params SL/TP/fraction séparés par régime")
+    parser.add_argument("--slippage-bps", type=float, default=5.0, help="Slippage en bps (défaut: 5 = 0.05%%)")
     args = parser.parse_args()
     
     symbols = [args.asset] if args.asset else SYMBOLS
@@ -330,6 +336,7 @@ def main():
     FAST_PARAMS = {
         "fusion_threshold": 0.15, "sl_mult": 2.0, "tp_mult": 4.0,
         "fraction": 0.005, "exit_strategy": "chandelier", "exit_atr_mult": 3.0,
+        "slippage_bps": args.slippage_bps,
     }
     
     print("=" * 80)
@@ -340,7 +347,7 @@ def main():
     if args.regime_filter: flags.append("REGIME-FILTER")
     if args.regime_params: flags.append("REGIME-PARAMS")
     if args.top_n: flags.append(f"TOP-{args.top_n}")
-    print(f"Symboles: {len(symbols)} | Jours: {args.days} | Mode: {args.mode} | Trials: {args.trials}")
+    print(f"Symboles: {len(symbols)} | Jours: {args.days} | Mode: {args.mode} | Trials: {args.trials} | Slippage: {args.slippage_bps}bps")
     if flags:
         print(f"Flags: {' '.join(flags)}")
     print("=" * 80)
@@ -363,19 +370,19 @@ def main():
                 wf_kwargs["regime_filter"] = True
             logger.info("%s: ⚡ fast mode — params V4/V5", symbol)
         elif args.no_optuna:
-            wf_kwargs = {"regime_filter": True} if args.regime_filter else {}
+            wf_kwargs = {"regime_filter": True, "slippage_bps": args.slippage_bps} if args.regime_filter else {"slippage_bps": args.slippage_bps}
             logger.info("%s: no Optuna — defaults", symbol)
         else:
             logger.info("%s [%d/%d]: Optuna %d trials × %dj…", symbol, idx+1, len(symbols), args.trials, args.optuna_days)
             opt = optimize_optuna(symbol, days=args.optuna_days, n_trials=args.trials,
                                   gate_mode=args.mode, regime_filter=args.regime_filter,
-                                  regime_params=args.regime_params)
+                                  regime_params=args.regime_params, slippage_bps=args.slippage_bps)
             if opt:
                 all_opt.append(opt)
                 best_params = opt["best_params"]
                 symbol_scores[symbol] = opt["best_score"]
                 logger.info("%s: Optuna best score=%.2f params=%s (%.0fs)", symbol, opt["best_score"], best_params, time.time()-t_sym)
-            wf_kwargs = {"regime_filter": True} if args.regime_filter else {}
+            wf_kwargs = {"regime_filter": True, "slippage_bps": args.slippage_bps} if args.regime_filter else {"slippage_bps": args.slippage_bps}
             if best_params:
                 wf_kwargs.update({
                     "fusion_threshold": best_params["meta_th"],

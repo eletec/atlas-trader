@@ -70,6 +70,7 @@ def run_backtest_v4(
     logger.info("Backtest %s: chargement %dj...", symbol, days)
     _df5 = kwargs.pop("_df_5m_override", None)
     _df1 = kwargs.pop("_df_1h_override", None)
+    slippage_bps = float(kwargs.pop("slippage_bps", 0))  # V7: realistic cost model
     df_5m = _df5 if _df5 is not None and not _df5.empty else fetch_history(symbol, "5m", days=days)
     df_1h = _df1 if _df1 is not None and not _df1.empty else fetch_history(symbol, "1h", days=days)
     if df_5m.empty or df_1h.empty:
@@ -158,6 +159,8 @@ def run_backtest_v4(
             if hit:
                 pnl_pct = (close_price - pos_entry) / pos_entry if pos_action == "long" else (pos_entry - close_price) / pos_entry
                 pnl_usd = pos_size * pnl_pct
+                slippage_cost = pos_size * 2 * slippage_bps / 10000  # entry + exit
+                pnl_usd -= slippage_cost
                 current_capital += pnl_usd
                 trades.append(BTTrade(
                     timestamp=str(bar_5m.name),
@@ -319,6 +322,8 @@ def run_backtest_v4(
         pos_size = position["size_usd"]
         pnl_pct = (close_price - pos_entry) / pos_entry if pos_action == "long" else (pos_entry - close_price) / pos_entry
         pnl_usd = pos_size * pnl_pct
+        slippage_cost = pos_size * 2 * slippage_bps / 10000
+        pnl_usd -= slippage_cost
         current_capital += pnl_usd
         trades.append(BTTrade(
             timestamp=str(df_5m.index[-1]),

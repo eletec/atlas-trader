@@ -42,13 +42,6 @@ const NODE_CATALOG = [
     ],
   },
 ];
-      { type: "DirectionGate", label: "Direction Gate", inputPorts: ["signal", "trend"], outputPorts: ["signal", "blocked", "reason"] },
-      { type: "MetaGate", label: "MetaGate V5", inputPorts: ["signal", "prob_up", "trend", "debate_signal", "debate_conf", "crosstf_signal", "crosstf_conf", "regime"], outputPorts: ["signal", "blocked", "reason", "score"] },
-      { type: "CircuitBreaker", label: "CircuitBreaker V5", inputPorts: ["decision"], outputPorts: ["decision", "blocked", "reason"] },
-      { type: "PortfolioRisk", label: "PortfolioRisk V5", inputPorts: ["decision", "symbol"], outputPorts: ["decision", "blocked", "reason"] },
-    ],
-  },
-];
 
 let _nodeCounter = 1;
 

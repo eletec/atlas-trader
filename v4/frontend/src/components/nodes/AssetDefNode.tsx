@@ -33,21 +33,22 @@ export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: N
   const connectedOutputs = new Set(allEdges.filter((e: any) => e.source === id).map((e: any) => e.sourceHandle));
 
   // Mesure la position du label de port pour aligner la poignée
+  const nodeRef = useRef<HTMLDivElement>(null);
   const portLabelRef = useRef<HTMLSpanElement>(null);
-  const [portTop, setPortTop] = useState(90); // fallback
+  const [portTop, setPortTop] = useState(100); // fallback
   useEffect(() => {
-    const el = portLabelRef.current;
-    if (el) {
-      // offsetTop relatif au parent positionné (le nœud React Flow)
-      const nodeEl = el.closest(".react-flow__node");
-      if (nodeEl) {
-        setPortTop(el.getBoundingClientRect().top - nodeEl.getBoundingClientRect().top + el.offsetHeight / 2);
-      }
+    const nodeEl = nodeRef.current;
+    const labelEl = portLabelRef.current;
+    if (nodeEl && labelEl) {
+      const nr = nodeEl.getBoundingClientRect();
+      const lr = labelEl.getBoundingClientRect();
+      setPortTop(lr.top - nr.top + lr.height / 2);
     }
   }, []);
 
   return (
     <div
+      ref={nodeRef}
       className={cn(
         "min-w-[200px] rounded-lg border bg-canvas-node shadow-lg",
         selected ? "border-canvas-accent" : "border-indigo-700"

@@ -120,8 +120,6 @@ def render_global_overview() -> None:
 
     theme = st.query_params.get("theme", "dark")
 
-    st.markdown(f"### {'🌐 Vue Globale V4'}")
-
     html_rows = ""
     for d in dags:
         dag_id = d.get("dag_id", "?")
@@ -229,7 +227,7 @@ def render_global_overview() -> None:
             f"</tr>"
         )
 
-    st.markdown(f"### 🌐 Vue Globale V7 — Funding Carry")
+    st.markdown(f"### 🌐 Vue Globale — Funding Carry")
     st.markdown(
         f"""<table style="width:100%;border-collapse:collapse;">
         <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:11px;opacity:.6;">

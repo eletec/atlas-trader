@@ -104,17 +104,26 @@ export function DAGCanvas() {
         loadedEdges = edges;
       }
 
-      // Patcher le nœud AssetDef avec le bon symbole + keywords
+      // Forcer les ports depuis le schéma (pas le cache localStorage)
+      const schemaMap: Record<string, {in: string[], out: string[]}> = {
+        AssetDef: {in: [], out: ["symbol","exchange","capital","fraction","max_positions"]},
+        LoadMultiTF: {in: ["symbol"], out: ["ohlcv_5m","ohlcv_1h"]},
+        FundingCarryNode: {in: ["spot_price","funding_rate","perp_price"], out: ["signal","decision","size_usd","expected_return","confidence","funding_rate","annual_funding_pct","position_open"]},
+        PaperTrader: {in: ["decision","symbol","max_positions"], out: ["trade_result"]},
+        RecordDecision: {in: ["decision"], out: []},
+        LLMNode: {in: ["decision","funding_rate"], out: ["response","parsed"]},
+      };
       loadedNodes = loadedNodes.map((n) => {
-        if (n.type === "AssetDef" || (n.data as any)?.nodeType === "AssetDef") {
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              label: asset,
-              params: { ...((n.data as any)?.params || {}), symbol: asset, keywords: keywords[coin] || [coin] },
-            },
-          };
+        const t = (n.data as any)?.nodeType || n.type || "";
+        // Forcer les ports depuis le schéma
+        if (schemaMap[t]) {
+          n = { ...n, data: { ...n.data, inputPorts: schemaMap[t].in, outputPorts: schemaMap[t].out } };
+        }
+        // Patcher AssetDef avec le bon symbole
+        if (t === "AssetDef") {
+          n = { ...n, data: { ...n.data, label: asset,
+            params: { ...((n.data as any)?.params || {}), symbol: asset, keywords: keywords[coin] || [coin] },
+          }};
         }
         return n;
       });

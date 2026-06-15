@@ -98,15 +98,10 @@ async def schedule_dag(body: ScheduleDAGRequest):
 
 @router.delete("/{dag_id}")
 async def stop_dag(dag_id: str):
+    """Arrête un DAG schedulé (ne le supprime pas du store persistant)."""
     found = DAGRegistry.instance().stop(dag_id)
     if not found:
         raise HTTPException(status_code=404, detail=f"DAG '{dag_id}' non trouvé")
-    # Retirer du store également
-    try:
-        from v4.api.dag_store import remove
-        remove(dag_id)
-    except Exception as exc:
-        logger.warning("Échec suppression DAG '%s' du store: %s", dag_id, exc)
     return {"dag_id": dag_id, "status": "stopped"}
 
 

@@ -281,9 +281,9 @@ class FundingCarryNode:
             "carry_annual_pct": round(annual_funding * 100, 2),
         }
         if signal == "open_carry":
-            decision["action"] = "short"  # shorter le perp pour recevoir le funding
+            decision["action"] = "carry"  # shorter le perp pour recevoir le funding
         elif signal == "close_carry":
-            decision["action"] = "close_short"
+            decision["action"] = "close_carry"
         
         outputs = {
             "signal": signal,

@@ -31,7 +31,7 @@ const NODE_CATALOG = [
   {
     category: "Exécution",
     nodes: [
-      { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol", "max_positions"], outputPorts: ["trade_result"] },
+      { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"] },
       { type: "RecordDecision", label: "Record DB", inputPorts: ["decision"], outputPorts: [] },
     ],
   },

@@ -109,7 +109,7 @@ export function DAGCanvas() {
         AssetDef: {in: [], out: ["symbol"]},
         LoadMultiTF: {in: ["symbol"], out: ["ohlcv_5m","ohlcv_1h"]},
         FundingCarryNode: {in: ["symbol","spot_price","funding_rate","perp_price"], out: ["signal","decision","size_usd","expected_return","confidence","funding_rate","annual_funding_pct","position_open"]},
-        PaperTrader: {in: ["decision","symbol","max_positions"], out: ["trade_result"]},
+        PaperTrader: {in: ["decision","symbol"], out: ["trade_result"]},
         RecordDecision: {in: ["decision"], out: []},
         LLMNode: {in: ["decision","funding_rate","annual_funding_pct"], out: ["response","parsed"]},
       };

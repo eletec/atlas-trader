@@ -31,9 +31,9 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  params={"symbol": symbol, "capital": capital,
                           "fraction": 0.80, "min_funding": 0.00001,
                           "exit_after_hours": 168}),
-        # PaperTrader — exécute le signal carry
+        # PaperTrader — exécute le signal carry (max 1 position par actif)
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
-                 params={"symbol": symbol, "dag_id": dag_id}),
+                 params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
                  params={"db_path": "/app/data/v4.db"}),
         # LLM AI Analyst (analyse async de la décision carry)
@@ -49,8 +49,6 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  target_node=f"{pfx}_carry", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_paper", target_port="symbol"),
-        EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
-                 target_node=f"{pfx}_paper", target_port="max_positions"),
         # Carry → PaperTrader (execution)
         EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
                  target_node=f"{pfx}_paper", target_port="decision"),

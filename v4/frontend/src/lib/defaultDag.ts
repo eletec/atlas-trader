@@ -59,7 +59,7 @@ const NODES_SPEC: NodeSpec[] = [
   // Col 2 : PaperTrader
   {
     id: "btc_paper", type: "PaperTrader", x: X[2], y: Y_TOP, label: "Paper Trader",
-    params: {}, inputPorts: ["decision", "symbol", "max_positions"], outputPorts: ["trade_result"],
+    params: { max_positions: 1 }, inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"],
   },
 
   // Col 3 : Record DB + AI Analyst
@@ -77,7 +77,6 @@ const NODES_SPEC: NodeSpec[] = [
 const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: string }> = [
   { src: "btc_asset", dst: "btc_carry", srcPort: "symbol", dstPort: "symbol" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "symbol", dstPort: "symbol" },
-  { src: "btc_asset", dst: "btc_paper", srcPort: "max_positions", dstPort: "max_positions" },
   { src: "btc_carry", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },
   { src: "btc_carry", dst: "btc_record", srcPort: "decision", dstPort: "decision" },
   { src: "btc_carry", dst: "ai_analyst", srcPort: "decision", dstPort: "decision" },

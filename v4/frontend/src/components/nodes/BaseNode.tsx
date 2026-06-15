@@ -62,6 +62,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   const nodeData = data as NodeData;
   const result = useDagStore((s) => s.results[id]);
   const selectNode = useDagStore((s) => s.selectNode);
+  const allEdges = useDagStore((s) => s.edges);
   const status = result?.status ?? "idle";
   const inputPorts = nodeData.inputPorts ?? [];
   const outputPorts = nodeData.outputPorts ?? [];
@@ -76,6 +77,10 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   // Badge texte
   const statusLabel = status === "done" ? "✓ OK" : status === "error" ? "✗ ERR" : status === "running" ? "● RUN" : "";
 
+  // Ports connectés (pour mise en évidence)
+  const connectedInputs = new Set(allEdges.filter((e: any) => e.target === id).map((e: any) => e.targetHandle));
+  const connectedOutputs = new Set(allEdges.filter((e: any) => e.source === id).map((e: any) => e.sourceHandle));
+
   // Mesure la hauteur du header pour aligner les poignées verticalement
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerH, setHeaderH] = useState(36);
@@ -83,8 +88,12 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
     if (headerRef.current) setHeaderH(headerRef.current.offsetHeight);
   }, []);
 
-  const ROW_H = 20;  // hauteur approximative d'une ligne de port (text-[10px] + gap-1)
-  const PAD_Y = 8;   // py-2 = 8px padding-top du conteneur des ports
+  const ROW_H = 20;   // hauteur d'une ligne de port (text-[10px])
+  const GAP = 4;      // gap-1 = 4px entre les lignes
+  const PAD_Y = 8;    // py-2 = 8px padding-top du conteneur des ports
+  const BORDER = 1;   // border-b du header
+
+  const portTop = (i: number) => headerH + BORDER + PAD_Y + i * (ROW_H + GAP) + ROW_H / 2;
 
   return (
     <div
@@ -103,7 +112,8 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
           type="target"
           position={Position.Left}
           id={port}
-          style={{ top: headerH + PAD_Y + i * ROW_H + ROW_H / 2 }}
+          style={{ top: portTop(i) }}
+          className={connectedInputs.has(port) ? "!bg-cyan-400 !border-cyan-300" : ""}
         />
       ))}
       {outputPorts.map((port, i) => (
@@ -112,7 +122,8 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
           type="source"
           position={Position.Right}
           id={port}
-          style={{ top: headerH + PAD_Y + i * ROW_H + ROW_H / 2 }}
+          style={{ top: portTop(i) }}
+          className={connectedOutputs.has(port) ? "!bg-emerald-400 !border-emerald-300" : ""}
         />
       ))}
 
@@ -142,8 +153,8 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         {/* Inputs */}
         <div className="flex flex-col gap-1 items-start">
           {inputPorts.map((port) => (
-            <div key={port} className="flex items-center gap-1 text-slate-400" style={{ height: ROW_H }}>
-              <span className="text-[10px]">{port}</span>
+            <div key={port} className="flex items-center gap-1" style={{ height: ROW_H }}>
+              <span className={cn("text-[10px]", connectedInputs.has(port) ? "text-cyan-400 font-medium" : "text-slate-500")}>{port}</span>
             </div>
           ))}
         </div>
@@ -151,8 +162,8 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         {/* Outputs */}
         <div className="flex flex-col gap-1 items-end ml-auto">
           {outputPorts.map((port) => (
-            <div key={port} className="flex items-center gap-1 text-slate-400" style={{ height: ROW_H }}>
-              <span className="text-[10px]">{port}</span>
+            <div key={port} className="flex items-center gap-1" style={{ height: ROW_H }}>
+              <span className={cn("text-[10px]", connectedOutputs.has(port) ? "text-emerald-400 font-medium" : "text-slate-500")}>{port}</span>
             </div>
           ))}
         </div>

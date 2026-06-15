@@ -29,7 +29,7 @@ interface DAGRegistryState {
 // Clé localStorage pour le registre
 const REGISTRY_KEY = "atlas_v4_dag_registry";
 const VERSION_KEY = "atlas_v4_dag_version";
-const CURRENT_VERSION = 15;
+const CURRENT_VERSION = 16;
 
 // Force clear si version mismatch (V6 → V7)
 if (typeof window !== "undefined") {

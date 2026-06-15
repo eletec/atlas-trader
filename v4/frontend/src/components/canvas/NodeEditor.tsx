@@ -26,6 +26,8 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   AlertOnly: { channels: ["log"] },
   RecordDecision: { db_path: "/app/data/v4_decisions.db" },
   LLMNode: { model: "phi4:latest", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },
+  // ── V7 ──
+  FundingCarryNode: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168 },
   // ── V5 ──
   MetaGate: { threshold: 0.20, model_path: "/app/data/models/meta_btc.pkl" },
   CircuitBreaker: { dd_warn_pct: -3.0, dd_kill_pct: -5.0 },
@@ -41,6 +43,7 @@ function inferType(value: unknown): "string" | "number" | "boolean" | "array" {
 
 export function NodeEditor() {
   const nodes = useDagStore((s) => s.nodes);
+  const edges = useDagStore((s) => s.edges);
   const selectedNodeId = useDagStore((s) => s.selectedNodeId);
   const selectNode = useDagStore((s) => s.selectNode);
   const updateNodeParams = useDagStore((s) => s.updateNodeParams);
@@ -52,6 +55,14 @@ export function NodeEditor() {
   // Fusionner avec les défauts du type pour montrer les champs manquants
   const defaults = TYPE_DEFAULTS[nodeType] ?? {};
   const displayParams = { ...defaults, ...params };
+
+  // Params alimentés par un edge (connecteur d'entrée) → lecture seule
+  const edgeInputs = new Set(
+    edges
+      .filter((e: any) => e.target === selectedNodeId)
+      .map((e: any) => e.targetHandle)
+      .filter(Boolean)
+  );
 
   const [newKey, setNewKey] = useState("");
   const [newVal, setNewVal] = useState("");
@@ -138,13 +149,21 @@ export function NodeEditor() {
 
         {entries.map(([key, value]) => {
           const type = inferType(value);
+          const fromEdge = edgeInputs.has(key);
           return (
             <div key={key} className="flex items-start gap-1 group">
-              <label className="text-[10px] text-slate-400 w-20 shrink-0 pt-1 truncate" title={key}>
-                {key}
+              <label className={`text-[10px] w-20 shrink-0 pt-1 truncate ${fromEdge ? "text-cyan-400" : "text-slate-400"}`} title={fromEdge ? `${key} (reçu d'un edge)` : key}>
+                {fromEdge ? "↗ " : ""}{key}
               </label>
               <div className="flex-1 min-w-0">
-                {type === "boolean" ? (
+                {fromEdge ? (
+                  <input
+                    className="w-full bg-slate-800/50 border border-cyan-500/30 rounded px-1 py-0.5 text-[11px] text-cyan-300 cursor-not-allowed"
+                    value={String(value)}
+                    readOnly
+                    disabled
+                  />
+                ) : type === "boolean" ? (
                   <select
                     className="w-full bg-canvas-bg border border-canvas-border rounded px-1 py-0.5 text-[11px] text-white"
                     value={String(value)}
@@ -181,13 +200,15 @@ export function NodeEditor() {
                   />
                 )}
               </div>
-              <button
-                onClick={() => handleDelete(key)}
-                className="text-[10px] text-slate-600 hover:text-canvas-danger opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Supprimer"
-              >
-                ✕
-              </button>
+              {!fromEdge && (
+                <button
+                  onClick={() => handleDelete(key)}
+                  className="text-[10px] text-slate-600 hover:text-canvas-danger opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Supprimer"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           );
         })}

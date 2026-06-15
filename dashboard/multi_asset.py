@@ -151,17 +151,32 @@ def render_global_overview() -> None:
             annual_pct = carry_out.get("annual_funding_pct", 0)
             size_usd = carry_out.get("size_usd", 0)
             position_open = carry_out.get("position_open", False)
-            
+
+            # ── LLM AI Analyst ──
+            llm_node = results.get(f"{pfx}_llm", {})
+            llm_out = llm_node.get("outputs", {}) if isinstance(llm_node, dict) else {}
+            llm_response = llm_out.get("response", "")
+            llm_parsed = llm_out.get("parsed", {})
+            if isinstance(llm_parsed, str):
+                try: llm_parsed = __import__("json").loads(llm_parsed)
+                except Exception: llm_parsed = {}
+            llm_pending = llm_out.get("_pending_next", False) or "⏳" in str(llm_response)
+            llm_short = ""
+            if llm_response and not llm_pending:
+                llm_short = str(llm_response)[:60].replace("\n", " ")
+            elif llm_pending:
+                llm_short = "⏳ analyse..."
+
             score = int(50 + annual_pct * 3) if annual_pct > 0 else 50
             score = min(95, max(5, score))  # 5-95 au lieu de 0-100
-            
+
             if carry_signal == "open_carry" or position_open:
                 trade_str = f"🟢 CARRY ${size_usd:,.0f}"
             elif funding_rate > 0:
                 trade_str = f"funding {funding_rate*100:.4f}%"
             else:
                 trade_str = f"funding {funding_rate*100:.4f}%"
-            
+
             trend = f"{annual_pct:+.1f}%/an" if annual_pct != 0 else "—"
             signal_display = f"💸 {carry_signal}"
         else:
@@ -223,6 +238,7 @@ def render_global_overview() -> None:
             f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{trade_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{trend if trend else '—'}</td>"
+            f"<td style='padding:6px 10px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title=\"{llm_response or ''}\">{llm_short or '—'}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{status_icon} {status_text}</td>"
             f"</tr>"
         )
@@ -237,6 +253,7 @@ def render_global_overview() -> None:
           <th style="padding:4px 8px;text-align:left;">Run</th>
           <th style="padding:4px 8px;text-align:left;">Carry</th>
           <th style="padding:4px 8px;text-align:left;">Rendement</th>
+          <th style="padding:4px 8px;text-align:left;">🤖 IA</th>
           <th style="padding:4px 8px;text-align:left;">Statut</th>
         </tr></thead>
         <tbody>{html_rows}</tbody>

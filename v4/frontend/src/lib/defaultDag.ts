@@ -88,7 +88,9 @@ const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: 
   { src: "btc_asset", dst: "btc_paper", srcPort: "max_positions", dstPort: "max_positions" },
   { src: "btc_carry", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },
   { src: "btc_carry", dst: "btc_record", srcPort: "decision", dstPort: "decision" },
-  { src: "btc_carry", dst: "ai_analyst", srcPort: "annual_funding_pct", dstPort: "funding_rate" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "decision", dstPort: "decision" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "funding_rate", dstPort: "funding_rate" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "annual_funding_pct", dstPort: "annual_funding_pct" },
 ];
 
 export function getDefaultNodes(): RFNode[] {

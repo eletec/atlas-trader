@@ -38,6 +38,12 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  params={"symbol": symbol, "dag_id": dag_id}),
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
                  params={"db_path": "/app/data/v4.db"}),
+        # LLM AI Analyst (analyse async de la décision carry)
+        NodeSpec(id=f"{pfx}_llm", type="LLMNode",
+                 params={"model": "deepseek", "temperature": 0.3,
+                          "max_tokens": 256, "async_mode": True,
+                          "system_prompt": "You are a crypto funding-rate analyst. Analyze the carry trade decision.",
+                          "user_prompt": "Decision: {decision} | Funding rate: {funding_rate} | Annual: {annual_funding_pct} | Signal: {signal} | Size: ${size_usd} | Expected return: {expected_return}"}),
     ]
 
     edges = [
@@ -53,6 +59,13 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
         # Carry → Record (logging)
         EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
                  target_node=f"{pfx}_record", target_port="decision"),
+        # Carry → LLM (AI analysis)
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
+                 target_node=f"{pfx}_llm", target_port="decision"),
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="funding_rate",
+                 target_node=f"{pfx}_llm", target_port="funding_rate"),
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="annual_funding_pct",
+                 target_node=f"{pfx}_llm", target_port="annual_funding_pct"),
     ]
 
     return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)

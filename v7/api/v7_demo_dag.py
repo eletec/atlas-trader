@@ -46,6 +46,8 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
 
     edges = [
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
+                 target_node=f"{pfx}_carry", target_port="symbol"),
+        EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_paper", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",
                  target_node=f"{pfx}_paper", target_port="max_positions"),

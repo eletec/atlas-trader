@@ -103,7 +103,7 @@ class FundingCarryNode:
     
     @staticmethod
     def input_schema() -> dict[str, str]:
-        return {"spot_price": "float", "funding_rate": "float", "perp_price": "float"}
+        return {"symbol": "str", "spot_price": "float", "funding_rate": "float", "perp_price": "float"}
     
     def execute(self, inputs: dict[str, Any]) -> NodeRunResult:
         """Point d'entrée DAG framework → délègue à run()."""
@@ -168,6 +168,9 @@ class FundingCarryNode:
             dict avec signal, size_usd, expected_return, confidence, reason
         """
         t0 = time.time()
+        
+        # Le symbole peut venir d'un edge (prioritaire) ou de self.params
+        symbol = inputs.get("symbol", self.symbol)
         
         spot_price = float(inputs.get("spot_price", 0))
         funding_rate = float(inputs.get("funding_rate", 0))

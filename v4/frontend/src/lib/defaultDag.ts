@@ -53,7 +53,7 @@ const NODES_SPEC: NodeSpec[] = [
   {
     id: "btc_carry", type: "FundingCarryNode", x: X[1], y: Y_TOP, label: "Funding Carry V7",
     params: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168 },
-    inputPorts: ["spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"],
+    inputPorts: ["symbol", "spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"],
   },
 
   // Col 2 : PaperTrader
@@ -75,6 +75,7 @@ const NODES_SPEC: NodeSpec[] = [
 ];
 
 const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: string }> = [
+  { src: "btc_asset", dst: "btc_carry", srcPort: "symbol", dstPort: "symbol" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "symbol", dstPort: "symbol" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "max_positions", dstPort: "max_positions" },
   { src: "btc_carry", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },

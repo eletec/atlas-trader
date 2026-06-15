@@ -25,7 +25,7 @@ const NODE_CATALOG = [
   {
     category: "V7 — Risk Premium",
     nodes: [
-      { type: "FundingCarryNode", label: "Funding Carry", inputPorts: ["spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"] },
+      { type: "FundingCarryNode", label: "Funding Carry", inputPorts: ["symbol", "spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"] },
     ],
   },
   {

@@ -98,7 +98,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   return (
     <div
       className={cn(
-        "min-w-[180px] rounded-lg border-2 bg-canvas-node text-xs shadow-lg cursor-pointer transition-all duration-300",
+        "relative min-w-[180px] rounded-lg border-2 bg-canvas-node text-xs shadow-lg cursor-pointer transition-all duration-300",
         selected ? "border-canvas-accent ring-1 ring-canvas-accent/30 scale-[1.02]" : statusBorder || colors.border,
         statusBg,
         nodeData.bypass && "opacity-60"

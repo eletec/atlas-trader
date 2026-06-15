@@ -50,7 +50,7 @@ export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: N
     <div
       ref={nodeRef}
       className={cn(
-        "min-w-[200px] rounded-lg border bg-canvas-node shadow-lg",
+        "relative min-w-[200px] rounded-lg border bg-canvas-node shadow-lg",
         selected ? "border-canvas-accent" : "border-indigo-700"
       )}
     >

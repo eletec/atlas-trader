@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { memo } from "react";
+import { memo, useRef, useEffect, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { useDagStore } from "@/store/dagStore";
@@ -76,6 +76,16 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   // Badge texte
   const statusLabel = status === "done" ? "✓ OK" : status === "error" ? "✗ ERR" : status === "running" ? "● RUN" : "";
 
+  // Mesure la hauteur du header pour aligner les poignées verticalement
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerH, setHeaderH] = useState(36);
+  useEffect(() => {
+    if (headerRef.current) setHeaderH(headerRef.current.offsetHeight);
+  }, []);
+
+  const ROW_H = 20;  // hauteur approximative d'une ligne de port (text-[10px] + gap-1)
+  const PAD_Y = 8;   // py-2 = 8px padding-top du conteneur des ports
+
   return (
     <div
       className={cn(
@@ -86,8 +96,28 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
       )}
       onClick={() => selectNode(id)}
     >
+      {/* ---- Poignées React Flow (enfants directs du nœud → positionnées sur le conteneur) ---- */}
+      {inputPorts.map((port, i) => (
+        <Handle
+          key={`in-${port}`}
+          type="target"
+          position={Position.Left}
+          id={port}
+          style={{ top: headerH + PAD_Y + i * ROW_H + ROW_H / 2 }}
+        />
+      ))}
+      {outputPorts.map((port, i) => (
+        <Handle
+          key={`out-${port}`}
+          type="source"
+          position={Position.Right}
+          id={port}
+          style={{ top: headerH + PAD_Y + i * ROW_H + ROW_H / 2 }}
+        />
+      ))}
+
       {/* Header */}
-      <div className={cn("flex items-center gap-2 border-b border-canvas-border px-3 py-2 rounded-t-lg", colors.header)}>
+      <div ref={headerRef} className={cn("flex items-center gap-2 border-b border-canvas-border px-3 py-2 rounded-t-lg", colors.header)}>
         <span className={cn("h-3 w-3 rounded-full shrink-0 transition-colors duration-300", dotColor, status === "running" && "animate-pulse")} title={status} />
         <span className="font-semibold text-white truncate">
           {nodeData.label || nodeType || id}
@@ -107,18 +137,12 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         </span>
       </div>
 
-      {/* Ports */}
-      <div className="relative px-3 py-2 flex gap-4">
+      {/* Ports (labels seuls, les Handle sont au niveau racine) */}
+      <div className="px-3 py-2 flex gap-4">
         {/* Inputs */}
         <div className="flex flex-col gap-1 items-start">
           {inputPorts.map((port) => (
-            <div key={port} className="relative flex items-center gap-1 text-slate-400">
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={port}
-                style={{ top: "50%", left: "-5px", transform: "translateY(-50%)", position: "absolute" }}
-              />
+            <div key={port} className="flex items-center gap-1 text-slate-400" style={{ height: ROW_H }}>
               <span className="text-[10px]">{port}</span>
             </div>
           ))}
@@ -127,14 +151,8 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
         {/* Outputs */}
         <div className="flex flex-col gap-1 items-end ml-auto">
           {outputPorts.map((port) => (
-            <div key={port} className="relative flex items-center gap-1 text-slate-400">
+            <div key={port} className="flex items-center gap-1 text-slate-400" style={{ height: ROW_H }}>
               <span className="text-[10px]">{port}</span>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={port}
-                style={{ top: "50%", right: "-5px", transform: "translateY(-50%)", position: "absolute" }}
-              />
             </div>
           ))}
         </div>

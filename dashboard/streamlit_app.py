@@ -2852,7 +2852,7 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
             return
         pfx = asset.split("/")[0].lower()[:3]
         results = dag.get("last_results", {})
-        ai_node = results.get(f"{pfx}_ai", {})
+        ai_node = results.get(f"{pfx}_llm", {})
         if not isinstance(ai_node, dict):
             return
         ai_outputs = ai_node.get("outputs", {})

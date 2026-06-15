@@ -154,8 +154,8 @@ def render_global_overview() -> None:
             size_usd = carry_out.get("size_usd", 0)
             position_open = carry_out.get("position_open", False)
             
-            score = int(50 + annual_pct * 10) if annual_pct > 0 else 50
-            score = min(100, max(0, score))
+            score = int(50 + annual_pct * 3) if annual_pct > 0 else 50
+            score = min(95, max(5, score))  # 5-95 au lieu de 0-100
             
             if carry_signal == "open_carry" or position_open:
                 trade_str = f"🟢 CARRY ${size_usd:,.0f}"

@@ -106,7 +106,7 @@ export function DAGCanvas() {
 
       // Forcer les ports depuis le schéma (pas le cache localStorage)
       const schemaMap: Record<string, {in: string[], out: string[]}> = {
-        AssetDef: {in: [], out: ["symbol","exchange","capital","fraction","max_positions"]},
+        AssetDef: {in: [], out: ["symbol"]},
         LoadMultiTF: {in: ["symbol"], out: ["ohlcv_5m","ohlcv_1h"]},
         FundingCarryNode: {in: ["spot_price","funding_rate","perp_price"], out: ["signal","decision","size_usd","expected_return","confidence","funding_rate","annual_funding_pct","position_open"]},
         PaperTrader: {in: ["decision","symbol","max_positions"], out: ["trade_result"]},

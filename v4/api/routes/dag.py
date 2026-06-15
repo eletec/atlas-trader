@@ -75,7 +75,7 @@ async def run_dag(body: RunDAGRequest):
 
 @router.post("/schedule")
 async def schedule_dag(body: ScheduleDAGRequest):
-    """Démarre un DAG en boucle périodique (daemon thread)."""
+    """Démarre un DAG en boucle périodique (daemon thread) + persiste dans dag_store."""
     try:
         dag_id = DAGRegistry.instance().schedule(body.dag, body.cycle_s)
     except ValueError as exc:
@@ -83,6 +83,15 @@ async def schedule_dag(body: ScheduleDAGRequest):
     except Exception as exc:
         logger.exception("Erreur schedule_dag")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    # Persister dans le store (source de vérité = canvas)
+    try:
+        from v4.api.dag_store import upsert
+        body.dag.cycle_s = body.cycle_s
+        upsert(body.dag)
+        logger.info("DAG '%s' persisté dans dag_store", dag_id)
+    except Exception as exc:
+        logger.warning("Échec persistance DAG '%s': %s", dag_id, exc)
 
     return {"dag_id": dag_id, "status": "scheduled", "cycle_s": body.cycle_s}
 
@@ -92,20 +101,35 @@ async def stop_dag(dag_id: str):
     found = DAGRegistry.instance().stop(dag_id)
     if not found:
         raise HTTPException(status_code=404, detail=f"DAG '{dag_id}' non trouvé")
+    # Retirer du store également
+    try:
+        from v4.api.dag_store import remove
+        remove(dag_id)
+    except Exception as exc:
+        logger.warning("Échec suppression DAG '%s' du store: %s", dag_id, exc)
     return {"dag_id": dag_id, "status": "stopped"}
 
 
 @router.post("/restart-demo")
 async def restart_demo_dags():
-    """Redémarre les 7 DAGs V7 Funding Carry."""
-    from v7.api.v7_demo_dag import V7_DAGS
+    """Redémarre les DAGs depuis le store persisté (ou V7 par défaut)."""
+    from v4.api.dag_store import load_all, get_defaults, save_all
 
     registry = DAGRegistry.instance()
+    
+    # Charger depuis le store (source de vérité)
+    dags = load_all()
+    if not dags:
+        dags = get_defaults()
+        save_all(dags)
+        logger.info("restart-demo: aucun DAG persisté → V7 par défaut sauvegardés")
+    
     restarted = []
-    for dag in V7_DAGS:
+    for dag in dags:
         try:
             registry.stop(dag.dag_id)
-            registry.schedule(dag, cycle_s=28800)  # 8h
+            cycle = getattr(dag, "cycle_s", None) or 28800
+            registry.schedule(dag, cycle_s=cycle)
             restarted.append(dag.dag_id)
         except Exception as exc:
             logger.warning("Échec redémarrage %s: %s", dag.dag_id, exc)

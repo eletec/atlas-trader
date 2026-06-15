@@ -53,20 +53,30 @@ app.include_router(prices_router, prefix="/prices", tags=["prices"])
 
 @app.on_event("startup")
 async def _auto_schedule_demo():
-    """Démarre automatiquement les DAGs au boot."""
+    """Démarre automatiquement les DAGs au boot (persistés ou défaut)."""
     from v4.api.dag_registry import DAGRegistry
+    from v4.api.dag_store import load_all, get_defaults, save_all
+    
     registry = DAGRegistry.instance()
     existing_ids = {e.dag_id for e in registry.status()}
     
-    # 1) V7 DAGs Funding Carry — stratégie principale (affiche dans le dashboard)
-    try:
-        from v7.api.v7_demo_dag import V7_DAGS
-        for dag in V7_DAGS:
-            if dag.dag_id not in existing_ids:
-                registry.schedule(dag, cycle_s=28800)
-                logging.getLogger("v4.api.main").info("V7 DAG '%s' schedulé (carry, $2000)", dag.dag_id)
-    except Exception as exc:
-        logging.getLogger("v4.api.main").warning(f"DAGs V7 non schedulés : {exc}")
+    # 1) Charger les DAGs persistés (source de vérité = canvas)
+    dags_to_schedule = load_all()
+    
+    # 2) Fallback: si aucun DAG persisté, utiliser les V7 par défaut et les sauver
+    if not dags_to_schedule:
+        logger = logging.getLogger("v4.api.main")
+        logger.info("Aucun DAG persisté → initialisation avec les V7 par défaut")
+        dags_to_schedule = get_defaults()
+        save_all(dags_to_schedule)
+    
+    # 3) Scheduler tous les DAGs
+    logger = logging.getLogger("v4.api.main")
+    for dag in dags_to_schedule:
+        if dag.dag_id not in existing_ids:
+            cycle = getattr(dag, "cycle_s", None) or 28800
+            registry.schedule(dag, cycle_s=cycle)
+            logger.info("DAG '%s' schedulé (cycle=%ds)", dag.dag_id, cycle)
     
     # 2) V5 DAGs directionnels — désactivés (monitoring uniquement si besoin)
     # Note: V5 est remplacé par V7. Décommenter ci-dessous pour réactiver le monitoring.

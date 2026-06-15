@@ -111,13 +111,13 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
       <div className="relative px-3 py-2 flex gap-4">
         {/* Inputs */}
         <div className="flex flex-col gap-1 items-start">
-          {inputPorts.map((port, i) => (
-            <div key={port} className="flex items-center gap-1 text-slate-400">
+          {inputPorts.map((port) => (
+            <div key={port} className="relative flex items-center gap-1 text-slate-400">
               <Handle
                 type="target"
                 position={Position.Left}
                 id={port}
-                style={{ top: `${28 + i * 20}px`, left: "-5px", position: "absolute" }}
+                style={{ top: "50%", left: "-5px", transform: "translateY(-50%)", position: "absolute" }}
               />
               <span className="text-[10px]">{port}</span>
             </div>
@@ -126,14 +126,14 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
 
         {/* Outputs */}
         <div className="flex flex-col gap-1 items-end ml-auto">
-          {outputPorts.map((port, i) => (
-            <div key={port} className="flex items-center gap-1 text-slate-400">
+          {outputPorts.map((port) => (
+            <div key={port} className="relative flex items-center gap-1 text-slate-400">
               <span className="text-[10px]">{port}</span>
               <Handle
                 type="source"
                 position={Position.Right}
                 id={port}
-                style={{ top: `${28 + i * 20}px`, right: "-5px", position: "absolute" }}
+                style={{ top: "50%", right: "-5px", transform: "translateY(-50%)", position: "absolute" }}
               />
             </div>
           ))}

@@ -2,7 +2,8 @@
 v7/api/v7_demo_dag.py — V7 Minimal DAG (Funding Carry only).
 
 Remplace le DAG directionnel V6 (16 nœuds, 0 edge) par un DAG V7 léger.
-Par actif: AssetDef → LoadData → FundingCarry → Record
+Par actif: AssetDef → FundingCarry → PaperTrader + Record + LLM
+Le FundingCarryNode est autonome : il fetch le funding rate et les prix en direct.
 
 Usage (dans main.py):
     from v7.api.v7_demo_dag import V7_DAGS
@@ -17,7 +18,7 @@ CAPITAL_PER_ASSET = 2_000  # $2K par actif en carry
 
 
 def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -> DAGSpec:
-    """Fabrique un DAG V7 minimal: Data → Carry → Record."""
+    """Fabrique un DAG V7: AssetDef → FundingCarry → PaperTrader + Record + LLM."""
     pfx = symbol.split("/")[0].lower()[:3]
 
     nodes = [
@@ -25,10 +26,7 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  params={"symbol": symbol, "exchange": "binance",
                           "capital_usd": capital, "fraction": 0.80,
                           "max_positions": 3}),
-        NodeSpec(id=f"{pfx}_data", type="LoadMultiTF",
-                 params={"symbol": symbol, "days_5m": 30, "days_1h": 90,
-                          "exchange": "binance"}),
-        # V7 Funding Carry
+        # V7 Funding Carry (auto-suffisant : fetch funding + prix en direct)
         NodeSpec(id=f"{pfx}_carry", type="FundingCarryNode",
                  params={"symbol": symbol, "capital": capital,
                           "fraction": 0.80, "min_funding": 0.00001,
@@ -47,8 +45,6 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
     ]
 
     edges = [
-        EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
-                 target_node=f"{pfx}_data", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="symbol",
                  target_node=f"{pfx}_paper", target_port="symbol"),
         EdgeSpec(source_node=f"{pfx}_asset", source_port="max_positions",

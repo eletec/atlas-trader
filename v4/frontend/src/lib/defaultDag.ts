@@ -2,7 +2,7 @@
  * v4/frontend/src/lib/defaultDag.ts
  *
  * V7 DAG — Funding Carry (Risk Premium Harvesting).
- * 5 nœuds par actif : AssetDef → LoadData → FundingCarry → PaperTrader → Record.
+ * 4 colonnes : AssetDef → FundingCarry → PaperTrader → Record + LLM
  */
 
 import type { Node as RFNode, Edge as RFEdge } from "@xyflow/react";
@@ -49,41 +49,32 @@ const NODES_SPEC: NodeSpec[] = [
     inputPorts: [], outputPorts: ["symbol"],
   },
 
-  // Col 1 : Données
+  // Col 1 : Funding Carry (autonome — fetch funding + prix en direct)
   {
-    id: "btc_data", type: "LoadMultiTF", x: X[1], y: Y_TOP, label: "Load 5m + 1h",
-    params: { symbol: "BTC/USDT", days_5m: 30, days_1h: 90, exchange: "binance" },
-    inputPorts: ["symbol"], outputPorts: ["ohlcv_5m", "ohlcv_1h"],
-  },
-
-  // Col 2 : Funding Carry (stratégie principale V7)
-  {
-    id: "btc_carry", type: "FundingCarryNode", x: X[2], y: Y_TOP, label: "Funding Carry V7",
+    id: "btc_carry", type: "FundingCarryNode", x: X[1], y: Y_TOP, label: "Funding Carry V7",
     params: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168 },
     inputPorts: ["spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"],
   },
 
-  // Col 3 : PaperTrader
+  // Col 2 : PaperTrader
   {
-    id: "btc_paper", type: "PaperTrader", x: X[3], y: Y_TOP, label: "Paper Trader",
+    id: "btc_paper", type: "PaperTrader", x: X[2], y: Y_TOP, label: "Paper Trader",
     params: {}, inputPorts: ["decision", "symbol", "max_positions"], outputPorts: ["trade_result"],
   },
 
-  // Col 4 : Record DB + AI Analyst
+  // Col 3 : Record DB + AI Analyst
   {
-    id: "btc_record", type: "RecordDecision", x: X[4], y: Y_TOP - 60, label: "Record DB",
+    id: "btc_record", type: "RecordDecision", x: X[3], y: Y_TOP - 60, label: "Record DB",
     params: { db_path: "/app/data/v4.db" }, inputPorts: ["decision"], outputPorts: [],
   },
   {
-    id: "ai_analyst", type: "LLMNode", x: X[4], y: Y_TOP + 60, label: "AI Analyst",
+    id: "ai_analyst", type: "LLMNode", x: X[3], y: Y_TOP + 60, label: "AI Analyst",
     params: { model: "deepseek", temperature: 0.3, max_tokens: 256 },
     inputPorts: ["decision", "funding_rate", "annual_funding_pct"], outputPorts: ["response", "parsed"],
   },
 ];
 
 const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: string }> = [
-  { src: "btc_asset", dst: "btc_data", srcPort: "symbol", dstPort: "symbol" },
-  { src: "btc_data", dst: "btc_carry", srcPort: "ohlcv_5m", dstPort: "spot_price" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "symbol", dstPort: "symbol" },
   { src: "btc_asset", dst: "btc_paper", srcPort: "max_positions", dstPort: "max_positions" },
   { src: "btc_carry", dst: "btc_paper", srcPort: "decision", dstPort: "decision" },

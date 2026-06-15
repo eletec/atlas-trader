@@ -142,6 +142,31 @@ async def all_dag_status():
     return _entries_to_out(DAGRegistry.instance().status())
 
 
+@router.get("/store")
+async def dag_store_info():
+    """Debug : liste les DAGs persistés dans /app/data/dags.json."""
+    try:
+        from v4.api.dag_store import load_all, _store_path
+        dags = load_all()
+        return {
+            "store_path": str(_store_path()),
+            "count": len(dags),
+            "dags": [
+                {
+                    "dag_id": d.dag_id,
+                    "asset": d.asset,
+                    "nodes": len(d.nodes),
+                    "edges": len(d.edges),
+                    "cycle_s": d.cycle_s,
+                    "node_types": [n.type for n in d.nodes],
+                }
+                for d in dags
+            ],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.get("/logs")
 async def dag_logs(n: int = 50):
     """Retourne les N derniers logs d'exécution des DAGs."""

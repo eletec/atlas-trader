@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { memo, useRef, useEffect, useState } from "react";
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { PriceTicker } from "@/components/ui/PriceTicker";
@@ -32,36 +32,24 @@ export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: N
   const allEdges = useDagStore((s) => s.edges);
   const connectedOutputs = new Set(allEdges.filter((e: any) => e.source === id).map((e: any) => e.sourceHandle));
 
-  // Mesure la position du label de port pour aligner la poignée
-  const nodeRef = useRef<HTMLDivElement>(null);
-  const portLabelRef = useRef<HTMLSpanElement>(null);
-  const [portTop, setPortTop] = useState(100); // fallback
-  useEffect(() => {
-    const nodeEl = nodeRef.current;
-    const labelEl = portLabelRef.current;
-    if (nodeEl && labelEl) {
-      const nr = nodeEl.getBoundingClientRect();
-      const lr = labelEl.getBoundingClientRect();
-      setPortTop(lr.top - nr.top + lr.height / 2);
-    }
-  }, []);
+  // Layout fixe : header(~31px) + details(8+56px) + port-row/2(~8px) ≈ 103px
+  const PORT_TOP = 103;
 
   return (
     <div
-      ref={nodeRef}
       className={cn(
         "relative min-w-[200px] rounded-lg border bg-canvas-node shadow-lg",
         selected ? "border-canvas-accent" : "border-indigo-700"
       )}
     >
-      {/* ---- Poignées React Flow (enfants directs du nœud) ---- */}
+      {/* Poignée output — enfant direct, ancrée sur le conteneur relative */}
       {outputPorts.map((port) => (
         <Handle
           key={port}
           type="source"
           position={Position.Right}
           id={port}
-          style={{ top: portTop }}
+          style={{ top: PORT_TOP }}
           className={connectedOutputs.has(port) ? "!bg-emerald-400 !border-emerald-300" : ""}
         />
       ))}
@@ -73,7 +61,7 @@ export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: N
         <span className="ml-auto text-slate-500 text-[10px]">AssetDef</span>
       </div>
 
-      {/* Détails + port label */}
+      {/* Détails */}
       <div className="px-3 py-2 space-y-1 text-xs">
         <div className="flex justify-between">
           <span className="text-slate-400">Prix live</span>
@@ -87,20 +75,18 @@ export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: N
           <span className="text-slate-400">Capital</span>
           <span className="text-slate-300 font-mono">${capital.toLocaleString()}</span>
         </div>
-        {/* Port label — aligné avec le Handle */}
-        {outputPorts.length > 0 && (
-          <div className="flex justify-end pt-1">
-            {outputPorts.map((port) => (
-              <span
-                key={port}
-                ref={portLabelRef}
-                className={cn("text-[10px]", connectedOutputs.has(port) ? "text-emerald-400 font-medium" : "text-slate-500")}
-              >
-                {port} ↗
-              </span>
-            ))}
-          </div>
-        )}
+      </div>
+
+      {/* Port label */}
+      <div className="px-3 pb-2 flex justify-end">
+        {outputPorts.map((port) => (
+          <span
+            key={port}
+            className={cn("text-[10px]", connectedOutputs.has(port) ? "text-emerald-400 font-medium" : "text-slate-500")}
+          >
+            {port} ↗
+          </span>
+        ))}
       </div>
     </div>
   );

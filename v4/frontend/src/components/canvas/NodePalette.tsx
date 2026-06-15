@@ -13,7 +13,7 @@ const NODE_CATALOG = [
   {
     category: "Actif",
     nodes: [
-      { type: "AssetDef", label: "AssetDef", inputPorts: [], outputPorts: ["symbol", "exchange", "capital", "fraction"] },
+      { type: "AssetDef", label: "AssetDef", inputPorts: [], outputPorts: ["symbol"] },
     ],
   },
   {
@@ -25,20 +25,20 @@ const NODE_CATALOG = [
   {
     category: "V7 — Risk Premium",
     nodes: [
-      { type: "FundingCarryNode", label: "Funding Carry", inputPorts: ["spot_price", "funding_rate"], outputPorts: ["signal", "decision", "size_usd"] },
+      { type: "FundingCarryNode", label: "Funding Carry", inputPorts: ["spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"] },
     ],
   },
   {
     category: "Exécution",
     nodes: [
-      { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol"], outputPorts: ["trade_result"] },
+      { type: "PaperTrader", label: "Paper Trader", inputPorts: ["decision", "symbol", "max_positions"], outputPorts: ["trade_result"] },
       { type: "RecordDecision", label: "Record DB", inputPorts: ["decision"], outputPorts: [] },
     ],
   },
   {
     category: "IA",
     nodes: [
-      { type: "LLMNode", label: "LLM AI Analyst", inputPorts: ["decision"], outputPorts: ["response", "parsed"] },
+      { type: "LLMNode", label: "LLM AI Analyst", inputPorts: ["decision", "funding_rate", "annual_funding_pct"], outputPorts: ["response", "parsed"] },
     ],
   },
 ];

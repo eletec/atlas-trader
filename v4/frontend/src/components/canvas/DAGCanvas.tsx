@@ -111,7 +111,7 @@ export function DAGCanvas() {
         FundingCarryNode: {in: ["spot_price","funding_rate","perp_price"], out: ["signal","decision","size_usd","expected_return","confidence","funding_rate","annual_funding_pct","position_open"]},
         PaperTrader: {in: ["decision","symbol","max_positions"], out: ["trade_result"]},
         RecordDecision: {in: ["decision"], out: []},
-        LLMNode: {in: ["decision","funding_rate"], out: ["response","parsed"]},
+        LLMNode: {in: ["decision","funding_rate","annual_funding_pct"], out: ["response","parsed"]},
       };
       loadedNodes = loadedNodes.map((n) => {
         const t = (n.data as any)?.nodeType || n.type || "";

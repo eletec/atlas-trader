@@ -152,46 +152,8 @@ def render_global_overview() -> None:
             size_usd = carry_out.get("size_usd", 0)
             position_open = carry_out.get("position_open", False)
 
-            # ── LLM AI Analyst ──
-            llm_node = results.get(f"{pfx}_llm", {})
-            llm_out = llm_node.get("outputs", {}) if isinstance(llm_node, dict) else {}
-            llm_response = llm_out.get("response", "")
-            llm_parsed = llm_out.get("parsed", {})
-            if isinstance(llm_parsed, str):
-                try: llm_parsed = __import__("json").loads(llm_parsed)
-                except Exception: llm_parsed = {}
-            llm_pending = llm_out.get("_pending_next", False) or "⏳" in str(llm_response)
-            
-            # Fallback: si placeholder async, chercher dans le cache LLM
-            if llm_pending or not llm_response or llm_response.startswith("LLM_ERROR"):
-                try:
-                    import urllib.request, json
-                    req2 = urllib.request.Request(f"{_API_BASE}/dag/llm-results")
-                    with urllib.request.urlopen(req2, timeout=3) as resp2:
-                        cache = json.loads(resp2.read())
-                    cache_key = f"llm_{dag_id}_{pfx}_llm"
-                    cached = cache.get("results", {}).get(cache_key)
-                    if not cached:
-                        cache_key_legacy = f"llm_unknown_{pfx}_llm"
-                        cached = cache.get("results", {}).get(cache_key_legacy)
-                    if cached and isinstance(cached, dict) and "error" not in cached and "response" in cached:
-                        llm_response = cached.get("response", "")
-                        llm_pending = False
-                except Exception:
-                    pass
-            
-            llm_short = ""
-            if llm_response and not llm_pending and not llm_response.startswith("LLM_ERROR"):
-                # Strip markdown/HTML, garder que le texte brut (max 60 chars)
-                import re
-                clean = re.sub(r'[*_#`>\-]', '', str(llm_response))
-                clean = re.sub(r'\{[^}]+\}', '', clean)  # retirer les {placeholders}
-                clean = ' '.join(clean.split())[:60]
-                llm_short = clean
-            elif llm_pending:
-                llm_short = "⏳ analyse..."
-            elif llm_response.startswith("LLM_ERROR"):
-                llm_short = "⚠️ erreur IA"
+            # ── LLM AI Analyst (affiché dans la section "🧠 Dernières analyses IA", pas dans ce tableau) ──
+            # Le cache LLM est consulté uniquement par la section dédiée.
 
             score = int(50 + annual_pct * 3) if annual_pct > 0 else 50
             score = min(95, max(5, score))  # 5-95 au lieu de 0-100
@@ -271,7 +233,6 @@ def render_global_overview() -> None:
             f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{trade_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{trend if trend else '—'}</td>"
-            f"<td style='padding:6px 10px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title=\"{llm_response or ''}\">{llm_short or '—'}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{status_icon} {status_text}</td>"
             f"</tr>"
         )
@@ -286,7 +247,6 @@ def render_global_overview() -> None:
           <th style="padding:4px 8px;text-align:left;">Run</th>
           <th style="padding:4px 8px;text-align:left;">Carry</th>
           <th style="padding:4px 8px;text-align:left;">Rendement</th>
-          <th style="padding:4px 8px;text-align:left;">🤖 IA</th>
           <th style="padding:4px 8px;text-align:left;">Statut</th>
         </tr></thead>
         <tbody>{html_rows}</tbody>

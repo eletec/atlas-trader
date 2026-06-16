@@ -2841,7 +2841,7 @@ def _render_v4_config():
 
 
 def _render_ai_analysis(asset: str, expanded: bool = False):
-    """Affiche la dernière analyse IA pour un actif depuis les résultats DAG."""
+    """Affiche la dernière analyse IA pour un actif (DAG + cache async)."""
     try:
         import urllib.request, json as _json
         req = urllib.request.Request(f"{_API_BASE}/dag/status")
@@ -2854,12 +2854,29 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
         results = dag.get("last_results", {})
         ai_node = results.get(f"{pfx}_llm", {})
         if not isinstance(ai_node, dict):
-            return
+            ai_node = {}
         ai_outputs = ai_node.get("outputs", {})
         response = ai_outputs.get("response", "")
         model = ai_outputs.get("model", "")
         duration = ai_outputs.get("duration_ms", 0)
-        if response and not response.startswith("LLM_ERROR"):
+        
+        # Si placeholder async, chercher le vrai résultat dans le cache LLM
+        if not response or "⏳" in str(response) or "LLM_ERROR" in str(response):
+            try:
+                req2 = urllib.request.Request(f"{_API_BASE}/dag/llm-results")
+                with urllib.request.urlopen(req2, timeout=3) as resp2:
+                    cache = _json.loads(resp2.read())
+                dag_id = dag.get("dag_id", "")
+                cache_key = f"llm_{dag_id}_{pfx}_llm"
+                cached = cache.get("results", {}).get(cache_key, {})
+                if cached and "error" not in cached and "response" in cached:
+                    response = cached.get("response", "")
+                    model = cached.get("model", model)
+                    duration = cached.get("duration_ms", duration)
+            except Exception:
+                pass
+        
+        if response and not response.startswith("LLM_ERROR") and "⏳" not in str(response):
             label = f"🧠 {asset} ({model}, {duration/1000:.1f}s)"
             with st.expander(label, expanded=expanded):
                 st.markdown(response)

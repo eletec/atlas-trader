@@ -162,6 +162,17 @@ async def dag_store_info():
         return {"error": str(exc)}
 
 
+@router.get("/llm-results")
+async def llm_results():
+    """Retourne les résultats LLM en cache (async), pour affichage temps réel."""
+    try:
+        from v4.core.async_tasks import _cache
+        llm = {k: v for k, v in _cache.items() if k.startswith("llm_")}
+        return {"count": len(llm), "results": llm}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.get("/logs")
 async def dag_logs(n: int = 50):
     """Retourne les N derniers logs d'exécution des DAGs."""

@@ -161,6 +161,25 @@ def render_global_overview() -> None:
                 try: llm_parsed = __import__("json").loads(llm_parsed)
                 except Exception: llm_parsed = {}
             llm_pending = llm_out.get("_pending_next", False) or "⏳" in str(llm_response)
+            
+            # Fallback: si placeholder async, chercher dans le cache LLM
+            if llm_pending or not llm_response or llm_response.startswith("LLM_ERROR"):
+                try:
+                    import urllib.request, json
+                    req2 = urllib.request.Request(f"{_API_BASE}/dag/llm-results")
+                    with urllib.request.urlopen(req2, timeout=3) as resp2:
+                        cache = json.loads(resp2.read())
+                    cache_key = f"llm_{dag_id}_{pfx}_llm"
+                    cached = cache.get("results", {}).get(cache_key)
+                    if not cached:
+                        cache_key_legacy = f"llm_unknown_{pfx}_llm"
+                        cached = cache.get("results", {}).get(cache_key_legacy)
+                    if cached and isinstance(cached, dict) and "error" not in cached and "response" in cached:
+                        llm_response = cached.get("response", "")
+                        llm_pending = False
+                except Exception:
+                    pass
+            
             llm_short = ""
             if llm_response and not llm_pending and not llm_response.startswith("LLM_ERROR"):
                 # Strip markdown/HTML, garder que le texte brut (max 60 chars)

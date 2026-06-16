@@ -2502,8 +2502,21 @@ def render_trades_list_sortable(trades: list[dict]):
     col_pnl    = t("col_pnl")
     col_score  = t("col_score")
 
+    # Prix live pour P&L latent
+    live_prices: dict[str, float] = {}
+    try:
+        import urllib.request as _ur, json as _js
+        req = _ur.Request(f"{_API_BASE}/prices/snapshot")
+        with _ur.urlopen(req, timeout=3) as resp:
+            prices_data = _js.loads(resp.read())
+        for sym, data in prices_data.items():
+            if isinstance(data, dict):
+                live_prices[sym] = float(data.get("price", 0))
+    except Exception:
+        pass
+
     import json as _json_tr
-    cols = [col_date, col_asset, col_action, "Signal", col_entry, col_size, "SL", "TP", col_pnl, col_score]
+    cols = [col_date, col_asset, col_action, "Signal", col_entry, col_size, "SL", "TP", col_pnl, "Progression", col_score]
     header_cells = "".join(
         f'<th style="padding:9px 12px;font-size:12px;font-weight:600;'
         f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
@@ -2562,6 +2575,21 @@ def render_trades_list_sortable(trades: list[dict]):
         else:
             pnl_str = f'<span style="color:#e74c3c;font-weight:600;">${pnl_val:+,.2f}</span>'
 
+        # Progression (P&L latent pour trades ouverts)
+        progress_str = "—"
+        entry_price = trade.get("entry_price", 0) or 0
+        size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
+        current_price = live_prices.get(trade.get("asset", ""), 0)
+        is_open = pnl_val is None
+        if is_open and entry_price > 0 and current_price > 0 and size_usd > 0:
+            if action in ("SELL", "SHORT", "CARRY"):
+                pnl_pct = (entry_price - current_price) / entry_price * 100
+            else:
+                pnl_pct = (current_price - entry_price) / entry_price * 100
+            unrealized = size_usd * pnl_pct / 100
+            prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
+            progress_str = f'<span style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+
         cells = [
             trade.get("timestamp", "")[:16].replace("T", " "),
             trade.get("asset", "—"),
@@ -2573,6 +2601,7 @@ def render_trades_list_sortable(trades: list[dict]):
             f'${trade.get("sl_price", 0):,.2f}' if trade.get("sl_price") else "—",
             f'${trade.get("tp_price", 0):,.2f}' if trade.get("tp_price") else "—",
             pnl_str,
+            progress_str,
             f'{trade.get("score", 0):.0f}/100',
         ]
         td_style = (f'padding:8px 12px;font-size:13px;color:{tbl_fg};'

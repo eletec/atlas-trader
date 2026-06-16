@@ -134,7 +134,15 @@ class LLMNode(Node):
         try:
             formatted_prompt = formatted_prompt.format(**inputs, inputs=json.dumps(inputs, default=str))
         except (KeyError, ValueError):
-            formatted_prompt = formatted_prompt.replace("{inputs}", json.dumps(inputs, default=str))
+            # Remplacer chaque placeholder manquant par "N/A" au lieu de laisser {key}
+            import re as _re
+            def _safe_replace(m):
+                key = m.group(1)
+                if key == "inputs":
+                    return json.dumps(inputs, default=str)
+                val = inputs.get(key)
+                return str(val) if val is not None else "N/A"
+            formatted_prompt = _re.sub(r'\{(\w+)\}', _safe_replace, formatted_prompt)
 
         payload = {
             "model": model,

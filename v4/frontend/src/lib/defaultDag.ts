@@ -70,7 +70,7 @@ const NODES_SPEC: NodeSpec[] = [
   {
     id: "ai_analyst", type: "LLMNode", x: X[3], y: Y_TOP + 60, label: "AI Analyst",
     params: { model: "deepseek-chat", temperature: 0.3, max_tokens: 256 },
-    inputPorts: ["decision", "funding_rate", "annual_funding_pct"], outputPorts: ["response", "parsed"],
+    inputPorts: ["decision", "funding_rate", "annual_funding_pct", "signal", "size_usd", "expected_return"], outputPorts: ["response", "parsed"],
   },
 ];
 
@@ -82,6 +82,9 @@ const EDGES_SPEC: Array<{ src: string; dst: string; srcPort?: string; dstPort?: 
   { src: "btc_carry", dst: "ai_analyst", srcPort: "decision", dstPort: "decision" },
   { src: "btc_carry", dst: "ai_analyst", srcPort: "funding_rate", dstPort: "funding_rate" },
   { src: "btc_carry", dst: "ai_analyst", srcPort: "annual_funding_pct", dstPort: "annual_funding_pct" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "signal", dstPort: "signal" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "size_usd", dstPort: "size_usd" },
+  { src: "btc_carry", dst: "ai_analyst", srcPort: "expected_return", dstPort: "expected_return" },
 ];
 
 export function getDefaultNodes(): RFNode[] {

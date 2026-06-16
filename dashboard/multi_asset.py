@@ -162,10 +162,17 @@ def render_global_overview() -> None:
                 except Exception: llm_parsed = {}
             llm_pending = llm_out.get("_pending_next", False) or "⏳" in str(llm_response)
             llm_short = ""
-            if llm_response and not llm_pending:
-                llm_short = str(llm_response)[:60].replace("\n", " ")
+            if llm_response and not llm_pending and not llm_response.startswith("LLM_ERROR"):
+                # Strip markdown/HTML, garder que le texte brut (max 60 chars)
+                import re
+                clean = re.sub(r'[*_#`>\-]', '', str(llm_response))
+                clean = re.sub(r'\{[^}]+\}', '', clean)  # retirer les {placeholders}
+                clean = ' '.join(clean.split())[:60]
+                llm_short = clean
             elif llm_pending:
                 llm_short = "⏳ analyse..."
+            elif llm_response.startswith("LLM_ERROR"):
+                llm_short = "⚠️ erreur IA"
 
             score = int(50 + annual_pct * 3) if annual_pct > 0 else 50
             score = min(95, max(5, score))  # 5-95 au lieu de 0-100

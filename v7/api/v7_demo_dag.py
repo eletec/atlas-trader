@@ -62,6 +62,12 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                  target_node=f"{pfx}_llm", target_port="funding_rate"),
         EdgeSpec(source_node=f"{pfx}_carry", source_port="annual_funding_pct",
                  target_node=f"{pfx}_llm", target_port="annual_funding_pct"),
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="signal",
+                 target_node=f"{pfx}_llm", target_port="signal"),
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="size_usd",
+                 target_node=f"{pfx}_llm", target_port="size_usd"),
+        EdgeSpec(source_node=f"{pfx}_carry", source_port="expected_return",
+                 target_node=f"{pfx}_llm", target_port="expected_return"),
     ]
 
     return DAGSpec(dag_id=dag_id, asset=symbol, nodes=nodes, edges=edges)

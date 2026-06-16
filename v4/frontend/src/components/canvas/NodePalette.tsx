@@ -38,7 +38,7 @@ const NODE_CATALOG = [
   {
     category: "IA",
     nodes: [
-      { type: "LLMNode", label: "LLM AI Analyst", inputPorts: ["decision", "funding_rate", "annual_funding_pct"], outputPorts: ["response", "parsed"] },
+      { type: "LLMNode", label: "LLM AI Analyst", inputPorts: ["decision", "funding_rate", "annual_funding_pct", "signal", "size_usd", "expected_return"], outputPorts: ["response", "parsed"] },
     ],
   },
 ];

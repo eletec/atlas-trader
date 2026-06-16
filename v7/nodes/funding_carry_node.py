@@ -153,6 +153,27 @@ class FundingCarryNode:
         except Exception:
             return 0.0
     
+    def fetch_spot_price(self) -> float:
+        """Fetch le prix spot actuel depuis Binance."""
+        try:
+            import ccxt
+            exchange = ccxt.binance({"enableRateLimit": True})
+            ticker = exchange.fetch_ticker(self.symbol)
+            return float(ticker.get("last", 0))
+        except Exception:
+            return 0.0
+    
+    def fetch_perp_price(self) -> float:
+        """Fetch le prix du perpetual depuis Binance."""
+        try:
+            import ccxt
+            exchange = ccxt.binance({"enableRateLimit": True})
+            symbol_perp = f"{self.symbol}:USDT" if ":" not in self.symbol else self.symbol
+            ticker = exchange.fetch_ticker(symbol_perp)
+            return float(ticker.get("last", 0))
+        except Exception:
+            return 0.0
+    
     # ── Decision logic ──
     
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -175,6 +196,16 @@ class FundingCarryNode:
         spot_price = float(inputs.get("spot_price", 0))
         funding_rate = float(inputs.get("funding_rate", 0))
         perp_price = float(inputs.get("perp_price", spot_price))
+        
+        # Fetch spot price si pas fourni
+        if spot_price == 0:
+            spot_price = self.fetch_spot_price()
+        
+        # Fetch perp price si pas fourni
+        if perp_price == 0:
+            perp_price = self.fetch_perp_price()
+            if perp_price == 0:
+                perp_price = spot_price
         
         # Fetch funding rate si pas fourni
         if funding_rate == 0:

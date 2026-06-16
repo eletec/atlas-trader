@@ -2867,9 +2867,13 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
                 with urllib.request.urlopen(req2, timeout=3) as resp2:
                     cache = _json.loads(resp2.read())
                 dag_id = dag.get("dag_id", "")
+                # Chercher avec le vrai dag_id, puis fallback unknown (ancien cache)
                 cache_key = f"llm_{dag_id}_{pfx}_llm"
-                cached = cache.get("results", {}).get(cache_key, {})
-                if cached and "error" not in cached and "response" in cached:
+                cached = cache.get("results", {}).get(cache_key)
+                if not cached:
+                    cache_key_legacy = f"llm_unknown_{pfx}_llm"
+                    cached = cache.get("results", {}).get(cache_key_legacy)
+                if cached and isinstance(cached, dict) and "error" not in cached and "response" in cached:
                     response = cached.get("response", "")
                     model = cached.get("model", model)
                     duration = cached.get("duration_ms", duration)

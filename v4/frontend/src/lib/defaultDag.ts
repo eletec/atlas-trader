@@ -69,7 +69,7 @@ const NODES_SPEC: NodeSpec[] = [
   },
   {
     id: "ai_analyst", type: "LLMNode", x: X[3], y: Y_TOP + 60, label: "AI Analyst",
-    params: { model: "deepseek", temperature: 0.3, max_tokens: 256 },
+    params: { model: "deepseek-chat", temperature: 0.3, max_tokens: 256 },
     inputPorts: ["decision", "funding_rate", "annual_funding_pct"], outputPorts: ["response", "parsed"],
   },
 ];

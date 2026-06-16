@@ -25,7 +25,7 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   PaperTrader: { symbol: "BTC/USDT", dag_id: "demo_v5" },
   AlertOnly: { channels: ["log"] },
   RecordDecision: { db_path: "/app/data/v4_decisions.db" },
-  LLMNode: { model: "phi4:latest", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },
+  LLMNode: { model: "deepseek-chat", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },
   // ── V7 ──
   FundingCarryNode: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168 },
   // ── V5 ──

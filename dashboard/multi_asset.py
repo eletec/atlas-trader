@@ -170,15 +170,22 @@ def render_global_overview() -> None:
             score = int(50 + annual_pct * 3) if annual_pct > 0 else 50
             score = min(95, max(5, score))  # 5-95 au lieu de 0-100
 
-            if carry_signal == "open_carry" or position_open:
+            # Trade info : distinguer nouvelle ouverture vs position active
+            total_received = carry_out.get("total_funding_received", 0)
+            n_payments = carry_out.get("n_payments", 0)
+            if carry_signal == "open_carry":
                 trade_str = f"🟢 CARRY ${size_usd:,.0f}"
+            elif position_open and total_received > 0:
+                trade_str = f"💰 +${total_received:.4f} ({n_payments}×)"
+            elif position_open:
+                trade_str = "🟢 CARRY actif"
             elif funding_rate > 0:
                 trade_str = f"funding {funding_rate*100:.4f}%"
             else:
                 trade_str = f"funding {funding_rate*100:.4f}%"
 
             trend = f"{annual_pct:+.1f}%/an" if annual_pct != 0 else "—"
-            signal_display = f"💸 {carry_signal}"
+            signal_display = "💸 carry" if carry_signal.startswith("open") else ("📥 collecte" if position_open else f"💸 {carry_signal}")
         else:
             # ── V5/V6 Legacy ──
             signal_node = results.get(f"{pfx}_signal", {}) or results.get("signal", {})

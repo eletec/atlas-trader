@@ -39,7 +39,7 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
         # LLM AI Analyst (analyse async de la décision carry)
         NodeSpec(id=f"{pfx}_llm", type="LLMNode",
                  params={"model": "deepseek-chat", "temperature": 0.3,
-                          "max_tokens": 256, "async_mode": True,
+                          "max_tokens": 256, "async_mode": False,
                           "system_prompt": "You are a crypto funding-rate analyst. Analyze the carry trade decision.",
                           "user_prompt": "Decision: {decision} | Funding rate: {funding_rate} | Annual: {annual_funding_pct} | Signal: {signal} | Size: ${size_usd} | Expected return: {expected_return}"}),
     ]

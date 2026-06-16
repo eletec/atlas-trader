@@ -4027,6 +4027,19 @@ def render_admin_panel():
             _hc5.metric("Gagnés", wins)
             _hc6.metric("Win rate", f"{win_rate:.0f}%")
 
+            # Récupérer les prix actuels pour le P&L latent
+            live_prices: dict[str, float] = {}
+            try:
+                import urllib.request, json as _j
+                req = urllib.request.Request(f"{_API_BASE}/prices/snapshot")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    prices_data = _j.loads(resp.read())
+                for sym, data in prices_data.items():
+                    if isinstance(data, dict):
+                        live_prices[sym] = float(data.get("price", 0))
+            except Exception:
+                pass
+
             st.markdown("---")
 
             # Tableau
@@ -4039,7 +4052,7 @@ def render_admin_panel():
                 tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
                 row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
 
-            cols = ["Date", "Actif", "Action", "Entrée", "SL", "TP", "Taille", "P&L", "Statut", "DAG"]
+            cols = ["Date", "Actif", "Action", "Entrée", "SL", "TP", "Taille", "P&L", "Progression", "Statut", "DAG"]
             header = "".join(
                 f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
                 f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};opacity:.65;'
@@ -4054,15 +4067,31 @@ def render_admin_panel():
                 pnl_color = "#2ecc71" if pnl > 0 else ("#e74c3c" if pnl < 0 else tbl_fg)
                 action = (tr.get("action") or "").upper()
                 action_color = "#2ecc71" if action == "LONG" else ("#e74c3c" if action == "SHORT" else tbl_fg)
+                
+                # Progression (P&L latent pour trades ouverts)
+                progress_str = "—"
+                entry_price = float(tr.get("entry_price", 0) or 0)
+                size_usd = float(tr.get("size_usd", 0) or 0)
+                current_price = live_prices.get(tr.get("symbol", ""), 0)
+                if tr.get("status") == "open" and entry_price > 0 and current_price > 0 and size_usd > 0:
+                    if action in ("CARRY", "SHORT"):
+                        pnl_pct = (entry_price - current_price) / entry_price * 100
+                    else:
+                        pnl_pct = (current_price - entry_price) / entry_price * 100
+                    unrealized = size_usd * pnl_pct / 100
+                    prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
+                    progress_str = f'<span style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+                
                 cells = [
                     (tr.get("timestamp") or "")[:19].replace("T", " "),
                     tr.get("symbol", "—"),
                     f'<span style="color:{action_color};font-weight:600;">{action}</span>',
-                    f'${float(tr.get("entry_price", 0)):,.2f}' if tr.get("entry_price") else "—",
+                    f'${entry_price:,.2f}' if entry_price else "—",
                     f'${float(tr.get("stop_loss", 0)):,.2f}' if tr.get("stop_loss") else "—",
                     f'${float(tr.get("take_profit", 0)):,.2f}' if tr.get("take_profit") else "—",
-                    f'${float(tr.get("size_usd", 0)):,.0f}' if tr.get("size_usd") else "—",
+                    f'${size_usd:,.0f}' if size_usd else "—",
                     f'<span style="color:{pnl_color};font-weight:600;">{pnl_str}</span>',
+                    progress_str,
                     "✅ fermé" if tr.get("status") == "closed" else "⏳ ouvert",
                     tr.get("dag_id", "—"),
                 ]

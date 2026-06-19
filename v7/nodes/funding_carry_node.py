@@ -238,12 +238,13 @@ class FundingCarryNode:
             if funding_rate >= self.min_funding and funding_rate <= self.max_funding:
                 # Vérifier que le basis n'est pas trop défavorable
                 # Pour un short-perp: basis>0 (contango) = favorable, basis<0 = défavorable
-                if basis_pct < -funding_rate * 3:
-                    reason = f"basis défavorable ({basis_pct*100:.4f}% < funding×-3)"
+                # Le basis est un coût one-shot (pas annualisé)
+                if basis_pct < -0.003:  # perp en discount > 0.3% → trop risqué
+                    reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
                 else:
-                    # Short-perp: on gagne si le basis converge vers 0
-                    expected_return = annual_funding + basis_annual
+                    # expected_return = rendement annualisé du funding + gain/coût one-shot du basis
+                    expected_return = annual_funding + basis_pct
                     
                     if expected_return > 0.02:  # 2% annualisé minimum
                         # Kelly sizing dynamique

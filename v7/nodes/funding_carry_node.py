@@ -88,6 +88,23 @@ class FundingCarryNode:
         
         self.state = FundingCarryState(symbol=symbol)
         self._funding_cache: list[dict] = []  # historique récent
+        
+        # Restaurer l'état depuis la DB (survit aux restart)
+        self._restore_state()
+    
+    def _restore_state(self):
+        """Vérifie si une position carry est déjà ouverte pour ce symbole."""
+        try:
+            from storage.paper_trader import get_open_positions
+            open_pos = get_open_positions(symbol=self.symbol)
+            carry_pos = [p for p in open_pos if p.get("action") in ("carry", "short")]
+            if carry_pos:
+                self.state.position_open = True
+                self.state.entry_capital = float(carry_pos[0].get("size_usd", 0))
+                logger.info("[%s] Position carry restaurée depuis la DB ($%.0f)",
+                           self.node_id, self.state.entry_capital)
+        except Exception as e:
+            logger.debug("[%s] DB restore skipped: %s", self.node_id, e)
     
     # ── DAG framework compatibility ──
     

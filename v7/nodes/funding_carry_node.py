@@ -30,6 +30,8 @@ class FundingCarryState:
     symbol: str
     position_open: bool = False
     entry_capital: float = 0.0
+    entry_spot: float = 0.0          # prix spot à l'ouverture
+    entry_perp: float = 0.0          # prix perp à l'ouverture
     negative_since: Optional[str] = None  # ISO timestamp
     total_funding_received: float = 0.0
     n_payments: int = 0
@@ -237,6 +239,8 @@ class FundingCarryNode:
         expected_return = 0.0
         confidence = 0.5
         reason = ""
+        unrealized_pct = 0.0
+        unrealized_usd = 0.0
         
         # Annualiser
         periods_per_year = 365 * 24 / 8
@@ -271,6 +275,8 @@ class FundingCarryNode:
                         
                         self.state.position_open = True
                         self.state.entry_capital = size_usd
+                        self.state.entry_spot = spot_price
+                        self.state.entry_perp = perp_price if perp_price > 0 else spot_price
                         self.state.negative_since = None
                         
                         signal = "open_carry"
@@ -283,7 +289,28 @@ class FundingCarryNode:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"
         else:
             # ── Position ouverte ──
-            if funding_rate > 0:
+            # Calculer P&L latent (basis uniquement, le delta est couvert)
+            if self.state.entry_spot > 0 and spot_price > 0:
+                # Short perp: on perd si perp monte vs spot, on gagne si perp baisse vs spot
+                basis_entry = (self.state.entry_perp - self.state.entry_spot) / self.state.entry_spot
+                basis_now = (perp_price - spot_price) / spot_price if perp_price > 0 else 0
+                unrealized_pct = basis_now - basis_entry  # positif = gain, négatif = perte
+                unrealized_usd = unrealized_pct * self.state.entry_capital
+                
+                # Stop-loss : basis loss > 10%
+                if unrealized_pct < -0.10:
+                    signal = "close_carry"
+                    self.state.position_open = False
+                    reason = f"STOP-LOSS: basis loss {unrealized_pct*100:.1f}% > 10% → close"
+                    confidence = 0.95
+                    logger.warning("[%s] %s", self.node_id, reason)
+            else:
+                unrealized_pct = 0.0
+                unrealized_usd = 0.0
+            
+            if signal == "close_carry":
+                pass  # déjà géré ci-dessus
+            elif funding_rate > 0:
                 # Recevoir funding
                 payment = self.state.entry_capital * funding_rate
                 self.state.total_funding_received += payment
@@ -348,6 +375,7 @@ class FundingCarryNode:
             "total_funding_received": round(self.state.total_funding_received, 4),
             "n_payments": self.state.n_payments,
             "basis_pct": round(basis_pct * 100, 4),
+            "unrealized_pnl_pct": round(unrealized_pct * 100, 2) if self.state.position_open else 0,
             "elapsed_s": round(elapsed, 3),
             "decision": decision,
         }

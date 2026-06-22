@@ -114,6 +114,7 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         kelly_fraction=0.25,
         max_hold_days=14,
         stop_loss_pct=-0.05,
+        params={"_backtest": True},  # ne pas restaurer depuis la DB live
     )
 
     # 4) Boucle de backtest

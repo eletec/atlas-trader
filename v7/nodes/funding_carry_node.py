@@ -99,7 +99,10 @@ class FundingCarryNode:
         self._funding_rate_history: list[float] = []  # MA 7j (~21 valeurs)
         
         # Restaurer l'état depuis la DB (survit aux restart)
-        self._restore_state()
+        # Sauf en mode backtest (pas de DB live)
+        backtest = params.get("_backtest", False) if params else False
+        if not backtest:
+            self._restore_state()
     
     def _restore_state(self):
         """Vérifie si une position carry est déjà ouverte pour ce symbole."""

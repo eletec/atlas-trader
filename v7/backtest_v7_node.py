@@ -152,7 +152,8 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
             total_fees += fee
 
     # 5) Métriques
-    total_pnl = total_funding - total_fees
+    staking = node.state.staking_earned
+    total_pnl = total_funding + staking - total_fees
     returns = pd.Series(pnl_history).dropna()
     sharpe = float(returns.mean() / returns.std() * np.sqrt(365)) if len(returns) > 5 and returns.std() > 0 else 0.0
 
@@ -161,6 +162,7 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         "pnl": round(total_pnl, 2),
         "pnl_pct": round(total_pnl / capital * 100, 2),
         "funding": round(total_funding, 4),
+        "staking": round(staking, 2),
         "fees": round(total_fees, 2),
         "trades": len(trades),
         "sharpe": round(sharpe, 2),
@@ -179,7 +181,7 @@ def main():
 
     print("=" * 80)
     print("ATLAS V7 — Backtest (FundingCarryNode + prix spot/perp réels)")
-    print(f"Days: {args.days} | Capital: ${args.capital:,.0f}/asset")
+    print(f"Days: {args.days} | Capital: ${args.capital:,.0f}/asset | Staking: 5%/an sur idle")
     print("=" * 80)
 
     results = []
@@ -191,7 +193,7 @@ def main():
         if "error" not in r:
             print(f"  {sym:<12} PnL=${r['pnl']:>8,.2f} ({r['pnl_pct']:>5.1f}%)  "
                   f"Sharpe={r['sharpe']:>6.2f}  Trades={r['trades']:>3d}  "
-                  f"Funding=${r['funding']:,.2f}  Fees=${r['fees']:,.2f}")
+                  f"Funding=${r['funding']:,.2f}  Staking=${r['staking']:,.2f}  Fees=${r['fees']:,.2f}")
         else:
             print(f"  {sym:<12} ERROR: {r['error']}")
 

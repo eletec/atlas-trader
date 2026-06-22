@@ -61,8 +61,8 @@ class FundingCarryNode:
         fraction: float = 0.50,
         min_funding: float = 0.00005,
         max_funding: float = 0.003,
-        exit_after_hours: int = 48,
-        kelly_fraction: float = 0.25,   # quarter-Kelly (plus conservateur)
+        exit_after_hours: int = 72,    # sortie funding négatif après 72h (Grok)
+        kelly_fraction: float = 0.35,  # fractional Kelly 35% (Grok)
         max_hold_days: int = 14,        # time-stop : sortie forcée après N jours
         stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
         fee_bps: float = 5.0,
@@ -292,22 +292,25 @@ class FundingCarryNode:
                     # expected_return = rendement annualisé du funding + gain/coût one-shot du basis
                     expected_return = annual_funding + basis_pct
                     
-                    if expected_return > 0.02:  # 2% annualisé minimum
-                        # 1) Kelly sizing dynamique
-                        edge = expected_return
+                    # Hurdle rate : min 8%/an net (Grok) — évite de trader les micro-fundings
+                    if expected_return > 0.08:
+                        # 1) Kelly fractional sizing (f_fraction = 0.35 — Grok)
+                        edge = max(0, expected_return - 0.08)  # edge au-dessus du hurdle
                         kelly_f = min(0.5, max(0.05, edge / 0.10))
                         raw_size = self.capital * self.fraction * kelly_f * self.kelly_fraction
                         
-                        # 2) Funding regime multiplier (taille variable selon régime)
-                        #    funding < 0.003% → 0.40×, < 0.01% → 0.70×, >= 0.01% → 1.0×
-                        if funding_rate < 0.00003:
+                        # 2) Volatility scaling (funding > 0.05% → high vol → réduire)
+                        vol_scale = 0.60 if funding_rate > 0.0005 else (0.80 if funding_rate > 0.0002 else 1.0)
+                        
+                        # 3) Funding regime multiplier
+                        if funding_rate < 0.00008:  # < 0.008%
                             regime_mult = 0.40
-                        elif funding_rate < 0.0001:
+                        elif funding_rate < 0.0002:  # < 0.02%
                             regime_mult = 0.70
                         else:
                             regime_mult = 1.0
                         
-                        # 3) Liquidity cap par actif (max size en $)
+                        # 4) Liquidity cap par actif (max size en $)
                         liquidity_caps = {
                             "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
                             "XRP": 200, "ADA": 150, "DOGE": 100,
@@ -315,7 +318,7 @@ class FundingCarryNode:
                         coin = self.symbol.split("/")[0].upper()
                         max_size = liquidity_caps.get(coin, 200)
                         
-                        size_usd = min(raw_size * regime_mult, max_size)
+                        size_usd = min(raw_size * regime_mult * vol_scale, max_size)
                         
                         self.state.position_open = True
                         self.state.entry_capital = size_usd
@@ -328,9 +331,9 @@ class FundingCarryNode:
                         confidence = min(0.90, 0.50 + kelly_f * 2)
                         reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
                                   f"→ {expected_return*100:.1f}%/an | size=${size_usd:.0f} "
-                                  f"(×{regime_mult:.2f}, cap=${max_size})")
+                                  f"(kelly={kelly_f:.2f}, vol×{vol_scale:.2f}, cap=${max_size})")
                     else:
-                        reason = f"retour {expected_return*100:.1f}%/an < 2% min"
+                        reason = f"retour {expected_return*100:.1f}%/an < 8% hurdle"
                         confidence = 0.5
             else:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"

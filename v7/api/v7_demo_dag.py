@@ -30,10 +30,10 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
         NodeSpec(id=f"{pfx}_carry", type="FundingCarryNode",
                  params={"symbol": symbol, "capital": capital,
                           "fraction": 0.80, "min_funding": 0.00001,
-                          "exit_after_hours": 168,
-                          "kelly_fraction": 0.25,   # quarter-Kelly
-                          "max_hold_days": 14,       # time-stop 14j
-                          "stop_loss_pct": -0.05}),  # stop-loss -5%
+                          "exit_after_hours": 72,     # sortie 72h (Grok)
+                          "kelly_fraction": 0.35,      # fractional 35% (Grok)
+                          "max_hold_days": 21,         # time-stop 21j (Grok)
+                          "stop_loss_pct": -0.045}),   # stop-loss -4.5% (Grok)
         # PaperTrader — exécute le signal carry (max 1 position par actif)
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),

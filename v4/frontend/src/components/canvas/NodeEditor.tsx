@@ -27,7 +27,7 @@ const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   RecordDecision: { db_path: "/app/data/v4_decisions.db" },
   LLMNode: { model: "deepseek-chat", system_prompt: "You are a trading analyst.", user_prompt: "Market data: {inputs}", temperature: 0.3, max_tokens: 256, timeout_s: 120 },
   // ── V7 ──
-  FundingCarryNode: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168, kelly_fraction: 0.25, max_hold_days: 14, stop_loss_pct: -0.05 },
+  FundingCarryNode: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 72, kelly_fraction: 0.35, max_hold_days: 21, stop_loss_pct: -0.045 },
   // ── V5 ──
   MetaGate: { threshold: 0.20, model_path: "/app/data/models/meta_btc.pkl" },
   CircuitBreaker: { dd_warn_pct: -3.0, dd_kill_pct: -5.0 },

@@ -226,18 +226,17 @@ class FundingCarryNode:
         funding_rate = float(inputs.get("funding_rate", 0))
         perp_price = float(inputs.get("perp_price", spot_price))
         
-        # Fetch spot price si pas fourni
-        if spot_price == 0:
+        # Fetch spot/perp price si pas fourni (sauf backtest)
+        if spot_price == 0 and not self.params.get("_backtest", False):
             spot_price = self.fetch_spot_price()
         
-        # Fetch perp price si pas fourni
-        if perp_price == 0:
+        if perp_price == 0 and not self.params.get("_backtest", False):
             perp_price = self.fetch_perp_price()
-            if perp_price == 0:
-                perp_price = spot_price
+        if perp_price == 0:
+            perp_price = spot_price
         
-        # Fetch funding rate si pas fourni
-        if funding_rate == 0:
+        # Fetch funding rate si pas fourni (sauf backtest: on garde 0)
+        if funding_rate == 0 and not self.params.get("_backtest", False):
             funding_rate = self.fetch_current_funding()
         
         self.state.last_funding_rate = funding_rate

@@ -36,6 +36,7 @@ class FundingCarryState:
     negative_since: Optional[str] = None  # ISO timestamp
     total_funding_received: float = 0.0
     n_payments: int = 0
+    staking_earned: float = 0.0      # rendement staking USDT sur capital inactif
     last_funding_rate: float = 0.0
     last_signal: str = "flat"
     last_update: str = ""
@@ -270,6 +271,12 @@ class FundingCarryNode:
             basis_annual = 0.0
         
         if not self.state.position_open:
+            # ── Staking sur capital inactif ──
+            staking_annual = 0.05  # 5%/an simulé USDT
+            idle_capital = self.capital * self.fraction
+            staking_8h = idle_capital * staking_annual / (365 * 3)  # 3 périodes de 8h/jour
+            self.state.staking_earned += staking_8h
+            
             # ── Opportunité d'ouverture ──
             # Filtre 1 : funding instantané dans la plage
             if funding_rate >= self.min_funding and funding_rate <= self.max_funding:
@@ -436,6 +443,7 @@ class FundingCarryNode:
             "position_open": self.state.position_open,
             "total_funding_received": round(self.state.total_funding_received, 4),
             "n_payments": self.state.n_payments,
+            "staking_earned": round(self.state.staking_earned, 4),
             "basis_pct": round(basis_pct * 100, 4),
             "unrealized_pnl_pct": round(unrealized_pct * 100, 2) if self.state.position_open else 0,
             "elapsed_s": round(elapsed, 3),

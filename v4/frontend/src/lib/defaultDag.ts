@@ -52,7 +52,7 @@ const NODES_SPEC: NodeSpec[] = [
   // Col 1 : Funding Carry (autonome — fetch funding + prix en direct)
   {
     id: "btc_carry", type: "FundingCarryNode", x: X[1], y: Y_TOP, label: "Funding Carry V7",
-    params: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168 },
+    params: { symbol: "BTC/USDT", capital: 2000, fraction: 0.80, min_funding: 0.00001, exit_after_hours: 168, kelly_fraction: 0.25, max_hold_days: 14 },
     inputPorts: ["symbol", "spot_price", "funding_rate", "perp_price"], outputPorts: ["signal", "decision", "size_usd", "expected_return", "confidence", "funding_rate", "annual_funding_pct", "position_open"],
   },
 

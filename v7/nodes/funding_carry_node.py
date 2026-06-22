@@ -32,6 +32,7 @@ class FundingCarryState:
     entry_capital: float = 0.0
     entry_spot: float = 0.0          # prix spot à l'ouverture
     entry_perp: float = 0.0          # prix perp à l'ouverture
+    entry_time: str = ""             # ISO timestamp d'ouverture (time-stop)
     negative_since: Optional[str] = None  # ISO timestamp
     total_funding_received: float = 0.0
     n_payments: int = 0
@@ -60,7 +61,9 @@ class FundingCarryNode:
         min_funding: float = 0.00005,
         max_funding: float = 0.003,
         exit_after_hours: int = 48,
-        kelly_fraction: float = 0.5,
+        kelly_fraction: float = 0.25,   # quarter-Kelly (plus conservateur)
+        max_hold_days: int = 14,        # time-stop : sortie forcée après N jours
+        stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
         fee_bps: float = 5.0,
         slippage_bps: float = 2.0,
         params: dict | None = None,
@@ -74,6 +77,8 @@ class FundingCarryNode:
             min_funding = params.get("min_funding", min_funding)
             max_funding = params.get("max_funding", max_funding)
             exit_after_hours = params.get("exit_after_hours", exit_after_hours)
+            max_hold_days = params.get("max_hold_days", max_hold_days)
+            stop_loss_pct = params.get("stop_loss_pct", stop_loss_pct)
         
         self.node_id = node_id
         self.params = params or {}       # DAG framework
@@ -85,11 +90,13 @@ class FundingCarryNode:
         self.max_funding = max_funding
         self.exit_after_hours = exit_after_hours
         self.kelly_fraction = kelly_fraction
+        self.max_hold_days = max_hold_days
+        self.stop_loss_pct = stop_loss_pct
         self.fee_bps = fee_bps
         self.slippage_bps = slippage_bps
         
         self.state = FundingCarryState(symbol=symbol)
-        self._funding_cache: list[dict] = []  # historique récent
+        self._funding_rate_history: list[float] = []  # MA 7j (~21 valeurs)
         
         # Restaurer l'état depuis la DB (survit aux restart)
         self._restore_state()
@@ -233,6 +240,12 @@ class FundingCarryNode:
         self.state.last_funding_rate = funding_rate
         self.state.last_update = datetime.now().isoformat()
         
+        # Maintenir l'historique du funding pour la MA 7j (max 21 valeurs pour 7j × 3/j)
+        self._funding_rate_history.append(funding_rate)
+        if len(self._funding_rate_history) > 21:
+            self._funding_rate_history = self._funding_rate_history[-21:]
+        funding_ma_7d = sum(self._funding_rate_history) / len(self._funding_rate_history) if self._funding_rate_history else funding_rate
+        
         # ── Decision ──
         signal = "flat"
         size_usd = 0.0
@@ -256,11 +269,14 @@ class FundingCarryNode:
         
         if not self.state.position_open:
             # ── Opportunité d'ouverture ──
+            # Filtre 1 : funding instantané dans la plage
             if funding_rate >= self.min_funding and funding_rate <= self.max_funding:
-                # Vérifier que le basis n'est pas trop défavorable
-                # Pour un short-perp: basis>0 (contango) = favorable, basis<0 = défavorable
-                # Le basis est un coût one-shot (pas annualisé)
-                if basis_pct < -0.003:  # perp en discount > 0.3% → trop risqué
+                # Filtre 2 : funding MA 7j positif (évite les spikes isolés)
+                if funding_ma_7d <= 0:
+                    reason = f"funding MA 7j={funding_ma_7d*100:.4f}% ≤ 0 → attente"
+                    confidence = 0.2
+                # Filtre 3 : basis pas trop défavorable
+                elif basis_pct < -0.003:
                     reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
                 else:
@@ -277,6 +293,7 @@ class FundingCarryNode:
                         self.state.entry_capital = size_usd
                         self.state.entry_spot = spot_price
                         self.state.entry_perp = perp_price if perp_price > 0 else spot_price
+                        self.state.entry_time = datetime.now().isoformat()
                         self.state.negative_since = None
                         
                         signal = "open_carry"
@@ -297,13 +314,27 @@ class FundingCarryNode:
                 unrealized_pct = basis_now - basis_entry  # positif = gain, négatif = perte
                 unrealized_usd = unrealized_pct * self.state.entry_capital
                 
-                # Stop-loss : basis loss > 10%
-                if unrealized_pct < -0.10:
+                # Stop-loss : basis loss > 5% → close
+                if unrealized_pct < self.stop_loss_pct:
                     signal = "close_carry"
                     self.state.position_open = False
-                    reason = f"STOP-LOSS: basis loss {unrealized_pct*100:.1f}% > 10% → close"
+                    reason = f"STOP-LOSS: basis loss {unrealized_pct*100:.1f}% > {abs(self.stop_loss_pct)*100:.0f}% → close"
                     confidence = 0.95
                     logger.warning("[%s] %s", self.node_id, reason)
+                
+                # Time-stop : position ouverte > max_hold_days → close
+                if signal != "close_carry" and self.state.entry_time:
+                    try:
+                        entry_dt = datetime.fromisoformat(self.state.entry_time)
+                        days_held = (datetime.now() - entry_dt).total_seconds() / 86400
+                        if days_held > self.max_hold_days:
+                            signal = "close_carry"
+                            self.state.position_open = False
+                            reason = f"TIME-STOP: {days_held:.0f}j > {self.max_hold_days}j max → close"
+                            confidence = 0.80
+                            logger.warning("[%s] %s", self.node_id, reason)
+                    except Exception:
+                        pass
             else:
                 unrealized_pct = 0.0
                 unrealized_usd = 0.0

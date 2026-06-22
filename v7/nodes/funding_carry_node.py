@@ -284,10 +284,29 @@ class FundingCarryNode:
                     expected_return = annual_funding + basis_pct
                     
                     if expected_return > 0.02:  # 2% annualisé minimum
-                        # Kelly sizing dynamique
+                        # 1) Kelly sizing dynamique
                         edge = expected_return
                         kelly_f = min(0.5, max(0.05, edge / 0.10))
-                        size_usd = self.capital * self.fraction * kelly_f * self.kelly_fraction
+                        raw_size = self.capital * self.fraction * kelly_f * self.kelly_fraction
+                        
+                        # 2) Funding regime multiplier (taille variable selon régime)
+                        #    funding < 0.003% → 0.40×, < 0.01% → 0.70×, >= 0.01% → 1.0×
+                        if funding_rate < 0.00003:
+                            regime_mult = 0.40
+                        elif funding_rate < 0.0001:
+                            regime_mult = 0.70
+                        else:
+                            regime_mult = 1.0
+                        
+                        # 3) Liquidity cap par actif (max size en $)
+                        liquidity_caps = {
+                            "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
+                            "XRP": 200, "ADA": 150, "DOGE": 100,
+                        }
+                        coin = self.symbol.split("/")[0].upper()
+                        max_size = liquidity_caps.get(coin, 200)
+                        
+                        size_usd = min(raw_size * regime_mult, max_size)
                         
                         self.state.position_open = True
                         self.state.entry_capital = size_usd
@@ -298,7 +317,9 @@ class FundingCarryNode:
                         
                         signal = "open_carry"
                         confidence = min(0.90, 0.50 + kelly_f * 2)
-                        reason = f"funding={funding_rate*100:.4f}% → {expected_return*100:.1f}%/an | size=${size_usd:.0f}"
+                        reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
+                                  f"→ {expected_return*100:.1f}%/an | size=${size_usd:.0f} "
+                                  f"(×{regime_mult:.2f}, cap=${max_size})")
                     else:
                         reason = f"retour {expected_return*100:.1f}%/an < 2% min"
                         confidence = 0.5
@@ -338,6 +359,14 @@ class FundingCarryNode:
             else:
                 unrealized_pct = 0.0
                 unrealized_usd = 0.0
+            
+            # ── Cross-margin risk monitoring ──
+            # En paper trading, on simule le risque de liquidation du short perp
+            # Si la perte latente > 80% du capital → alerte liquidation
+            if unrealized_pct < -0.80 and self.state.position_open:
+                logger.error("[%s] ⚠️ RISQUE LIQUIDATION: loss=%.1f%% → le short perp serait liquidé!",
+                           self.node_id, unrealized_pct * 100)
+                # En paper, on ne ferme pas automatiquement mais on alerte fortement
             
             if signal == "close_carry":
                 pass  # déjà géré ci-dessus

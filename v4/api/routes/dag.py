@@ -179,6 +179,17 @@ async def dag_logs(n: int = 50):
     return get_logs(n)
 
 
+@router.post("/close-trade")
+async def close_trade_route(trade_id: str = "", close_price: float = 0):
+    """Ferme manuellement un trade paper (depuis le dashboard)."""
+    try:
+        from storage.paper_trader import close_position
+        ok = close_position(trade_id, close_price, 0, "manual")
+        return {"trade_id": trade_id, "closed": ok}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/{dag_id}/status", response_model=DAGStatusOut)
 async def dag_status(dag_id: str):
     entries = DAGRegistry.instance().status(dag_id)

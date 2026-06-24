@@ -65,6 +65,7 @@ class FundingCarryNode:
         kelly_fraction: float = 0.35,  # fractional Kelly 35% (Grok)
         max_hold_days: int = 14,        # time-stop : sortie forcée après N jours
         stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
+        exchange_name: str = "binance",  # binance | bybit | okx | kraken
         fee_bps: float = 5.0,
         slippage_bps: float = 2.0,
         params: dict | None = None,
@@ -80,6 +81,7 @@ class FundingCarryNode:
             exit_after_hours = params.get("exit_after_hours", exit_after_hours)
             max_hold_days = params.get("max_hold_days", max_hold_days)
             stop_loss_pct = params.get("stop_loss_pct", stop_loss_pct)
+            exchange_name = params.get("exchange", exchange_name)
         
         self.node_id = node_id
         self.params = params or {}       # DAG framework
@@ -93,6 +95,7 @@ class FundingCarryNode:
         self.kelly_fraction = kelly_fraction
         self.max_hold_days = max_hold_days
         self.stop_loss_pct = stop_loss_pct
+        self.exchange_name = exchange_name
         self.fee_bps = fee_bps
         self.slippage_bps = slippage_bps
         
@@ -157,11 +160,20 @@ class FundingCarryNode:
     
     # ── Data fetching ──
     
+    def _get_exchange(self):
+        """Retourne l'instance CCXT configurée (binance | bybit | okx | kraken)."""
+        import ccxt
+        ex_map = {
+            "binance": ccxt.binance, "bybit": ccxt.bybit,
+            "okx": ccxt.okx, "kraken": ccxt.kraken,
+        }
+        return ex_map.get(self.exchange_name, ccxt.binance)({"enableRateLimit": True})
+    
     def fetch_current_funding(self) -> float:
-        """Fetch le funding rate actuel depuis Binance."""
+        """Fetch le funding rate actuel."""
         try:
             import ccxt
-            exchange = ccxt.binance({"enableRateLimit": True})
+            exchange = self._get_exchange()
             symbol_perp = f"{self.symbol}:USDT"
             rates = exchange.fetch_funding_rates([symbol_perp])
             if rates and symbol_perp in rates:
@@ -184,20 +196,18 @@ class FundingCarryNode:
             return 0.0
     
     def fetch_spot_price(self) -> float:
-        """Fetch le prix spot actuel depuis Binance."""
+        """Fetch le prix spot actuel."""
         try:
-            import ccxt
-            exchange = ccxt.binance({"enableRateLimit": True})
+            exchange = self._get_exchange()
             ticker = exchange.fetch_ticker(self.symbol)
             return float(ticker.get("last", 0))
         except Exception:
             return 0.0
     
     def fetch_perp_price(self) -> float:
-        """Fetch le prix du perpetual depuis Binance."""
+        """Fetch le prix du perpetual."""
         try:
-            import ccxt
-            exchange = ccxt.binance({"enableRateLimit": True})
+            exchange = self._get_exchange()
             symbol_perp = f"{self.symbol}:USDT" if ":" not in self.symbol else self.symbol
             ticker = exchange.fetch_ticker(symbol_perp)
             return float(ticker.get("last", 0))

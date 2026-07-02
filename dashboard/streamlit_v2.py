@@ -414,6 +414,8 @@ with st.expander("⚙️ Configuration Quant (Admin)", expanded=False):
                 tp_mult = st.number_input("TP ATR mult",           min_value=0.5,  max_value=10.0, step=0.1,  value=float(_qcfg.take_profit_atr_mult),   format="%.1f")
                 tr_act  = st.number_input("Trailing activation ATR", min_value=0.1, max_value=5.0, step=0.1, value=float(_qcfg.trailing_activation_atr), format="%.1f")
                 tr_dist = st.number_input("Trailing distance ATR",   min_value=0.1, max_value=5.0, step=0.1, value=float(_qcfg.trailing_distance_atr),   format="%.1f")
+                ml_pct  = st.number_input("Max loss par position (%)", min_value=1.0, max_value=50.0, step=1.0, value=float(getattr(_qcfg, 'max_loss_pct', 0.15) * 100), format="%.0f")
+                mp_pct  = st.number_input("Max DD portefeuille (%)", min_value=5.0, max_value=50.0, step=1.0, value=float(getattr(_qcfg, 'max_portfolio_dd_pct', 0.20) * 100), format="%.0f")
                 wdd     = st.number_input("Weekly DD kill-switch (%)", min_value=1.0, max_value=30.0, step=0.5, value=float(_qcfg.weekly_dd_kill_switch * 100), format="%.1f")
                 pause   = st.number_input("Kill-switch pause (jours)", min_value=1, max_value=30, step=1, value=int(_qcfg.kill_switch_pause_days))
 
@@ -451,6 +453,8 @@ with st.expander("⚙️ Configuration Quant (Admin)", expanded=False):
                     take_profit_atr_mult=float(tp_mult),
                     trailing_activation_atr=float(tr_act),
                     trailing_distance_atr=float(tr_dist),
+                    max_loss_pct=float(ml_pct) / 100.0,
+                    max_portfolio_dd_pct=float(mp_pct) / 100.0,
                     weekly_dd_kill_switch=float(wdd) / 100.0,
                     kill_switch_pause_days=int(pause),
                     wf_train_days=int(wf_train),

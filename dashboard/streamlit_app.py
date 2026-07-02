@@ -1333,14 +1333,6 @@ header[data-testid="stHeader"]{{display:none!important;}}
   <a href="{u_hamburger}" style="{S_HBG}" title="Menu" target="_self"><i class="fas fa-bars"></i></a>
 </nav>
 {dropdown_html}
-<script>
-  (function(){{
-    if(!window._atlasAutoRefresh){{
-      window._atlasAutoRefresh=true;
-      setTimeout(function(){{window.location.reload();}},90000);
-    }}
-  }})();
-</script>
 """, unsafe_allow_html=True)
 
 

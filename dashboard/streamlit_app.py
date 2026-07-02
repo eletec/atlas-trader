@@ -4608,17 +4608,22 @@ def main():
                 """<div id="atlas-live-pnl" style="position:fixed;bottom:12px;right:16px;
                 background:#0d1117;color:#e6edf3;padding:8px 14px;border-radius:8px;
                 font-family:monospace;font-size:13px;z-index:9999;border:1px solid #30363d;
-                opacity:0.85;">💰 P&L live: ...</div>
+                opacity:0.88;max-width:95vw;overflow:hidden;white-space:nowrap;">💰 P&L: ...</div>
                 <script>
                 (function(){
                     var el = document.getElementById('atlas-live-pnl');
                     if(!el) return;
+                    // API sur port 8000 (meme IP que le dashboard)
+                    var API = window.location.protocol + '//' + window.location.hostname + ':8000';
                     function update(){
-                        fetch('/v7/live-pnl').then(r=>r.json()).then(d=>{
+                        fetch(API + '/v7/live-pnl').then(function(r){return r.json();}).then(function(d){
+                            if(d.error){ el.innerHTML='💰 P&L: err'; return; }
                             var c = d.total_pnl >= 0 ? '#2ecc71' : '#e74c3c';
-                            var trades = d.trades ? d.trades.map(t=>t.symbol+' '+ (t.pnl_usd>=0?'+':'')+t.pnl_usd.toFixed(2)+'$ ('+(t.pnl_pct>=0?'+':'')+t.pnl_pct.toFixed(2)+'%)').join(' | ') : '';
-                            el.innerHTML = '💰 P&L: <b style=\"color:'+c+'\">'+(d.total_pnl>=0?'+':'')+d.total_pnl.toFixed(2)+'$</b> &nbsp;'+trades;
-                        }).catch(function(){});
+                            var trades = (d.trades||[]).map(function(t){
+                                return t.symbol + ' ' + (t.pnl_usd>=0?'+':'') + t.pnl_usd.toFixed(2) + '$ (' + (t.pnl_pct>=0?'+':'') + t.pnl_pct.toFixed(2) + '%)';
+                            }).join(' | ');
+                            el.innerHTML = '💰 P&L: <b style=\"color:'+c+'\">' + (d.total_pnl>=0?'+':'') + d.total_pnl.toFixed(2) + '$</b> &nbsp;' + trades;
+                        }).catch(function(){ el.innerHTML='💰 P&L: ...'; });
                     }
                     update();
                     setInterval(update, 10000);

@@ -4603,5 +4603,13 @@ def main():
                 unsafe_allow_html=True,
             )
 
+            # ── Auto-refresh prix live toutes les 30s ──────────────────────
+            import time as _time
+            _now = _time.time()
+            _last = st.session_state.get("_last_live_refresh", 0)
+            if _now - _last >= 30:
+                st.session_state["_last_live_refresh"] = _now
+                st.rerun()
+
 if __name__ == "__main__":
     main()

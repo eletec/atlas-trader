@@ -2686,93 +2686,94 @@ def render_trades_list_sortable(trades: list[dict]):
     <thead><tr>{header_cells}</tr></thead>
     <tbody>{rows_html}</tbody>
   </table>
-</div>
-<script>
-(function(){{
-  if (window._atlasLiveProg) return;
-  window._atlasLiveProg = true;
-  var API = window.location.protocol + '//' + window.location.hostname + ':8000';
-  var SYMBOLS = [...new Set(Array.from(document.querySelectorAll('[data-atlas-open="1"]')).map(function(el){{ return el.dataset.atlasSymbol; }}))].join(',');
+</div>"""
+    st.markdown(html, unsafe_allow_html=True)
 
-  function updateCell(el, price) {{
-    var entry = parseFloat(el.dataset.atlasEntry);
-    var size = parseFloat(el.dataset.atlasSize);
-    var action = el.dataset.atlasAction;
+
+def _inject_live_trade_prices_js() -> None:
+    """Injecte un poller JS (iframe invisible) qui met à jour les colonnes
+    Progression et la ligne synthèse en temps réel, sans rechargement de page.
+    
+    Utilise st.components.v1.html() comme les cartes de prix — le JS s'exécute
+    dans un iframe srcdoc (même origine) et accède au DOM parent.
+    """
+    import streamlit.components.v1 as _cv1
+    _cv1.html("""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<script>
+(function() {
+  if (window._atlasLiveTradePoller) return;
+  window._atlasLiveTradePoller = true;
+
+  function apiUrl() {
+    try {
+      var h = window.top.location.hostname;
+      if (h) return 'http://' + h + ':8000';
+    } catch(e) {}
+    return 'http://192.168.1.80:8000';
+  }
+
+  function updateCell(el, price) {
+    var entry = parseFloat(el.getAttribute('data-atlas-entry'));
+    var size = parseFloat(el.getAttribute('data-atlas-size'));
+    var action = el.getAttribute('data-atlas-action');
     if (!entry || !size || !price) return;
     var pnlPct;
-    if (action === 'SHORT' || action === 'SELL' || action === 'CARRY') {{
+    if (action === 'SHORT' || action === 'SELL' || action === 'CARRY') {
       pnlPct = (entry - price) / entry * 100;
-    }} else {{
+    } else {
       pnlPct = (price - entry) / entry * 100;
-    }}
+    }
     var unrealized = size * pnlPct / 100;
     var color = unrealized >= 0 ? '#2ecc71' : '#e74c3c';
     el.style.color = color;
     el.style.opacity = '1';
     el.textContent = (unrealized >= 0 ? '+' : '') + unrealized.toFixed(2) + '$ (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)';
-  }}
+  }
 
-  function updateAll(prices) {{
+  function updateAll(prices) {
     var totalUnreal = 0, totalSize = 0;
-    document.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {{
-      var sym = el.dataset.atlasSymbol;
+    var parentDoc = window.top.document;
+    parentDoc.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {
+      var sym = el.getAttribute('data-atlas-symbol');
       var priceData = prices[sym];
-      if (priceData && priceData.price) {{
+      if (priceData && priceData.price) {
         updateCell(el, priceData.price);
-        var entry = parseFloat(el.dataset.atlasEntry);
-        var size = parseFloat(el.dataset.atlasSize);
-        var action = el.dataset.atlasAction;
-        if (entry && size) {{
-          var pct = (action === 'SHORT' || action === 'SELL' || action === 'CARRY') ? (entry - priceData.price) / entry : (priceData.price - entry) / entry;
+        var entry = parseFloat(el.getAttribute('data-atlas-entry'));
+        var size = parseFloat(el.getAttribute('data-atlas-size'));
+        var action = el.getAttribute('data-atlas-action');
+        if (entry && size) {
+          var pct = (action === 'SHORT' || action === 'SELL' || action === 'CARRY')
+            ? (entry - priceData.price) / entry
+            : (priceData.price - entry) / entry;
           totalUnreal += size * pct;
           totalSize += size;
-        }}
-      }}
-    }});
-    // Update summary
-    var sumEl = document.getElementById('atlas-summary-prog');
-    if (sumEl && totalSize > 0) {{
+        }
+      }
+    });
+    // Update summary footer
+    var sumEl = parentDoc.getElementById('atlas-summary-prog');
+    if (sumEl && totalSize > 0) {
       var sumPct = totalUnreal / totalSize * 100;
       var sumColor = totalUnreal >= 0 ? '#2ecc71' : '#e74c3c';
       sumEl.style.color = sumColor;
-      sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2) + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
-    }}
-  }}
+      sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2)
+        + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
+    }
+  }
 
-  // Essayer SSE d'abord, fallback polling apres 5s si pas de data
-  if (SYMBOLS) {{
-    var esUrl = API + '/prices/stream?symbols=' + encodeURIComponent(SYMBOLS);
-    var es = new EventSource(esUrl);
-    var gotData = false;
-    var fallbackTimer = null;
+  function poll() {
+    fetch(apiUrl() + '/prices/snapshot')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { updateAll(data); })
+      .catch(function() {});
+  }
 
-    es.addEventListener('price', function(e) {{
-      gotData = true;
-      if (fallbackTimer) {{ clearTimeout(fallbackTimer); fallbackTimer = null; }}
-      try {{
-        var record = JSON.parse(e.data);
-        var prices = {{}};
-        prices[record.symbol] = record;
-        updateAll(prices);
-      }} catch(ex) {{}}
-    }});
-
-    // Si pas de data SSE sous 5s → fallback polling toutes les 2s
-    fallbackTimer = setTimeout(function() {{
-      if (!gotData) {{
-        es.close();
-        setInterval(function() {{
-          fetch(API + '/prices/snapshot')
-            .then(function(r) {{ return r.json(); }})
-            .then(function(data) {{ updateAll(data); }})
-            .catch(function() {{}});
-        }}, 2000);
-      }}
-    }}, 5000);
-  }}
-}})();
-</script>"""
-    st.markdown(html, unsafe_allow_html=True)
+  setInterval(poll, 3000);
+  poll();
+})();
+</script>
+</body></html>""", height=0)
 
 
 def render_last_decision(last_cycle: dict | None):
@@ -4665,7 +4666,7 @@ def main():
                 _pf = _get_portfolio(asset=asset)
                 render_portfolio(_pf)
                 _render_ai_analysis(asset)
-                render_trades_list(_tr)
+                render_trades_list_sortable(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_logs(key=asset.replace('/', '_'), asset=asset)
 
@@ -4689,6 +4690,9 @@ def main():
 
             # ── V4 — État des DAGs (si l'API est accessible) ─────────────────
             _render_v4_status()
+
+            # ── Live price poller (met à jour les colonnes Progression sans reload) ──
+            _inject_live_trade_prices_js()
 
             st.markdown(
                 '<div style="text-align:center;padding:24px 0 8px;'

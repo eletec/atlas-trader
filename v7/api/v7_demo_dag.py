@@ -17,23 +17,39 @@ SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT
 CAPITAL_PER_ASSET = 2_000  # $2K par actif en carry
 
 
+def _carry_defaults():
+    """Lit les paramètres carry depuis asset_profiles.yaml → v7_carry_defaults."""
+    try:
+        import yaml, os
+        path = os.path.join(os.path.dirname(__file__), "..", "..", "config", "asset_profiles.yaml")
+        with open(path) as f:
+            cfg = yaml.safe_load(f) or {}
+        return cfg.get("v7_carry_defaults", {})
+    except Exception:
+        return {}
+
+
 def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -> DAGSpec:
     """Fabrique un DAG V7: AssetDef → FundingCarry → PaperTrader + Record + LLM."""
     pfx = symbol.split("/")[0].lower()[:3]
+    cd = _carry_defaults()
 
     nodes = [
         NodeSpec(id=f"{pfx}_asset", type="AssetDef",
                  params={"symbol": symbol, "exchange": "binance",
-                          "capital_usd": capital, "fraction": 0.80,
+                          "capital_usd": capital, "fraction": cd.get("fraction", 0.80),
                           "max_positions": 3}),
-        # V7 Funding Carry (auto-suffisant : fetch funding + prix en direct)
+        # V7 Funding Carry (params depuis asset_profiles.yaml → v7_carry_defaults)
         NodeSpec(id=f"{pfx}_carry", type="FundingCarryNode",
                  params={"symbol": symbol, "capital": capital,
-                          "fraction": 0.80, "min_funding": 0.00001,
-                          "exit_after_hours": 72,     # sortie 72h (Grok)
-                          "kelly_fraction": 0.35,      # fractional 35% (Grok)
-                          "max_hold_days": 21,         # time-stop 21j (Grok)
-                          "stop_loss_pct": -0.045}),   # stop-loss -4.5% (Grok)
+                          "fraction": cd.get("fraction", 0.80),
+                          "min_funding": cd.get("min_funding", 0.00001),
+                          "max_funding": cd.get("max_funding", 0.003),
+                          "exit_after_hours": cd.get("exit_after_hours", 72),
+                          "kelly_fraction": cd.get("kelly_fraction", 0.35),
+                          "max_hold_days": cd.get("max_hold_days", 21),
+                          "stop_loss_pct": cd.get("stop_loss_pct", -0.045),
+                          "max_portfolio_dd_pct": cd.get("max_portfolio_dd_pct", 0.20)}),
         # PaperTrader — exécute le signal carry (max 1 position par actif)
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),

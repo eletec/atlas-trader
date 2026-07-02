@@ -93,3 +93,23 @@ DOGE/USDT:
   exit_atr: 3.0
   trail_mult: 0.5
   min_atr_dist: 0.5
+
+# ═══════════════════════════════════════════════════════════════════════
+# V7 Funding Carry params (overrides per-asset)
+# ═══════════════════════════════════════════════════════════════════════
+v7_carry_defaults:
+  fraction: 0.80
+  min_funding: 0.00001
+  max_funding: 0.003
+  exit_after_hours: 72        # sortie si funding négatif > 72h
+  kelly_fraction: 0.35        # fractional Kelly
+  max_hold_days: 21           # time-stop
+  stop_loss_pct: -0.045       # hard stop basis loss
+  max_portfolio_dd_pct: 0.20  # kill-switch global portefeuille
+  sl_mult: 2.0
+  tp_mult: 4.0
+  max_pos: 3
+  exit_strat: chandelier
+  exit_atr: 3.0
+  trail_mult: 0.5
+  min_atr_dist: 0.5

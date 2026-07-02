@@ -4499,14 +4499,6 @@ def _render_v4_status(asset_filter: str | None = None):
 def main():
     _init_session()
 
-    # ── Auto-refresh prix live : rerun périodique toutes les 30s ──────────
-    import time as _time
-    _now_rf = _time.time()
-    _last_rf = st.session_state.get("_last_live_refresh", 0.0)
-    if _now_rf - _last_rf >= 30:
-        st.session_state["_last_live_refresh"] = _now_rf
-        st.rerun()
-
     # ── Authentification ──────────────────────────────────────────────────────
     # Stratégie : session_state + _sid URL param (SQLite store).
     # La session est créée dans _finalize_login() et éteinte via logout().

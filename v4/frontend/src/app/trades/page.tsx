@@ -159,7 +159,6 @@ export default function TradesPage() {
                 </tr>
               </tfoot>
             )}
-            </tbody>
           </table>
         </div>
       )}

@@ -50,6 +50,10 @@ app.add_middleware(
 app.include_router(dag_router, prefix="/dag", tags=["dag"])
 app.include_router(prices_router, prefix="/prices", tags=["prices"])
 
+# V7 — Live P&L widget
+from v7.api.live_pnl import router as live_pnl_router
+app.include_router(live_pnl_router, prefix="/v7", tags=["v7"])
+
 
 @app.on_event("startup")
 async def _auto_schedule_demo():

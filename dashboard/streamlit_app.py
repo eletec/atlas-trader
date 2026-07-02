@@ -4603,5 +4603,29 @@ def main():
                 unsafe_allow_html=True,
             )
 
+            # ── Widget P&L Live (AJAX — pas de rechargement page) ──────────
+            st.components.v1.html(
+                """<div id="atlas-live-pnl" style="position:fixed;bottom:12px;right:16px;
+                background:#0d1117;color:#e6edf3;padding:8px 14px;border-radius:8px;
+                font-family:monospace;font-size:13px;z-index:9999;border:1px solid #30363d;
+                opacity:0.85;">💰 P&L live: ...</div>
+                <script>
+                (function(){
+                    var el = document.getElementById('atlas-live-pnl');
+                    if(!el) return;
+                    function update(){
+                        fetch('/v7/live-pnl').then(r=>r.json()).then(d=>{
+                            var c = d.total_pnl >= 0 ? '#2ecc71' : '#e74c3c';
+                            var trades = d.trades ? d.trades.map(t=>t.symbol+' '+ (t.pnl_usd>=0?'+':'')+t.pnl_usd.toFixed(2)+'$ ('+(t.pnl_pct>=0?'+':'')+t.pnl_pct.toFixed(2)+'%)').join(' | ') : '';
+                            el.innerHTML = '💰 P&L: <b style=\"color:'+c+'\">'+(d.total_pnl>=0?'+':'')+d.total_pnl.toFixed(2)+'$</b> &nbsp;'+trades;
+                        }).catch(function(){});
+                    }
+                    update();
+                    setInterval(update, 10000);
+                })();
+                </script>""",
+                height=0,
+            )
+
 if __name__ == "__main__":
     main()

@@ -141,6 +141,25 @@ export default function TradesPage() {
                 </tr>
               ))}
             </tbody>
+            {trades.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-canvas-border bg-canvas-grid">
+                  <td className="px-4 py-2 font-bold text-slate-200" colSpan={2}>
+                    TOTAL · {trades.length} trades
+                  </td>
+                  <td className="px-4 py-2 text-slate-400" colSpan={1}>
+                    {trades.filter(t => t.status === "open").length} ouverts
+                  </td>
+                  <td className="px-4 py-2 text-right text-slate-300 font-mono font-bold" colSpan={4}>
+                    ${trades.reduce((sum, t) => sum + (t.size_usd || 0), 0).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 text-slate-500 text-xs" colSpan={2}>
+                    taille totale
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+            </tbody>
           </table>
         </div>
       )}

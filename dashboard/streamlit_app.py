@@ -2610,23 +2610,37 @@ def render_trades_list_sortable(trades: list[dict]):
         rows_html += f'<tr style="background:{bg};">{tds}</tr>'
 
     # ── Ligne de synthèse ─────────────────────────────────────────────────
-    _sum_pnl = 0.0
+    _sum_realized = 0.0
+    _sum_unrealized = 0.0
     _n_closed = 0
     _n_open = 0
     for trade in trades:
+        # P&L fermé
         try:
             pnl = float(trade.get("result_24h") or 0)
         except (ValueError, TypeError):
             pnl = 0.0
         if trade.get("result_24h") is not None:
-            _sum_pnl += pnl
+            _sum_realized += pnl
             _n_closed += 1
         else:
+            # P&L latent (ouvert) — même calcul que la colonne Progression
+            entry_price = trade.get("entry_price", 0) or 0
+            size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
+            current_price = live_prices.get(trade.get("asset", ""), 0)
+            act = trade.get("action", "")
+            if entry_price > 0 and current_price > 0 and size_usd > 0:
+                if act in ("SELL", "SHORT", "CARRY"):
+                    pnl_pct = (entry_price - current_price) / entry_price
+                else:
+                    pnl_pct = (current_price - entry_price) / entry_price
+                _sum_unrealized += size_usd * pnl_pct
             _n_open += 1
 
-    _sum_color = "#2ecc71" if _sum_pnl >= 0 else "#e74c3c"
-    _avg = _sum_pnl / _n_closed if _n_closed > 0 else 0
-    _avg_color = "#2ecc71" if _avg >= 0 else "#e74c3c"
+    _total_pnl = _sum_realized + _sum_unrealized
+    _sum_color = "#2ecc71" if _total_pnl >= 0 else "#e74c3c"
+    _unreal_color = "#2ecc71" if _sum_unrealized >= 0 else "#e74c3c"
+    _avg = _sum_realized / _n_closed if _n_closed > 0 else 0
 
     _sum_td = (
         f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{tbl_fg};'
@@ -2641,9 +2655,9 @@ def render_trades_list_sortable(trades: list[dict]):
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};" colspan="2">—</td>'
         f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{_sum_color};'
-        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_sum_pnl:+,.2f}</td>'
-        f'<td style="padding:8px 12px;font-size:12px;color:{_avg_color};'
-        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">{_avg:+.2f}$/trade</td>'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_total_pnl:+,.2f}</td>'
+        f'<td style="padding:8px 12px;font-size:12px;color:{_unreal_color};'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">lat:${_sum_unrealized:+,.2f}</td>'
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
     )

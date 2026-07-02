@@ -2609,6 +2609,46 @@ def render_trades_list_sortable(trades: list[dict]):
         tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
         rows_html += f'<tr style="background:{bg};">{tds}</tr>'
 
+    # ── Ligne de synthèse ─────────────────────────────────────────────────
+    _sum_pnl = 0.0
+    _n_closed = 0
+    _n_open = 0
+    for trade in trades:
+        try:
+            pnl = float(trade.get("result_24h") or 0)
+        except (ValueError, TypeError):
+            pnl = 0.0
+        if trade.get("result_24h") is not None:
+            _sum_pnl += pnl
+            _n_closed += 1
+        else:
+            _n_open += 1
+
+    _sum_color = "#2ecc71" if _sum_pnl >= 0 else "#e74c3c"
+    _avg = _sum_pnl / _n_closed if _n_closed > 0 else 0
+    _avg_color = "#2ecc71" if _avg >= 0 else "#e74c3c"
+
+    _sum_td = (
+        f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{tbl_fg};'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};" colspan="3">'
+        f'TOTAL · {len(trades)} trades ({_n_closed} fermés, {_n_open} ouverts)</td>'
+        f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
+        f'border-top:2px solid {border};background:{head_bg};"></td>'
+        f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
+        f'border-top:2px solid {border};background:{head_bg};"></td>'
+        f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
+        f'border-top:2px solid {border};background:{head_bg};"></td>'
+        f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
+        f'border-top:2px solid {border};background:{head_bg};" colspan="2">—</td>'
+        f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{_sum_color};'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_sum_pnl:+,.2f}</td>'
+        f'<td style="padding:8px 12px;font-size:12px;color:{_avg_color};'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">{_avg:+.2f}$/trade</td>'
+        f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
+        f'border-top:2px solid {border};background:{head_bg};"></td>'
+    )
+    rows_html += f'<tr style="background:{head_bg};">{_sum_td}</tr>'
+
     html = f"""
 <div style="overflow-y:auto;max-height:520px;border:1px solid {border};
             border-radius:10px;background:{tbl_bg};margin-bottom:24px;">

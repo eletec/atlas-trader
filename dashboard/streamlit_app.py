@@ -4603,33 +4603,15 @@ def main():
                 unsafe_allow_html=True,
             )
 
-            # ── Widget P&L Live (AJAX — pas de rechargement page) ──────────
-            st.components.v1.html(
-                """<div id="atlas-live-pnl" style="position:fixed;bottom:12px;right:16px;
-                background:#0d1117;color:#e6edf3;padding:8px 14px;border-radius:8px;
-                font-family:monospace;font-size:13px;z-index:9999;border:1px solid #30363d;
-                opacity:0.88;max-width:95vw;overflow:hidden;white-space:nowrap;">💰 P&L: ...</div>
-                <script>
-                (function(){
-                    var el = document.getElementById('atlas-live-pnl');
-                    if(!el) return;
-                    // API sur port 8000 (meme IP que le dashboard)
-                    var API = window.location.protocol + '//' + window.location.hostname + ':8000';
-                    function update(){
-                        fetch(API + '/v7/live-pnl').then(function(r){return r.json();}).then(function(d){
-                            if(d.error){ el.innerHTML='💰 P&L: err'; return; }
-                            var c = d.total_pnl >= 0 ? '#2ecc71' : '#e74c3c';
-                            var trades = (d.trades||[]).map(function(t){
-                                return t.symbol + ' ' + (t.pnl_usd>=0?'+':'') + t.pnl_usd.toFixed(2) + '$ (' + (t.pnl_pct>=0?'+':'') + t.pnl_pct.toFixed(2) + '%)';
-                            }).join(' | ');
-                            el.innerHTML = '💰 P&L: <b style=\"color:'+c+'\">' + (d.total_pnl>=0?'+':'') + d.total_pnl.toFixed(2) + '$</b> &nbsp;' + trades;
-                        }).catch(function(){ el.innerHTML='💰 P&L: ...'; });
-                    }
-                    update();
-                    setInterval(update, 10000);
-                })();
-                </script>""",
-                height=50,
+            # ── Widget P&L Live (iframe auto-rafraîchi, pas de reload page) ──
+            import urllib.parse as _up
+            _api_base_widget = _os.environ.get("V4_API_URL", "http://192.168.1.80:8000")
+            st.markdown(
+                f'<iframe src="{_api_base_widget}/v7/live-pnl-widget" '
+                f'style="position:fixed;bottom:8px;right:12px;border:none;height:32px;'
+                f'width:auto;min-width:300px;z-index:9999;background:transparent;" '
+                f'scrolling="no"></iframe>',
+                unsafe_allow_html=True,
             )
 
 if __name__ == "__main__":

@@ -4603,16 +4603,5 @@ def main():
                 unsafe_allow_html=True,
             )
 
-            # ── Widget P&L Live (iframe auto-rafraîchi, pas de reload page) ──
-            import urllib.parse as _up
-            _api_base_widget = _os.environ.get("V4_API_URL", "http://192.168.1.80:8000")
-            st.markdown(
-                f'<iframe src="{_api_base_widget}/v7/live-pnl-widget" '
-                f'style="position:fixed;bottom:8px;right:12px;border:none;height:32px;'
-                f'width:auto;min-width:300px;z-index:9999;background:transparent;" '
-                f'scrolling="no"></iframe>',
-                unsafe_allow_html=True,
-            )
-
 if __name__ == "__main__":
     main()

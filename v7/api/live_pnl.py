@@ -22,7 +22,13 @@ def get_live_prices() -> dict[str, float]:
         req = urllib.request.Request(f"{API_BASE}/prices/snapshot")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
-        return {sym: float(d["price"]) for sym, d in data.items() if isinstance(d, dict) and "price" in d}
+        prices = {}
+        for sym, d in data.items():
+            if isinstance(d, dict) and "price" in d:
+                # Normalize: BTCUSDT → BTC/USDT, BTC/USDT → BTC/USDT
+                norm = sym if "/" in sym else f"{sym[:-4]}/{sym[-4:]}" if sym.endswith("USDT") else sym
+                prices[norm] = float(d["price"])
+        return prices
     except Exception:
         return {}
 

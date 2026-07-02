@@ -4629,7 +4629,7 @@ def main():
                     setInterval(update, 10000);
                 })();
                 </script>""",
-                height=0,
+                height=50,
             )
 
 if __name__ == "__main__":

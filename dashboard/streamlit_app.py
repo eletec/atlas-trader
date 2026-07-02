@@ -2639,30 +2639,37 @@ def render_trades_list_sortable(trades: list[dict]):
 
     _total_pnl = _sum_realized + _sum_unrealized
     _sum_color = "#2ecc71" if _total_pnl >= 0 else "#e74c3c"
-    _unreal_color = "#2ecc71" if _sum_unrealized >= 0 else "#e74c3c"
-    _avg = _sum_realized / _n_closed if _n_closed > 0 else 0
-
-    _total_size = sum(trade.get("position_size_usd") or trade.get("position_size") or 0 for trade in trades)
-    _total_pnl_pct = (_total_pnl / _total_size * 100) if _total_size > 0 else 0
-    _pct_color = "#2ecc71" if _total_pnl_pct >= 0 else "#e74c3c"
+    # Calcul du % latent total
+    _total_size = sum(
+        (t.get("position_size_usd") or t.get("position_size") or 0)
+        for t in trades if t.get("result_24h") is None
+    )
+    _total_unreal_pct = (_sum_unrealized / _total_size * 100) if _total_size > 0 else 0
 
     _sum_td = (
+        # Col 1-3: TOTAL label
         f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{tbl_fg};'
         f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};" colspan="3">'
         f'TOTAL · {len(trades)} trades ({_n_closed} fermés, {_n_open} ouverts)</td>'
+        # Col 4: Signal (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
+        # Col 5: Entry (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
+        # Col 6: Size (total size)
         f'<td style="padding:8px 12px;font-size:13px;font-weight:600;color:{tbl_fg};'
         f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_total_size:,.0f}</td>'
+        # Col 7-8: SL/TP (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};" colspan="2">—</td>'
+        # Col 9: P&L (realized if any)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
-        f'border-top:2px solid {border};background:{head_bg};"></td>'
+        f'border-top:2px solid {border};background:{head_bg};">{"${:+,.2f}".format(_sum_realized) if _n_closed > 0 else "—"}</td>'
+        # Col 10: Progression (TOTAL latent $ + %)
         f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{_sum_color};'
-        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_total_pnl:+,.2f} '
-        f'<span style="font-size:11px;color:{_pct_color};">({_total_pnl_pct:+.2f}%)</span></td>'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_total_pnl:+,.2f} ({_total_unreal_pct:+.2f}%)</td>'
+        # Col 11: Score (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
     )

@@ -2581,6 +2581,8 @@ def render_trades_list_sortable(trades: list[dict]):
         size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
         current_price = live_prices.get(trade.get("asset", ""), 0)
         is_open = pnl_val is None
+        _tid = trade.get("id", f"t{i}")
+        _ast = trade.get("asset", "")
         if is_open and entry_price > 0 and current_price > 0 and size_usd > 0:
             if action in ("SELL", "SHORT", "CARRY"):
                 pnl_pct = (entry_price - current_price) / entry_price * 100
@@ -2588,7 +2590,9 @@ def render_trades_list_sortable(trades: list[dict]):
                 pnl_pct = (current_price - entry_price) / entry_price * 100
             unrealized = size_usd * pnl_pct / 100
             prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
-            progress_str = f'<span style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+            progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+        elif is_open:
+            progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
 
         cells = [
             trade.get("timestamp", "")[:16].replace("T", " "),
@@ -2667,7 +2671,7 @@ def render_trades_list_sortable(trades: list[dict]):
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};">{"${:+,.2f}".format(_sum_realized) if _n_closed > 0 else "—"}</td>'
         # Col 10: Progression (TOTAL latent $ + %)
-        f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{_sum_color};'
+        f'<td id="atlas-summary-prog" style="padding:8px 12px;font-size:13px;font-weight:700;color:{_sum_color};'
         f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_total_pnl:+,.2f} ({_total_unreal_pct:+.2f}%)</td>'
         # Col 11: Score (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
@@ -2682,7 +2686,92 @@ def render_trades_list_sortable(trades: list[dict]):
     <thead><tr>{header_cells}</tr></thead>
     <tbody>{rows_html}</tbody>
   </table>
-</div>"""
+</div>
+<script>
+(function(){{
+  if (window._atlasLiveProg) return;
+  window._atlasLiveProg = true;
+  var API = window.location.protocol + '//' + window.location.hostname + ':8000';
+  var SYMBOLS = [...new Set(Array.from(document.querySelectorAll('[data-atlas-open="1"]')).map(function(el){{ return el.dataset.atlasSymbol; }}))].join(',');
+
+  function updateCell(el, price) {{
+    var entry = parseFloat(el.dataset.atlasEntry);
+    var size = parseFloat(el.dataset.atlasSize);
+    var action = el.dataset.atlasAction;
+    if (!entry || !size || !price) return;
+    var pnlPct;
+    if (action === 'SHORT' || action === 'SELL' || action === 'CARRY') {{
+      pnlPct = (entry - price) / entry * 100;
+    }} else {{
+      pnlPct = (price - entry) / entry * 100;
+    }}
+    var unrealized = size * pnlPct / 100;
+    var color = unrealized >= 0 ? '#2ecc71' : '#e74c3c';
+    el.style.color = color;
+    el.style.opacity = '1';
+    el.textContent = (unrealized >= 0 ? '+' : '') + unrealized.toFixed(2) + '$ (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)';
+  }}
+
+  function updateAll(prices) {{
+    var totalUnreal = 0, totalSize = 0;
+    document.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {{
+      var sym = el.dataset.atlasSymbol;
+      var priceData = prices[sym];
+      if (priceData && priceData.price) {{
+        updateCell(el, priceData.price);
+        var entry = parseFloat(el.dataset.atlasEntry);
+        var size = parseFloat(el.dataset.atlasSize);
+        var action = el.dataset.atlasAction;
+        if (entry && size) {{
+          var pct = (action === 'SHORT' || action === 'SELL' || action === 'CARRY') ? (entry - priceData.price) / entry : (priceData.price - entry) / entry;
+          totalUnreal += size * pct;
+          totalSize += size;
+        }}
+      }}
+    }});
+    // Update summary
+    var sumEl = document.getElementById('atlas-summary-prog');
+    if (sumEl && totalSize > 0) {{
+      var sumPct = totalUnreal / totalSize * 100;
+      var sumColor = totalUnreal >= 0 ? '#2ecc71' : '#e74c3c';
+      sumEl.style.color = sumColor;
+      sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2) + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
+    }}
+  }}
+
+  // Essayer SSE d'abord, fallback polling apres 5s si pas de data
+  if (SYMBOLS) {{
+    var esUrl = API + '/prices/stream?symbols=' + encodeURIComponent(SYMBOLS);
+    var es = new EventSource(esUrl);
+    var gotData = false;
+    var fallbackTimer = null;
+
+    es.addEventListener('price', function(e) {{
+      gotData = true;
+      if (fallbackTimer) {{ clearTimeout(fallbackTimer); fallbackTimer = null; }}
+      try {{
+        var record = JSON.parse(e.data);
+        var prices = {{}};
+        prices[record.symbol] = record;
+        updateAll(prices);
+      }} catch(ex) {{}}
+    }});
+
+    // Si pas de data SSE sous 5s → fallback polling toutes les 2s
+    fallbackTimer = setTimeout(function() {{
+      if (!gotData) {{
+        es.close();
+        setInterval(function() {{
+          fetch(API + '/prices/snapshot')
+            .then(function(r) {{ return r.json(); }})
+            .then(function(data) {{ updateAll(data); }})
+            .catch(function() {{}});
+        }}, 2000);
+      }}
+    }}, 5000);
+  }}
+}})();
+</script>"""
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -4168,6 +4257,8 @@ def render_admin_panel():
                 entry_price = float(tr.get("entry_price", 0) or 0)
                 size_usd = float(tr.get("size_usd", 0) or 0)
                 current_price = live_prices.get(tr.get("symbol", ""), 0)
+                _tid4 = tr.get("trade_id", f"vh{i}")
+                _sym4 = tr.get("symbol", "")
                 if tr.get("status") == "open" and entry_price > 0 and current_price > 0 and size_usd > 0:
                     if action in ("CARRY", "SHORT"):
                         pnl_pct = (entry_price - current_price) / entry_price * 100
@@ -4175,7 +4266,9 @@ def render_admin_panel():
                         pnl_pct = (current_price - entry_price) / entry_price * 100
                     unrealized = size_usd * pnl_pct / 100
                     prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
-                    progress_str = f'<span style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+                    progress_str = f'<span id="aprog-{_tid4}" data-atlas-symbol="{_sym4}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+                elif tr.get("status") == "open":
+                    progress_str = f'<span id="aprog-{_tid4}" data-atlas-symbol="{_sym4}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
                 
                 cells = [
                     (tr.get("timestamp") or "")[:19].replace("T", " "),

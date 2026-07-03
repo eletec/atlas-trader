@@ -202,8 +202,38 @@ class LLMNode(Node):
                     max_tokens=max_tokens,
                     timeout=timeout_s,
                 )
-                resp_obj = litellm.completion(**kwargs)
-                response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""
+                try:
+                    resp_obj = litellm.completion(**kwargs)
+                    response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""
+                except Exception as _litellm_exc:
+                    _err_msg = str(_litellm_exc)
+                    # Fallback: si auth échoue, tenter Ollama local
+                    if "auth" in _err_msg.lower() or "key" in _err_msg.lower() or "401" in _err_msg or "403" in _err_msg:
+                        import logging as _logging
+                        _llm_log = _logging.getLogger("v4.nodes.ai.llm_node")
+                        _llm_log.warning("DeepSeek auth failed → fallback Ollama local: %s", _err_msg[:120])
+                        try:
+                            import urllib.request as _ur2
+                            _fb_payload = {
+                                "model": "phi4:latest",
+                                "system": system_prompt,
+                                "prompt": formatted_prompt,
+                                "stream": False,
+                                "options": {"temperature": temperature, "num_predict": max_tokens},
+                            }
+                            _fb_req = _ur2.Request(
+                                f"{ollama_url}/api/generate",
+                                data=json.dumps(_fb_payload).encode("utf-8"),
+                                headers={"Content-Type": "application/json"},
+                            )
+                            with _ur2.urlopen(_fb_req, timeout=timeout_s) as _fb_resp:
+                                _fb_body = json.loads(_fb_resp.read().decode("utf-8"))
+                            response_text = _fb_body.get("response", "")
+                            model = "phi4:latest (ollama fallback)"
+                        except Exception as _fb_exc:
+                            raise RuntimeError(f"DeepSeek auth failed + Ollama fallback failed: {_fb_exc}") from _litellm_exc
+                    else:
+                        raise
         except Exception as exc:
             duration_ms = (time.time() - t0) * 1000
             return {

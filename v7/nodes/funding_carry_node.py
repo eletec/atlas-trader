@@ -196,23 +196,43 @@ class FundingCarryNode:
             return 0.0
     
     def fetch_spot_price(self) -> float:
-        """Fetch le prix spot actuel."""
-        try:
-            exchange = self._get_exchange()
-            ticker = exchange.fetch_ticker(self.symbol)
-            return float(ticker.get("last", 0))
-        except Exception:
-            return 0.0
+        """Fetch le prix spot actuel avec retry + log en cas d'échec."""
+        import time as _time
+        last_err = ""
+        for attempt in range(3):
+            try:
+                exchange = self._get_exchange()
+                ticker = exchange.fetch_ticker(self.symbol)
+                price = float(ticker.get("last", 0))
+                if price > 0:
+                    return price
+                last_err = f"price=0 from ticker"
+            except Exception as e:
+                last_err = str(e)[:120]
+            if attempt < 2:
+                _time.sleep(1.0 * (attempt + 1))  # backoff: 1s, 2s
+        logger.warning("[%s] fetch_spot_price FAILED after 3 attempts: %s", self.node_id, last_err)
+        return 0.0
     
     def fetch_perp_price(self) -> float:
-        """Fetch le prix du perpetual."""
-        try:
-            exchange = self._get_exchange()
-            symbol_perp = f"{self.symbol}:USDT" if ":" not in self.symbol else self.symbol
-            ticker = exchange.fetch_ticker(symbol_perp)
-            return float(ticker.get("last", 0))
-        except Exception:
-            return 0.0
+        """Fetch le prix du perpetual avec retry."""
+        import time as _time
+        last_err = ""
+        for attempt in range(3):
+            try:
+                exchange = self._get_exchange()
+                symbol_perp = f"{self.symbol}:USDT" if ":" not in self.symbol else self.symbol
+                ticker = exchange.fetch_ticker(symbol_perp)
+                price = float(ticker.get("last", 0))
+                if price > 0:
+                    return price
+                last_err = f"price=0 from ticker"
+            except Exception as e:
+                last_err = str(e)[:120]
+            if attempt < 2:
+                _time.sleep(1.0 * (attempt + 1))
+        logger.warning("[%s] fetch_perp_price FAILED after 3 attempts: %s", self.node_id, last_err)
+        return 0.0
     
     # ── Decision logic ──
     

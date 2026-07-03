@@ -51,6 +51,8 @@ services:
       - TZ=Europe/Paris
       - DATABASE_URL=sqlite:////app/data/v4.db
       - V4_INTENSITY=balanced     # conservative | balanced | aggressive
+      # Clé API DeepSeek (optionnelle — fallback Ollama local si absente)
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
     depends_on:
       - atlas-v4-ollama
     healthcheck:

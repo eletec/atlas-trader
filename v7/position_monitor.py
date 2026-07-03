@@ -119,8 +119,14 @@ class PositionMonitor:
             close_price = current_price
             reason = ""
 
+            # Pour les trades "carry" (delta-neutre : short perp + long spot),
+            # le SL/TP spot n'a pas de sens car la position est couverte.
+            # Seul le time-stop et le basis-SL (géré par le DAG) s'appliquent.
+            is_carry = action == "carry"
+
             # 2) Vérifier SL → prix traverse le stop-loss
-            if sl_price > 0:
+            # Désactivé pour les trades carry (le vrai risque est sur la basis, pas le spot)
+            if not is_carry and sl_price > 0:
                 if action in ("short", "carry"):
                     # Short: SL est au-dessus du prix d'entrée → on ferme si prix ≥ SL
                     if current_price >= sl_price:
@@ -137,7 +143,8 @@ class PositionMonitor:
                         reason = f"SL hit: {pnl_pct:+.2f}% (entry={entry_price:.2f} sl={sl_price:.2f} price={current_price:.2f})"
 
             # 3) Vérifier TP → prix atteint le take-profit
-            if not should_close and tp_price > 0:
+            # Désactivé pour les trades carry (même raison que SL)
+            if not should_close and not is_carry and tp_price > 0:
                 if action in ("short", "carry"):
                     if current_price <= tp_price:
                         should_close = True

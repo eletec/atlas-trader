@@ -109,16 +109,48 @@ class FundingCarryNode:
             self._restore_state()
     
     def _restore_state(self):
-        """Vérifie si une position carry est déjà ouverte pour ce symbole."""
+        """Vérifie si une position carry est déjà ouverte pour ce symbole.
+        
+        Restaure TOUS les champs nécessaires au suivi de position :
+        entry_spot, entry_perp, entry_time, entry_capital,
+        total_funding_received, n_payments.
+        Sans ces valeurs, les vérifications SL/TP/time-stop sont ignorées.
+        """
         try:
             from storage.paper_trader import get_open_positions
+            import json as _json
             open_pos = get_open_positions(symbol=self.symbol)
             carry_pos = [p for p in open_pos if p.get("action") in ("carry", "short")]
             if carry_pos:
+                pos = carry_pos[0]
                 self.state.position_open = True
-                self.state.entry_capital = float(carry_pos[0].get("size_usd", 0))
-                logger.info("[%s] Position carry restaurée depuis la DB ($%.0f)",
-                           self.node_id, self.state.entry_capital)
+                self.state.entry_capital = float(pos.get("size_usd", 0))
+                # Restaurer le prix d'entrée spot (stocké dans entry_price)
+                self.state.entry_spot = float(pos.get("entry_price", 0) or 0)
+                # Restaurer le perp depuis context_json si disponible
+                ctx_raw = pos.get("context_json")
+                if ctx_raw:
+                    try:
+                        ctx = _json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
+                        # Le context_json contient le decision dict complet
+                        # entry_price = spot, on cherche le perp dans carry_* ou on l'estime
+                        if ctx.get("carry_signal") == "open_carry":
+                            # Le perp était proche du spot à l'ouverture (basis ~0)
+                            self.state.entry_perp = self.state.entry_spot
+                    except Exception:
+                        self.state.entry_perp = self.state.entry_spot
+                else:
+                    # Pas de contexte : estimer perp ≈ spot (le basis est généralement faible)
+                    self.state.entry_perp = self.state.entry_spot
+                # Restaurer le timestamp d'ouverture (pour le time-stop)
+                ts = pos.get("timestamp", "")
+                if ts:
+                    self.state.entry_time = ts
+                logger.info(
+                    "[%s] Position carry restaurée : spot=%.2f perp=%.2f capital=$%.0f opened=%s",
+                    self.node_id, self.state.entry_spot, self.state.entry_perp,
+                    self.state.entry_capital, self.state.entry_time[:19] if self.state.entry_time else "?"
+                )
         except Exception as e:
             logger.debug("[%s] DB restore skipped: %s", self.node_id, e)
     

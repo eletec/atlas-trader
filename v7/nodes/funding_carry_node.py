@@ -429,12 +429,22 @@ class FundingCarryNode:
         
         # ── Output ──
         # Construire un "decision" compatible PaperTrader
+        # Pour les trades carry, le SL/TP sont basés sur le spot (approximation pour le moniteur).
+        # Le vrai SL est basis-based et géré par le DAG lui-même dans sa boucle de décision.
+        _sl_price = 0.0
+        _tp_price = 0.0
+        if signal == "open_carry" and spot_price > 0:
+            # Short: SL au-dessus du prix d'entrée (si le spot monte, la position perd)
+            _sl_price = round(spot_price * (1 + abs(self.stop_loss_pct)), 2)
+            # TP: objectif de gain à 2x le SL (asymétrique)
+            _tp_price = round(spot_price * (1 - abs(self.stop_loss_pct) * 2), 2)
+        
         decision = {
             "action": "flat",
             "size_usd": round(size_usd, 2),
             "entry_price": spot_price,
-            "stop_loss": 0,
-            "take_profit": 0,
+            "stop_loss": _sl_price,
+            "take_profit": _tp_price,
             "atr": 0,
             "carry_signal": signal,
             "carry_expected_return": round(expected_return, 4),

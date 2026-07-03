@@ -54,6 +54,49 @@ class PaperTrader(Node):
         if action == "flat":
             return {"trade_result": {"status": "flat", "symbol": symbol}}
 
+        # ── Actions de fermeture (close_carry, close, close_long, close_short) ──
+        if action in ("close_carry", "close", "close_long", "close_short"):
+            try:
+                from storage.paper_trader import get_open_positions, close_position
+                open_positions = get_open_positions(symbol=symbol)
+                if not open_positions:
+                    logger.info("PaperTrader [%s] close_carry: aucune position ouverte", symbol)
+                    return {"trade_result": {"status": "no_position", "symbol": symbol}}
+                # Fermer la première position ouverte (ou toutes)
+                closed = []
+                for pos in open_positions:
+                    trade_id = pos["trade_id"]
+                    pnl_usd = float(pos.get("pnl_usd", 0) or 0)
+                    close_price = decision.get("entry_price", 0) or decision.get("close_price", 0)
+                    if close_price <= 0:
+                        # Fallback: fetch spot price
+                        try:
+                            import ccxt
+                            ex = ccxt.binance()
+                            ticker = ex.fetch_ticker(symbol)
+                            close_price = float(ticker.get("last", 0))
+                        except Exception:
+                            close_price = float(pos.get("entry_price", 0))
+                    # Calculer le P&L
+                    pos_action = pos.get("action", "long")
+                    entry = float(pos.get("entry_price", 0))
+                    size = float(pos.get("size_usd", 0))
+                    if pos_action in ("short", "carry"):
+                        pnl = (entry - close_price) / entry * size
+                    else:
+                        pnl = (close_price - entry) / entry * size
+                    ok = close_position(trade_id, close_price, round(pnl, 4),
+                                        f"signal_{action}")
+                    if ok:
+                        closed.append(trade_id)
+                        logger.info("PaperTrader [%s] CLOSE %s @ %.2f pnl=$%.2f (%s)",
+                                   symbol, trade_id, close_price, pnl, action)
+                return {"trade_result": {"status": "closed", "symbol": symbol,
+                                          "closed_ids": closed, "close_price": close_price}}
+            except ImportError:
+                logger.warning("PaperTrader [%s] close_carry: storage.paper_trader indisponible", symbol)
+                return {"trade_result": {"status": "error", "symbol": symbol, "reason": "storage unavailable"}}
+
         # ── Limite de positions simultanées (pyramiding control) ──
         # Priorité : input AssetDef > params DAG > défaut 1
         max_positions = int(inputs.get("max_positions") or self.params.get("max_positions", 1))

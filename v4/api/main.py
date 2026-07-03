@@ -100,6 +100,14 @@ async def _auto_schedule_demo():
     # 3) V7 Funding Carry Scheduler — DÉSACTIVÉ (remplacé par les DAGs V7 #1)
     # Le scheduler était redondant avec les DAGs et créait des doublons.
 
+    # 4) Position Monitor — surveillance continue des SL/TP/time-stop
+    try:
+        from v7.position_monitor import start_monitor
+        start_monitor()
+        logging.getLogger("v4.api.main").info("PositionMonitor démarré")
+    except Exception as exc:
+        logging.getLogger("v4.api.main").warning(f"PositionMonitor non démarré : {exc}")
+
 
 @app.get("/health")
 async def health() -> dict:

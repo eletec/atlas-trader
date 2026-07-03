@@ -141,6 +141,7 @@ class PaperTrader(Node):
                 atr=atr,
                 testnet=testnet,
                 dag_id=dag_id,
+                context=decision,  # traçabilité complète du contexte de décision
             )
             return {"trade_result": {"status": "opened", "trade_id": trade_id, "symbol": symbol,
                                       "action": action, "entry_price": entry_price}}

@@ -57,17 +57,23 @@ def persist_trade(
     dag_id: str = "",
     size_units: float = 0,
     atr: float = 0,
+    context: dict | None = None,
 ) -> str:
     """
     Persiste un trade paper dans la table v4_trades.
+
+    Args:
+        context: dict optionnel — stocké en JSON dans context_json pour traçabilité
 
     Returns:
         trade_id (str) — UUID unique du trade.
     """
     from storage.database import get_connection
+    import json as _json
 
     trade_id = str(uuid.uuid4())[:8]
     now = datetime.now(timezone.utc).isoformat()
+    ctx_json = _json.dumps(context, default=str) if context else None
 
     try:
         with get_connection() as conn:
@@ -75,10 +81,10 @@ def persist_trade(
             conn.execute(
                 """INSERT INTO v4_trades
                    (trade_id, dag_id, timestamp, symbol, action, entry_price,
-                    stop_loss, take_profit, size_usd, size_units, atr, status, testnet)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)""",
+                    stop_loss, take_profit, size_usd, size_units, atr, status, testnet, context_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
                 (trade_id, dag_id, now, symbol, action, entry_price,
-                 stop_loss, take_profit, size_usd, size_units, atr, int(testnet)),
+                 stop_loss, take_profit, size_usd, size_units, atr, int(testnet), ctx_json),
             )
             conn.commit()
         logger.info("Trade persisté: %s %s %s @ %.2f size=$%.0f", trade_id, symbol, action, entry_price, size_usd)

@@ -54,7 +54,7 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
-                 params={"db_path": "/app/data/v4.db"}),
+                 params={"db_path": "/app/data/v4.db", "symbol": symbol, "dag_id": dag_id}),
         # LLM AI Analyst (analyse async de la décision carry)
         NodeSpec(id=f"{pfx}_llm", type="LLMNode",
                  params={"model": "deepseek-chat", "temperature": 0.3,
@@ -72,9 +72,11 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
         # Carry → PaperTrader (execution)
         EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
                  target_node=f"{pfx}_paper", target_port="decision"),
-        # Carry → Record (logging)
+        # Carry → Record (logging) — avec trade_id pour lien
         EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
                  target_node=f"{pfx}_record", target_port="decision"),
+        EdgeSpec(source_node=f"{pfx}_paper", source_port="trade_result",
+                 target_node=f"{pfx}_record", target_port="trade_result"),
         # Carry → LLM (AI analysis)
         EdgeSpec(source_node=f"{pfx}_carry", source_port="decision",
                  target_node=f"{pfx}_llm", target_port="decision"),

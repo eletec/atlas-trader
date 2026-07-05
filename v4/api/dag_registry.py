@@ -29,7 +29,7 @@ _LOG_LOCK = threading.Lock()
 
 
 def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
-    """Ajoute une entrée dans le buffer circulaire de logs (heure locale)."""
+    """Ajoute une entrée dans le buffer circulaire de logs + persiste en DB."""
     entry = {
         "ts": datetime.now().isoformat(timespec="seconds"),
         "level": level,
@@ -40,6 +40,25 @@ def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
     with _LOG_LOCK:
         _LOG_BUFFER.append(entry)
     logger.info("[%s] %s%s: %s", dag_id, f"{node_id} " if node_id else "", level, message)
+
+    # Persistance en DB (best-effort, ne doit pas bloquer le DAG)
+    try:
+        import sqlite3
+        db_path = "/app/data/v4.db"
+        with sqlite3.connect(db_path, timeout=2) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS dag_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT, level TEXT, dag_id TEXT, node_id TEXT, message TEXT
+                )
+            """)
+            conn.execute(
+                "INSERT INTO dag_logs (ts, level, dag_id, node_id, message) VALUES (?,?,?,?,?)",
+                (entry["ts"], level, dag_id, node_id, message),
+            )
+            conn.commit()
+    except Exception:
+        pass  # silencieux — les logs mémoire restent disponibles
 
 
 def get_logs(n: int = 50) -> list[dict]:

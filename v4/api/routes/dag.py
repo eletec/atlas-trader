@@ -175,8 +175,66 @@ async def llm_results():
 
 @router.get("/logs")
 async def dag_logs(n: int = 50):
-    """Retourne les N derniers logs d'exécution des DAGs."""
-    return get_logs(n)
+    """Retourne les N derniers logs d'exécution des DAGs (mémoire + DB fallback)."""
+    mem_logs = get_logs(n)
+    if len(mem_logs) >= n:
+        return mem_logs
+    # Fallback: compléter depuis la DB
+    try:
+        import sqlite3
+        db_path = "/app/data/v4.db"
+        with sqlite3.connect(db_path, timeout=2) as conn:
+            rows = conn.execute(
+                "SELECT ts, level, dag_id, node_id, message FROM dag_logs ORDER BY id DESC LIMIT ?",
+                (n,),
+            ).fetchall()
+        db_logs = [
+            {"ts": r[0], "level": r[1], "dag_id": r[2], "node_id": r[3], "message": r[4]}
+            for r in reversed(rows)
+        ]
+        return db_logs
+    except Exception:
+        return mem_logs
+
+
+@router.get("/decisions")
+async def decisions_history(symbol: str = "", dag_id: str = "", n: int = 100):
+    """Retourne l'historique des décisions, filtrable par actif et DAG."""
+    try:
+        import sqlite3, json as _jd
+        db_path = "/app/data/v4.db"
+        with sqlite3.connect(db_path, timeout=2) as conn:
+            conn.row_factory = sqlite3.Row
+            conditions = []
+            params = []
+            if symbol:
+                conditions.append("symbol = ?")
+                params.append(symbol)
+            if dag_id:
+                conditions.append("dag_id = ?")
+                params.append(dag_id)
+            where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+            rows = conn.execute(
+                f"SELECT id, ts, symbol, dag_id, trade_id, data FROM shadow_decisions {where} ORDER BY id DESC LIMIT ?",
+                (*params, n),
+            ).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["data"] = _jd.loads(d["data"]) if isinstance(d["data"], str) else d["data"]
+            except Exception:
+                pass
+            # Convertir ts unix → ISO
+            try:
+                from datetime import datetime
+                d["ts_iso"] = datetime.fromtimestamp(d["ts"]).isoformat()
+            except Exception:
+                d["ts_iso"] = str(d["ts"])
+            results.append(d)
+        return {"count": len(results), "decisions": results}
+    except Exception as exc:
+        return {"error": str(exc), "count": 0, "decisions": []}
 
 
 @router.post("/close-trade")

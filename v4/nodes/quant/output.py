@@ -219,7 +219,11 @@ class RecordDecision(Node):
     Utile pour comparer des stratégies en shadow mode.
 
     Inputs  : decision (dict)
-    Params  : table (str — nom de la table SQLite, défaut "shadow_decisions")
+    Params  : 
+        table      (str — nom de la table, défaut "shadow_decisions")
+        db_path    (str — chemin DB)
+        symbol     (str — actif concerné)
+        dag_id     (str — DAG parent)
     """
 
     @property
@@ -228,11 +232,11 @@ class RecordDecision(Node):
 
     @staticmethod
     def input_schema() -> dict[str, str]:
-        return {"decision": "dict"}
+        return {"decision": "dict", "trade_result": "dict"}
 
     @staticmethod
     def output_schema() -> dict[str, str]:
-        return {}
+        return {"decision_id": "int"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         import json
@@ -240,20 +244,42 @@ class RecordDecision(Node):
         import time
 
         decision = inputs.get("decision", {})
+        trade_result = inputs.get("trade_result", {})
         table    = self.params.get("table", "shadow_decisions")
         db_path  = self.params.get("db_path", "/app/data/v4.db")
+        symbol   = self.params.get("symbol", decision.get("symbol", ""))
+        dag_id   = self.params.get("dag_id", "")
+        # Récupérer le trade_id depuis le résultat PaperTrader (lien trade↔décision)
+        trade_id = trade_result.get("trade_id", "") or decision.get("trade_id", "")
 
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.execute(
                     f"CREATE TABLE IF NOT EXISTS {table} "
-                    "(id INTEGER PRIMARY KEY, ts REAL, data TEXT)"
+                    "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    " ts REAL, symbol TEXT, dag_id TEXT, trade_id TEXT, data TEXT)"
                 )
-                conn.execute(
-                    f"INSERT INTO {table} (ts, data) VALUES (?, ?)",
-                    (time.time(), json.dumps(decision)),
+                # Ajouter les colonnes manquantes si la table existe déjà (migration)
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN symbol TEXT")
+                except sqlite3.OperationalError:
+                    pass  # colonne existe déjà
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN dag_id TEXT")
+                except sqlite3.OperationalError:
+                    pass
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN trade_id TEXT")
+                except sqlite3.OperationalError:
+                    pass
+
+                cursor = conn.execute(
+                    f"INSERT INTO {table} (ts, symbol, dag_id, trade_id, data) VALUES (?, ?, ?, ?, ?)",
+                    (time.time(), symbol, dag_id, trade_id, json.dumps(decision)),
                 )
+                decision_id = cursor.lastrowid
         except Exception as exc:
             logger.warning("RecordDecision failed: %s", exc)
+            decision_id = 0
 
-        return {}
+        return {"decision_id": decision_id}

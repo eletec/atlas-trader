@@ -3442,6 +3442,7 @@ def render_admin_panel():
         ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
         ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
         ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
+        ('<i class="fas fa-brain"></i>',           "decisions",   "🧠 Décisions IA"),
         ('<i class="fas fa-lightbulb"></i>',      "reflections", "🧠 Réflexions IA"),
         ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup")),
@@ -4343,8 +4344,66 @@ def render_admin_panel():
         except Exception as _he:
             st.error(f"Erreur lecture historique V4 : {_he}")
 
-    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset et Historique)
-    if _atab not in ("backup", "flux", "peractif", "reset", "historique"):
+    elif _atab == "decisions":  # 🧠 Historique des décisions IA
+        st.markdown(
+            '<h4><i class="fas fa-brain" style="margin-right:7px;color:#9c27b0;"></i>'
+            ' Historique des Décisions</h4>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Chaque décision du DAG (cycle 8h) — filtrable par actif.")
+
+        _dcol1, _dcol2 = st.columns([1, 1])
+        with _dcol1:
+            _dsymbol = st.selectbox("Actif", ["Tous", "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"], key="dec_symbol")
+        with _dcol2:
+            _dlimit = st.slider("Nombre", 10, 500, 50, 10, key="dec_limit")
+
+        try:
+            _dparams = {"n": _dlimit}
+            if _dsymbol != "Tous":
+                _dparams["symbol"] = _dsymbol
+            _durl = f"{_API_BASE}/dag/decisions?" + "&".join(f"{k}={v}" for k, v in _dparams.items())
+            import urllib.request as _urdec, json as _jdec
+            _dresp = _jdec.loads(_urdec.urlopen(_durl, timeout=10).read())
+
+            if _dresp.get("error"):
+                st.warning(_dresp["error"])
+            elif not _dresp.get("decisions"):
+                st.info("Aucune décision enregistrée. Les décisions apparaîtront après le premier cycle DAG.")
+            else:
+                decisions = _dresp["decisions"]
+                st.markdown(f"**{len(decisions)} décision(s)** trouvée(s)")
+
+                for d in decisions:
+                    data = d.get("data", {})
+                    signal = data.get("signal") or data.get("action") or "?"
+                    reason = data.get("reason", "")[:200]
+                    ts = d.get("ts_iso", "")[:19]
+                    sym = d.get("symbol", "?")
+                    dag = d.get("dag_id", "?")
+                    trade_link = d.get("trade_id", "")
+
+                    # Couleur selon signal
+                    sig_color = "#2ecc71" if signal in ("open_carry", "carry", "long") else (
+                        "#e74c3c" if signal in ("close_carry", "short") else "#ffb74d")
+                    
+                    with st.expander(
+                        f"{ts} — {sym} — {signal} — {reason[:80]}{'...' if len(reason) > 80 else ''}"
+                    ):
+                        c1, c2 = st.columns([3, 1])
+                        with c1:
+                            st.json(data)
+                        with c2:
+                            st.metric("Signal", signal)
+                            st.caption(f"DAG: `{dag}`")
+                            if trade_link:
+                                st.caption(f"Trade: `{trade_link}`")
+                            st.caption(f"TS: {ts}")
+        except Exception as _de:
+            st.error(f"Erreur chargement décisions : {_de}")
+
+    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset, Historique et Décisions)
+    if _atab not in ("backup", "flux", "peractif", "reset", "historique", "decisions"):
         st.markdown("---")
     if _atab == "backup":
         pass  # pas de bouton save_settings pour l'onglet backup
@@ -4352,6 +4411,8 @@ def render_admin_panel():
         pass  # le panneau reset gère ses propres boutons
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
+    elif _atab == "decisions":
+        pass  # le panneau décisions gère son propre affichage
     elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
         # ── Configuration ──
         if _atab == "v4_admin":

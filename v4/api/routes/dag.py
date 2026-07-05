@@ -190,6 +190,44 @@ async def close_trade_route(trade_id: str = "", close_price: float = 0):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/close-all")
+async def close_all_trades():
+    """Ferme TOUTES les positions ouvertes au prix spot actuel (via CCXT).
+    
+    Pratique pour nettoyer les positions bloquées ou terminer une session de test.
+    """
+    try:
+        from storage.paper_trader import get_open_positions, close_position
+        import ccxt
+        exchange = ccxt.binance({"enableRateLimit": True})
+        positions = get_open_positions()
+        closed = []
+        failed = []
+        for pos in positions:
+            trade_id = pos.get("trade_id", "")
+            symbol = pos.get("symbol", "")
+            action = pos.get("action", "long")
+            entry = float(pos.get("entry_price", 0) or 0)
+            size = float(pos.get("size_usd", 0) or 0)
+            try:
+                ticker = exchange.fetch_ticker(symbol)
+                close_price = float(ticker.get("last", 0))
+            except Exception:
+                close_price = entry  # fallback: close at entry (0 P&L)
+            if action in ("short", "carry"):
+                pnl = (entry - close_price) / entry * size if entry > 0 else 0
+            else:
+                pnl = (close_price - entry) / entry * size if entry > 0 else 0
+            ok = close_position(trade_id, close_price, round(pnl, 4), "close_all_manual")
+            if ok:
+                closed.append({"trade_id": trade_id, "symbol": symbol, "close_price": close_price, "pnl": round(pnl, 2)})
+            else:
+                failed.append(trade_id)
+        return {"closed": len(closed), "failed": len(failed), "details": closed}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/{dag_id}/status", response_model=DAGStatusOut)
 async def dag_status(dag_id: str):
     entries = DAGRegistry.instance().status(dag_id)

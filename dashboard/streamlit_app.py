@@ -4295,6 +4295,28 @@ def render_admin_panel():
             _h_csv = _h_df.to_csv(index=False).encode("utf-8")
             st.download_button("⬇️ Exporter CSV", _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
 
+            # ── Bouton fermeture manuelle de toutes les positions ──────────
+            st.markdown("---")
+            st.markdown("#### ⚠️ Fermeture d'urgence")
+            st.caption("Ferme TOUTES les positions ouvertes au prix spot actuel. Utile si les mécanismes automatiques de SL/TP ne se sont pas déclenchés.")
+            _n_open_hist = sum(1 for tr in filtered if tr.get("status") == "open")
+            if _n_open_hist > 0:
+                if st.button(f"🔴 Fermer les {_n_open_hist} position(s) ouverte(s)", type="secondary", use_container_width=True):
+                    try:
+                        import urllib.request as _ur_close, json as _j_close
+                        _resp = _ur_close.urlopen(_ur_close.Request(
+                            f"{_API_BASE}/dag/close-all", method="POST"), timeout=30)
+                        _result = _j_close.loads(_resp.read())
+                        st.success(f"✅ {_result['closed']} position(s) fermée(s), {_result['failed']} échec(s)")
+                        if _result.get("details"):
+                            for d in _result["details"]:
+                                st.caption(f"• {d['symbol']} @ ${d['close_price']:,.2f} → P&L ${d['pnl']:+,.2f}")
+                        st.rerun()
+                    except Exception as _ce:
+                        st.error(f"Erreur API : {_ce}")
+            else:
+                st.info("Aucune position ouverte.")
+
             # Réflexions (leçons apprises)
             try:
                 with _hget_conn() as _hconn:

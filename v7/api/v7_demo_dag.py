@@ -47,9 +47,11 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
                           "max_funding": cd.get("max_funding", 0.003),
                           "exit_after_hours": cd.get("exit_after_hours", 72),
                           "kelly_fraction": cd.get("kelly_fraction", 0.35),
-                          "max_hold_days": cd.get("max_hold_days", 21),
+                          "max_hold_days": cd.get("max_hold_days", 10),
                           "stop_loss_pct": cd.get("stop_loss_pct", -0.045),
-                          "max_portfolio_dd_pct": cd.get("max_portfolio_dd_pct", 0.20)}),
+                          "max_portfolio_dd_pct": cd.get("max_portfolio_dd_pct", 0.20),
+                          "max_loss_pct": cd.get("max_loss_pct", -0.05),
+                          "min_volatility_30d": cd.get("min_volatility_30d", 0.02)}),
         # PaperTrader — exécute le signal carry (max 1 position par actif)
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),

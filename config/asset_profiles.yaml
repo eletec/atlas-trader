@@ -104,8 +104,11 @@ v7_carry_defaults:
   exit_after_hours: 72        # sortie si funding négatif > 72h
   kelly_fraction: 0.35        # fractional Kelly
   max_hold_days: 10           # time-stop (réduit pour itération plus rapide)
-  stop_loss_pct: -0.045       # hard stop basis loss
-  max_portfolio_dd_pct: 0.20  # kill-switch global portefeuille
+  stop_loss_pct: -0.045       # hard stop basis loss (DAG)
+  max_loss_pct: -0.05         # perte max par position — unifié SL+time-stop (PositionMonitor)
+  max_portfolio_dd_pct: 0.20  # kill-switch global portefeuille (PositionMonitor)
+  total_capital: 14000        # capital total (7 actifs × $2000) pour calcul kill-switch
+  min_volatility_30d: 0.02    # volatilité 30j minimum pour entrer en carry (filtre de régime)
   sl_mult: 2.0
   tp_mult: 4.0
   max_pos: 3

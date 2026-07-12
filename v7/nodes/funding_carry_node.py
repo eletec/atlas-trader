@@ -99,6 +99,9 @@ class FundingCarryNode:
         self.fee_bps = fee_bps
         self.slippage_bps = slippage_bps
         
+        # Filtre de régime : volatilité 30j minimum pour entrer (via params DAG ou défaut)
+        self.min_volatility_30d = float(self.params.get("min_volatility_30d", 0.02))
+        
         self.state = FundingCarryState(symbol=symbol)
         self._funding_rate_history: list[float] = []  # MA 7j (~21 valeurs)
         
@@ -267,6 +270,39 @@ class FundingCarryNode:
         return 0.0
     
     # ── Decision logic ──
+
+    def _check_volatility_regime(self) -> bool:
+        """Filtre de régime : vérifie que la volatilité 30j est suffisante.
+        
+        Le funding carry est plus rentable en période de volatilité élevée
+        (plus de demande de levier → funding plus élevé). En marché calme,
+        mieux vaut rester en stablecoin.
+        
+        Returns: True si la volatilité est suffisante pour trader.
+        """
+        if self.min_volatility_30d <= 0:
+            return True  # filtre désactivé
+        try:
+            import ccxt
+            exchange = ccxt.binance({"enableRateLimit": True})
+            ohlcv = exchange.fetch_ohlcv(self.symbol, timeframe="1d", limit=30)
+            if len(ohlcv) < 10:
+                return True  # pas assez de données → laisser passer
+            closes = [c[4] for c in ohlcv]
+            returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
+            if not returns:
+                return True
+            import statistics
+            daily_vol = statistics.stdev(returns) if len(returns) >= 2 else 0
+            annual_vol = daily_vol * (365 ** 0.5) if daily_vol > 0 else 0
+            ok = annual_vol >= self.min_volatility_30d
+            if not ok:
+                logger.info("[%s] Régime filtre: vol 30j=%.2f < min=%.2f → pas d'entrée",
+                           self.node_id, annual_vol, self.min_volatility_30d)
+            return ok
+        except Exception as e:
+            logger.debug("[%s] Volatility check failed: %s → laisser passer", self.node_id, e)
+            return True  # en cas d'erreur, ne pas bloquer
     
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Exécute le nœud Funding Carry.
@@ -350,6 +386,10 @@ class FundingCarryNode:
                 elif basis_pct < -0.003:
                     reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
+                # Filtre 4 : régime de marché — volatilité 30j suffisante
+                elif not self._check_volatility_regime():
+                    reason = f"volatilité 30j insuffisante (< {self.min_volatility_30d*100:.0f}%) → capital protégé"
+                    confidence = 0.25
                 else:
                     # expected_return = rendement annualisé du funding + gain/coût one-shot du basis
                     expected_return = annual_funding + basis_pct

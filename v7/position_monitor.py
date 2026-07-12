@@ -3,15 +3,12 @@ v7/position_monitor.py — Surveillance continue des positions ouvertes.
 
 Thread indépendant du cycle DAG. Toutes les 60 secondes :
   1. Récupère les positions ouvertes (tous symboles)
-  2. Fetch les prix spot actuels via CCXT (cache 30s par symbole)
-  3. Vérifie SL/TP contre le prix courant
+  2. Fetch les prix spot et perp actuels via CCXT (cache 30s)
+  3. Vérifie SL/TP contre le prix courant (sauf carry)
   4. Applique le time-stop (max_hold_days écoulé)
-  5. Ferme les positions qui ont atteint leur condition de sortie
-
-Ce module remplace le PositionManager manquant dans les DAGs V7.
-Le PositionManager original (v4/nodes/quant/position_manager.py) nécessitait
-des inputs OHLCV et n'était pas inclus dans le DAG V7. Ce monitor comble
-ce gap avec une approche légère (prix spot uniquement, pas d'ATR).
+  5. Applique la perte max par position (max_loss_pct, unifié SL+time-stop)
+  6. Kill-switch global : ferme tout si P&L total < -max_portfolio_dd_pct
+  7. Ferme les positions qui ont atteint leur condition de sortie
 """
 
 from __future__ import annotations
@@ -25,9 +22,12 @@ from typing import Any
 logger = logging.getLogger("v7.position_monitor")
 
 # ── Configuration ──────────────────────────────────────────────────────────
-CHECK_INTERVAL_S = 60          # vérification toutes les 60 secondes
-PRICE_CACHE_TTL_S = 30         # cache des prix spot par symbole
-MAX_HOLD_DAYS_DEFAULT = 21     # time-stop par défaut si non spécifié
+CHECK_INTERVAL_S = 60
+PRICE_CACHE_TTL_S = 30
+MAX_HOLD_DAYS_DEFAULT = 10       # time-stop par défaut
+MAX_LOSS_PCT_DEFAULT = -0.05     # perte max par position (-5%)
+PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
+TOTAL_CAPITAL_DEFAULT = 14_000   # 7 actifs × $2,000
 
 
 class PositionMonitor:
@@ -39,7 +39,38 @@ class PositionMonitor:
 
     def __init__(self) -> None:
         self._price_cache: dict[str, tuple[float, float]] = {}  # symbol → (price, timestamp)
+        self._perp_cache: dict[str, tuple[float, float]] = {}   # symbol → (perp_price, timestamp)
         self._lock = threading.Lock()
+        self._kill_switch_triggered = False
+
+    @classmethod
+    def instance(cls) -> "PositionMonitor":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    @staticmethod
+    def _load_config() -> dict:
+        """Charge les paramètres de risk management depuis asset_profiles.yaml."""
+        try:
+            import yaml, os
+            path = os.path.join(os.path.dirname(__file__), "..", "config", "asset_profiles.yaml")
+            with open(path) as f:
+                cfg = yaml.safe_load(f) or {}
+            carry = cfg.get("v7_carry_defaults", {})
+            return {
+                "max_hold_days": int(carry.get("max_hold_days", MAX_HOLD_DAYS_DEFAULT)),
+                "max_loss_pct": float(carry.get("max_loss_pct", MAX_LOSS_PCT_DEFAULT)),
+                "max_portfolio_dd_pct": float(carry.get("max_portfolio_dd_pct", PORTFOLIO_DD_PCT_DEFAULT)),
+                "total_capital": int(carry.get("total_capital", TOTAL_CAPITAL_DEFAULT)),
+            }
+        except Exception:
+            return {
+                "max_hold_days": MAX_HOLD_DAYS_DEFAULT,
+                "max_loss_pct": MAX_LOSS_PCT_DEFAULT,
+                "max_portfolio_dd_pct": PORTFOLIO_DD_PCT_DEFAULT,
+                "total_capital": TOTAL_CAPITAL_DEFAULT,
+            }
 
     @classmethod
     def instance(cls) -> "PositionMonitor":
@@ -83,7 +114,14 @@ class PositionMonitor:
             self._stop_event.wait(CHECK_INTERVAL_S)
 
     def _check_all_positions(self) -> None:
-        """Vérifie toutes les positions ouvertes et ferme celles qui doivent l'être."""
+        """Vérifie toutes les positions ouvertes et ferme celles qui doivent l'être.
+        
+        Ordre des vérifications :
+          1. Kill-switch global (P&L total < -max_portfolio_dd_pct)
+          2. Perte max par position (unrealized P&L < max_loss_pct)
+          3. SL/TP prix (sauf carry)
+          4. Time-stop
+        """
         try:
             from storage.paper_trader import get_open_positions, close_position
         except ImportError:
@@ -94,8 +132,19 @@ class PositionMonitor:
         if not positions:
             return
 
+        cfg = self._load_config()
+        max_hold_days = cfg["max_hold_days"]
+        max_loss_pct = cfg["max_loss_pct"]       # ex: -0.05 = -5%
+        max_portfolio_dd_pct = cfg["max_portfolio_dd_pct"]  # ex: -0.20 = -20%
+        total_capital = cfg["total_capital"]
+
         now = datetime.now(timezone.utc)
         closed_count = 0
+
+        # ── Phase 1 : Calculer le P&L total pour le kill-switch ──────────
+        total_unrealized = 0.0
+        total_size = 0.0
+        pos_data: list[dict] = []
 
         for pos in positions:
             trade_id = pos.get("trade_id", "")
@@ -110,94 +159,135 @@ class PositionMonitor:
             if not symbol or not entry_price or not trade_id:
                 continue
 
-            # 1) Récupérer le prix spot actuel (avec cache)
             current_price = self._get_cached_price(symbol)
             if current_price <= 0:
-                continue  # skip si prix indisponible
+                continue
 
-            should_close = False
-            close_price = current_price
-            reason = ""
+            # P&L spot (approximation pour le kill-switch)
+            if action in ("short", "carry"):
+                unrealized = (entry_price - current_price) / entry_price * size_usd
+            else:
+                unrealized = (current_price - entry_price) / entry_price * size_usd
 
-            # Pour les trades "carry" (delta-neutre : short perp + long spot),
-            # le SL/TP spot n'a pas de sens car la position est couverte.
-            # Seul le time-stop et le basis-SL (géré par le DAG) s'appliquent.
-            is_carry = action == "carry"
+            total_unrealized += unrealized
+            total_size += size_usd
 
-            # 2) Vérifier SL → prix traverse le stop-loss
-            # Désactivé pour les trades carry (le vrai risque est sur la basis, pas le spot)
-            if not is_carry and sl_price > 0:
-                if action in ("short", "carry"):
-                    # Short: SL est au-dessus du prix d'entrée → on ferme si prix ≥ SL
-                    if current_price >= sl_price:
-                        should_close = True
-                        close_price = sl_price
-                        pnl_pct = (entry_price - sl_price) / entry_price * 100
-                        reason = f"SL hit: {pnl_pct:+.2f}% (entry={entry_price:.2f} sl={sl_price:.2f} price={current_price:.2f})"
-                else:
-                    # Long: SL est en-dessous du prix d'entrée → on ferme si prix ≤ SL
-                    if current_price <= sl_price:
-                        should_close = True
-                        close_price = sl_price
-                        pnl_pct = (sl_price - entry_price) / entry_price * 100
-                        reason = f"SL hit: {pnl_pct:+.2f}% (entry={entry_price:.2f} sl={sl_price:.2f} price={current_price:.2f})"
+            pos_data.append({
+                "trade_id": trade_id, "symbol": symbol, "action": action,
+                "entry_price": entry_price, "sl_price": sl_price, "tp_price": tp_price,
+                "size_usd": size_usd, "current_price": current_price,
+                "unrealized": unrealized, "ts_str": ts_str,
+            })
 
-            # 3) Vérifier TP → prix atteint le take-profit
-            # Désactivé pour les trades carry (même raison que SL)
-            if not should_close and not is_carry and tp_price > 0:
-                if action in ("short", "carry"):
-                    if current_price <= tp_price:
-                        should_close = True
-                        close_price = tp_price
-                        pnl_pct = (entry_price - tp_price) / entry_price * 100
-                        reason = f"TP hit: {pnl_pct:+.2f}%"
-                else:
-                    if current_price >= tp_price:
-                        should_close = True
-                        close_price = tp_price
-                        pnl_pct = (tp_price - entry_price) / entry_price * 100
-                        reason = f"TP hit: {pnl_pct:+.2f}%"
+        if not pos_data:
+            return
 
-            # 4) Time-stop → position trop vieille
-            if not should_close and ts_str:
+        # ── Phase 2 : Kill-switch global ──────────────────────────────────
+        total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
+        kill_switch = total_pnl_pct < (max_portfolio_dd_pct * 100)  # ex: -20% → < -20
+
+        if kill_switch and not self._kill_switch_triggered:
+            self._kill_switch_triggered = True
+            logger.error(
+                "🔴 KILL-SWITCH GLOBAL : P&L total = %.2f%% (%.2f$) < %.0f%% → FERMETURE DE TOUTES LES POSITIONS",
+                total_pnl_pct, total_unrealized, max_portfolio_dd_pct * 100,
+            )
+            for pd in pos_data:
                 try:
-                    opened_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    if pd["action"] in ("short", "carry"):
+                        pnl = (pd["entry_price"] - pd["current_price"]) / pd["entry_price"] * pd["size_usd"]
+                    else:
+                        pnl = (pd["current_price"] - pd["entry_price"]) / pd["entry_price"] * pd["size_usd"]
+                    close_position(pd["trade_id"], pd["current_price"], round(pnl, 4), "kill_switch_global")
+                    closed_count += 1
+                    logger.info("KILL-SWITCH CLOSE %s %s @ %.2f pnl=$%.2f",
+                               pd["symbol"], pd["trade_id"], pd["current_price"], pnl)
+                except Exception as exc:
+                    logger.error("Kill-switch close failed %s: %s", pd["trade_id"], exc)
+            if closed_count > 0:
+                logger.info("PositionMonitor: KILL-SWITCH — %d position(s) fermée(s)", closed_count)
+            return  # ne pas faire d'autres vérifications ce cycle
+
+        # Reset kill-switch flag si le P&L est remonté (positions fermées entre-temps)
+        if self._kill_switch_triggered and total_pnl_pct >= (max_portfolio_dd_pct * 100 * 0.5):
+            self._kill_switch_triggered = False
+
+        # ── Phase 3 : Vérifications par position ──────────────────────────
+        for pd in pos_data:
+            should_close = False
+            close_price = pd["current_price"]
+            reason = ""
+            is_carry = pd["action"] == "carry"
+
+            # 3a) Perte max unifiée (remplace basis SL + time-stop fixe)
+            # Pour tout type de trade : si perte latente > |max_loss_pct| → fermer
+            loss_pct = (pd["unrealized"] / pd["size_usd"] * 100) if pd["size_usd"] > 0 else 0
+            if loss_pct < (max_loss_pct * 100):  # ex: -5% < -5% → trigger
+                should_close = True
+                reason = f"MAX LOSS: {loss_pct:+.2f}% < {max_loss_pct*100:.0f}% (entry={pd['entry_price']:.2f} price={pd['current_price']:.2f})"
+                logger.info("PositionMonitor: %s %s loss=%.2f%% → CLOSE", pd["symbol"], pd["trade_id"], loss_pct)
+
+            # 3b) SL/TP prix (non-carry uniquement)
+            if not should_close and not is_carry:
+                if pd["sl_price"] > 0:
+                    if pd["action"] == "short":
+                        if pd["current_price"] >= pd["sl_price"]:
+                            should_close = True
+                            close_price = pd["sl_price"]
+                            reason = f"SL hit @ {pd['sl_price']:.2f}"
+                    else:
+                        if pd["current_price"] <= pd["sl_price"]:
+                            should_close = True
+                            close_price = pd["sl_price"]
+                            reason = f"SL hit @ {pd['sl_price']:.2f}"
+
+                if not should_close and pd["tp_price"] > 0:
+                    if pd["action"] == "short":
+                        if pd["current_price"] <= pd["tp_price"]:
+                            should_close = True
+                            close_price = pd["tp_price"]
+                            reason = f"TP hit @ {pd['tp_price']:.2f}"
+                    else:
+                        if pd["current_price"] >= pd["tp_price"]:
+                            should_close = True
+                            close_price = pd["tp_price"]
+                            reason = f"TP hit @ {pd['tp_price']:.2f}"
+
+            # 3c) Time-stop (tous types)
+            if not should_close and pd["ts_str"]:
+                try:
+                    opened_at = datetime.fromisoformat(pd["ts_str"].replace("Z", "+00:00"))
                     days_held = (now - opened_at).total_seconds() / 86400
-                    # Utiliser max_hold_days depuis les paramètres V7 si disponible
-                    max_days = MAX_HOLD_DAYS_DEFAULT
-                    if days_held > max_days:
+                    if days_held > max_hold_days:
                         should_close = True
-                        # Calculer P&L
-                        if action in ("short", "carry"):
-                            pnl_pct = (entry_price - current_price) / entry_price * 100
-                        else:
-                            pnl_pct = (current_price - entry_price) / entry_price * 100
-                        reason = f"TIME-STOP: {days_held:.1f}j > {max_days}j max (pnl={pnl_pct:+.2f}%)"
+                        reason = f"TIME-STOP: {days_held:.1f}j > {max_hold_days}j max (loss={loss_pct:+.2f}%)"
                 except (ValueError, OSError):
                     pass
 
-            # 5) Exécuter la clôture
+            # 3d) Exécuter la clôture
             if should_close:
-                if action in ("short", "carry"):
-                    pnl = (entry_price - close_price) / entry_price * size_usd
+                if pd["action"] in ("short", "carry"):
+                    pnl = (pd["entry_price"] - close_price) / pd["entry_price"] * pd["size_usd"]
                 else:
-                    pnl = (close_price - entry_price) / entry_price * size_usd
+                    pnl = (close_price - pd["entry_price"]) / pd["entry_price"] * pd["size_usd"]
 
                 try:
-                    ok = close_position(trade_id, close_price, round(pnl, 4), reason)
+                    ok = close_position(pd["trade_id"], close_price, round(pnl, 4), reason)
                     if ok:
                         closed_count += 1
                         logger.info(
                             "CLOSE [%s] %s %s @ %.2f→%.2f size=$%.0f pnl=$%.2f | %s",
-                            "monitor", trade_id, action, entry_price, close_price, size_usd, pnl, reason,
+                            "monitor", pd["trade_id"], pd["action"],
+                            pd["entry_price"], close_price, pd["size_usd"], pnl, reason,
                         )
                     else:
-                        logger.warning("PositionMonitor: échec close_position pour %s", trade_id)
+                        logger.warning("PositionMonitor: échec close_position pour %s", pd["trade_id"])
                 except Exception as exc:
-                    logger.error("PositionMonitor: exception close_position %s: %s", trade_id, exc)
+                    logger.error("PositionMonitor: exception close_position %s: %s", pd["trade_id"], exc)
 
         if closed_count > 0:
-            logger.info("PositionMonitor: %d position(s) fermée(s) ce cycle", closed_count)
+            logger.info("PositionMonitor: %d position(s) fermée(s) ce cycle | P&L total=%.2f$ (%.2f%%)",
+                       closed_count, total_unrealized, total_pnl_pct)
 
     # ── Price fetching (avec cache courte durée) ───────────────────────────
 

@@ -202,15 +202,26 @@ def backtest_funding_carry(
     # Fetch funding history
     df = fetch_funding_history(symbol, days=days)
     if df.empty:
-        return V7BTResult(...)
+        return V7BTResult(symbol=symbol, strategy="funding_carry",
+                         start="N/A", end="N/A",
+                         initial_capital=capital, final_capital=capital,
+                         total_pnl=0, total_pnl_pct=0, n_payments=0,
+                         total_funding_received=0, total_fees=0, total_slippage=0,
+                         n_trades=0, sharpe=0, max_drawdown_pct=0,
+                         win_rate=0, time_in_market_pct=0, annual_return_pct=0)
     
     # ── CAUSAL FIX (3 audits): funding connu à t ne doit pas servir pour la décision à t ──
-    # Le funding réglé à 08:00 n'était pas connu à 00:00. On décale d'une période.
     df["funding_rate"] = df["funding_rate"].shift(1)
-    df = df.dropna(subset=["funding_rate"]).reset_index(drop=True)
+    df = df.dropna(subset=["funding_rate"])  # garde le DatetimeIndex (pas de reset_index !)
     if df.empty:
         logger.warning("Funding data empty after causal shift")
-        return V7BTResult(...)
+        return V7BTResult(symbol=symbol, strategy="funding_carry",
+                         start="N/A", end="N/A",
+                         initial_capital=capital, final_capital=capital,
+                         total_pnl=0, total_pnl_pct=0, n_payments=0,
+                         total_funding_received=0, total_fees=0, total_slippage=0,
+                         n_trades=0, sharpe=0, max_drawdown_pct=0,
+                         win_rate=0, time_in_market_pct=0, annual_return_pct=0)
     
     # Parameters
     position_open = False

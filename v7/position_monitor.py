@@ -186,15 +186,45 @@ class PositionMonitor:
         if not pos_data:
             return
 
-        # ── Phase 2 : Kill-switch global ──────────────────────────────────
+        # ── Phase 2 : Kill-switch multi-tier (GPT 5.5) ──────────────────
         total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
-        kill_switch = total_pnl_pct < (max_portfolio_dd_pct * 100)  # ex: -20% → < -20
+        
+        # Tier 1: Operational — données périmées
+        stale_data = False
+        oldest_price = min((pd["current_price"] for pd in pos_data if pd["current_price"] > 0), default=0)
+        # On vérifie l'âge du cache via un timestamp interne
+        with self._lock:
+            cache_ages = [time.time() - v[1] for v in self._price_cache.values() if v[1] > 0]
+        max_cache_age = max(cache_ages) if cache_ages else 0
+        if max_cache_age > 300:  # 5 minutes sans prix frais
+            stale_data = True
+            logger.error("🔴 KILL-SWITCH TIER 1 (OPERATIONAL): prix périmés (%.0fs)", max_cache_age)
+        
+        # Tier 2: Market — USDT deviation ou funding extrême
+        market_stress = False
+        # Vérification simplifiée : si USDT stablecoin signal (non implémenté ici)
+        # Pour l'instant : si le P&L total bouge de >10% en un cycle → stress
+        if abs(total_unrealized) > total_capital * 0.10:
+            market_stress = True
+            logger.error("🔴 KILL-SWITCH TIER 2 (MARKET): P&L extrême détecté (%.2f%%)", total_pnl_pct)
+        
+        # Tier 3: P&L — drawdown portfolio
+        portfolio_dd = total_pnl_pct < (max_portfolio_dd_pct * 100)  # -20%
+        
+        # Tier 4: Catastrophic — toutes les positions en perte simultanée
+        all_losing = all(pd["unrealized"] < 0 for pd in pos_data) and len(pos_data) >= 3
+        
+        kill_switch = stale_data or market_stress or portfolio_dd or all_losing
+        kill_tier = ("OPERATIONAL" if stale_data else 
+                     "MARKET" if market_stress else 
+                     "PORTFOLIO_DD" if portfolio_dd else 
+                     "ALL_LOSING" if all_losing else None)
 
-        if kill_switch and not self._kill_switch_triggered:
+        if kill_switch and kill_tier and not self._kill_switch_triggered:
             self._kill_switch_triggered = True
             logger.error(
-                "🔴 KILL-SWITCH GLOBAL : P&L total = %.2f%% (%.2f$) < %.0f%% → FERMETURE DE TOUTES LES POSITIONS",
-                total_pnl_pct, total_unrealized, max_portfolio_dd_pct * 100,
+                "🔴 KILL-SWITCH TIER %s : P&L=%.2f%% (%.2f$) → FERMETURE DE TOUTES LES POSITIONS",
+                kill_tier, total_pnl_pct, total_unrealized,
             )
             for pd in pos_data:
                 try:
@@ -202,15 +232,15 @@ class PositionMonitor:
                         pnl = (pd["entry_price"] - pd["current_price"]) / pd["entry_price"] * pd["size_usd"]
                     else:
                         pnl = (pd["current_price"] - pd["entry_price"]) / pd["entry_price"] * pd["size_usd"]
-                    close_position(pd["trade_id"], pd["current_price"], round(pnl, 4), "kill_switch_global")
+                    close_position(pd["trade_id"], pd["current_price"], round(pnl, 4), f"kill_switch_{kill_tier}")
                     closed_count += 1
                     logger.info("KILL-SWITCH CLOSE %s %s @ %.2f pnl=$%.2f",
                                pd["symbol"], pd["trade_id"], pd["current_price"], pnl)
                 except Exception as exc:
                     logger.error("Kill-switch close failed %s: %s", pd["trade_id"], exc)
             if closed_count > 0:
-                logger.info("PositionMonitor: KILL-SWITCH — %d position(s) fermée(s)", closed_count)
-            return  # ne pas faire d'autres vérifications ce cycle
+                logger.info("PositionMonitor: KILL-SWITCH %s — %d position(s) fermée(s)", kill_tier, closed_count)
+            return
 
         # Reset kill-switch flag si le P&L est remonté (positions fermées entre-temps)
         if self._kill_switch_triggered and total_pnl_pct >= (max_portfolio_dd_pct * 100 * 0.5):

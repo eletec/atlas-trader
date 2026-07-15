@@ -271,38 +271,22 @@ class FundingCarryNode:
     
     # ── Decision logic ──
 
-    def _check_volatility_regime(self) -> bool:
-        """Filtre de régime : vérifie que la volatilité 30j est suffisante.
-        
-        Le funding carry est plus rentable en période de volatilité élevée
-        (plus de demande de levier → funding plus élevé). En marché calme,
-        mieux vaut rester en stablecoin.
-        
-        Returns: True si la volatilité est suffisante pour trader.
-        """
-        if self.min_volatility_30d <= 0:
-            return True  # filtre désactivé
+    def _get_annual_volatility(self) -> float:
+        """Calcule la volatilité annualisée 30j — utilisée comme multiplicateur de risque."""
         try:
-            import ccxt
+            import ccxt, statistics
             exchange = ccxt.binance({"enableRateLimit": True})
             ohlcv = exchange.fetch_ohlcv(self.symbol, timeframe="1d", limit=30)
             if len(ohlcv) < 10:
-                return True  # pas assez de données → laisser passer
+                return 0.0
             closes = [c[4] for c in ohlcv]
             returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
-            if not returns:
-                return True
-            import statistics
-            daily_vol = statistics.stdev(returns) if len(returns) >= 2 else 0
-            annual_vol = daily_vol * (365 ** 0.5) if daily_vol > 0 else 0
-            ok = annual_vol >= self.min_volatility_30d
-            if not ok:
-                logger.info("[%s] Régime filtre: vol 30j=%.2f < min=%.2f → pas d'entrée",
-                           self.node_id, annual_vol, self.min_volatility_30d)
-            return ok
-        except Exception as e:
-            logger.debug("[%s] Volatility check failed: %s → laisser passer", self.node_id, e)
-            return True  # en cas d'erreur, ne pas bloquer
+            if len(returns) < 2:
+                return 0.0
+            daily_vol = statistics.stdev(returns)
+            return daily_vol * (365 ** 0.5)
+        except Exception:
+            return 0.0
     
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Exécute le nœud Funding Carry.
@@ -386,30 +370,47 @@ class FundingCarryNode:
                 elif basis_pct < -0.003:
                     reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
-                # Filtre 4 : régime de marché — volatilité 30j suffisante
-                elif not self._check_volatility_regime():
-                    reason = f"volatilité 30j insuffisante (< {self.min_volatility_30d*100:.0f}%) → capital protégé"
-                    confidence = 0.25
                 else:
                     # expected_return = rendement annualisé du funding + gain/coût one-shot du basis
                     expected_return = annual_funding + basis_pct
                     
-                    # Hurdle rate : min 5%/an net (au-dessus du staking USDT ~5%)
-                    _hurdle = 0.05  # était 0.08, réduit car marché calme
+                    # ── Dynamic hurdle rate (GPT 5.5) ──
+                    # Hurdle = coût d'opportunité + primes de risque, pas un fixe arbitraire
+                    usd_benchmark = 0.05       # SOFR / T-bill ~5% (màj automatique possible)
+                    venue_premium = 0.01       # risque exchange (Binance)
+                    stablecoin_premium = 0.005 # risque USDT
+                    operational_buffer = 0.005 # marge opérationnelle
+                    _hurdle = max(0.03, usd_benchmark + venue_premium + stablecoin_premium + operational_buffer)
+                    # _hurdle ≈ 7% — plus élevé que le 5% fixe précédent mais justifié économiquement
+                    
                     if expected_return > _hurdle:
-                        # 1) Kelly fractional sizing (kelly_fraction = 0.35)
-                        edge = max(0, expected_return - _hurdle)
-                        kelly_f = min(0.5, max(0.05, edge / 0.10))
-                        raw_size = self.capital * self.fraction * kelly_f * self.kelly_fraction
+                        # ── Risk budgeting (GPT 5.5) — remplace Kelly ──
+                        # Le carry n'est pas un pari binaire → le risk budgeting est plus adapté
+                        # Allocation = capital × fraction × (score / sum_scores)
+                        # score = expected_net_return / stress_loss
+                        stress_loss_pct = 0.10  # scénario stress : -10% basis dislocation
+                        net_return = expected_return - _hurdle
+                        score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
+                        raw_size = self.capital * self.fraction * min(score, 0.25)  # cap à 25% du capital
                         
-                        # 2) Liquidity cap par actif (max size en $)
-                        liquidity_caps = {
+                        # ── Volatilité → multiplicateur de risque (GPT 5.5) ──
+                        # La volatilité n'est pas un filtre d'entrée mais un paramètre de sizing
+                        annual_vol = self._get_annual_volatility()
+                        if annual_vol > 0:
+                            # Plus la vol est élevée, plus on réduit la taille
+                            vol_mult = min(1.0, 0.03 / max(annual_vol, 0.01))
+                        else:
+                            vol_mult = 1.0
+                        raw_size *= vol_mult
+                        
+                        # ── Safety caps (GPT 5.5: renommés, pas de liquidity caps) ──
+                        safety_caps = {
                             "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
                             "XRP": 200, "ADA": 150, "DOGE": 100,
                         }
                         coin = self.symbol.split("/")[0].upper()
-                        max_size = liquidity_caps.get(coin, 200)
-                        min_size = 50  # taille minimum pour éviter les micro-positions
+                        max_size = safety_caps.get(coin, 200)
+                        min_size = 50
                         
                         size_usd = min(raw_size, max_size)
                         if size_usd < min_size:
@@ -424,10 +425,10 @@ class FundingCarryNode:
                             self.state.negative_since = None
                             
                             signal = "open_carry"
-                            confidence = min(0.90, 0.50 + kelly_f * 2)
+                            confidence = min(0.90, 0.50 + score * 2)
                             reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                      f"→ {expected_return*100:.1f}%/an | size=${size_usd:.0f} "
-                                      f"(kelly={kelly_f:.2f}, cap=${max_size})")
+                                      f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
+                                      f"size=${size_usd:.0f} (score={score:.2f}, vol×{vol_mult:.2f}, cap=${max_size})")
                     else:
                         reason = f"retour {expected_return*100:.1f}%/an < {_hurdle*100:.0f}% hurdle"
                         confidence = 0.5

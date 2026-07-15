@@ -1,7 +1,7 @@
 ﻿# Atlas Trader V7.2 — Risk Premium Harvesting
 
 > **Funding Rate Carry** : delta-neutral strategy (short perp + long spot) capturing the funding rate premium.
-> **Status** : 🟢 Paper trading live on GX10 since 15 June 2026 | 3 external AI audits passed
+> **Status** : 🟢 Paper trading live on GX10 since 15 June 2026
 
 **Branch**: `v7-dev`
 
@@ -81,16 +81,6 @@ docker exec atlas-v4-api python /app/src/scripts/reconcile.py
 # Run stress tests (8 scenarios)
 docker exec atlas-v4-api python /app/src/scripts/stress_test.py
 ```
-
-## Audit Trail
-
-| Date | Auditor | Key Findings | Status |
-|------|---------|-------------|--------|
-| 12 Jul 2026 | DeepSeek V4 Pro | 3 critical fixes (sizing, exit, kill-switch) | ✅ All implemented |
-| 15 Jul 2026 | GPT 5.5 | 7 recommendations (hurdle, risk budgeting, payback) | ✅ All implemented |
-| 15 Jul 2026 | GPT 5.5 (2nd) + DeepSeek + Claude Sonnet 5 | 5 convergence points (Tier 0, payback zones, causal backtest) | ✅ All implemented |
-
-Full audit prompt and responses in `ATLAS_V7_AI_CRITIQUE_PROMPT.md` and `../AUDIT.md`.
 
 ## Key Files
 

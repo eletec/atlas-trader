@@ -2711,7 +2711,7 @@ def _inject_live_trade_prices_js() -> None:
     var action = el.getAttribute('data-atlas-action');
     if (!entry || !size || !price) return;
     var pnlPct;
-    if (action === 'SHORT' || action === 'SELL' || action === 'CARRY') {
+    if (action === 'SHORT' || action === 'SELL') {
       pnlPct = (entry - price) / entry * 100;
     } else {
       pnlPct = (price - entry) / entry * 100;
@@ -2723,19 +2723,56 @@ def _inject_live_trade_prices_js() -> None:
     el.textContent = (unrealized >= 0 ? '+' : '') + unrealized.toFixed(2) + '$ (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)';
   }
 
+  // Mise à jour du P&L réel carry (basis + funding) via /v7/carry-pnl
+  function updateCarryCells(carryData) {
+    if (!carryData || !carryData.trades) return;
+    var parentDoc = window.top.document;
+    var totalRealPnl = 0, totalSize = 0;
+    var tradeMap = {};
+    carryData.trades.forEach(function(t) {
+      tradeMap[t.symbol] = t;
+    });
+    parentDoc.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {
+      var action = el.getAttribute('data-atlas-action');
+      if (action !== 'CARRY') return;  // only carry trades use real P&L
+      var sym = el.getAttribute('data-atlas-symbol');
+      var t = tradeMap[sym];
+      if (!t) return;
+      var realPnl = t.real_pnl;
+      var realPct = t.real_pnl_pct;
+      var size = parseFloat(el.getAttribute('data-atlas-size')) || 0;
+      var color = realPnl >= 0 ? '#2ecc71' : '#e74c3c';
+      el.style.color = color;
+      el.style.opacity = '1';
+      el.textContent = (realPnl >= 0 ? '+' : '') + realPnl.toFixed(2) + '$ (' + (realPct >= 0 ? '+' : '') + realPct.toFixed(2) + '%) ⚡';
+      totalRealPnl += realPnl;
+      totalSize += size;
+    });
+    // Update summary with real carry P&L
+    var sumEl = parentDoc.getElementById('atlas-summary-prog');
+    if (sumEl && totalSize > 0) {
+      var sumPct = totalRealPnl / totalSize * 100;
+      var sumColor = totalRealPnl >= 0 ? '#2ecc71' : '#e74c3c';
+      sumEl.style.color = sumColor;
+      sumEl.textContent = (totalRealPnl >= 0 ? '+$' : '-$') + Math.abs(totalRealPnl).toFixed(2)
+        + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%) ⚡ carry';
+    }
+  }
+
   function updateAll(prices) {
     var totalUnreal = 0, totalSize = 0;
     var parentDoc = window.top.document;
     parentDoc.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {
+      var action = el.getAttribute('data-atlas-action');
+      if (action === 'CARRY') return;  // handled by updateCarryCells
       var sym = el.getAttribute('data-atlas-symbol');
       var priceData = prices[sym];
       if (priceData && priceData.price) {
         updateCell(el, priceData.price);
         var entry = parseFloat(el.getAttribute('data-atlas-entry'));
         var size = parseFloat(el.getAttribute('data-atlas-size'));
-        var action = el.getAttribute('data-atlas-action');
         if (entry && size) {
-          var pct = (action === 'SHORT' || action === 'SELL' || action === 'CARRY')
+          var pct = (action === 'SHORT' || action === 'SELL')
             ? (entry - priceData.price) / entry
             : (priceData.price - entry) / entry;
           totalUnreal += size * pct;
@@ -2743,26 +2780,46 @@ def _inject_live_trade_prices_js() -> None:
         }
       }
     });
-    // Update summary footer
-    var sumEl = parentDoc.getElementById('atlas-summary-prog');
-    if (sumEl && totalSize > 0) {
-      var sumPct = totalUnreal / totalSize * 100;
-      var sumColor = totalUnreal >= 0 ? '#2ecc71' : '#e74c3c';
-      sumEl.style.color = sumColor;
-      sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2)
-        + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
+    // Update summary for non-carry trades (carry summary handled by updateCarryCells)
+    // Only update if there are non-carry trades with size
+    if (totalSize > 0 && !carryDataActive()) {
+      var sumEl = parentDoc.getElementById('atlas-summary-prog');
+      if (sumEl) {
+        var sumPct = totalUnreal / totalSize * 100;
+        var sumColor = totalUnreal >= 0 ? '#2ecc71' : '#e74c3c';
+        sumEl.style.color = sumColor;
+        sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2)
+          + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
+      }
     }
   }
 
-  function poll() {
+  function carryDataActive() {
+    // Check if any carry trades exist
+    var parentDoc = window.top.document;
+    var els = parentDoc.querySelectorAll('[data-atlas-open="1"][data-atlas-action="CARRY"]');
+    return els.length > 0;
+  }
+
+  function pollSpot() {
     fetch(apiUrl() + '/prices/snapshot')
       .then(function(r) { return r.json(); })
       .then(function(data) { updateAll(data); })
       .catch(function() {});
   }
 
-  setInterval(poll, 3000);
-  poll();
+  function pollCarry() {
+    if (!carryDataActive()) return;
+    fetch(apiUrl() + '/v7/carry-pnl')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { updateCarryCells(data); })
+      .catch(function() {});
+  }
+
+  setInterval(pollSpot, 3000);
+  setInterval(pollCarry, 5000);  // slightly slower, requires CCXT fetch
+  pollSpot();
+  setTimeout(pollCarry, 1000);
 })();
 </script>
 </body></html>""", height=0)

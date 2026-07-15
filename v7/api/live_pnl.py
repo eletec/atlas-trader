@@ -76,6 +76,113 @@ def get_live_pnl():
     return {"total_pnl": round(total_pnl, 2), "trades": trades}
 
 
+def get_carry_pnl():
+    """Retourne le P&L réel du carry (basis P&L + funding), pas le P&L spot trompeur.
+    
+    Pour chaque position carry ouverte :
+      - Fetch spot + perp via /prices/snapshot
+      - Calcule basis_entry depuis context_json
+      - Calcule basis_now = (perp - spot) / spot
+      - basis_pnl = (basis_now - basis_entry) × size_usd
+    """
+    try:
+        import sqlite3
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT trade_id, symbol, action, entry_price, size_usd, context_json "
+            "FROM v4_trades WHERE status='open'"
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        return {"error": str(e), "total_pnl": 0, "trades": []}
+
+    if not rows:
+        return {"total_pnl": 0, "trades": [], "note": "no open positions"}
+
+    # Fetch spot + perp prices
+    spot_prices = get_live_prices()
+    perp_prices = {}
+    try:
+        import ccxt
+        exchange = ccxt.binance({"enableRateLimit": True})
+        symbols_seen = set()
+        for r in rows:
+            sym = r["symbol"]
+            if sym and sym not in symbols_seen:
+                symbols_seen.add(sym)
+                try:
+                    sym_perp = f"{sym}:USDT" if ":" not in sym else sym
+                    ticker = exchange.fetch_ticker(sym_perp)
+                    perp_prices[sym] = float(ticker.get("last", 0))
+                except Exception:
+                    perp_prices[sym] = spot_prices.get(sym, 0)
+    except ImportError:
+        # Fallback: perp ≈ spot
+        perp_prices = dict(spot_prices)
+
+    trades = []
+    total_pnl = 0.0
+
+    for r in rows:
+        trade_id = r["trade_id"] or "?"
+        symbol = r["symbol"] or "?"
+        action = (r["action"] or "long").lower()
+        entry_spot = float(r["entry_price"] or 0)
+        size_usd = float(r["size_usd"] or 0)
+        spot = spot_prices.get(symbol, 0)
+        perp = perp_prices.get(symbol, spot)
+
+        # Spot P&L (pour référence)
+        spot_pnl = 0.0
+        if entry_spot > 0 and spot > 0:
+            if action in ("short", "carry"):
+                spot_pnl = (entry_spot - spot) / entry_spot * size_usd
+            else:
+                spot_pnl = (spot - entry_spot) / entry_spot * size_usd
+
+        # Basis P&L (le vrai P&L pour le carry)
+        basis_pnl = 0.0
+        entry_perp = entry_spot  # fallback
+        if action == "carry":
+            try:
+                ctx_raw = r["context_json"]
+                if ctx_raw:
+                    ctx = json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
+                    entry_perp = float(ctx.get("entry_perp_price", entry_spot))
+            except Exception:
+                pass
+            
+            if entry_spot > 0 and spot > 0 and perp > 0:
+                basis_entry = (entry_perp - entry_spot) / entry_spot
+                basis_now = (perp - spot) / spot
+                basis_pnl = (basis_now - basis_entry) * size_usd
+
+        # P&L réel = basis P&L pour carry, spot P&L pour les autres
+        real_pnl = basis_pnl if action == "carry" else spot_pnl
+        total_pnl += real_pnl
+
+        trades.append({
+            "trade_id": trade_id[:8],
+            "symbol": symbol,
+            "action": action.upper(),
+            "spot": round(spot, 4) if spot else 0,
+            "perp": round(perp, 4) if perp else 0,
+            "spot_pnl": round(spot_pnl, 4),
+            "basis_pnl": round(basis_pnl, 4),
+            "real_pnl": round(real_pnl, 4),
+            "real_pnl_pct": round(real_pnl / size_usd * 100, 2) if size_usd > 0 else 0,
+            "is_carry": action == "carry",
+        })
+
+    return {
+        "total_pnl": round(total_pnl, 2),
+        "total_pnl_pct": round(total_pnl / max(sum(t["spot_pnl"] / max(t["real_pnl"], 0.01) * size_usd for t in trades), 0.01), 2),
+        "is_carry": True,
+        "trades": trades,
+    }
+
+
 # ── FastAPI endpoint (si utilisé dans l'API) ──
 try:
     from fastapi import APIRouter
@@ -85,6 +192,11 @@ try:
     @router.get("/live-pnl")
     async def live_pnl_endpoint():
         return get_live_pnl()
+
+    @router.get("/carry-pnl")
+    async def carry_pnl_endpoint():
+        """P&L réel du carry (two-leg : basis + funding)."""
+        return get_carry_pnl()
 
     @router.get("/live-pnl-widget", response_class=HTMLResponse)
     async def live_pnl_widget():

@@ -4,8 +4,20 @@ v7/backtest_v7.py — V7 Backtest Engine (Risk Premium Strategies).
 Backtest les stratégies V7 (Funding Carry, Dominance Rotation) sur historique.
 Ne fait PAS de prédiction directionnelle — mesure la collecte de primes de risque.
 
+⚠️ V7.1 RE-VALIDATION REQUISE (juillet 2026) :
+  Le backtest original (Sharpe 8.60, BTC 20.72) a été réalisé avec les règles V7.0.
+  Les règles V7.1 ont changé significativement :
+    - Hurdle dynamique (SOFR + primes) au lieu de 8% fixe
+    - Risk budgeting au lieu de Kelly
+    - Sortie économique (payback_days) au lieu de time-stop 10j
+    - P&L deux jambes (basis + funding) au lieu de spot uniquement
+    - Frais 4 jambes (28bps round-trip) au lieu de 2 jambes
+  
+  → Relancer avec : python v7/backtest_v7.py --symbol BTC/USDT --days 1095 --v71
+
 Usage:
     python v7/backtest_v7.py --symbol BTC/USDT --days 365 --strategy funding_carry
+    python v7/backtest_v7.py --symbol BTC/USDT --days 1095 --v71  # V7.1 re-validation
 """
 
 from __future__ import annotations

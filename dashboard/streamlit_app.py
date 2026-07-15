@@ -4373,7 +4373,7 @@ def render_admin_panel():
                     except Exception as _ce:
                         st.error(f"Erreur API : {_ce}")
             else:
-                st.info("Aucune position ouverte.")
+                st.info(t("no_open_positions"))
 
             # Réflexions (leçons apprises)
             try:

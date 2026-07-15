@@ -1,44 +1,66 @@
-﻿# Atlas Trader V7 🧠 — Risk Premium Harvesting
+﻿# Atlas Trader V7.2 — Risk Premium Harvesting
 
-> **Live**: 7 trades ouverts · $28 P&L latent · funding collecté depuis 15/06/2026  
-> Strategy: Funding Rate Carry (short perp + long spot) — market-neutral
+> **Funding Rate Carry** : delta-neutral strategy (short perp + long spot) capturing the funding rate premium.
+> **Status** : 🟢 Paper trading live on GX10 since 15 June 2026 | 3 external AI audits passed
 
-**Branch**: `v7-dev` | **Status**: 🟢 Live paper trading on GX10 (Intel N100, 16GB)
+**Branch**: `v7-dev`
 
 ---
 
-## Pourquoi V7 ?
+## Strategy
 
-Après 6 versions de prédiction directionnelle (XGBoost, MetaGate, HMM, Walk-Forward — **374+ configs, 0 edge**), le consensus de 5 IA (GPT, DeepSeek, Gemini, Grok, Claude) a été unanime :
+The strategy is **market-neutral** : short perpetual futures + long spot. Price movements cancel out. The only P&L comes from:
 
-> *"L'alpha n'est pas dans la prédiction du prix. Il est dans les primes de risque structurelles."*
+1. **Funding rate** — received every 8h when funding > 0 (longs pay shorts)
+2. **Basis change** — (perp − spot) spread variation (typically < 0.01%/day)
 
-**V7 pivote** : au lieu de prédire BTC↑/↓, on collecte passivement le funding rate (prime de risque des perpetual futures).
+No directional prediction. No ML. Pure risk premium harvesting.
 
-## Backtest — 3 ans (2023-2026)
+### Key Parameters (V7.2)
 
-| Actif | Sharpe | PnL | 
-|---|---|---|
-| BTC/USDT | +9.93 | $1,051 |
-| ETH/USDT | +10.55 | $1,125 |
-| SOL/USDT | +5.83 | $902 |
-| BNB/USDT | +3.57 | $366 |
-| XRP/USDT | +8.62 | $1,165 |
-| ADA/USDT | +10.19 | $1,266 |
-| DOGE/USDT | +11.48 | $1,308 |
-| **Portfolio** | **+8.60** | **$7,184** |
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Capital per asset | $2,000 | |
+| Dynamic hurdle | ~7% | SOFR 5% + exchange risk 1% + USDT 0.5% + buffer 0.5% |
+| Sizing | Risk budgeting | `score = net_return / stress_loss`, capped at 25% capital |
+| Stress loss | 4-12% per asset | BTC/ETH 4%, SOL/BNB 8%, alts 12% |
+| Entry filters | Funding in range + MA 7d > 0 + basis OK + vol multiplier | |
+| Primary exit | Payback days zones | HEALTHY < 30j / WATCH 30-60j / DERISK 60-90j / CLOSE > 90j |
+| Safety exit | Max loss −5% | Checked every 60s |
+| Kill-switch | 4 tiers | Tier 0 (circuit breaker) → Tier 3 (portfolio −20%) → Tier 4 (emergency) |
+| Fees | 28 bps round-trip | 4 legs × 7 bps |
 
-## Live — 7 jours (depuis 15/06/2026)
+### V7.2 Backtest — 3 years (2023-2026)
 
-| Actif | Ouvert | Taille | P&L latent | Funding collecté |
-|---|---|---|---|---|
-| ADA | 17/06 | $400 | **+6.0%** | — (funding négatif) |
-| BTC | 19/06 | $173 | -2.6% | $0.05 (8×) |
-| ETH | 19/06 | $213 | -2.1% | $0.03 (6×) |
-| SOL | 19/06 | $400 | -8.2% | $0.06 (5×) |
-| BNB | 20/06 | $400 | -1.2% | $0.03 (2×) |
-| XRP | 19/06 | $400 | -0.7% | $0.03 (2×) |
-| DOGE | 19/06 | $241 | -1.3% | $0.04 (5×) |
+Causal funding (no look-ahead), 4-leg fees, dynamic hurdle, risk budgeting:
+
+| Asset | PnL (3y) | % | Sharpe | MaxDD | Trades |
+|-------|----------|---|--------|-------|--------|
+| DOGE | $458 | 4.6% | 7.25 | 0.1% | 24 |
+| ADA | $423 | 4.2% | 6.58 | 0.1% | 26 |
+| XRP | $421 | 4.2% | 6.95 | 0.1% | 24 |
+| BTC | $367 | 3.7% | 6.07 | 0.1% | 24 |
+| SOL | $355 | 3.6% | 5.79 | 0.1% | 24 |
+| ETH | $335 | 3.4% | 5.70 | 0.1% | 24 |
+| BNB | $78 | 0.8% | 1.64 | 0.1% | 20 |
+
+> ⚠️ The backtest uses funding-only simulation (no spot/perp prices). Real P&L depends on basis movements. The 0.1% max drawdown reflects the strategy's conservative design — most capital remains idle.
+
+## Architecture
+
+```
+Docker Compose :
+  atlas-v4-api       — FastAPI (port 8000) : DAG execution + PositionMonitor
+  atlas-v4-dashboard — Streamlit (port 8502)
+  atlas-v4-frontend  — Next.js (port 3000)
+  atlas-v4-ollama    — Local LLM (DeepSeek fallback)
+
+DAG per asset (7 assets, 8h cycle) :
+  AssetDef → FundingCarryNode → PaperTrader + RecordDecision + LLMNode
+
+PositionMonitor (60s loop) :
+  Tier 0 circuit breaker → Kill-switch 4-tiers → Max loss −5% → Payback zones
+```
 
 ## Quick Start
 
@@ -47,42 +69,39 @@ git clone https://github.com/eletec/atlas-trader.git
 cd atlas-trader
 git checkout v7-dev
 
-# Docker
+# Start services
 docker compose -f docker-compose.v4.yml up -d --build
 
-# Backtest Funding Carry :
-docker exec atlas-v4-api python /app/src/v7/backtest_v7.py --symbol ALL --days 1095
+# Run backtest (V7.2 rules)
+docker exec atlas-v4-api python /app/src/v7/backtest_v7.py --symbol BTC/USDT --days 1095
+
+# Reconcile positions
+docker exec atlas-v4-api python /app/src/scripts/reconcile.py
+
+# Run stress tests (8 scenarios)
+docker exec atlas-v4-api python /app/src/scripts/stress_test.py
 ```
 
-## Architecture V7
+## Audit Trail
 
-```
-AssetDef → FundingCarryNode → PaperTrader + RecordDecision + LLMNode
-                │
-                ├── Fetch funding rate (Binance API)
-                ├── Fetch spot + perp prices (CCXT)
-                ├── Kelly sizing (quarter-Kelly, ×0.25)
-                ├── Funding MA 7j filter (évite spikes)
-                ├── Per-asset liquidity caps
-                ├── Funding regime sizing (×0.40–1.0)
-                ├── Stop-loss basis -5% + Time-stop 14j
-                └── Cross-margin risk monitoring
-```
+| Date | Auditor | Key Findings | Status |
+|------|---------|-------------|--------|
+| 12 Jul 2026 | DeepSeek V4 Pro | 3 critical fixes (sizing, exit, kill-switch) | ✅ All implemented |
+| 15 Jul 2026 | GPT 5.5 | 7 recommendations (hurdle, risk budgeting, payback) | ✅ All implemented |
+| 15 Jul 2026 | GPT 5.5 (2nd) + DeepSeek + Claude Sonnet 5 | 5 convergence points (Tier 0, payback zones, causal backtest) | ✅ All implemented |
 
-## Améliorations V7.1 (post-critique 5 IA)
+Full audit prompt and responses in `ATLAS_V7_AI_CRITIQUE_PROMPT.md` and `../AUDIT.md`.
 
-| Changement | Avant | Après |
-|---|---|---|
-| Filtre entrée | funding instantané | funding MA 7j > 0 |
-| Kelly | half-Kelly (0.50) | quarter-Kelly (0.25) |
-| Stop-loss | -10% fixe | -5% + time-stop 14j |
-| Sizing | $400 uniforme | Caps par liquidité (BTC $400 → DOGE $100) |
-| Régime | Taille fixe | ×0.40 à ×1.0 selon funding |
+## Key Files
 
-## Branches
+| Path | Purpose |
+|------|---------|
+| `v7/nodes/funding_carry_node.py` | Core strategy logic |
+| `v7/position_monitor.py` | Risk monitor (60s loop) |
+| `v7/backtest_v7.py` | Backtest engine (V7.2 rules) |
+| `v7/api/live_pnl.py` | Real carry P&L endpoint |
+| `scripts/reconcile.py` | DB ↔ market reconciliation |
+| `scripts/stress_test.py` | Kill-switch validation (8 scenarios) |
+| `config/asset_profiles.yaml` | V7 carry defaults |
+| `dashboard/streamlit_app.py` | Streamlit dashboard |
 
-| Branch | Description |
-|---|---|
-| `v7-dev` | **Active** — V7.1 Funding Carry (live paper trading) |
-| `v6-dev` | V6 — Walk-Forward (concluded: no directional edge) |
-| `main` | V6 (concluded) |

@@ -531,7 +531,10 @@ class FundingCarryNode:
             "carry_annual_pct": round(annual_funding * 100, 2),
         }
         if signal == "open_carry":
-            decision["action"] = "carry"  # shorter le perp pour recevoir le funding
+            decision["action"] = "carry"
+            # Two-leg accounting : stocker les prix d'entrée pour le calcul de basis P&L
+            decision["entry_perp_price"] = perp_price if perp_price > 0 else spot_price
+            decision["entry_basis"] = round(basis_pct, 6)
         elif signal == "close_carry":
             decision["action"] = "close_carry"
         
@@ -548,6 +551,8 @@ class FundingCarryNode:
             "n_payments": self.state.n_payments,
             "staking_earned": round(self.state.staking_earned, 4),
             "basis_pct": round(basis_pct * 100, 4),
+            "entry_perp_price": perp_price if perp_price > 0 else spot_price,
+            "entry_basis": round(basis_pct, 6),
             "unrealized_pnl_pct": round(unrealized_pct * 100, 2) if self.state.position_open else 0,
             "elapsed_s": round(elapsed, 3),
             "decision": decision,

@@ -24,10 +24,11 @@ logger = logging.getLogger("v7.position_monitor")
 # ── Configuration ──────────────────────────────────────────────────────────
 CHECK_INTERVAL_S = 60
 PRICE_CACHE_TTL_S = 30
-MAX_HOLD_DAYS_DEFAULT = 10       # time-stop par défaut
+MAX_HOLD_DAYS_DEFAULT = 10       # time-stop par défaut (non-carry)
 MAX_LOSS_PCT_DEFAULT = -0.05     # perte max par position (-5%)
 PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
 TOTAL_CAPITAL_DEFAULT = 14_000   # 7 actifs × $2,000
+PAYBACK_DAYS_MAX_DEFAULT = 30    # sortie économique carry si payback > 30j
 
 
 class PositionMonitor:
@@ -63,6 +64,7 @@ class PositionMonitor:
                 "max_loss_pct": float(carry.get("max_loss_pct", MAX_LOSS_PCT_DEFAULT)),
                 "max_portfolio_dd_pct": float(carry.get("max_portfolio_dd_pct", PORTFOLIO_DD_PCT_DEFAULT)),
                 "total_capital": int(carry.get("total_capital", TOTAL_CAPITAL_DEFAULT)),
+                "payback_days_max": int(carry.get("payback_days_max", PAYBACK_DAYS_MAX_DEFAULT)),
             }
         except Exception:
             return {
@@ -70,6 +72,7 @@ class PositionMonitor:
                 "max_loss_pct": MAX_LOSS_PCT_DEFAULT,
                 "max_portfolio_dd_pct": PORTFOLIO_DD_PCT_DEFAULT,
                 "total_capital": TOTAL_CAPITAL_DEFAULT,
+                "payback_days_max": PAYBACK_DAYS_MAX_DEFAULT,
             }
 
     @classmethod
@@ -177,6 +180,7 @@ class PositionMonitor:
                 "entry_price": entry_price, "sl_price": sl_price, "tp_price": tp_price,
                 "size_usd": size_usd, "current_price": current_price,
                 "unrealized": unrealized, "ts_str": ts_str,
+                "context_json": pos.get("context_json"),
             })
 
         if not pos_data:
@@ -253,14 +257,33 @@ class PositionMonitor:
                             close_price = pd["tp_price"]
                             reason = f"TP hit @ {pd['tp_price']:.2f}"
 
-            # 3c) Time-stop (tous types)
+            # 3c) Pour les trades carry : sortie économique (payback_days)
+            #     Pour les autres : time-stop calendaire
             if not should_close and pd["ts_str"]:
                 try:
                     opened_at = datetime.fromisoformat(pd["ts_str"].replace("Z", "+00:00"))
                     days_held = (now - opened_at).total_seconds() / 86400
-                    if days_held > max_hold_days:
-                        should_close = True
-                        reason = f"TIME-STOP: {days_held:.1f}j > {max_hold_days}j max (loss={loss_pct:+.2f}%)"
+                    if is_carry:
+                        # Sortie économique : fermer si le payback > seuil
+                        carry_econ = self._compute_carry_economics(pd, max_loss_pct)
+                        payback_days = carry_econ["payback_days"]
+                        payback_max = cfg.get("payback_days_max", 30)
+                        if payback_days > payback_max:
+                            should_close = True
+                            reason = (f"ECONOMIC STOP: payback={payback_days:.0f}j > {payback_max}j max "
+                                      f"(basis_pnl={carry_econ['basis_pnl']:+.4f}$, "
+                                      f"funding_est={carry_econ['funding_est']:+.4f}$)")
+                            logger.info("PositionMonitor: %s carry payback=%.0fj > %dj → CLOSE",
+                                       pd["symbol"], payback_days, payback_max)
+                        elif payback_days > payback_max * 0.7 and days_held > max_hold_days * 0.5:
+                            # Zone d'alerte : log mais ne ferme pas encore
+                            logger.info("PositionMonitor: %s carry WATCH payback=%.0fj days=%.0fj",
+                                       pd["symbol"], payback_days, days_held)
+                    else:
+                        # Time-stop classique pour non-carry
+                        if days_held > max_hold_days:
+                            should_close = True
+                            reason = f"TIME-STOP: {days_held:.1f}j > {max_hold_days}j max (loss={loss_pct:+.2f}%)"
                 except (ValueError, OSError):
                     pass
 
@@ -288,6 +311,91 @@ class PositionMonitor:
         if closed_count > 0:
             logger.info("PositionMonitor: %d position(s) fermée(s) ce cycle | P&L total=%.2f$ (%.2f%%)",
                        closed_count, total_unrealized, total_pnl_pct)
+
+    # ── Carry Economics (two-leg P&L) ────────────────────────────────────
+
+    def _get_cached_perp(self, symbol: str) -> float:
+        """Retourne le prix perp actuel, avec cache 30s."""
+        now = time.time()
+        with self._lock:
+            cached = self._perp_cache.get(symbol)
+            if cached and (now - cached[1]) < PRICE_CACHE_TTL_S:
+                return cached[0]
+        price = self._fetch_perp(symbol)
+        if price > 0:
+            with self._lock:
+                self._perp_cache[symbol] = (price, now)
+        return price
+
+    @staticmethod
+    def _fetch_perp(symbol: str) -> float:
+        """Fetch le prix du perpetual via CCXT Binance."""
+        try:
+            import ccxt
+            exchange = ccxt.binance({"enableRateLimit": True})
+            symbol_perp = f"{symbol}:USDT" if ":" not in symbol else symbol
+            ticker = exchange.fetch_ticker(symbol_perp)
+            return float(ticker.get("last", 0))
+        except Exception as exc:
+            logger.debug("PositionMonitor: fetch perp %s failed: %s", symbol, exc)
+            return 0.0
+
+    def _compute_carry_economics(self, pd: dict, max_loss_pct: float) -> dict:
+        """Calcule le P&L carry réel (basis + funding estimé) et le payback.
+
+        Returns:
+            dict avec basis_pnl, funding_est, net_carry_pnl, payback_days
+        """
+        result = {"basis_pnl": 0.0, "funding_est": 0.0, "net_carry_pnl": 0.0, "payback_days": 999}
+        try:
+            symbol = pd["symbol"]
+            entry_spot = pd["entry_price"]
+            size_usd = pd["size_usd"]
+            current_spot = pd["current_price"]
+
+            # Récupérer le prix perp
+            current_perp = self._get_cached_perp(symbol)
+            if current_perp <= 0:
+                return result  # pas de prix perp → skip
+
+            # Récupérer entry_perp depuis le context_json si disponible
+            entry_perp = entry_spot  # fallback : basis ≈ 0 à l'entrée
+            try:
+                import json as _j
+                # Le context_json est stocké dans la position via persist_trade
+                ctx_raw = pd.get("context_json")
+                if ctx_raw:
+                    ctx = _j.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
+                    entry_perp = float(ctx.get("entry_perp_price", entry_spot))
+            except Exception:
+                pass
+
+            # Basis P&L
+            basis_entry = (entry_perp - entry_spot) / entry_spot if entry_spot > 0 else 0
+            basis_now = (current_perp - current_spot) / current_spot if current_spot > 0 else 0
+            basis_pnl = (basis_now - basis_entry) * size_usd
+            result["basis_pnl"] = round(basis_pnl, 4)
+
+            # Funding estimé (approximation : ~0.01%/8h moyen récent)
+            # En pratique, on devrait lire le funding réel depuis la DB/state
+            daily_funding_est = size_usd * 0.0001 * 3  # 0.01% × 3 fois/jour
+            result["funding_est"] = round(daily_funding_est, 6)
+
+            # Net carry P&L
+            result["net_carry_pnl"] = round(basis_pnl, 4)  # + funding (négligeable en daily)
+
+            # Payback days : combien de jours de funding pour rembourser la perte basis
+            if basis_pnl < 0 and daily_funding_est > 0:
+                result["payback_days"] = abs(basis_pnl) / daily_funding_est
+            elif basis_pnl >= 0:
+                result["payback_days"] = 0  # pas de perte à rembourser
+            else:
+                result["payback_days"] = 999  # funding nul ou négatif → impossible à rembourser
+
+        except Exception as e:
+            logger.debug("PositionMonitor: carry_economics failed for %s: %s", pd.get("symbol", "?"), e)
+
+        return result
 
     # ── Price fetching (avec cache courte durée) ───────────────────────────
 

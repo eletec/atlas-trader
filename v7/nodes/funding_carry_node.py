@@ -384,14 +384,20 @@ class FundingCarryNode:
                     # _hurdle ≈ 7% — plus élevé que le 5% fixe précédent mais justifié économiquement
                     
                     if expected_return > _hurdle:
-                        # ── Risk budgeting (GPT 5.5) — remplace Kelly ──
-                        # Le carry n'est pas un pari binaire → le risk budgeting est plus adapté
-                        # Allocation = capital × fraction × (score / sum_scores)
-                        # score = expected_net_return / stress_loss
-                        stress_loss_pct = 0.10  # scénario stress : -10% basis dislocation
+                        # ── Risk budgeting (GPT 5.5 + 3 audits) ──
+                        # Stress loss spécifique par actif (pas uniforme 10%)
+                        # Majors: basis plus stable → stress plus faible
+                        # Alts: basis plus volatile → stress plus élevé
+                        _per_asset_stress = {
+                            "BTC": 0.04, "ETH": 0.04,   # majors : 4% stress
+                            "SOL": 0.08, "BNB": 0.08,   # mid    : 8% stress
+                            "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12,  # alts : 12% stress
+                        }
+                        stress_loss_pct = _per_asset_stress.get(
+                            self.symbol.split("/")[0].upper(), 0.10)
                         net_return = expected_return - _hurdle
                         score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
-                        raw_size = self.capital * self.fraction * min(score, 0.25)  # cap à 25% du capital
+                        raw_size = self.capital * self.fraction * min(score, 0.25)
                         
                         # ── Volatilité → multiplicateur de risque (GPT 5.5) ──
                         # La volatilité n'est pas un filtre d'entrée mais un paramètre de sizing

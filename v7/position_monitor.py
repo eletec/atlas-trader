@@ -43,6 +43,12 @@ class PositionMonitor:
         self._perp_cache: dict[str, tuple[float, float]] = {}   # symbol → (perp_price, timestamp)
         self._lock = threading.Lock()
         self._kill_switch_triggered = False
+        self._circuit_breaker = False  # Tier 0: bloque nouvelles entrées
+
+    @property
+    def circuit_breaker_active(self) -> bool:
+        """Tier 0: vrai si les nouvelles entrées doivent être bloquées."""
+        return self._circuit_breaker
 
     @classmethod
     def instance(cls) -> "PositionMonitor":
@@ -166,8 +172,14 @@ class PositionMonitor:
             if current_price <= 0:
                 continue
 
-            # P&L spot (approximation pour le kill-switch)
-            if action in ("short", "carry"):
+            # P&L réel : basis P&L pour carry, spot P&L pour les autres
+            if action == "carry":
+                carry_econ = self._compute_carry_economics(
+                    {"symbol": symbol, "entry_price": entry_price, "size_usd": size_usd,
+                     "current_price": current_price, "context_json": pos.get("context_json")},
+                    max_loss_pct)
+                unrealized = carry_econ.get("net_carry_pnl", 0.0)
+            elif action in ("short",):
                 unrealized = (entry_price - current_price) / entry_price * size_usd
             else:
                 unrealized = (current_price - entry_price) / entry_price * size_usd
@@ -186,39 +198,41 @@ class PositionMonitor:
         if not pos_data:
             return
 
-        # ── Phase 2 : Kill-switch multi-tier (GPT 5.5) ──────────────────
-        total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
-        
-        # Tier 1: Operational — données périmées
+        # ── Phase 0 : Circuit breaker (Tier 0) — bloque nouvelles entrées ──
         stale_data = False
-        oldest_price = min((pd["current_price"] for pd in pos_data if pd["current_price"] > 0), default=0)
-        # On vérifie l'âge du cache via un timestamp interne
         with self._lock:
             cache_ages = [time.time() - v[1] for v in self._price_cache.values() if v[1] > 0]
         max_cache_age = max(cache_ages) if cache_ages else 0
         if max_cache_age > 300:  # 5 minutes sans prix frais
             stale_data = True
+            logger.warning("🔶 TIER 0 CIRCUIT BREAKER: prix périmés (%.0fs) → NO NEW RISK", max_cache_age)
+            self._circuit_breaker = True
+        elif max_cache_age < 60 and self._circuit_breaker:
+            self._circuit_breaker = False
+            logger.info("🟢 TIER 0: circuit breaker levé — prix OK")
+
+        # ── Phase 2 : Kill-switch multi-tier ─────────────────────────────
+        total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
+        
+        # Tier 1: Operational — données périmées
+        if stale_data:
             logger.error("🔴 KILL-SWITCH TIER 1 (OPERATIONAL): prix périmés (%.0fs)", max_cache_age)
         
-        # Tier 2: Market — USDT deviation ou funding extrême
-        market_stress = False
-        # Vérification simplifiée : si USDT stablecoin signal (non implémenté ici)
-        # Pour l'instant : si le P&L total bouge de >10% en un cycle → stress
-        if abs(total_unrealized) > total_capital * 0.10:
-            market_stress = True
-            logger.error("🔴 KILL-SWITCH TIER 2 (MARKET): P&L extrême détecté (%.2f%%)", total_pnl_pct)
+        # Tier 2: Market — P&L extrême (>10% capital)
+        market_stress = abs(total_unrealized) > total_capital * 0.10
         
-        # Tier 3: P&L — drawdown portfolio
-        portfolio_dd = total_pnl_pct < (max_portfolio_dd_pct * 100)  # -20%
+        # Tier 3: Portfolio drawdown (-20%)
+        portfolio_dd = total_pnl_pct < (max_portfolio_dd_pct * 100)
         
-        # Tier 4: Catastrophic — toutes les positions en perte simultanée
-        all_losing = all(pd["unrealized"] < 0 for pd in pos_data) and len(pos_data) >= 3
+        # Tier 4: Pertes corrélées (≥3 positions perdantes ET perte totale > 2%)
+        losing_count = sum(1 for pd in pos_data if pd["unrealized"] < 0)
+        correlated_loss = losing_count >= 3 and total_pnl_pct < -2.0
         
-        kill_switch = stale_data or market_stress or portfolio_dd or all_losing
+        kill_switch = stale_data or market_stress or portfolio_dd or correlated_loss
         kill_tier = ("OPERATIONAL" if stale_data else 
                      "MARKET" if market_stress else 
                      "PORTFOLIO_DD" if portfolio_dd else 
-                     "ALL_LOSING" if all_losing else None)
+                     "CORRELATED_LOSS" if correlated_loss else None)
 
         if kill_switch and kill_tier and not self._kill_switch_triggered:
             self._kill_switch_triggered = True
@@ -294,21 +308,20 @@ class PositionMonitor:
                     opened_at = datetime.fromisoformat(pd["ts_str"].replace("Z", "+00:00"))
                     days_held = (now - opened_at).total_seconds() / 86400
                     if is_carry:
-                        # Sortie économique : fermer si le payback > seuil
+                        # Sortie économique par ZONES (3 audits : pas de seuil binaire à 30j)
                         carry_econ = self._compute_carry_economics(pd, max_loss_pct)
                         payback_days = carry_econ["payback_days"]
-                        payback_max = cfg.get("payback_days_max", 30)
-                        if payback_days > payback_max:
+                        if payback_days > 90:
                             should_close = True
-                            reason = (f"ECONOMIC STOP: payback={payback_days:.0f}j > {payback_max}j max "
-                                      f"(basis_pnl={carry_econ['basis_pnl']:+.4f}$, "
-                                      f"funding_est={carry_econ['funding_est']:+.4f}$)")
-                            logger.info("PositionMonitor: %s carry payback=%.0fj > %dj → CLOSE",
-                                       pd["symbol"], payback_days, payback_max)
-                        elif payback_days > payback_max * 0.7 and days_held > max_hold_days * 0.5:
-                            # Zone d'alerte : log mais ne ferme pas encore
-                            logger.info("PositionMonitor: %s carry WATCH payback=%.0fj days=%.0fj",
-                                       pd["symbol"], payback_days, days_held)
+                            reason = f"ECONOMIC STOP (ZONE CLOSE): payback={payback_days:.0f}j > 90j"
+                        elif payback_days > 60 and loss_pct < -1.0:
+                            should_close = True
+                            reason = f"ECONOMIC STOP (ZONE DERISK): payback={payback_days:.0f}j + loss={loss_pct:+.2f}%"
+                        elif payback_days > 30:
+                            logger.info("PositionMonitor: %s carry WATCH payback=%.0fj (zone 30-60j)",
+                                       pd["symbol"], payback_days)
+                        else:
+                            logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)
                     else:
                         # Time-stop classique pour non-carry
                         if days_held > max_hold_days:

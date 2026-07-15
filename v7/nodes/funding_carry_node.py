@@ -394,48 +394,42 @@ class FundingCarryNode:
                     # expected_return = rendement annualisé du funding + gain/coût one-shot du basis
                     expected_return = annual_funding + basis_pct
                     
-                    # Hurdle rate : min 8%/an net (Grok) — évite de trader les micro-fundings
-                    if expected_return > 0.08:
-                        # 1) Kelly fractional sizing (f_fraction = 0.35 — Grok)
-                        edge = max(0, expected_return - 0.08)  # edge au-dessus du hurdle
+                    # Hurdle rate : min 5%/an net (au-dessus du staking USDT ~5%)
+                    _hurdle = 0.05  # était 0.08, réduit car marché calme
+                    if expected_return > _hurdle:
+                        # 1) Kelly fractional sizing (kelly_fraction = 0.35)
+                        edge = max(0, expected_return - _hurdle)
                         kelly_f = min(0.5, max(0.05, edge / 0.10))
                         raw_size = self.capital * self.fraction * kelly_f * self.kelly_fraction
                         
-                        # 2) Volatility scaling (funding > 0.05% → high vol → réduire)
-                        vol_scale = 0.60 if funding_rate > 0.0005 else (0.80 if funding_rate > 0.0002 else 1.0)
-                        
-                        # 3) Funding regime multiplier
-                        if funding_rate < 0.00008:  # < 0.008%
-                            regime_mult = 0.40
-                        elif funding_rate < 0.0002:  # < 0.02%
-                            regime_mult = 0.70
-                        else:
-                            regime_mult = 1.0
-                        
-                        # 4) Liquidity cap par actif (max size en $)
+                        # 2) Liquidity cap par actif (max size en $)
                         liquidity_caps = {
                             "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
                             "XRP": 200, "ADA": 150, "DOGE": 100,
                         }
                         coin = self.symbol.split("/")[0].upper()
                         max_size = liquidity_caps.get(coin, 200)
+                        min_size = 50  # taille minimum pour éviter les micro-positions
                         
-                        size_usd = min(raw_size * regime_mult * vol_scale, max_size)
-                        
-                        self.state.position_open = True
-                        self.state.entry_capital = size_usd
-                        self.state.entry_spot = spot_price
-                        self.state.entry_perp = perp_price if perp_price > 0 else spot_price
-                        self.state.entry_time = datetime.now().isoformat()
-                        self.state.negative_since = None
-                        
-                        signal = "open_carry"
-                        confidence = min(0.90, 0.50 + kelly_f * 2)
-                        reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                  f"→ {expected_return*100:.1f}%/an | size=${size_usd:.0f} "
-                                  f"(kelly={kelly_f:.2f}, vol×{vol_scale:.2f}, cap=${max_size})")
+                        size_usd = min(raw_size, max_size)
+                        if size_usd < min_size:
+                            reason = f"taille ${size_usd:.0f} < min ${min_size} → skip"
+                            confidence = 0.3
+                        else:
+                            self.state.position_open = True
+                            self.state.entry_capital = size_usd
+                            self.state.entry_spot = spot_price
+                            self.state.entry_perp = perp_price if perp_price > 0 else spot_price
+                            self.state.entry_time = datetime.now().isoformat()
+                            self.state.negative_since = None
+                            
+                            signal = "open_carry"
+                            confidence = min(0.90, 0.50 + kelly_f * 2)
+                            reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
+                                      f"→ {expected_return*100:.1f}%/an | size=${size_usd:.0f} "
+                                      f"(kelly={kelly_f:.2f}, cap=${max_size})")
                     else:
-                        reason = f"retour {expected_return*100:.1f}%/an < 8% hurdle"
+                        reason = f"retour {expected_return*100:.1f}%/an < {_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
             else:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"

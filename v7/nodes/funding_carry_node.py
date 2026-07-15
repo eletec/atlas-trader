@@ -514,24 +514,18 @@ class FundingCarryNode:
         elapsed = time.time() - t0
         
         # ── Output ──
-        # Construire un "decision" compatible PaperTrader
-        # Pour les trades carry, le SL/TP sont basés sur le spot (approximation pour le moniteur).
-        # Le vrai SL est basis-based et géré par le DAG lui-même dans sa boucle de décision.
-        _sl_price = 0.0
-        _tp_price = 0.0
-        if signal == "open_carry" and spot_price > 0:
-            # Short: SL au-dessus du prix d'entrée (si le spot monte, la position perd)
-            _sl_price = round(spot_price * (1 + abs(self.stop_loss_pct)), 2)
-            # TP: objectif de gain à 2x le SL (asymétrique)
-            _tp_price = round(spot_price * (1 - abs(self.stop_loss_pct) * 2), 2)
-        
+        # Construire un "decision" compatible PaperTrader.
+        # Pour les trades carry : PAS de SL/TP spot (sémantiquement faux pour du delta-neutre).
+        # Le PositionMonitor utilise max_loss_pct unifié (-5%) pour la sortie.
+        # Le DAG gère le basis SL et le time-stop.
         decision = {
             "action": "flat",
             "size_usd": round(size_usd, 2),
             "entry_price": spot_price,
-            "stop_loss": _sl_price,
-            "take_profit": _tp_price,
+            "stop_loss": 0,       # pas de SL spot pour le carry
+            "take_profit": 0,     # pas de TP spot pour le carry
             "atr": 0,
+            "strategy_type": "funding_carry",  # marqueur pour downstream
             "carry_signal": signal,
             "carry_expected_return": round(expected_return, 4),
             "carry_annual_pct": round(annual_funding * 100, 2),

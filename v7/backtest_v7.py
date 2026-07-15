@@ -180,21 +180,24 @@ def backtest_funding_carry(
     symbol: str = "BTC/USDT",
     days: int = 365,
     capital: float = 10_000,
-    fraction: float = 0.50,          # 50% du capital en carry
-    min_funding: float = 0.00005,     # 0.005% par 8h minimum
-    exit_after_negative_hours: int = 48,
-    fee_bps: float = 5.0,             # 5 bps per trade (spot + perp)
-    slippage_bps: float = 2.0,        # 2 bps slippage
+    fraction: float = 0.50,
+    min_funding: float = 0.00005,
+    hurdle_annual: float = 0.07,       # V7.2: hurdle dynamique ~7%
+    exit_after_negative_hours: int = 72,
+    max_hold_days: int = 90,            # V7.2: time-stop long (sortie économique prioritaire)
+    fee_bps: float = 7.0,               # V7.2: 7 bps × 4 jambes = 28 bps round-trip
+    slippage_bps: float = 2.0,
+    stress_loss_pct: float = 0.04,     # V7.2: dépend de l'actif (BTC=4%, alts=12%)
+    v72: bool = True,                   # Flag V7.2 rules
 ) -> V7BTResult:
-    """Backtest la stratégie Funding Carry.
+    """Backtest la stratégie Funding Carry (V7.2 rules).
     
-    Simule:
-    - Short perpetual → reçoit funding si funding_rate > 0
-    - Long spot → couvre le delta
-    - Ouvre quand funding > min_funding
-    - Ferme quand funding < 0 depuis > exit_after_negative_hours
-    
-    PnL = somme des funding reçus - frais d'entrée/sortie - slippage
+    V7.2 improvements over V7.0:
+    - Causal funding (shift 1) — pas de look-ahead
+    - 4-leg fees (28bps round-trip)
+    - Dynamic hurdle rate
+    - Risk budgeting sizing (net_return / stress_loss)
+    - Time-stop + funding exit
     """
     # Fetch funding history
     df = fetch_funding_history(symbol, days=days)
@@ -212,6 +215,7 @@ def backtest_funding_carry(
     # Parameters
     position_open = False
     negative_since: Optional[pd.Timestamp] = None
+    entry_time: Optional[pd.Timestamp] = None
     entry_capital = 0.0
     
     funding_received = 0.0
@@ -228,21 +232,35 @@ def backtest_funding_carry(
     for i, (ts, row) in enumerate(df.iterrows()):
         funding_rate = float(row["funding_rate"])
         
-        # ── Decision ──
+        # Annualisation
+        periods_per_year = 365 * 24 / 8  # 1095
+        annual_funding = funding_rate * periods_per_year
+        
+        # ── Decision (V7.2) ──
         if not position_open:
+            # V7.2: hurdle dynamique + risk budgeting
+            should_open = False
             if funding_rate >= min_funding:
-                # Open carry
+                if annual_funding > hurdle_annual:
+                    # Risk budgeting sizing
+                    net_return = annual_funding - hurdle_annual
+                    score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
+                    raw_size = capital * fraction * min(score, 0.25)
+                    if raw_size >= 50:  # taille minimum
+                        should_open = True
+                        entry_capital = raw_size
+            
+            if should_open:
                 position_open = True
                 negative_since = None
-                entry_capital = capital * fraction
+                entry_time = ts
                 n_trades += 1
                 
-                # Entry costs (spot buy + perp short)
-                fees = entry_capital * 2 * fee_bps / 10000
-                slippage = entry_capital * 2 * slippage_bps / 10000
-                total_fees_paid += fees
-                total_slippage_cost += slippage
-                equity -= fees + slippage
+                # Entry + exit costs (4 legs × fee_bps)
+                roundtrip_cost = entry_capital * 4 * (fee_bps + slippage_bps) / 10000
+                total_fees_paid += entry_capital * 4 * fee_bps / 10000
+                total_slippage_cost += entry_capital * 4 * slippage_bps / 10000
+                equity -= roundtrip_cost
         else:
             # Position ouverte → recevoir funding
             if funding_rate > 0:
@@ -252,22 +270,28 @@ def backtest_funding_carry(
                 equity += payment
             
             # Vérifier sortie
+            should_close = False
+            
+            # Exit 1: funding négatif prolongé
             if funding_rate < 0:
                 if negative_since is None:
                     negative_since = ts
                 hours_negative = (ts - negative_since).total_seconds() / 3600
-                
                 if hours_negative > exit_after_negative_hours:
-                    # Close carry
-                    position_open = False
-                    n_trades += 1
-                    
-                    # Exit costs
-                    fees = entry_capital * 2 * fee_bps / 10000
-                    slippage = entry_capital * 2 * slippage_bps / 10000
-                    total_fees_paid += fees
-                    total_slippage_cost += slippage
-                    equity -= fees + slippage
+                    should_close = True
+            else:
+                negative_since = None
+            
+            # Exit 2: time-stop (V7.2: long, 90j — sortie économique prioritaire)
+            if not should_close and entry_time is not None:
+                days_held = (ts - entry_time).total_seconds() / 86400
+                if days_held > max_hold_days:
+                    should_close = True
+            
+            if should_close:
+                position_open = False
+                n_trades += 1
+                # Exit costs already provisioned at entry (roundtrip_cost)
             else:
                 negative_since = None
         
@@ -279,14 +303,10 @@ def backtest_funding_carry(
         equity_curve.append(equity)
         equity_dates.append(ts)
     
-    # ── Close if still open at end ──
+    # ── Close if still open at end (no extra fees, already provisioned) ──
     if position_open:
-        fees = entry_capital * 2 * fee_bps / 10000
-        slippage = entry_capital * 2 * slippage_bps / 10000
-        total_fees_paid += fees
-        total_slippage_cost += slippage
-        equity -= fees + slippage
         n_trades += 1
+        # Roundtrip fees already deducted at entry — no double charge
     
     # ── Metrics ──
     total_pnl = equity - capital
@@ -357,9 +377,15 @@ def main():
                        help="Fraction du capital en carry (défaut=80%)")
     parser.add_argument("--min-funding", type=float, default=0.00001,
                        help="Funding minimum (défaut=0.001%%)")
-    parser.add_argument("--exit-hours", type=int, default=168,
-                       help="Heures avant sortie si funding négatif (défaut=168=7j)")
+    parser.add_argument("--exit-hours", type=int, default=72,
+                       help="Heures avant sortie si funding négatif (défaut=72h)")
+    parser.add_argument("--v72", action="store_true", default=True,
+                       help="Utiliser les règles V7.2 (hurdle dynamique, risk budgeting, 4-leg fees)")
     args = parser.parse_args()
+    
+    # V7.2: per-asset stress loss
+    _stress_map = {"BTC": 0.04, "ETH": 0.04, "SOL": 0.08, "BNB": 0.08,
+                   "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12}
     
     symbols = [args.symbol]
     if args.symbol == "ALL":
@@ -384,6 +410,8 @@ def main():
                 fraction=args.fraction,
                 min_funding=args.min_funding,
                 exit_after_negative_hours=args.exit_hours,
+                v72=args.v72,
+                stress_loss_pct=_stress_map.get(sym.split("/")[0].upper(), 0.10),
             )
             results.append(r)
             logger.info("%s: PnL=$%.2f (%.2f%%) Sharpe=%.2f DD=%.1f%% (%ds)",

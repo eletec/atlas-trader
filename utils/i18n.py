@@ -4851,6 +4851,29 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "it": "Regime attuale", "pt": "Regime atual",
         "nl": "Huidig regime", "zh": "当前状态",
     },
+
+    # ── V7 Dashboard — Trade table & Admin ──────────────────────────────────
+    "col_sl": {"fr": "SL", "en": "SL", "de": "SL", "es": "SL", "it": "SL", "pt": "SL", "nl": "SL", "zh": "止损"},
+    "col_tp": {"fr": "TP", "en": "TP", "de": "TP", "es": "TP", "it": "TP", "pt": "TP", "nl": "TP", "zh": "止盈"},
+    "col_progression": {"fr": "Progression", "en": "Progress", "de": "Fortschritt", "es": "Progreso", "it": "Progresso", "pt": "Progresso", "nl": "Voortgang", "zh": "进度"},
+    "col_status": {"fr": "Statut", "en": "Status", "de": "Status", "es": "Estado", "it": "Stato", "pt": "Status", "nl": "Status", "zh": "状态"},
+    "col_dag": {"fr": "DAG", "en": "DAG", "de": "DAG", "es": "DAG", "it": "DAG", "pt": "DAG", "nl": "DAG", "zh": "DAG"},
+    "col_signal": {"fr": "Signal", "en": "Signal", "de": "Signal", "es": "Señal", "it": "Segnale", "pt": "Sinal", "nl": "Signaal", "zh": "信号"},
+    "trades_all_title": {"fr": "Historique des trades — tous actifs", "en": "Trade History — All Assets", "de": "Handelshistorie — Alle", "es": "Historial — Todos", "it": "Storico — Tutti", "pt": "Histórico — Todos", "nl": "Handelsgeschiedenis — Alle", "zh": "交易历史 — 全部"},
+    "tab_historique": {"fr": "Historique", "en": "History", "de": "Verlauf", "es": "Historial", "it": "Storico", "pt": "Histórico", "nl": "Geschiedenis", "zh": "历史"},
+    "tab_decisions": {"fr": "Décisions IA", "en": "AI Decisions", "de": "KI-Entscheidungen", "es": "Decisiones IA", "it": "Decisioni IA", "pt": "Decisões IA", "nl": "AI-beslissingen", "zh": "AI决策"},
+    "tab_config": {"fr": "Configuration", "en": "Configuration", "de": "Konfiguration", "es": "Configuración", "it": "Configurazione", "pt": "Configuração", "nl": "Configuratie", "zh": "配置"},
+    "tab_monitoring": {"fr": "Monitoring", "en": "Monitoring", "de": "Überwachung", "es": "Monitoreo", "it": "Monitoraggio", "pt": "Monitoramento", "nl": "Monitoring", "zh": "监控"},
+    "tab_canvas": {"fr": "Canvas DAG", "en": "DAG Canvas", "de": "DAG-Leinwand", "es": "Lienzo DAG", "it": "Canvas DAG", "pt": "Canvas DAG", "nl": "DAG-canvas", "zh": "DAG画布"},
+    "tab_sources": {"fr": "Sources de données", "en": "Data Sources", "de": "Datenquellen", "es": "Fuentes de datos", "it": "Fonti dati", "pt": "Fontes de dados", "nl": "Gegevensbronnen", "zh": "数据源"},
+    "tab_reset": {"fr": "Reset", "en": "Reset", "de": "Reset", "es": "Reiniciar", "it": "Reset", "pt": "Reset", "nl": "Reset", "zh": "重置"},
+    "emergency_close_title": {"fr": "Fermeture d'urgence", "en": "Emergency Close", "de": "Not-Aus", "es": "Cierre de emergencia", "it": "Chiusura d'emergenza", "pt": "Fechamento de emergência", "nl": "Noodstop", "zh": "紧急平仓"},
+    "emergency_close_caption": {"fr": "Ferme TOUTES les positions ouvertes au prix spot actuel.", "en": "Closes ALL open positions at current spot price.", "de": "Schließt ALLE offenen Positionen zum aktuellen Spot-Preis.", "es": "Cierra TODAS las posiciones abiertas al precio spot actual.", "it": "Chiude TUTTE le posizioni aperte al prezzo spot attuale.", "pt": "Fecha TODAS as posições abertas ao preço spot atual.", "nl": "Sluit ALLE open posities tegen de huidige spotprijs.", "zh": "以当前现货价格平仓所有持仓。"},
+    "emergency_close_btn": {"fr": "Fermer les", "en": "Close", "de": "Schließen", "es": "Cerrar", "it": "Chiudi", "pt": "Fechar", "nl": "Sluiten", "zh": "平仓"},
+    "export_csv": {"fr": "Exporter CSV", "en": "Export CSV", "de": "CSV exportieren", "es": "Exportar CSV", "it": "Esporta CSV", "pt": "Exportar CSV", "nl": "CSV exporteren", "zh": "导出CSV"},
+    "no_transactions": {"fr": "Aucune transaction enregistrée.", "en": "No transactions recorded.", "de": "Keine Transaktionen aufgezeichnet.", "es": "Sin transacciones registradas.", "it": "Nessuna transazione registrata.", "pt": "Nenhuma transação registrada.", "nl": "Geen transacties geregistreerd.", "zh": "无交易记录。"},
+    "closed_status": {"fr": "fermé", "en": "closed", "de": "geschlossen", "es": "cerrado", "it": "chiuso", "pt": "fechado", "nl": "gesloten", "zh": "已平仓"},
+    "open_status": {"fr": "ouvert", "en": "open", "de": "offen", "es": "abierto", "it": "aperto", "pt": "aberto", "nl": "open", "zh": "持仓中"},
 }
 
 _current_lang: str = "en"

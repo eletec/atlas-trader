@@ -4228,7 +4228,7 @@ def render_admin_panel():
             # Récupérer les trades
             all_trades = get_v4_trades(n=2000)
             if not all_trades:
-                st.info("📊 Aucune transaction V4 enregistrée. Les trades apparaîtront ici automatiquement.")
+                st.info(t("no_transactions"))
                 return
 
             # Filtrer
@@ -4242,7 +4242,7 @@ def render_admin_panel():
                 filtered = [tr for tr in filtered if tr.get("status") == _st]
 
             if not filtered:
-                st.info("Aucune transaction avec ces filtres.")
+                st.info(t("no_trades"))
                 return
 
             # Stats
@@ -4287,7 +4287,7 @@ def render_admin_panel():
                 tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
                 row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
 
-            cols = ["Date", "Actif", "Action", "Entrée", "SL", "TP", "Taille", "P&L", "Progression", "Statut", "DAG"]
+            cols = [t("col_date"), t("col_asset"), t("col_action"), t("col_entry"), t("col_size_usd"), t("col_sl"), t("col_tp"), t("col_pnl"), t("col_progression"), t("col_status"), t("col_dag")]
             header = "".join(
                 f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
                 f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};opacity:.65;'
@@ -4331,7 +4331,7 @@ def render_admin_panel():
                     f'${size_usd:,.0f}' if size_usd else "—",
                     f'<span style="color:{pnl_color};font-weight:600;">{pnl_str}</span>',
                     progress_str,
-                    "✅ fermé" if tr.get("status") == "closed" else "⏳ ouvert",
+                    f"✅ {t('closed_status')}" if tr.get("status") == "closed" else f"⏳ {t('open_status')}",
                     tr.get("dag_id", "—"),
                 ]
                 td_style = f'padding:5px 10px;font-size:12px;color:{tbl_fg};white-space:nowrap;border-bottom:1px solid {sep};'
@@ -4355,11 +4355,11 @@ def render_admin_panel():
 
             # ── Bouton fermeture manuelle de toutes les positions ──────────
             st.markdown("---")
-            st.markdown("#### ⚠️ Fermeture d'urgence")
-            st.caption("Ferme TOUTES les positions ouvertes au prix spot actuel. Utile si les mécanismes automatiques de SL/TP ne se sont pas déclenchés.")
+            st.markdown(f"#### ⚠️ {t('emergency_close_title')}")
+            st.caption(t("emergency_close_caption"))
             _n_open_hist = sum(1 for tr in filtered if tr.get("status") == "open")
             if _n_open_hist > 0:
-                if st.button(f"🔴 Fermer les {_n_open_hist} position(s) ouverte(s)", type="secondary", use_container_width=True):
+                if st.button(f"🔴 {t('emergency_close_btn')} {_n_open_hist} position(s) ouverte(s)", type="secondary", use_container_width=True):
                     try:
                         import urllib.request as _ur_close, json as _j_close
                         _resp = _ur_close.urlopen(_ur_close.Request(

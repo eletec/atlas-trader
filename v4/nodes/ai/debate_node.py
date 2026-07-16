@@ -221,7 +221,9 @@ class DebateNode(Node):
         max_tokens = int(self.params.get("max_tokens", 512))
         ollama_url = self.params.get("ollama_url", _llm_cfg.get("ollama_url", "http://atlas-v4-ollama:11434"))
         timeout_s = int(self.params.get("timeout_s", 90))
-        api_key = _llm_cfg.get("deepseek_api_key", "") or _llm_cfg.get("api_key", "")
+        import os as _os_dk
+        api_key = (_os_dk.environ.get("DEEPSEEK_API_KEY", "") or _os_dk.environ.get("DEEPSEEK_KEY", "")
+                    or _llm_cfg.get("deepseek_api_key", "") or _llm_cfg.get("api_key", ""))
 
         # ── Construire le prompt commun ──
         reflections = inputs.get("lessons") or inputs.get("reflections", "")

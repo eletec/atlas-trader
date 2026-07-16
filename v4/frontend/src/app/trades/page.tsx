@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { getApiUrl } from "@/lib/api-url";
+import { useTranslation } from "@/i18n";
 
 const API_URL = getApiUrl();
 
@@ -25,6 +26,7 @@ interface Trade {
 }
 
 export default function TradesPage() {
+  const { t } = useTranslation();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,24 +98,24 @@ export default function TradesPage() {
     return () => clearInterval(iv);
   }, []);
 
-  if (loading) return <div className="p-8 text-slate-400 text-sm">Chargement…</div>;
-  if (error) return <div className="p-8 text-red-400 text-sm">Erreur : {error}</div>;
+  if (loading) return <div className="p-8 text-slate-400 text-sm">{t("trades.loading")}</div>;
+  if (error) return <div className="p-8 text-red-400 text-sm">{t("trades.error")}{error}</div>;
 
   return (
     <div className="min-h-screen bg-canvas-bg p-6">
-      <h1 className="mb-6 text-2xl font-bold text-white">Journal des trades</h1>
-      <p className="mb-4 text-xs text-slate-500">Mode : paper trading (testnet uniquement)</p>
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("trades.title")}</h1>
+      <p className="mb-4 text-xs text-slate-500">{t("trades.subtitle")}</p>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <p className="text-slate-400">{t("trades.loading")}</p>
       ) : trades.length === 0 ? (
-        <p className="text-slate-500">Aucun trade enregistré.</p>
+        <p className="text-slate-500">{t("trades.empty")}</p>
       ) : (
         <div className="overflow-auto rounded-lg border border-canvas-border">
           <table className="w-full text-xs">
             <thead className="bg-canvas-grid text-slate-400">
               <tr>
-                {["ID", "Symbole", "Action", "Entry", "SL", "TP", "Taille $", "Date", "Statut"].map((h) => (
+                {[t("trades.col.id"), t("trades.col.symbol"), t("trades.col.action"), t("trades.col.entry"), t("trades.col.sl"), t("trades.col.tp"), t("trades.col.size"), t("trades.col.date"), t("trades.col.status")].map((h) => (
                   <th key={h} className="px-4 py-2 text-left">{h}</th>
                 ))}
               </tr>
@@ -131,7 +133,7 @@ export default function TradesPage() {
                   <td className="px-4 py-2 font-mono text-canvas-success">{t.take_profit?.toLocaleString()}</td>
                   <td className="px-4 py-2">${t.size_usd?.toLocaleString()}</td>
                   <td className="px-4 py-2 text-slate-500">
-                    {t.ts ? new Date(t.ts).toLocaleString() : "—"}
+                    {t.ts ? new Date(t.ts).toLocaleString() : t("monitoring.fallback")}
                   </td>
                   <td className="px-4 py-2">
                     <span className={t.status === "open" ? "text-canvas-warning" : "text-slate-500"}>
@@ -145,16 +147,16 @@ export default function TradesPage() {
               <tfoot>
                 <tr className="border-t-2 border-canvas-border bg-canvas-grid">
                   <td className="px-4 py-2 font-bold text-slate-200" colSpan={2}>
-                    TOTAL · {trades.length} trades
+                    {t("trades.total")}{trades.length}{t("trades.totalSuffix")}
                   </td>
                   <td className="px-4 py-2 text-slate-400" colSpan={1}>
-                    {trades.filter(t => t.status === "open").length} ouverts
+                    {trades.filter(t => t.status === "open").length}{t("trades.openCount")}
                   </td>
                   <td className="px-4 py-2 text-right text-slate-300 font-mono font-bold" colSpan={4}>
                     ${trades.reduce((sum, t) => sum + (t.size_usd || 0), 0).toLocaleString()}
                   </td>
                   <td className="px-4 py-2 text-slate-500 text-xs" colSpan={2}>
-                    taille totale
+                    {t("trades.totalSize")}
                   </td>
                 </tr>
               </tfoot>

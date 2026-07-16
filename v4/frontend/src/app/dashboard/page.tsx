@@ -10,6 +10,7 @@ import { usePriceStream } from "@/hooks/usePriceStream";
 import { usePriceStore } from "@/store/priceStore";
 import { cn } from "@/lib/utils";
 import { getApiUrl } from "@/lib/api-url";
+import { useTranslation, LanguageSwitcher } from "@/i18n";
 
 const API_URL = getApiUrl();
 const SYMBOL_ICONS: Record<string, string> = {
@@ -104,6 +105,7 @@ function PriceCard({ symbol, entryPrice, position }: {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [dags, setDags] = useState<DAGStatus[]>([]);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [portfolio, setPortfolio] = useState({ capital: 10000, value: 10000, pnl: 0, pnlPct: 0, count: 0 });
@@ -197,20 +199,21 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-canvas-bg p-6">
       <PriceStreamInit symbols={dagAssets} />
 
-      <h1 className="mb-6 text-2xl font-bold text-white">📡 Dashboard</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("dashboard.title")}</h1>
+      <div className="absolute top-4 right-4"><LanguageSwitcher /></div>
 
       {/* ── Portfolio ── */}
       <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="rounded-lg border border-canvas-border bg-canvas-node px-4 py-3">
-          <div className="text-xs text-slate-400">Capital</div>
+          <div className="text-xs text-slate-400">{t("dashboard.capital")}</div>
           <div className="text-lg font-bold">${portfolio.capital.toLocaleString()}</div>
         </div>
         <div className="rounded-lg border border-canvas-border bg-canvas-node px-4 py-3">
-          <div className="text-xs text-slate-400">Valeur</div>
+          <div className="text-xs text-slate-400">{t("dashboard.value")}</div>
           <div className="text-lg font-bold">${portfolio.value.toLocaleString()}</div>
         </div>
         <div className="rounded-lg border border-canvas-border bg-canvas-node px-4 py-3">
-          <div className="text-xs text-slate-400">P&L</div>
+          <div className="text-xs text-slate-400">{t("dashboard.pnl")}</div>
           <div className={cn("text-lg font-bold", pnlColor)}>
             ${portfolio.pnl >= 0 ? "+" : ""}{portfolio.pnl.toFixed(2)}
           </div>
@@ -219,13 +222,13 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="rounded-lg border border-canvas-border bg-canvas-node px-4 py-3">
-          <div className="text-xs text-slate-400">Trades</div>
+          <div className="text-xs text-slate-400">{t("dashboard.trades")}</div>
           <div className="text-lg font-bold">{portfolio.count}</div>
         </div>
         <div className="rounded-lg border border-canvas-border bg-canvas-node px-4 py-3">
-          <div className="text-xs text-slate-400">Connexion</div>
+          <div className="text-xs text-slate-400">{t("dashboard.connection")}</div>
           <div className={cn("text-lg font-bold", connected ? "text-canvas-success" : "text-canvas-danger")}>
-            {connected ? "● Live" : "○ Off"}
+            {connected ? t("dashboard.connected") : t("dashboard.disconnected")}
           </div>
         </div>
       </section>
@@ -233,7 +236,7 @@ export default function DashboardPage() {
       {/* ── Prix live ── */}
       <section className="mb-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          Prix temps réel
+          {t("dashboard.livePrice")}
         </h2>
         <div className="flex flex-wrap gap-3">
           {dagAssets.map(sym => (
@@ -246,16 +249,16 @@ export default function DashboardPage() {
       {/* ── DAG Overview ── */}
       <section className="mb-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          DAGs actifs
+          {t("dashboard.activeDags")}
         </h2>
         {dags.length === 0 ? (
-          <p className="text-slate-500">Aucun DAG en cours.</p>
+          <p className="text-slate-500">{t("dashboard.noDags")}</p>
         ) : (
           <div className="overflow-auto rounded-lg border border-canvas-border">
             <table className="w-full text-xs">
               <thead className="bg-canvas-grid text-slate-400">
                 <tr>
-                  {["Actif", "Signal", "Dir", "Run", "Trade", "Tendance", "Statut"].map(h => (
+                  {[t("dashboard.col.asset"), t("dashboard.col.signal"), t("dashboard.col.dir"), t("dashboard.col.run"), t("dashboard.col.trade"), t("dashboard.col.trend"), t("dashboard.col.status")].map(h => (
                     <th key={h} className="px-3 py-2 text-left">{h}</th>
                   ))}
                 </tr>
@@ -294,7 +297,7 @@ export default function DashboardPage() {
                       <td className="px-3 py-2">{trend}</td>
                       <td className="px-3 py-2">
                         <span className={d.running ? "text-canvas-success" : "text-slate-500"}>
-                          {d.running ? "● actif" : "○ arrêté"}
+                          {d.running ? t("dashboard.status.active") : t("dashboard.status.stopped")}
                         </span>
                       </td>
                     </tr>

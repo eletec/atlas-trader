@@ -10,6 +10,7 @@ import { usePriceStore } from "@/store/priceStore";
 import { cn } from "@/lib/utils";
 import { useMemo } from "react";
 import { getApiUrl } from "@/lib/api-url";
+import { useTranslation } from "@/i18n";
 
 const API_URL = getApiUrl();
 
@@ -36,6 +37,7 @@ interface LogEntry {
 }
 
 export default function MonitoringPage() {
+  const { t } = useTranslation();
   const [dags, setDags] = useState<DAGStatus[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const connected = usePriceStore((s) => s.connected);
@@ -74,14 +76,14 @@ export default function MonitoringPage() {
     <div className="min-h-screen bg-canvas-bg p-6">
       <PriceStreamInit symbols={trackedSymbols} />
 
-      <h1 className="mb-6 text-2xl font-bold text-white">Monitoring</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("monitoring.title")}</h1>
 
       {/* Prix live */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          Prix live{" "}
+          {t("monitoring.livePrice")}{" "}
           <span className={connected ? "text-canvas-success" : "text-canvas-danger"}>
-            {connected ? "● connecté" : "● déconnecté"}
+            {connected ? t("monitoring.wsConnected") : t("monitoring.wsDisconnected")}
           </span>
         </h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -100,16 +102,16 @@ export default function MonitoringPage() {
       {/* DAGs actifs */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          DAGs actifs
+          {t("monitoring.activeDags")}
         </h2>
         {dags.length === 0 ? (
-          <p className="text-slate-500">Aucun DAG en cours.</p>
+          <p className="text-slate-500">{t("monitoring.noDags")}</p>
         ) : (
           <div className="overflow-auto rounded-lg border border-canvas-border">
             <table className="w-full text-xs">
               <thead className="bg-canvas-grid text-slate-400">
                 <tr>
-                  {["DAG ID", "Actif", "Statut", "Cycle (s)", "Dernier run", "Résultats"].map((h) => (
+                  {[t("monitoring.col.dagId"), t("monitoring.col.asset"), t("monitoring.col.status"), t("monitoring.col.cycle"), t("monitoring.col.lastRun"), t("monitoring.col.results")].map((h) => (
                     <th key={h} className="px-4 py-2 text-left">{h}</th>
                   ))}
                 </tr>
@@ -124,14 +126,14 @@ export default function MonitoringPage() {
                       <td className="px-4 py-2">{d.asset}</td>
                       <td className="px-4 py-2">
                         <span className={d.running ? "text-canvas-success" : "text-slate-500"}>
-                          {d.running ? "● actif" : "○ arrêté"}
+                          {d.running ? t("monitoring.status.active") : t("monitoring.status.stopped")}
                         </span>
                       </td>
-                      <td className="px-4 py-2">{d.cycle_s ?? "—"}</td>
+                      <td className="px-4 py-2">{d.cycle_s ?? t("monitoring.fallback")}</td>
                       <td className="px-4 py-2">
                         {d.last_run_at
                           ? new Date(d.last_run_at * 1000).toLocaleTimeString()
-                          : "—"}
+                          : t("monitoring.fallback")}
                       </td>
                       <td className="px-4 py-2">
                         <span className="text-canvas-success">{doneCount} ✓</span>
@@ -151,10 +153,10 @@ export default function MonitoringPage() {
       {/* Logs d'exécution */}
       <section className="mt-8">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-400">
-          Logs
+          {t("monitoring.logs")}
         </h2>
         {logs.length === 0 ? (
-          <p className="text-slate-500 text-xs">Aucun log. Lancez ▶ Run ou ⏱ Sched.</p>
+          <p className="text-slate-500">{t("monitoring.noLogs")}</p>
         ) : (
           <div className="overflow-auto rounded-lg border border-canvas-border bg-canvas-node max-h-80">
             <div className="font-mono text-[11px] leading-relaxed">

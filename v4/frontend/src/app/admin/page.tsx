@@ -4,15 +4,17 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "@/i18n";
 
 type View = "global" | "asset" | "transverse";
 
 export default function AdminPage() {
+  const { t } = useTranslation();
   const [view, setView] = useState<View>("global");
 
   return (
     <div className="min-h-screen bg-canvas-bg p-6">
-      <h1 className="mb-6 text-2xl font-bold text-white">Administration</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("admin.title")}</h1>
 
       {/* Onglets */}
       <div className="mb-6 flex gap-2 border-b border-canvas-border">
@@ -26,7 +28,7 @@ export default function AdminPage() {
                 : "border-transparent text-slate-400 hover:text-white"
             }`}
           >
-            {v === "global" ? "Vue globale" : v === "asset" ? "Par actif" : "Transverses"}
+            {v === "global" ? t("admin.tab.global") : v === "asset" ? t("admin.tab.perAsset") : t("admin.tab.transverse")}
           </button>
         ))}
       </div>
@@ -40,17 +42,18 @@ export default function AdminPage() {
 }
 
 function GlobalView() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4 text-xs">
-      <h2 className="text-sm font-semibold text-slate-300">Configuration globale</h2>
+      <h2 className="text-sm font-semibold text-slate-300">{t("admin.globalConfig")}</h2>
       <div className="rounded-lg border border-canvas-border bg-canvas-node p-4 max-w-md space-y-2">
         {[
-          ["Environnement", "Docker (v5-dev)"],
-          ["API backend", "http://atlas-v4-api:8000"],
-          ["Ollama", "http://atlas-v4-ollama:11434"],
-          ["Modèle IA", "phi4:latest"],
-          ["Timeout IA (s)", "10"],
-          ["Testnet", "Oui (invariant)"],
+          [t("admin.env"), "Docker"],
+          [t("admin.apiBackend"), "http://atlas-v4-api:8000"],
+          [t("admin.ollama"), "http://atlas-v4-ollama:11434"],
+          [t("admin.aiModel"), "phi4:latest"],
+          [t("admin.aiTimeout"), "10"],
+          [t("admin.testnet"), t("admin.testnetValue")],
         ].map(([k, v]) => (
           <div key={k} className="flex justify-between">
             <span className="text-slate-400">{k}</span>
@@ -63,28 +66,28 @@ function GlobalView() {
 }
 
 function AssetView() {
+  const { t } = useTranslation();
   return (
     <div className="text-xs space-y-4">
-      <h2 className="text-sm font-semibold text-slate-300">Configuration par actif</h2>
+      <h2 className="text-sm font-semibold text-slate-300">{t("admin.perAssetConfig")}</h2>
       <p className="text-slate-500">
-        Les paramètres par actif sont définis dans les nœuds <strong className="text-white">AssetDef</strong> sur le canvas.
-        Naviguez vers{" "}
+        {t("admin.perAssetDesc1")}<strong className="text-white">AssetDef</strong> {t("admin.perAssetDesc2")}
         <a href="/assets" className="text-canvas-accent hover:underline">
           /assets
         </a>{" "}
-        pour gérer le registre.
+        {t("admin.perAssetDesc3")}
       </p>
     </div>
   );
 }
 
 function TransverseView() {
+  const { t } = useTranslation();
   return (
     <div className="text-xs space-y-4">
-      <h2 className="text-sm font-semibold text-slate-300">Lanes transverses</h2>
+      <h2 className="text-sm font-semibold text-slate-300">{t("admin.transverseTitle")}</h2>
       <p className="text-slate-500 mb-4">
-        Les lanes transverses (sentiment, macro…) sont des nœuds asynchrones avec{" "}
-        <code className="text-white">cycle_interval_s &gt; 0</code> qui écrivent dans le ContextStore global.
+        {t("admin.transverseDesc1")}<code className="text-white">cycle_interval_s &gt; 0</code> {t("admin.transverseDesc2")}
       </p>
       <div className="rounded-lg border border-canvas-border bg-canvas-node p-4 max-w-md space-y-2">
         {[

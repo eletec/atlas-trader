@@ -9,6 +9,7 @@
 
 import { useDagStore } from "@/store/dagStore";
 import { useCallback, useState } from "react";
+import { useTranslation } from "@/i18n";
 
 const TYPE_DEFAULTS: Record<string, Record<string, unknown>> = {
   AssetDef: { symbol: "BTC/USDT", exchange: "binance", capital_usd: 10000, fraction: 0.02, max_positions: 3 },
@@ -42,6 +43,7 @@ function inferType(value: unknown): "string" | "number" | "boolean" | "array" {
 }
 
 export function NodeEditor() {
+  const { t } = useTranslation();
   const nodes = useDagStore((s) => s.nodes);
   const edges = useDagStore((s) => s.edges);
   const selectedNodeId = useDagStore((s) => s.selectedNodeId);
@@ -103,10 +105,12 @@ export function NodeEditor() {
     updateNodeParams(selectedNodeId, { ...defaults });
   };
 
+  const { t } = useTranslation();
+
   if (!node) {
     return (
       <div className="w-64 border-l border-canvas-border bg-canvas-node p-4 text-xs text-slate-500">
-        <p className="text-center pt-8">Cliquez sur un nœud pour éditer ses paramètres</p>
+        <p className="text-center pt-8">{t("nodeEditor.empty")}</p>
       </div>
     );
   }
@@ -118,13 +122,13 @@ export function NodeEditor() {
       {/* Header */}
       <div className="shrink-0 border-b border-canvas-border bg-canvas-node px-3 py-2 flex items-center justify-between">
         <div>
-          <span className="text-xs font-semibold text-white block">{(nodeData?.label as string) ?? selectedNodeId ?? "Node"}</span>
+          <span className="text-xs font-semibold text-white block">{(nodeData?.label as string) ?? selectedNodeId ?? t("nodeEditor.node")}</span>
           <span className="text-[10px] text-slate-500">{nodeType}</span>
         </div>
         <button
           onClick={() => selectNode(null)}
           className="text-slate-500 hover:text-white text-sm px-1"
-          title="Fermer"
+          title={t("nodeEditor.close")}
         >
           ✕
         </button>
@@ -133,18 +137,18 @@ export function NodeEditor() {
       {/* Params — scrollable */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Paramètres</span>
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{t("nodeEditor.params")}</span>
           <button
             onClick={handleReset}
             className="text-[10px] text-slate-500 hover:text-canvas-accent"
-            title="Réinitialiser aux valeurs par défaut"
+            title={t("nodeEditor.resetTitle")}
           >
-            ↺ Reset
+            {t("nodeEditor.reset")}
           </button>
         </div>
 
         {entries.length === 0 && (
-          <p className="text-[11px] text-slate-600 italic">Aucun paramètre</p>
+          <p className="text-[11px] text-slate-600 italic">{t("nodeEditor.noParams")}</p>
         )}
 
         {entries.map(([key, value]) => {
@@ -152,7 +156,7 @@ export function NodeEditor() {
           const fromEdge = edgeInputs.has(key);
           return (
             <div key={key} className="flex items-start gap-1 group">
-              <label className={`text-[10px] w-20 shrink-0 pt-1 truncate ${fromEdge ? "text-cyan-400" : "text-slate-400"}`} title={fromEdge ? `${key} (reçu d'un edge)` : key}>
+              <label className={`text-[10px] w-20 shrink-0 pt-1 truncate ${fromEdge ? "text-cyan-400" : "text-slate-400"}`} title={fromEdge ? `${key} ${t("nodeEditor.edgeFed")}` : key}>
                 {fromEdge ? "↗ " : ""}{key}
               </label>
               <div className="flex-1 min-w-0">

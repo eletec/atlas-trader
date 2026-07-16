@@ -144,7 +144,7 @@ def _ts_ago(ts_str: str | None) -> str:
 # ===========================================================
 col_title, col_status = st.columns([6, 2])
 with col_title:
-    st.markdown("## ⚡ Atlas Trader — V2 Quant")
+    st.markdown("## ⚡ Atlas Trader — Quant")
 with col_status:
     if _state:
         ago = _ts_ago(_state.get("updated_at"))

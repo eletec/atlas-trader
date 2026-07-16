@@ -24,8 +24,8 @@ _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
 # ---------------------------------------------------------------------------
 
 def _active_assets() -> list[str]:
-    """Retourne les actifs des DAGs V4 actifs. Fallback config V3 si API injoignable."""
-    # 1) Actifs des DAGs V4 actifs (prioritaire)
+    """Retourne les actifs des DAGs actifs. Fallback config si API injoignable."""
+    # 1) Actifs des DAGs actifs (prioritaire)
     try:
         import urllib.request, json
         req = urllib.request.Request(f"{_API_BASE}/dag/status", method="GET")
@@ -37,7 +37,7 @@ def _active_assets() -> list[str]:
     except Exception:
         pass
 
-    # 2) Fallback config V3
+    # 2) Fallback config
     try:
         from utils.config import get_active_assets
         return get_active_assets()
@@ -89,7 +89,7 @@ def _score_bar(score: float, theme: str = "dark") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Composant 1 : Vue globale (V4 — données live des DAGs actifs)
+# Composant 1 : Vue globale (données live des DAGs actifs)
 # ---------------------------------------------------------------------------
 
 _ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}

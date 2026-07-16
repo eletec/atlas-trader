@@ -4148,11 +4148,11 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "✅ {n} bestand(en) hersteld vanuit {filename}",
         "zh": "✅ 已从 {filename} 恢复 {n} 个文件",
     },
-    # ── V2 Quant dashboard ───────────────────────────────────────────────────
+    # ── Quant dashboard ──────────────────────────────────────────────────────
     "v2_quant_title": {
-        "fr": "Moteur Quant V2", "en": "V2 Quant Engine", "de": "Quant-Engine V2",
-        "es": "Motor Quant V2", "it": "Motore Quant V2", "pt": "Motor Quant V2",
-        "nl": "Kwant Engine V2", "zh": "量化引擎 V2",
+        "fr": "Moteur Quant", "en": "Quant Engine", "de": "Quant-Engine",
+        "es": "Motor Quant", "it": "Motore Quant", "pt": "Motor Quant",
+        "nl": "Kwant Engine", "zh": "量化引擎",
     },
     "v2_regime": {
         "fr": "Régime", "en": "Regime", "de": "Marktregime",
@@ -4165,19 +4165,19 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "P(omhoog)", "zh": "上涨概率",
     },
     "v2_decision": {
-        "fr": "Décision V2", "en": "V2 Decision", "de": "V2-Entscheidung",
-        "es": "Decisión V2", "it": "Decisione V2", "pt": "Decisão V2",
-        "nl": "V2-Beslissing", "zh": "V2决策",
+        "fr": "Décision", "en": "Decision", "de": "Entscheidung",
+        "es": "Decisión", "it": "Decisione", "pt": "Decisão",
+        "nl": "Beslissing", "zh": "决策",
     },
     "v2_capital": {
-        "fr": "Capital V2", "en": "V2 Capital", "de": "V2-Kapital",
-        "es": "Capital V2", "it": "Capitale V2", "pt": "Capital V2",
-        "nl": "V2-Kapitaal", "zh": "V2资金",
+        "fr": "Capital", "en": "Capital", "de": "Kapital",
+        "es": "Capital", "it": "Capitale", "pt": "Capital",
+        "nl": "Kapitaal", "zh": "资金",
     },
     "v2_equity": {
-        "fr": "Equity V2", "en": "V2 Equity", "de": "V2-Eigenkapital",
-        "es": "Equity V2", "it": "Equity V2", "pt": "Equity V2",
-        "nl": "V2-Equity", "zh": "V2权益",
+        "fr": "Équité", "en": "Equity", "de": "Eigenkapital",
+        "es": "Patrimonio", "it": "Equity", "pt": "Equity",
+        "nl": "Equity", "zh": "权益",
     },
     "v2_entries": {
         "fr": "Entrées", "en": "Entries", "de": "Einträge",
@@ -4241,7 +4241,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "es": "Reset", "it": "Reset", "pt": "Reset",
         "nl": "Reset", "zh": "Reset",
     },
-    # ── Flux Manager V2 — categories ─────────────────────────────────────────
+    # ── Flux Manager — categories ───────────────────────────────────────────
     "flux_cat_data": {
         "fr": "Données", "en": "Data", "de": "Daten",
         "es": "Datos", "it": "Dati", "pt": "Dados",
@@ -4257,7 +4257,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "es": "Decisión", "it": "Decisione", "pt": "Decisão",
         "nl": "Beslissing", "zh": "决策",
     },
-    # ── Flux Manager V2 — step descriptions ──────────────────────────────────
+    # ── Flux Manager — step descriptions ────────────────────────────────────
     "flux_desc_ohlcv_loader": {
         "fr": "CCXT — chargement OHLCV 15m (cache disque)",
         "en": "CCXT — OHLCV 15m load (disk cache)",

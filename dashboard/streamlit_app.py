@@ -975,7 +975,7 @@ def _force_run_background(asset: str, log_q) -> None:
 
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
     _logger.info(f"=== DASHBOARD FORCE-RUN V2 — {asset} @ {start_ts} ===")
-    _log(f"🚀 <b>Démarrage cycle V2</b> — {asset} ({start_ts})")
+    _log(f"🚀 <b>Démarrage cycle</b> — {asset} ({start_ts})")
     _log(f"⏳ <b>OHLCV → Features → Régime → Signal → Stratégie → Risk...</b>")
 
     t_total = _time.time()
@@ -996,7 +996,7 @@ def _force_run_background(asset: str, log_q) -> None:
         errs = sum(1 for r in results.values() if r.get("status") == "error")
         dag_id = result.get("dag_id", "?")
 
-        _log(f"✅ <b>DAG V4 exécuté</b> — {dag_id} ({total_s:.1f}s)")
+        _log(f"✅ <b>DAG exécuté</b> — {dag_id} ({total_s:.1f}s)")
         _log(f"📊 Nœuds: <b>{done} OK</b>, {errs} erreur(s) sur {len(results)}")
 
         # Afficher les sorties des nœuds clés
@@ -1023,7 +1023,7 @@ def _force_run_background(asset: str, log_q) -> None:
     except Exception as exc:
         total_s = _time.time() - t_total
         _logger.exception(f"Force-run V2 échoué: {exc}")
-        _log(f"❌ <b>Erreur cycle V2</b> — {exc} ({total_s:.1f}s)")
+        _log(f"❌ <b>Erreur cycle</b> — {exc} ({total_s:.1f}s)")
         log_q.put(("__done__", (True, f"Erreur: {exc}")))
 
 
@@ -1396,7 +1396,7 @@ def render_climate_metrics(last_cycle: dict | None):
     if ts:
         try:
             diff = int((datetime.utcnow() - datetime.fromisoformat(ts)).total_seconds() / 60)
-            time_ago = f"V2 {diff} min" if diff < 60 else f"V2 {diff // 60} h"
+            time_ago = f"{diff} min" if diff < 60 else f"{diff // 60} h"
         except Exception:
             pass
 
@@ -2868,7 +2868,7 @@ def render_last_decision(last_cycle: dict | None):
         f"background:rgba(255,255,255,0.03);'>"
         f"<strong style='color:{action_color};font-size:20px;'>{action}</strong>"
         + (f" &nbsp;<span style='font-size:11px;opacity:0.5;'>🕐 {ts_label}</span>" if ts_label else "")
-        + "<br><span style='font-size:11px;opacity:0.55;'>Pipeline V2 quantitatif pur</span>"
+        + "<br><span style='font-size:11px;opacity:0.55;'>Pipeline quantitatif</span>"
         + f"<br><br><b>Raison :</b> <code style='font-size:12px;'>{explanation}</code>"
         + (f"<br><b>Régime :</b> {regime_str} &nbsp;·&nbsp; <b>P(↑) :</b> {prob_up:.3f}" if prob_up is not None else "")
         + (f"<br><b>Prix clôture :</b> <b>${close_price:,.2f}</b>" if close_price else "")
@@ -3041,14 +3041,14 @@ def render_agent_scores_chart(asset: str):
 
 
 def _render_v4_config():
-    """V7 — Configuration Funding Carry."""
+    """Configuration Funding Carry."""
     import yaml
     from pathlib import Path
 
     st.markdown(f"### ⚙️ {t('config_title')}")
     st.caption(t("config_strategy_desc"))
 
-    # ── V7 Carry Params ──
+    # ── Carry Params ──
     st.markdown(f"#### 💸 {t('config_carry_section')}")
     col1, col2 = st.columns(2)
     with col1:
@@ -3135,13 +3135,13 @@ def _active_assets_v4() -> list[str]:
 
 
 def _render_backtest_v4():
-    """Panneau de backtest V7 — Funding Carry + V6 legacy."""
+    """Panneau de backtest — Funding Carry + Directionnel."""
     st.markdown("### 🧪 Backtest")
     
-    bt_mode = st.radio("Mode", ["💰 V7 Funding Carry", "📈 V6 Directionnel (legacy)"], index=0, horizontal=True)
+    bt_mode = st.radio("Mode", ["💰 Funding Carry", "📈 Directionnel"], index=0, horizontal=True)
     
     if bt_mode.startswith("💰"):
-        # ── V7 Funding Carry Backtest ──
+        # ── Funding Carry Backtest ──
         st.caption("Backtest de la collecte de funding · Short Perp + Long Spot · Market-neutral")
         
         symbol = st.selectbox(t("col_asset"), ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
@@ -3192,10 +3192,10 @@ def _render_backtest_v4():
         exit_atr = st.slider("Exit ATR", 1.0, 6.0, 3.0, 0.5)
 
     gate_mode = st.selectbox("Mode Gate", ["meta", "meta_regime", "fusion", "veto"], index=0,
-                              help="meta = MetaGate V5 | meta_regime = V6 avec adaptation régime | fusion/veto = V4 legacy")
+                              help="meta = MetaGate | meta_regime = avec adaptation régime | fusion/veto = legacy")
     
     # V6: options avancées
-    with st.expander("⚙️ Options V6 avancées"):
+    with st.expander("⚙️ Options avancées"):
         use_regime_adapt = st.checkbox("Activer RegimeAdapter (TREND/RANGE/CHOP)", value=(gate_mode == "meta_regime"),
                                         help="Adapte le seuil et sizing selon le régime détecté")
         use_triple_barrier = st.checkbox("Labels Triple-Barrier (au lieu de binaire T+48)", value=False,
@@ -3221,7 +3221,7 @@ def _render_backtest_v4():
     bt_col1, bt_col2 = st.columns(2)
     with bt_col1:
         if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
-            with st.spinner(f"Backtest V6 {symbol} sur {days}j..."):
+            with st.spinner(f"Backtest {symbol} sur {days}j..."):
                 try:
                     from dashboard.backtest_v4 import run_backtest_v4
                     actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
@@ -3267,7 +3267,7 @@ def _render_backtest_v4():
     with bt_col2:
         if st.button("🔬 Walk-Forward 365j", type="secondary", use_container_width=True,
                      help="Validation robuste : 6 fenêtres glissantes Train 180j / Test 30j"):
-            with st.spinner(f"Walk-Forward V6 {symbol} sur 365j..."):
+            with st.spinner(f"Walk-Forward {symbol} sur 365j..."):
                 try:
                     from tools.walkforward_v6 import walkforward
                     actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
@@ -3302,15 +3302,15 @@ def _render_backtest_v4():
             except Exception as e:
                 st.error(f"Erreur optimisation: {e}")
 
-    if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
-                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
+    if st.button("🔮 Optimisation complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
+                 help="Lance l'optimiseur MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
         import urllib.request, json as _json2
         try:
             req = urllib.request.Request(f"{_API_BASE}/optimize/v5?days={days}", method="POST")
             with urllib.request.urlopen(req, timeout=10) as resp:
                 result = _json2.loads(resp.read())
             if result.get("ok"):
-                st.success(f"✅ Optimisation V5 lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
+                st.success(f"✅ Optimisation lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
             else:
                 st.error(f"Erreur API: {result.get('error','?')}")
         except Exception as _e2:
@@ -4054,7 +4054,6 @@ def render_admin_panel():
                                 st.info(f"`{s.get('param','?')}` : {s.get('current','?')} → **{s.get('suggested','?')}** — {s.get('reason','?')}")
             else:
                 st.info(t("reflections_empty"))
-                st.info(t("reflections_v6_removed"))
         except Exception as e:
             st.warning(f"{t('reflections_error')}: {e}")
 

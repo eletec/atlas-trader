@@ -1,5 +1,5 @@
 """
-dashboard/backtest_v4.py — Backtest engine V4 pour le dashboard.
+dashboard/backtest_v4.py — Backtest engine pour le dashboard.
 
 Utilise les VRAIS nœuds DAG (LogReg, RiskATR, PositionManager, etc.)
 pour simuler le comportement réel sur données historiques.
@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger("dashboard.backtest_v4")
+logger = logging.getLogger("dashboard.backtest")
 
 
 @dataclass
@@ -60,7 +60,7 @@ def run_backtest_v4(
     min_atr_dist: float = 1.0,
     **kwargs,
 ) -> BTResult:
-    """Backtest V4/V5 avec les vrais nœuds DAG.
+    """Backtest avec les vrais nœuds DAG.
     
     Accepte _df_5m_override et _df_1h_override pour le walk-forward
     (permet de tester sur des fenêtres historiques spécifiques).

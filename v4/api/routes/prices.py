@@ -89,7 +89,7 @@ async def _watch_ticker(symbol: str) -> None:
     try:
         import ccxt.pro as ccxtpro
         exchange = ccxtpro.binance({"newUpdates": True})
-        logger.info("Binance WS ticker démarré pour %s", symbol)
+        logger.info("Binance WS ticker started for %s", symbol)
         while True:
             try:
                 ticker = await exchange.watch_ticker(symbol)

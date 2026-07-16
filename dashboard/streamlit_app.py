@@ -975,8 +975,8 @@ def _force_run_background(asset: str, log_q) -> None:
 
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
     _logger.info(f"=== DASHBOARD FORCE-RUN V2 — {asset} @ {start_ts} ===")
-    _log(f"🚀 <b>Démarrage cycle</b> — {asset} ({start_ts})")
-    _log(f"⏳ <b>OHLCV → Features → Régime → Signal → Stratégie → Risk...</b>")
+    _log(f"🚀 <b>Starting cycle</b> — {asset} ({start_ts})")
+    _log(f"⏳ <b>OHLCV → Features → Regime → Signal → Strategy → Risk...</b>")
 
     t_total = _time.time()
     try:
@@ -996,8 +996,8 @@ def _force_run_background(asset: str, log_q) -> None:
         errs = sum(1 for r in results.values() if r.get("status") == "error")
         dag_id = result.get("dag_id", "?")
 
-        _log(f"✅ <b>DAG exécuté</b> — {dag_id} ({total_s:.1f}s)")
-        _log(f"📊 Nœuds: <b>{done} OK</b>, {errs} erreur(s) sur {len(results)}")
+        _log(f"✅ <b>DAG executed</b> — {dag_id} ({total_s:.1f}s)")
+        _log(f"📊 Nodes: <b>{done} OK</b>, {errs} error(s) out of {len(results)}")
 
         # Afficher les sorties des nœuds clés
         for nid, nr in results.items():
@@ -1014,7 +1014,7 @@ def _force_run_background(asset: str, log_q) -> None:
             for nid, nr in results.items():
                 if nr.get("status") == "error":
                     _log(f"  ⚠️ <b>{nid}</b>: {nr.get('error', '?')}")
-            msg = f"DAG terminé ({errs} erreur(s)) — {dag_id} | {total_s:.1f}s"
+            msg = f"DAG complete ({errs} error(s)) — {dag_id} | {total_s:.1f}s"
             log_q.put(("__done__", (False, msg)))
         else:
             msg = f"DAG OK — {dag_id} | {total_s:.1f}s"
@@ -1022,9 +1022,9 @@ def _force_run_background(asset: str, log_q) -> None:
 
     except Exception as exc:
         total_s = _time.time() - t_total
-        _logger.exception(f"Force-run V2 échoué: {exc}")
-        _log(f"❌ <b>Erreur cycle</b> — {exc} ({total_s:.1f}s)")
-        log_q.put(("__done__", (True, f"Erreur: {exc}")))
+        _logger.exception(f"Force-run failed: {exc}")
+        _log(f"❌ <b>Cycle error</b> — {exc} ({total_s:.1f}s)")
+        log_q.put(("__done__", (True, f"Error: {exc}")))
 
 
 @st.dialog("⚡ Force Run", width="small")
@@ -3300,7 +3300,7 @@ def _render_backtest_v4():
                     st.success(f"Meilleure: SL={best['sl_mult']} TP={best['tp_mult']} Exit={best['exit_strat']} → Sharpe={best['sharpe']}")
                     st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
             except Exception as e:
-                st.error(f"Erreur optimisation: {e}")
+                st.error(f"Optimization error: {e}")
 
     if st.button("🔮 Optimisation complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
                  help="Lance l'optimiseur MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
@@ -3312,9 +3312,9 @@ def _render_backtest_v4():
             if result.get("ok"):
                 st.success(f"✅ Optimisation lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
             else:
-                st.error(f"Erreur API: {result.get('error','?')}")
+                st.error(f"API error: {result.get('error','?')}")
         except Exception as _e2:
-            st.error(f"Erreur lancement: {_e2}")
+            st.error(f"Launch error: {_e2}")
 
 
 def render_live_logs(key: str = "global", asset: str | None = None):
@@ -4182,7 +4182,7 @@ def render_admin_panel():
                     conn.commit()
                 st.success("✅ Historique des trades effacé.")
             except Exception as e:
-                st.error(f"Erreur DB : {e}")
+                st.error(f"DB error: {e}")
 
             # 3) Redémarrer les DAGs démo
             try:
@@ -4360,7 +4360,7 @@ def render_admin_panel():
                                 st.caption(f"• {d['symbol']} @ ${d['close_price']:,.2f} → P&L ${d['pnl']:+,.2f}")
                         st.rerun()
                     except Exception as _ce:
-                        st.error(f"Erreur API : {_ce}")
+                        st.error(f"API error: {_ce}")
             else:
                 st.info(t("no_open_positions"))
 

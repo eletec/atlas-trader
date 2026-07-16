@@ -147,16 +147,16 @@ class DAGRegistry:
         for nid, r in results.items():
             _emit_log("INFO" if r.status.value == "done" else "ERROR",
                       dag_spec.dag_id, _summarize_node(nid, r), node_id=nid)
-        _emit_log("INFO", dag_spec.dag_id, f"✓ Terminé : {done}/{len(results)} OK, {errors} erreurs")
+        _emit_log("INFO", dag_spec.dag_id, f"✓ Complete: {done}/{len(results)} OK, {errors} errors")
         return results
 
     def schedule(self, dag_spec: "DAGSpec", cycle_s: float) -> str:
-        """Démarre un DAG en boucle. Retourne le dag_id."""
+        """Start a DAG in a loop. Returns dag_id."""
         dag_id = dag_spec.dag_id
 
         with self._mu:
             if dag_id in self._dags and self._dags[dag_id].running:
-                logger.warning("DAG %s déjà en cours — stop puis restart", dag_id)
+                logger.warning("DAG %s already running — stopping then restarting", dag_id)
                 self.stop(dag_id)
 
             executor = self._build_executor(dag_spec)
@@ -178,11 +178,11 @@ class DAGRegistry:
         with self._mu:
             self._dags[dag_id]._thread = thread
         thread.start()
-        logger.info("DAG %s schedulé (cycle=%.1fs)", dag_id, cycle_s)
+        logger.info("DAG %s scheduled (cycle=%.1fs)", dag_id, cycle_s)
         return dag_id
 
     def stop(self, dag_id: str) -> bool:
-        """Arrête un DAG schedulé. Retourne True si trouvé."""
+        """Stop a scheduled DAG. Returns True if found."""
         with self._mu:
             entry = self._dags.get(dag_id)
             if entry is None:
@@ -222,15 +222,15 @@ class DAGRegistry:
                 for nid, r in results.items():
                     _emit_log("INFO" if r.status.value == "done" else "ERROR",
                               dag_id, _summarize_node(nid, r), node_id=nid)
-                _emit_log("INFO", dag_id, f"✓ Cycle terminé : {done}/{len(results)} OK, {errors} erreurs")
+                _emit_log("INFO", dag_id, f"✓ Cycle complete: {done}/{len(results)} OK, {errors} errors")
             except Exception:
-                _emit_log("ERROR", dag_id, "Erreur dans la boucle")
-                logger.exception("DAG %s — erreur dans la boucle", dag_id)
+                _emit_log("ERROR", dag_id, "Error in loop")
+                logger.exception("DAG %s — loop error", dag_id)
 
             time.sleep(cycle_s)
 
         _emit_log("INFO", dag_id, "Boucle arrêtée")
-        logger.info("DAG %s — boucle terminée", dag_id)
+        logger.info("DAG %s — loop ended", dag_id)
 
 
 # ------------------------------------------------------------------

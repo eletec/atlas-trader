@@ -89,9 +89,9 @@ async def schedule_dag(body: ScheduleDAGRequest):
         from v4.api.dag_store import upsert
         body.dag.cycle_s = body.cycle_s
         upsert(body.dag)
-        logger.info("DAG '%s' persisté dans dag_store", dag_id)
+        logger.info("DAG '%s' persisted to dag_store", dag_id)
     except Exception as exc:
-        logger.warning("Échec persistance DAG '%s': %s", dag_id, exc)
+        logger.warning("Failed to persist DAG '%s': %s", dag_id, exc)
 
     return {"dag_id": dag_id, "status": "scheduled", "cycle_s": body.cycle_s}
 
@@ -117,7 +117,7 @@ async def restart_demo_dags():
     if not dags:
         dags = get_defaults()
         save_all(dags)
-        logger.info("restart-demo: aucun DAG persisté → V7 par défaut sauvegardés")
+        logger.info("restart-demo: no persisted DAGs — saving defaults")
     
     restarted = []
     for dag in dags:
@@ -127,7 +127,7 @@ async def restart_demo_dags():
             registry.schedule(dag, cycle_s=cycle)
             restarted.append(dag.dag_id)
         except Exception as exc:
-            logger.warning("Échec redémarrage %s: %s", dag.dag_id, exc)
+            logger.warning("Failed to restart %s: %s", dag.dag_id, exc)
 
     return {"restarted": restarted, "count": len(restarted)}
 

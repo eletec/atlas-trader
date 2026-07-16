@@ -31,7 +31,7 @@ def load_all() -> list[DAGSpec]:
     """Charge tous les DAGs persistés. Retourne [] si fichier absent/vide."""
     path = _store_path()
     if not path.exists():
-        logger.info("dag_store: %s absent, aucun DAG persisté", path)
+        logger.info("dag_store: %s not found, no persisted DAGs", path)
         return []
     try:
         raw = path.read_text(encoding="utf-8")
@@ -39,7 +39,7 @@ def load_all() -> list[DAGSpec]:
             return []
         data = json.loads(raw)
         dags = [DAGSpec(**d) for d in data]
-        logger.info("dag_store: %d DAG(s) chargés depuis %s", len(dags), path)
+        logger.info("dag_store: %d DAG(s) loaded from %s", len(dags), path)
         return dags
     except Exception as exc:
         logger.warning("dag_store: erreur lecture %s: %s", path, exc)
@@ -52,7 +52,7 @@ def save_all(dags: list[DAGSpec]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [d.model_dump() for d in dags]
     path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-    logger.info("dag_store: %d DAG(s) sauvegardés dans %s", len(dags), path)
+    logger.info("dag_store: %d DAG(s) saved to %s", len(dags), path)
 
 
 def upsert(dag: DAGSpec) -> None:

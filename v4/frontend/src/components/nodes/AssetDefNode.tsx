@@ -10,6 +10,7 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { PriceTicker } from "@/components/ui/PriceTicker";
+import { useTranslation } from "@/i18n";
 import { useDagStore } from "@/store/dagStore";
 
 interface AssetDefData {
@@ -24,6 +25,7 @@ interface AssetDefData {
 }
 
 export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: NodeProps) {
+  const { t } = useTranslation();
   const d = data as AssetDefData;
   const symbol = d.params?.symbol ?? "BTC/USDT";
   const exchange = d.params?.exchange ?? "binance";
@@ -64,15 +66,15 @@ export const AssetDefNode = memo(function AssetDefNode({ id, data, selected }: N
       {/* Détails */}
       <div className="px-3 py-2 space-y-1 text-xs">
         <div className="flex justify-between">
-          <span className="text-slate-400">Prix live</span>
+          <span className="text-slate-400">{t("node.priceLive")}</span>
           <PriceTicker symbol={symbol} className="font-bold" />
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-400">Exchange</span>
+          <span className="text-slate-400">{t("node.exchange")}</span>
           <span className="text-slate-300 font-mono">{exchange}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-slate-400">Capital</span>
+          <span className="text-slate-400">{t("node.capital")}</span>
           <span className="text-slate-300 font-mono">${capital.toLocaleString()}</span>
         </div>
       </div>

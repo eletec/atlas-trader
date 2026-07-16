@@ -10,6 +10,7 @@ import { memo, useRef, useEffect, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 import { useDagStore } from "@/store/dagStore";
+import { useTranslation } from "@/i18n";
 
 const STATUS_COLOR: Record<string, string> = {
   done: "bg-canvas-success",
@@ -59,6 +60,7 @@ interface NodeData {
 }
 
 export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps) {
+  const { t } = useTranslation();
   const nodeData = data as NodeData;
   const result = useDagStore((s) => s.results[id]);
   const selectNode = useDagStore((s) => s.selectNode);
@@ -75,7 +77,7 @@ export const BaseNode = memo(function BaseNode({ id, data, selected }: NodeProps
   const statusBg = status === "done" ? "bg-green-950/30" : status === "error" ? "bg-red-950/30" : status === "running" ? "bg-amber-950/20" : "";
   const statusBorder = status === "done" ? "border-green-500/60" : status === "error" ? "border-red-500/60" : status === "running" ? "border-amber-500/40" : "";
   // Badge texte
-  const statusLabel = status === "done" ? "✓ OK" : status === "error" ? "✗ ERR" : status === "running" ? "● RUN" : "";
+  const statusLabel = status === "done" ? t("node.ok") : status === "error" ? t("node.err") : status === "running" ? t("node.run") : "";
 
   // Ports connectés (pour mise en évidence)
   const connectedInputs = new Set(allEdges.filter((e: any) => e.target === id).map((e: any) => e.targetHandle));

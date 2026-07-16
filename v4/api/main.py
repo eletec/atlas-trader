@@ -70,7 +70,7 @@ async def _auto_schedule_demo():
     # 2) Fallback: si aucun DAG persisté, utiliser les V7 par défaut et les sauver
     if not dags_to_schedule:
         logger = logging.getLogger("v4.api.main")
-        logger.info("Aucun DAG persisté → initialisation avec les V7 par défaut")
+        logger.info("No persisted DAGs — initializing with defaults")
         dags_to_schedule = get_defaults()
         save_all(dags_to_schedule)
     
@@ -80,7 +80,7 @@ async def _auto_schedule_demo():
         if dag.dag_id not in existing_ids:
             cycle = getattr(dag, "cycle_s", None) or 28800
             registry.schedule(dag, cycle_s=cycle)
-            logger.info("DAG '%s' schedulé (cycle=%ds)", dag.dag_id, cycle)
+            logger.info("DAG '%s' scheduled (cycle=%ds)", dag.dag_id, cycle)
     
     # 2) V5 DAGs directionnels — désactivés (monitoring uniquement si besoin)
     # Note: V5 est remplacé par V7. Décommenter ci-dessous pour réactiver le monitoring.

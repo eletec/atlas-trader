@@ -3045,33 +3045,33 @@ def _render_v4_config():
     import yaml
     from pathlib import Path
 
-    st.markdown("### ⚙️ Configuration V7 — Funding Carry")
-    st.caption("Stratégie : Short Perp + Long Spot · Collecte de la prime de funding")
+    st.markdown(f"### ⚙️ {t('config_title')}")
+    st.caption(t("config_strategy_desc"))
 
     # ── V7 Carry Params ──
-    st.markdown("#### 💸 Funding Carry")
+    st.markdown(f"#### 💸 {t('config_carry_section')}")
     col1, col2 = st.columns(2)
     with col1:
-        capital_per_asset = st.number_input("Capital par actif (USD)", value=2000, min_value=100, step=500)
-        fraction = st.slider("Fraction du capital en carry", value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
-        cycle_hours = st.slider("Cycle DAG (heures)", value=8, min_value=1, max_value=48, step=1, help="Fréquence de vérification du funding")
+        capital_per_asset = st.number_input(t("config_capital_label"), value=2000, min_value=100, step=500)
+        fraction = st.slider(t("config_fraction_label"), value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
+        cycle_hours = st.slider(t("config_cycle_label"), value=8, min_value=1, max_value=48, step=1, help=t("config_cycle_help"))
     with col2:
-        min_funding = st.number_input("Funding minimum (% par 8h)", value=0.001, min_value=0.0001, max_value=10.0, step=0.001, help="0.001% = presque tout funding positif")
-        exit_hours = st.slider("Sortie si funding négatif > (heures)", value=168, min_value=24, max_value=720, step=24)
+        min_funding = st.number_input(t("config_min_funding_label"), value=0.001, min_value=0.0001, max_value=10.0, step=0.001)
+        exit_hours = st.slider(t("config_exit_label"), value=168, min_value=24, max_value=720, step=24)
 
-    st.info(f"💰 Rendement estimé : 5-15%/an selon funding · Max drawdown : 0.5-1%")
+    st.info(t("config_return_estimate"))
 
     # ── Risk ──
-    st.markdown("#### 🛡️ Risk Global")
-    st.caption("Circuit breaker et limites")
-    max_dd = st.slider("Max drawdown global avant blocage", value=5.0, min_value=1.0, max_value=20.0, step=0.5, format="%.1f%%")
-    max_positions = st.slider("Max positions simultanées par actif", value=3, min_value=1, max_value=5, step=1)
+    st.markdown(f"#### {t('config_risk_section')}")
+    st.caption(t("config_risk_caption"))
+    max_dd = st.slider(t("config_max_dd_label"), value=5.0, min_value=1.0, max_value=20.0, step=0.5, format="%.1f%%")
+    max_positions = st.slider(t("config_max_pos_label"), value=3, min_value=1, max_value=5, step=1)
 
-    if st.button("💾 Sauvegarder", type="primary"):
-        st.success("✅ Config sauvegardée (redémarrage requis)")
+    if st.button(t("config_save_btn"), type="primary"):
+        st.success(t("config_saved"))
 
     st.markdown("---")
-    st.caption("⚠️ Les modifications prennent effet au prochain cycle DAG (8h).")
+    st.caption(t("config_restart_note"))
 
 
 def _render_ai_analysis(asset: str, expanded: bool = False):
@@ -3483,26 +3483,24 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
-        # ── Moteur DAG ──────────────────────────────────────────────
-        (None, None,      "Moteur DAG"),
-        ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  "Canvas DAG"),
-        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring"),
-        ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
-        # Arena désactivée — sera réactivée quand la stratégie aura fait ses preuves
-        # ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
-        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Configuration"),
-        # ── Infra & Monitoring ───────────────────────────────────────────
-        (None, None,      "Infra & Monitoring"),
-        ('<i class="fas fa-database"></i>',        "sources",    "Sources de données"),
+        # ── DAG Engine ──────────────────────────────────────────────
+        (None, None,      t("section_dag")),
+        ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  t("tab_canvas")),
+        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", t("tab_monitoring")),
+        ('<i class="fas fa-receipt"></i>',         "v4_trades",  t("tab_trades")),
+        ('<i class="fas fa-sliders"></i>',         "v4_admin",   t("tab_config")),
+        # ── Infra & Monitoring ───────────────────────────────────────
+        (None, None,      t("section_infra_mon")),
+        ('<i class="fas fa-database"></i>',        "sources",    t("tab_sources")),
         ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset_v2")),
-        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
-        ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
-        ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
-        ('<i class="fas fa-brain"></i>',           "decisions",   "🧠 Décisions IA"),
-        ('<i class="fas fa-lightbulb"></i>',      "reflections", "🧠 Réflexions IA"),
-        ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
-        ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup")),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset")),
+        ('<i class="fas fa-flask"></i>',           "backtest",   t("tab_backtest")),
+        ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging_v4")),
+        ('<i class="fas fa-history"></i>',         "historique", t("tab_historique")),
+        ('<i class="fas fa-brain"></i>',           "decisions",   t("tab_decisions")),
+        ('<i class="fas fa-lightbulb"></i>',       "reflections", t("tab_reflections")),
+        ('<i class="fas fa-user"></i>',            "users",      t("tab_users_v4")),
+        ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup_v4")),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [

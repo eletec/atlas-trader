@@ -2646,7 +2646,7 @@ def render_trades_list_sortable(trades: list[dict]):
         # Col 1-3: TOTAL label
         f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{tbl_fg};'
         f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};" colspan="3">'
-        f'TOTAL · {len(trades)} trades ({_n_closed} fermés, {_n_open} ouverts)</td>'
+        f'{t("trades_summary_line").format(n=len(trades), closed=_n_closed, open=_n_open)}</td>'
         # Col 4: Signal (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
@@ -3145,7 +3145,7 @@ def _render_backtest_v4():
         st.caption("Backtest de la collecte de funding · Short Perp + Long Spot · Market-neutral")
         
         symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
-        days = st.slider("Jours d'historique", 30, 1095, 365, 30)
+        days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -3155,7 +3155,7 @@ def _render_backtest_v4():
             exit_hours = st.slider("Sortie si funding négatif > (h)", 24, 720, 168, 24)
             capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000)
         
-        if st.button("🚀 Lancer Backtest V7", type="primary", use_container_width=True):
+        if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
             with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j..."):
                 try:
                     import subprocess, sys
@@ -3537,7 +3537,7 @@ def render_admin_panel():
             q["history_days"] = st.slider(
                 t("quant_history_days"), 30, 365,
                 int(q.get("history_days", 90)), 10,
-                help="Nombre de jours d'historique chargés au refit.",
+                help=t("days_history_help"),
             )
             q["train_fraction"] = st.slider(
                 t("quant_train_fraction"), 0.55, 0.85,
@@ -3595,20 +3595,22 @@ def render_admin_panel():
         settings["quant"]["data_provider"] = _dp_new
         settings.setdefault("data", {})["provider"] = _dp_new
 
-        # Lecture de la clé TwelveData (secrets.yaml en priorité)
+        # Lecture de la clé TwelveData (secrets.yaml — quant/ deleted in V7 cleanup)
         try:
-            from quant.config import get_twelve_data_key as _get_td_key
-            _td_key_live = _get_td_key()
+            from pathlib import Path as _QTPath
+            import yaml as _QTYaml
+            _qt_secrets = _QTPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+            _qt_cfg = _QTYaml.safe_load(_qt_secrets.read_text(encoding="utf-8")) or {} if _qt_secrets.exists() else {}
+            _td_key_live = _qt_cfg.get("data", {}).get("twelve_data_key", "")
         except Exception:
             _td_key_live = ""
-        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else ("(vide)" if not _td_key_live else _td_key_live)
-        st.caption(f"Clé TwelveData active : `{_td_key_display}`")
+        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else (t("quant_td_key_empty") if not _td_key_live else _td_key_live)
+        st.caption(f"{t('quant_td_key_active')} : `{_td_key_display}`")
         _td_key_input = st.text_input(
             t("quant_td_key_new"),
             value="",
             type="password",
-            help="La clé sera écrite dans **config/secrets.yaml** (gitignored). "
-                 "Laissez vide pour conserver la clé actuelle.",
+            help="Key saved to **config/secrets.yaml** (gitignored). Leave blank to keep current.",
         )
         if _td_key_input.strip():
             from pathlib import Path as _SPPath
@@ -3620,7 +3622,7 @@ def render_admin_panel():
                 _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
                 st.success(t("quant_td_key_saved"))
             except Exception as _se:
-                st.error(f"Erreur écriture secrets.yaml : {_se}")
+                st.error(f"{t('quant_secrets_write_error')} : {_se}")
 
         # ── État live du modèle ───────────────────────────────────────────────
         st.markdown("---")
@@ -3782,42 +3784,42 @@ def render_admin_panel():
             _llm[_key_name] = _new_key
         settings["llm"] = _llm
 
-    elif _atab == "sources":  # Sources de données (TwelveData / Yahoo)
+    elif _atab == "sources":
         st.markdown(
-            '<h4><i class="fas fa-database" style="margin-right:7px;color:#7986cb;"></i>'
-            'Sources de données</h4>',
+            f'<h4><i class="fas fa-database" style="margin-right:7px;color:#7986cb;"></i>'
+            f'{t("data_sources_title")}</h4>',
             unsafe_allow_html=True,
         )
-        st.info("Configuration du fournisseur de données et des clés API. Partagé entre V3 et V4.")
+        st.info(t("data_provider_config"))
         _dp_opts = ["auto", "twelve_data", "yahoo"]
         _dp_cur = settings.get("data", {}).get("provider", "auto")
         if _dp_cur not in _dp_opts:
             _dp_cur = "auto"
         _dp_new = st.selectbox(
-            "Fournisseur de données",
+            t("data_provider_label"),
             _dp_opts,
             index=_dp_opts.index(_dp_cur),
-            help="**auto** : essaie Twelve Data (si clé présente) puis Yahoo/Binance. "
-                 "**twelve_data** : force Twelve Data pour les actifs forex/commodités. "
-                 "**yahoo** : force Yahoo Finance.",
+            help="**auto** : Twelve Data (if key) then Yahoo/Binance. **twelve_data** : force. **yahoo** : Yahoo Finance.",
         )
         settings.setdefault("data", {})["provider"] = _dp_new
-        # Also update quant settings for backward compat
-        settings.setdefault("quant", {})["data_provider"] = _dp_new
 
-        # Lecture de la clé TwelveData (secrets.yaml en priorité)
+        # Read TwelveData key from secrets.yaml (quant/ was deleted in V7 cleanup)
         try:
-            from quant.config import get_twelve_data_key as _get_td_key
-            _td_key_live = _get_td_key()
+            from pathlib import Path as _TDPath
+            import yaml as _TDYaml
+            _td_secrets = _TDPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+            _td_cfg = _TDYaml.safe_load(_td_secrets.read_text(encoding="utf-8")) or {} if _td_secrets.exists() else {}
+            _td_key_live = _td_cfg.get("data", {}).get("twelve_data_key", "")
         except Exception:
             _td_key_live = ""
-        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else ("(vide)" if not _td_key_live else _td_key_live)
-        st.caption(f"Clé TwelveData active : `{_td_key_display}`")
+        _td_empty = t("td_key_empty") if _td_key_live else ""
+        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else (_td_empty if not _td_key_live else _td_key_live)
+        st.caption(f"{t('td_key_active')} : `{_td_key_display}`")
         _td_key_input = st.text_input(
-            "Nouvelle clé TwelveData (laissez vide pour ne pas changer)",
+            t("td_key_new"),
             value="",
             type="password",
-            help="La clé sera écrite dans **config/secrets.yaml** (gitignored).",
+            help="Key saved to **config/secrets.yaml** (gitignored).",
         )
         if _td_key_input.strip():
             from pathlib import Path as _SPPath
@@ -3827,9 +3829,9 @@ def render_admin_panel():
                 _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
                 _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
                 _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
-                st.success("✅ Clé TwelveData sauvegardée.")
+                st.success(t("td_key_saved"))
             except Exception as _se:
-                st.error(f"Erreur écriture secrets.yaml : {_se}")
+                st.error(f"{t('secrets_write_error')} : {_se}")
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)
@@ -4155,15 +4157,15 @@ def render_admin_panel():
         st.warning(t("reset_warning"))
 
         # ── Reset V4 (DAGs + trades) ──────────────────────────────────────
-        st.markdown(f"#### Remise à zéro")
-        st.caption("Arrête tous les DAGs, efface l'historique des trades. Les DAGs redémarreront automatiquement.")
+        st.markdown(f"#### {t('admin_reset_section')}")
+        st.caption(t("admin_reset_desc"))
 
         confirm = st.checkbox(
-            "✅ Je comprends que **tous les trades** (ouverts et fermés) seront **irréversiblement supprimés**.",
+            t("admin_reset_confirm"),
             key="reset_v4_confirm",
         )
         if st.button(
-            "🗑️ Reset complet V4",
+            t("admin_reset_btn"),
             type="primary",
             use_container_width=True,
             disabled=not confirm,
@@ -4475,13 +4477,13 @@ def render_admin_panel():
             return
         # ── Trades natif (depuis la DB) ──
         if _atab == "v4_trades":
-            st.markdown("### 📋 Journal des trades")
+            st.markdown("### 📋 " + t("trades_journal_title"))
             st.caption("Mode : paper trading (testnet uniquement)")
             _tr = _get_recent_trades(200)
             if _tr:
                 render_trades_list_sortable(_tr)
             else:
-                st.info("Aucun trade enregistré.")
+                st.info(t("no_trades_recorded"))
             return
 
         _V4_URLS = {
@@ -4806,7 +4808,7 @@ def main():
 
             def _render_global():
                 """Vue consolidée : PnL tous actifs + analyses IA."""
-                st.markdown("### 🧠 Dernières analyses IA")
+                st.markdown("### 🧠 " + t("latest_ai_title"))
                 assets = _active_assets_v4() or ["BTC/USDT"]
                 for asset in assets:
                     _render_ai_analysis(asset, expanded=False)

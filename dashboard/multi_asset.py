@@ -701,13 +701,16 @@ def render_marches_admin_tab() -> None:
         st.error(f"Import config échoué : {exc}")
         return
 
-    # ── Section : Sources de données (Q11/Q12) ───────────────────────────────
-    with st.expander("🔑 **Sources de données**", expanded=False):
-        st.caption("Fournisseur de données de marché. La clé API est stockée dans `config/secrets.yaml` (gitignored).")
+    # ── Section : Sources de données ───────────────────────────────────────────
+    with st.expander("🔑 " + t("data_sources_title"), expanded=False):
+        st.caption(t("data_provider_config"))
 
         try:
-            from quant.config import get_twelve_data_key
-            current_key = get_twelve_data_key()
+            from pathlib import Path as _MAPath
+            import yaml as _MAYaml
+            _ma_secrets = _MAPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+            _ma_cfg = _MAYaml.safe_load(_ma_secrets.read_text(encoding="utf-8")) or {} if _ma_secrets.exists() else {}
+            current_key = _ma_cfg.get("data", {}).get("twelve_data_key", "")
         except Exception:
             current_key = ""
 
@@ -720,18 +723,18 @@ def render_marches_admin_tab() -> None:
 
         provider_opts = ["auto", "twelve_data", "yahoo"]
         provider = st.selectbox(
-            "Fournisseur de données",
+            t("data_provider_label"),
             options=provider_opts,
             index=provider_opts.index(current_provider) if current_provider in provider_opts else 0,
             key="data_provider_select",
-            help="auto = Twelve Data si clé disponible, sinon Yahoo Finance.",
+            help=t("ma_provider_help"),
         )
         api_key_input = st.text_input(
-            "Clé API Twelve Data",
+            t("ma_td_api_key_label"),
             value=current_key,
             type="password",
             key="twelve_data_api_key",
-            help="Clé API Twelve Data (https://twelvedata.com). Stockée dans config/secrets.yaml (gitignored).",
+            help=t("ma_td_api_key_help"),
         )
 
         if st.button(t("cfg_save_data_sources"), key="btn_save_data_sources"):
@@ -751,7 +754,7 @@ def render_marches_admin_tab() -> None:
                 settings.setdefault("data", {})["provider"] = provider
                 save_settings(settings)
 
-                st.success("✅ Sources de données sauvegardées (clé dans `config/secrets.yaml`).")
+                st.success(t("ma_td_saved"))
             except Exception as exc:
                 st.error(f"{t('cfg_save_data_sources')} — {exc}")
 

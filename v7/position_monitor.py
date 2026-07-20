@@ -330,7 +330,19 @@ class PositionMonitor:
                 except (ValueError, OSError):
                     pass
 
-            # 3d) Exécuter la clôture
+            # 3d) Margin Monitor — carry positions only (3 audits consensus, 20/07/2026)
+            #      A delta-neutral carry can still be liquidated if the short perp
+            #      runs out of margin before the spot gain can be mobilized.
+            if not should_close and is_carry:
+                margin_alert = self._check_margin_safety(pd)
+                if margin_alert == "LIQUIDATION_RISK":
+                    should_close = True
+                    reason = f"MARGIN: liquidation risk (price={pd['current_price']:.2f})"
+                    logger.error("PositionMonitor: %s MARGIN LIQUIDATION RISK → CLOSE", pd["trade_id"])
+                elif margin_alert == "MARGIN_WARNING":
+                    logger.warning("PositionMonitor: %s margin buffer low — monitor closely", pd["trade_id"])
+
+            # 3e) Exécuter la clôture
             if should_close:
                 if pd["action"] in ("short", "carry"):
                     pnl = (pd["entry_price"] - close_price) / pd["entry_price"] * pd["size_usd"]
@@ -448,6 +460,81 @@ class PositionMonitor:
             logger.debug("PositionMonitor: carry_economics failed for %s: %s", pd.get("symbol", "?"), e)
 
         return result
+
+    def _check_margin_safety(self, pd: dict) -> str:
+        """
+        Simulate margin safety for a carry position (3 audits consensus, 20/07/2026).
+        
+        A delta-neutral carry can still be liquidated: the short perp leg needs
+        margin, and a sharp spot increase can exhaust it before the spot gain
+        can be mobilized.
+        
+        Returns: "OK", "MARGIN_WARNING", or "LIQUIDATION_RISK"
+        """
+        try:
+            symbol = pd.get("symbol", "")
+            size_usd = float(pd.get("size_usd", 0) or 0)
+            entry_price = float(pd.get("entry_price", 0) or 0)
+            current_price = float(pd.get("current_price", 0) or 0)
+
+            if size_usd <= 0 or entry_price <= 0 or current_price <= 0:
+                return "OK"
+
+            coin = symbol.split("/")[0].upper() if "/" in symbol else symbol.upper()
+
+            # ── Leverage assumptions ──
+            # Majors (BTC, ETH): 2x leverage → 50% initial margin
+            # Mid (SOL, BNB): 1.5x → 66% initial margin  
+            # Alts (XRP, ADA, DOGE): 1x → 100% initial margin (no leverage)
+            leverage = {"BTC": 2.0, "ETH": 2.0, "SOL": 1.5, "BNB": 1.5,
+                        "XRP": 1.0, "ADA": 1.0, "DOGE": 1.0}.get(coin, 1.0)
+
+            # Maintenance margin rate (Binance standard: ~0.5%–2.5% depending on notional)
+            maint_margin_rate = 0.005  # 0.5% conservative
+
+            # ── Calculations ──
+            notional = size_usd  # position size = notional value
+            initial_margin = notional / leverage
+            maintenance_margin = notional * maint_margin_rate
+
+            # For a SHORT position: liquidation when price rises
+            # liquidation_price = entry_price × (1 + 1/leverage - maint_margin_rate)
+            # Simplified: the short loses (current_price - entry_price) × quantity
+            # When loss > initial_margin - maintenance_margin → liquidation
+            price_increase_pct = (current_price - entry_price) / entry_price
+            short_loss = price_increase_pct * notional  # loss on short leg
+            margin_remaining = initial_margin - short_loss
+
+            if margin_remaining <= maintenance_margin:
+                liq_distance_pct = 0.0
+                return "LIQUIDATION_RISK"
+
+            # Liquidation distance: how much more price increase before liquidation
+            loss_to_liquidation = margin_remaining - maintenance_margin
+            liq_distance_pct = (loss_to_liquidation / notional) * 100  # as % of position
+
+            # ── Thresholds ──
+            if liq_distance_pct < 5.0:
+                logger.warning(
+                    "MARGIN ALERT: %s liq_dist=%.1f%% margin_remaining=$%.0f "
+                    "(entry=%.2f current=%.2f lev=%.1fx size=$%.0f)",
+                    symbol, liq_distance_pct, margin_remaining,
+                    entry_price, current_price, leverage, size_usd,
+                )
+                return "LIQUIDATION_RISK"
+            elif liq_distance_pct < 15.0:
+                logger.warning(
+                    "MARGIN WARNING: %s liq_dist=%.1f%% margin_remaining=$%.0f",
+                    symbol, liq_distance_pct, margin_remaining,
+                )
+                return "MARGIN_WARNING"
+            else:
+                return "OK"
+
+        except Exception as e:
+            logger.debug("PositionMonitor: margin_safety failed for %s: %s",
+                        pd.get("symbol", "?"), e)
+            return "OK"  # fail open — don't close on a calculation error
 
     # ── Price fetching (avec cache courte durée) ───────────────────────────
 

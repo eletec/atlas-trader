@@ -401,18 +401,26 @@ class FundingCarryNode:
                             reason = f"taille ${size_usd:.0f} < min ${min_size} → skip"
                             confidence = 0.3
                         else:
-                            self.state.position_open = True
-                            self.state.entry_capital = size_usd
-                            self.state.entry_spot = spot_price
-                            self.state.entry_perp = perp_price if perp_price > 0 else spot_price
-                            self.state.entry_time = datetime.now().isoformat()
-                            self.state.negative_since = None
-                            
-                            signal = "open_carry"
-                            confidence = min(0.90, 0.50 + score * 2)
-                            reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                      f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
-                                      f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
+                            # ── Global Allocator check (3 audits consensus, 20/07/2026) ──
+                            from v7.core.global_allocator import can_open_position
+                            alloc_ok, alloc_reason = can_open_position(
+                                self.symbol, size_usd, score)
+                            if not alloc_ok:
+                                reason = f"GlobalAllocator: {alloc_reason}"
+                                confidence = 0.3
+                            else:
+                                self.state.position_open = True
+                                self.state.entry_capital = size_usd
+                                self.state.entry_spot = spot_price
+                                self.state.entry_perp = perp_price if perp_price > 0 else spot_price
+                                self.state.entry_time = datetime.now().isoformat()
+                                self.state.negative_since = None
+                                
+                                signal = "open_carry"
+                                confidence = min(0.90, 0.50 + score * 2)
+                                reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
+                                          f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
+                                          f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
                         reason = f"retour {expected_return*100:.1f}%/an < {_hurdle*100:.0f}% hurdle"
                         confidence = 0.5

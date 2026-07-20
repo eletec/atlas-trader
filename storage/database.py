@@ -229,6 +229,8 @@ def init_db(db_path: str | Path | None = None) -> None:
         # P2: WAL mode — lectures concurrentes pendant une écriture
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
         for stmt in DDL_STATEMENTS:
             conn.execute(stmt)
         # Migrations V1 → V2 : ajouter les colonnes manquantes sans casser l'existant

@@ -159,15 +159,22 @@ class FundingCarryNode:
 
     def _get_funding_interval(self) -> float:
         """Retourne l'intervalle de funding en heures depuis Binance (3 audits, 20/07/2026).
-        Fallback: 8h si l'API est injoignable."""
+        Fallback: 8h si l'API est injoignable ou si backtest."""
+        # Backtest: pas d'appel CCXT, utiliser le standard 8h
+        if self.params.get("_backtest", False):
+            return 8.0
+        # Cache simple (l'intervalle ne change pas en cours d'exécution)
+        if hasattr(self, "_cached_funding_interval"):
+            return self._cached_funding_interval
         try:
             import ccxt
             exchange = ccxt.binance({"enableRateLimit": True})
-            markets = exchange.load_markets()
-            market = markets.get(self.symbol, {})
+            # Utiliser fetch_funding_rate() qui est plus léger que load_markets()
+            market = exchange.market(self.symbol)
             info = market.get("info", {}) if market else {}
             interval = float(info.get("fundingIntervalHours", 8) or 8)
-            return max(4, min(interval, 24))  # clamp [4h, 24h]
+            self._cached_funding_interval = max(4, min(interval, 24))
+            return self._cached_funding_interval
         except Exception:
             return 8.0  # fallback standard
 

@@ -237,17 +237,17 @@ def render_global_overview() -> None:
             f"</tr>"
         )
 
-    st.markdown(f"### 🌐 Vue Globale — Funding Carry")
+    st.markdown(f"### 🌐 {t('global_view_title')}")
     st.markdown(
         f"""<table style="width:100%;border-collapse:collapse;">
         <thead><tr style="border-bottom:1px solid {'#dee2e6' if theme == 'light' else '#444'};font-size:11px;opacity:.6;">
-          <th style="padding:4px 8px;text-align:left;">Actif</th>
-          <th style="padding:4px 8px;text-align:left;">Signal</th>
-          <th style="padding:4px 8px;text-align:left;">Score</th>
-          <th style="padding:4px 8px;text-align:left;">Run</th>
-          <th style="padding:4px 8px;text-align:left;">Carry</th>
-          <th style="padding:4px 8px;text-align:left;">Rendement</th>
-          <th style="padding:4px 8px;text-align:left;">Statut</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_asset')}</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_signal')}</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_score')}</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_run')}</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_carry')}</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_return')}</th>
+          <th style="padding:4px 8px;text-align:left;">{t('col_status')}</th>
         </tr></thead>
         <tbody>{html_rows}</tbody>
         </table>""",
@@ -286,7 +286,7 @@ def render_global_live_prices() -> None:
 
     prices = _fetch_v4_prices()
 
-    st.markdown(f"### 📡 Prix temps réel")
+    st.markdown(f"### 📡 {t('live_price_title')}")
 
     # Construire les cartes HTML avec data-attrs pour le JS
     cards = ""

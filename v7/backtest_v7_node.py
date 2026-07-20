@@ -102,19 +102,19 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
     if combined.empty:
         return {"symbol": symbol, "error": "no merged data"}
 
-    # 3) Initialiser le nœud (mêmes params que le live)
+    # 3) Initialiser le nœud (mêmes params que le live V7.2 — 20/07/2026)
     node = FundingCarryNode(
         node_id=f"bt_{symbol.split('/')[0].lower()}",
         symbol=symbol,
         capital=capital,
-        fraction=0.80,
-        min_funding=0.00001,
+        fraction=0.50,         # live: 50% (pas 80%)
+        min_funding=0.00005,   # live: 0.005% (pas 0.001%)
         max_funding=0.003,
-        exit_after_hours=168,
-        kelly_fraction=0.25,
+        exit_after_hours=72,   # live: 72h (pas 168h)
+        kelly_fraction=0.35,   # conservé mais pas utilisé (risk budgeting actif)
         max_hold_days=14,
         stop_loss_pct=-0.05,
-        params={"_backtest": True},  # ne pas restaurer depuis la DB live
+        params={"_backtest": True},  # ne pas fetch CCXT live, utiliser les inputs
     )
 
     # 4) Boucle de backtest

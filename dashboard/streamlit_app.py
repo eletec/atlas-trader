@@ -3160,12 +3160,10 @@ def _render_backtest_v4():
                 try:
                     import subprocess, sys
                     cmd = [
-                        sys.executable, "v7/backtest_v7.py",
+                        sys.executable, "v7/backtest_v7_node.py",
                         "--symbol", symbol,
                         "--days", str(days),
                         "--capital", str(capital),
-                        "--fraction", str(fraction),
-                        "--v71",
                     ]
                     result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
                     output = result.stdout

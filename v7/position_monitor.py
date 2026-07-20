@@ -224,9 +224,21 @@ class PositionMonitor:
         # Tier 3: Portfolio drawdown (-20%)
         portfolio_dd = total_pnl_pct < (max_portfolio_dd_pct * 100)
         
-        # Tier 4: Pertes corrélées (≥3 positions perdantes ET perte totale > 2%)
-        losing_count = sum(1 for pd in pos_data if pd["unrealized"] < 0)
-        correlated_loss = losing_count >= 3 and total_pnl_pct < -2.0
+        # Tier 4: Pertes de basis corrélées (3 audits, 20/07/2026)
+        # L'ancienne règle "≥3 positions perdantes" déclenchait sur un simple
+        # élargissement banal du basis. La nouvelle vérifie la corrélation des pertes.
+        carry_losses = [pd for pd in pos_data
+                        if pd["action"] == "carry" and pd["unrealized"] < 0]
+        losing_count = len(carry_losses)
+        # Correlated loss: ≥3 carry positions losing AND portfolio loss > 3%
+        # AND the average carry loss is significant (>1% of position)
+        correlated_loss = False
+        if losing_count >= 3 and total_pnl_pct < -3.0:
+            avg_loss_pct = sum(
+                abs(pd["unrealized"]) / max(pd["size_usd"], 1) * 100
+                for pd in carry_losses
+            ) / max(losing_count, 1)
+            correlated_loss = avg_loss_pct > 1.0  # average loss > 1% per position
         
         kill_switch = stale_data or market_stress or portfolio_dd or correlated_loss
         kill_tier = ("OPERATIONAL" if stale_data else 
@@ -256,9 +268,16 @@ class PositionMonitor:
                 logger.info("PositionMonitor: KILL-SWITCH %s — %d position(s) fermée(s)", kill_tier, closed_count)
             return
 
-        # Reset kill-switch flag si le P&L est remonté (positions fermées entre-temps)
-        if self._kill_switch_triggered and total_pnl_pct >= (max_portfolio_dd_pct * 100 * 0.5):
-            self._kill_switch_triggered = False
+        # ── Kill-switch reset policy (3 audits, 20/07/2026) ──
+        # Tier 1 (OPERATIONAL): auto-reset quand les données redeviennent fraîches
+        # Tier 2+ (MARKET/PORTFOLIO_DD/CORRELATED_LOSS): reset MANUEL requis
+        # → pas d'auto-reset, le flag reste jusqu'à redémarrage ou intervention
+        if self._kill_switch_triggered and kill_tier == "OPERATIONAL":
+            if not stale_data:
+                self._kill_switch_triggered = False
+                logger.info("🟢 KILL-SWITCH TIER 1 auto-reset: données restaurées")
+        # Tier 2+ : pas d'auto-reset. Nécessite redémarrage du container ou
+        # appel API /dag/reset-kill-switch pour réarmer.
 
         # ── Phase 3 : Vérifications par position ──────────────────────────
         for pd in pos_data:

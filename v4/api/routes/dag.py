@@ -173,6 +173,21 @@ async def llm_results():
         return {"error": str(exc)}
 
 
+@router.post("/reset-kill-switch")
+async def reset_kill_switch():
+    """Réarmement manuel du kill-switch après Tier 2+ (3 audits, 20/07/2026).
+    Requis après un déclenchement MARKET/PORTFOLIO_DD/CORRELATED_LOSS."""
+    try:
+        from v7.position_monitor import PositionMonitor
+        monitor = PositionMonitor.instance()
+        monitor._kill_switch_triggered = False
+        monitor._circuit_breaker = False
+        logger.warning("⚠️ KILL-SWITCH MANUALLY RESET via API")
+        return {"status": "reset", "message": "Kill-switch réarmé. Les nouvelles entrées sont autorisées."}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 @router.get("/logs")
 async def dag_logs(n: int = 50):
     """Retourne les N derniers logs d'exécution des DAGs (mémoire + DB fallback)."""

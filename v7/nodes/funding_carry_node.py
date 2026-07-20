@@ -156,7 +156,37 @@ class FundingCarryNode:
                 )
         except Exception as e:
             logger.debug("[%s] DB restore skipped: %s", self.node_id, e)
-    
+
+    def _get_funding_interval(self) -> float:
+        """Retourne l'intervalle de funding en heures depuis Binance (3 audits, 20/07/2026).
+        Fallback: 8h si l'API est injoignable."""
+        try:
+            import ccxt
+            exchange = ccxt.binance({"enableRateLimit": True})
+            markets = exchange.load_markets()
+            market = markets.get(self.symbol, {})
+            info = market.get("info", {}) if market else {}
+            interval = float(info.get("fundingIntervalHours", 8) or 8)
+            return max(4, min(interval, 24))  # clamp [4h, 24h]
+        except Exception:
+            return 8.0  # fallback standard
+
+    def _funding_in_top_percentile(self, funding_rate: float, pct: float = 0.20,
+                                    window_days: int = 90) -> bool:
+        """Vérifie si le funding_rate actuel est dans le top pct% de l'historique récent.
+        Utilise l'historique local (max 21 valeurs = 7 jours).
+        Pour window_days > 7, on utilise ce qu'on a + hypothèse conservative.
+        (3 audits, 20/07/2026)"""
+        if not self._funding_rate_history or len(self._funding_rate_history) < 5:
+            return True  # pas assez d'historique → laisse passer
+        # Utiliser l'historique disponible (jusqu'à 21 échantillons = 7 jours)
+        sorted_rates = sorted(self._funding_rate_history)
+        threshold_idx = int(len(sorted_rates) * (1 - pct))
+        if threshold_idx >= len(sorted_rates):
+            threshold_idx = len(sorted_rates) - 1
+        threshold = sorted_rates[threshold_idx]
+        return funding_rate >= threshold
+
     # ── DAG framework compatibility ──
     
     @staticmethod
@@ -324,8 +354,9 @@ class FundingCarryNode:
         unrealized_pct = 0.0
         unrealized_usd = 0.0
         
-        # Annualiser
-        periods_per_year = 365 * 24 / 8
+        # Annualiser — utilise l'intervalle réel de Binance (3 audits, 20/07/2026)
+        funding_interval_h = self._get_funding_interval()
+        periods_per_year = (24 / funding_interval_h) * 365
         annual_funding = funding_rate * periods_per_year
         
         # Basis check
@@ -372,55 +403,63 @@ class FundingCarryNode:
                     # _hurdle ≈ 7% — plus élevé que le 5% fixe précédent mais justifié économiquement
                     
                     if expected_return > _hurdle:
-                        # ── Risk budgeting (GPT 5.5 + 3 audits) ──
-                        # Stress loss spécifique par actif (pas uniforme 10%)
-                        # Majors: basis plus stable → stress plus faible
-                        # Alts: basis plus volatile → stress plus élevé
-                        _per_asset_stress = {
-                            "BTC": 0.04, "ETH": 0.04,   # majors : 4% stress
-                            "SOL": 0.08, "BNB": 0.08,   # mid    : 8% stress
-                            "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12,  # alts : 12% stress
-                        }
-                        stress_loss_pct = _per_asset_stress.get(
-                            self.symbol.split("/")[0].upper(), 0.10)
-                        net_return = expected_return - _hurdle
-                        score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
-                        raw_size = self.capital * self.fraction * min(score, 0.25)
-                        
-                        # ── Safety caps (GPT 5.5: renommés, pas de liquidity caps) ──
-                        safety_caps = {
-                            "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
-                            "XRP": 200, "ADA": 150, "DOGE": 100,
-                        }
-                        coin = self.symbol.split("/")[0].upper()
-                        max_size = safety_caps.get(coin, 200)
-                        min_size = 50
-                        
-                        size_usd = min(raw_size, max_size)
-                        if size_usd < min_size:
-                            reason = f"taille ${size_usd:.0f} < min ${min_size} → skip"
-                            confidence = 0.3
+                        # ── Percentile filter (3 audits, 20/07/2026) ──
+                        # Vérifie que le funding est dans le top 20% des 90 derniers jours.
+                        # Évite d'entrer sur un spike isolé non représentatif.
+                        if not self._funding_in_top_percentile(funding_rate, pct=0.20, window_days=90):
+                            reason = (f"funding percentile trop bas (< top 20% sur 90j) | "
+                                      f"er={expected_return*100:.1f}%/an > hurdle={_hurdle*100:.0f}%")
+                            confidence = 0.4
                         else:
-                            # ── Global Allocator check (3 audits consensus, 20/07/2026) ──
-                            from v7.core.global_allocator import can_open_position
-                            alloc_ok, alloc_reason = can_open_position(
-                                self.symbol, size_usd, score)
-                            if not alloc_ok:
-                                reason = f"GlobalAllocator: {alloc_reason}"
+                            # ── Risk budgeting (GPT 5.5 + 3 audits) ──
+                            # Stress loss spécifique par actif (pas uniforme 10%)
+                            # Majors: basis plus stable → stress plus faible
+                            # Alts: basis plus volatile → stress plus élevé
+                            _per_asset_stress = {
+                                "BTC": 0.04, "ETH": 0.04,   # majors : 4% stress
+                                "SOL": 0.08, "BNB": 0.08,   # mid    : 8% stress
+                                "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12,  # alts : 12% stress
+                            }
+                            stress_loss_pct = _per_asset_stress.get(
+                                self.symbol.split("/")[0].upper(), 0.10)
+                            net_return = expected_return - _hurdle
+                            score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
+                            raw_size = self.capital * self.fraction * min(score, 0.25)
+                            
+                            # ── Safety caps ──
+                            safety_caps = {
+                                "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
+                                "XRP": 200, "ADA": 150, "DOGE": 100,
+                            }
+                            coin = self.symbol.split("/")[0].upper()
+                            max_size = safety_caps.get(coin, 200)
+                            min_size = 50
+                            
+                            size_usd = min(raw_size, max_size)
+                            if size_usd < min_size:
+                                reason = f"taille ${size_usd:.0f} < min ${min_size} → skip"
                                 confidence = 0.3
                             else:
-                                self.state.position_open = True
-                                self.state.entry_capital = size_usd
-                                self.state.entry_spot = spot_price
-                                self.state.entry_perp = perp_price if perp_price > 0 else spot_price
-                                self.state.entry_time = datetime.now().isoformat()
-                                self.state.negative_since = None
-                                
-                                signal = "open_carry"
-                                confidence = min(0.90, 0.50 + score * 2)
-                                reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                          f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
-                                          f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
+                                # ── Global Allocator check (3 audits consensus, 20/07/2026) ──
+                                from v7.core.global_allocator import can_open_position
+                                alloc_ok, alloc_reason = can_open_position(
+                                    self.symbol, size_usd, score)
+                                if not alloc_ok:
+                                    reason = f"GlobalAllocator: {alloc_reason}"
+                                    confidence = 0.3
+                                else:
+                                    self.state.position_open = True
+                                    self.state.entry_capital = size_usd
+                                    self.state.entry_spot = spot_price
+                                    self.state.entry_perp = perp_price if perp_price > 0 else spot_price
+                                    self.state.entry_time = datetime.now().isoformat()
+                                    self.state.negative_since = None
+                                    
+                                    signal = "open_carry"
+                                    confidence = min(0.90, 0.50 + score * 2)
+                                    reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
+                                              f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
+                                              f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
                         reason = f"retour {expected_return*100:.1f}%/an < {_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
@@ -444,17 +483,37 @@ class FundingCarryNode:
                     confidence = 0.95
                     logger.warning("[%s] %s", self.node_id, reason)
                 
-                # Time-stop : position ouverte > max_hold_days → close
+                # ── Sortie économique (3 audits, 20/07/2026) ──
+                # Remplace le time-stop strict de 14j.
+                # ZONES : HEALTHY (<14j), REVIEW (14-30j), DERISK (30-60j), CLOSE (>60j)
                 if signal != "close_carry" and self.state.entry_time:
                     try:
                         entry_dt = datetime.fromisoformat(self.state.entry_time)
                         days_held = (datetime.now() - entry_dt).total_seconds() / 86400
-                        if days_held > self.max_hold_days:
+                        
+                        if days_held > 60:
                             signal = "close_carry"
                             self.state.position_open = False
-                            reason = f"TIME-STOP: {days_held:.0f}j > {self.max_hold_days}j max → close"
-                            confidence = 0.80
+                            reason = f"ECONOMIC STOP (ZONE CLOSE): {days_held:.0f}j > 60j max"
+                            confidence = 0.85
                             logger.warning("[%s] %s", self.node_id, reason)
+                        elif days_held > 30:
+                            # DERISK: fermer si le forward funding ne justifie plus la position
+                            forward_funding = funding_rate * periods_per_year
+                            exit_cost_annual = 0.0028 * (365 / max(days_held, 1))  # 28bps amortis
+                            if forward_funding < _hurdle + exit_cost_annual:
+                                signal = "close_carry"
+                                self.state.position_open = False
+                                reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}j, "
+                                          f"forward funding={forward_funding*100:.1f}%/an < "
+                                          f"hurdle+exit={(_hurdle+exit_cost_annual)*100:.1f}%/an")
+                                confidence = 0.75
+                                logger.warning("[%s] %s", self.node_id, reason)
+                            else:
+                                logger.info("[%s] DERISK zone: %dj, forward funding=%.1f%% > costs → hold",
+                                           self.node_id, days_held, forward_funding*100)
+                        elif days_held > 14:
+                            logger.info("[%s] REVIEW zone: %dj — monitoring", self.node_id, days_held)
                     except Exception:
                         pass
             else:

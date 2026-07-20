@@ -39,7 +39,11 @@ ASSET_STRESS_LOSS: dict[str, float] = {
 
 
 def get_open_carry_positions() -> list[dict]:
-    """Return all currently open carry positions from the DB."""
+    """Return all currently open carry positions from the DB.
+    In backtest mode, returns empty list (no DB available)."""
+    import os
+    if os.environ.get("V7_BACKTEST"):
+        return []
     try:
         from storage.paper_trader import get_open_positions
         positions = get_open_positions()

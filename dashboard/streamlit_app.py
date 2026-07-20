@@ -3149,14 +3149,14 @@ def _render_backtest_v4():
         
         col1, col2 = st.columns(2)
         with col1:
-            fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.80, 0.05)
-            min_funding = st.number_input("Funding min (%/8h)", 0.0001, 0.1, 0.001, format="%.4f")
+            capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000,
+                                      help="Capital alloué à cet actif pour le backtest")
         with col2:
-            exit_hours = st.slider("Sortie si funding négatif > (h)", 24, 720, 168, 24)
-            capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000)
+            fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.50, 0.05,
+                                 help="Part du capital immobilisée dans le carry")
         
         if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
-            with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j..."):
+            with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j (règles V7.2)..."):
                 try:
                     import subprocess, sys
                     cmd = [
@@ -3165,13 +3165,17 @@ def _render_backtest_v4():
                         "--days", str(days),
                         "--capital", str(capital),
                         "--fraction", str(fraction),
-                        "--min-funding", str(min_funding / 100),  # % → décimal
-                        "--exit-hours", str(exit_hours),
+                        "--v71",
                     ]
                     result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
-                    st.code(result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout)
+                    output = result.stdout
                     if result.stderr:
-                        st.caption(result.stderr[-500:])
+                        output += "\n\n[stderr]\n" + result.stderr[-500:]
+                    st.code(output[-4000:] if len(output) > 4000 else output)
+                    # Extraire les métriques clés si présentes
+                    for line in output.split("\n"):
+                        if any(kw in line for kw in ["Sharpe", "PnL Total", "Win Rate", "Max DD", "Trades:"]):
+                            st.text(line.strip())
                 except Exception as e:
                     st.error(str(e))
         return

@@ -105,8 +105,6 @@ export function NodeEditor() {
     updateNodeParams(selectedNodeId, { ...defaults });
   };
 
-  const { t } = useTranslation();
-
   if (!node) {
     return (
       <div className="w-64 border-l border-canvas-border bg-canvas-node p-4 text-xs text-slate-500">

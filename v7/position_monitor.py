@@ -396,22 +396,31 @@ class PositionMonitor:
             size_usd = pd["size_usd"]
             current_spot = pd["current_price"]
 
-            # Récupérer le prix perp
+            # Récupérer le prix perp (obligatoire pour le carry)
             current_perp = self._get_cached_perp(symbol)
             if current_perp <= 0:
-                return result  # pas de prix perp → skip
+                # Pas de fallback spot ! (3 audits, 20/07/2026)
+                # Si le perp est indisponible, le basis est INCONNU.
+                # Remplacer par le spot masquerait le risque (basis=0 artificiel).
+                result["data_degraded"] = True
+                logger.warning("PositionMonitor: perp price missing for %s → carry economics UNKNOWN", symbol)
+                return result
 
-            # Récupérer entry_perp depuis le context_json si disponible
-            entry_perp = entry_spot  # fallback : basis ≈ 0 à l'entrée
+            # Récupérer entry_perp depuis le context_json
+            entry_perp = None
             try:
                 import json as _j
-                # Le context_json est stocké dans la position via persist_trade
                 ctx_raw = pd.get("context_json")
                 if ctx_raw:
                     ctx = _j.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
-                    entry_perp = float(ctx.get("entry_perp_price", entry_spot))
+                    entry_perp = float(ctx.get("entry_perp_price", 0))
             except Exception:
                 pass
+
+            if entry_perp is None or entry_perp <= 0:
+                result["data_degraded"] = True
+                logger.warning("PositionMonitor: entry_perp missing for %s → carry economics UNKNOWN", symbol)
+                return result
 
             # Basis P&L
             basis_entry = (entry_perp - entry_spot) / entry_spot if entry_spot > 0 else 0

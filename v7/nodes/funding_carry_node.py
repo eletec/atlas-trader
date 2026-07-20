@@ -271,22 +271,6 @@ class FundingCarryNode:
     
     # ── Decision logic ──
 
-    def _get_annual_volatility(self) -> float:
-        """Calcule la volatilité annualisée 30j — utilisée comme multiplicateur de risque."""
-        try:
-            import ccxt, statistics
-            exchange = ccxt.binance({"enableRateLimit": True})
-            ohlcv = exchange.fetch_ohlcv(self.symbol, timeframe="1d", limit=30)
-            if len(ohlcv) < 10:
-                return 0.0
-            closes = [c[4] for c in ohlcv]
-            returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
-            if len(returns) < 2:
-                return 0.0
-            daily_vol = statistics.stdev(returns)
-            return daily_vol * (365 ** 0.5)
-        except Exception:
-            return 0.0
     
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Exécute le nœud Funding Carry.
@@ -371,8 +355,12 @@ class FundingCarryNode:
                     reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
                 else:
-                    # expected_return = rendement annualisé du funding + gain/coût one-shot du basis
-                    expected_return = annual_funding + basis_pct
+                    # ── Rendement annualisé corrigé (3 audits, 20/07/2026) ──
+                    # Le funding est déjà annualisé (×3×365).
+                    # Le basis est un écart ponctuel → on l'annualise avec l'hypothèse
+                    # de convergence sur max_hold_days (cash & carry standard).
+                    annual_basis = (basis_pct / self.max_hold_days) * 365
+                    expected_return = annual_funding + annual_basis
                     
                     # ── Dynamic hurdle rate (GPT 5.5) ──
                     # Hurdle = coût d'opportunité + primes de risque, pas un fixe arbitraire
@@ -399,16 +387,6 @@ class FundingCarryNode:
                         score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                         raw_size = self.capital * self.fraction * min(score, 0.25)
                         
-                        # ── Volatilité → multiplicateur de risque (GPT 5.5) ──
-                        # La volatilité n'est pas un filtre d'entrée mais un paramètre de sizing
-                        annual_vol = self._get_annual_volatility()
-                        if annual_vol > 0:
-                            # Plus la vol est élevée, plus on réduit la taille
-                            vol_mult = min(1.0, 0.03 / max(annual_vol, 0.01))
-                        else:
-                            vol_mult = 1.0
-                        raw_size *= vol_mult
-                        
                         # ── Safety caps (GPT 5.5: renommés, pas de liquidity caps) ──
                         safety_caps = {
                             "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
@@ -434,7 +412,7 @@ class FundingCarryNode:
                             confidence = min(0.90, 0.50 + score * 2)
                             reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
                                       f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
-                                      f"size=${size_usd:.0f} (score={score:.2f}, vol×{vol_mult:.2f}, cap=${max_size})")
+                                      f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
                         reason = f"retour {expected_return*100:.1f}%/an < {_hurdle*100:.0f}% hurdle"
                         confidence = 0.5

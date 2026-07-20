@@ -121,23 +121,23 @@ export default function TradesPage() {
               </tr>
             </thead>
             <tbody>
-              {trades.map((t, i) => (
-                <tr key={t.trade_id ?? i} className="border-t border-canvas-border text-slate-300">
-                  <td className="px-4 py-2 font-mono text-slate-500">{t.trade_id?.slice(0, 8)}</td>
-                  <td className="px-4 py-2 font-semibold">{t.symbol}</td>
-                  <td className={`px-4 py-2 font-semibold ${t.action === "long" ? "text-canvas-success" : "text-canvas-danger"}`}>
-                    {t.action?.toUpperCase()}
+              {trades.map((trade, i) => (
+                <tr key={trade.trade_id ?? i} className="border-t border-canvas-border text-slate-300">
+                  <td className="px-4 py-2 font-mono text-slate-500">{trade.trade_id?.slice(0, 8)}</td>
+                  <td className="px-4 py-2 font-semibold">{trade.symbol}</td>
+                  <td className={`px-4 py-2 font-semibold ${trade.action === "long" ? "text-canvas-success" : "text-canvas-danger"}`}>
+                    {trade.action?.toUpperCase()}
                   </td>
-                  <td className="px-4 py-2 font-mono">{t.entry_price?.toLocaleString()}</td>
-                  <td className="px-4 py-2 font-mono text-canvas-danger">{t.stop_loss?.toLocaleString()}</td>
-                  <td className="px-4 py-2 font-mono text-canvas-success">{t.take_profit?.toLocaleString()}</td>
-                  <td className="px-4 py-2">${t.size_usd?.toLocaleString()}</td>
+                  <td className="px-4 py-2 font-mono">{trade.entry_price?.toLocaleString()}</td>
+                  <td className="px-4 py-2 font-mono text-canvas-danger">{trade.stop_loss?.toLocaleString()}</td>
+                  <td className="px-4 py-2 font-mono text-canvas-success">{trade.take_profit?.toLocaleString()}</td>
+                  <td className="px-4 py-2">${trade.size_usd?.toLocaleString()}</td>
                   <td className="px-4 py-2 text-slate-500">
-                    {t.ts ? new Date(t.ts).toLocaleString() : t("monitoring.fallback")}
+                    {trade.ts ? new Date(trade.ts).toLocaleString() : t("monitoring.fallback")}
                   </td>
                   <td className="px-4 py-2">
-                    <span className={t.status === "open" ? "text-canvas-warning" : "text-slate-500"}>
-                      {t.status}
+                    <span className={trade.status === "open" ? "text-canvas-warning" : "text-slate-500"}>
+                      {trade.status}
                     </span>
                   </td>
                 </tr>
@@ -150,10 +150,10 @@ export default function TradesPage() {
                     {t("trades.total")}{trades.length}{t("trades.totalSuffix")}
                   </td>
                   <td className="px-4 py-2 text-slate-400" colSpan={1}>
-                    {trades.filter(t => t.status === "open").length}{t("trades.openCount")}
+                    {trades.filter(tr => tr.status === "open").length}{t("trades.openCount")}
                   </td>
                   <td className="px-4 py-2 text-right text-slate-300 font-mono font-bold" colSpan={4}>
-                    ${trades.reduce((sum, t) => sum + (t.size_usd || 0), 0).toLocaleString()}
+                    ${trades.reduce((sum, tr) => sum + (tr.size_usd || 0), 0).toLocaleString()}
                   </td>
                   <td className="px-4 py-2 text-slate-500 text-xs" colSpan={2}>
                     {t("trades.totalSize")}

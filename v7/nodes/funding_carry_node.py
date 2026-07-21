@@ -66,7 +66,7 @@ class FundingCarryNode:
         max_hold_days: int = 14,        # time-stop : sortie forcée après N jours
         stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
         exchange_name: str = "binance",  # binance | bybit | okx | kraken
-        fee_bps: float = 5.0,
+        fee_bps: float = 10.0,       # frais spot Binance standard (0.1% = 10bps)
         slippage_bps: float = 2.0,
         params: dict | None = None,
         meta: object = None,  # DAG framework NodeMeta
@@ -346,11 +346,11 @@ class FundingCarryNode:
         self.state.last_funding_rate = funding_rate
         self.state.last_update = datetime.now().isoformat()
         
-        # Maintenir l'historique du funding pour la MA 7j (max 21 valeurs pour 7j × 3/j)
+        # Maintenir l'historique du funding pour la MA 7j et le percentile (max 270 valeurs = 90j)
         self._funding_rate_history.append(funding_rate)
-        if len(self._funding_rate_history) > 21:
-            self._funding_rate_history = self._funding_rate_history[-21:]
-        funding_ma_7d = sum(self._funding_rate_history) / len(self._funding_rate_history) if self._funding_rate_history else funding_rate
+        if len(self._funding_rate_history) > 270:
+            self._funding_rate_history = self._funding_rate_history[-270:]
+        funding_ma_7d = sum(self._funding_rate_history[-21:]) / min(len(self._funding_rate_history), 21) if self._funding_rate_history else funding_rate
         
         # ── Decision ──
         signal = "flat"
@@ -400,24 +400,28 @@ class FundingCarryNode:
                     annual_basis = (basis_pct / self.max_hold_days) * 365
                     expected_return = annual_funding + annual_basis
                     
-                    # ── Dynamic hurdle rate (GPT 5.5) ──
-                    # Hurdle = coût d'opportunité + primes de risque, pas un fixe arbitraire
-                    usd_benchmark = 0.05       # SOFR / T-bill ~5% (màj automatique possible)
-                    venue_premium = 0.01       # risque exchange (Binance)
-                    stablecoin_premium = 0.005 # risque USDT
-                    operational_buffer = 0.005 # marge opérationnelle
-                    _hurdle = max(0.03, usd_benchmark + venue_premium + stablecoin_premium + operational_buffer)
-                    # _hurdle ≈ 7% — plus élevé que le 5% fixe précédent mais justifié économiquement
+                    # ── Adaptive hurdle (Round 3 audit, 21/07/2026) ──
+                    # Hurdle = max(plancher éco, percentile 70% du funding annualisé 90j + 2%)
+                    # Le plancher économique = SOFR 5% + primes minimales 1% = 3% floor
+                    if len(self._funding_rate_history) >= 10:
+                        annualized_history = [r * periods_per_year for r in self._funding_rate_history]
+                        annualized_history.sort()
+                        idx_70 = int(len(annualized_history) * 0.70)
+                        percentile_70 = annualized_history[min(idx_70, len(annualized_history) - 1)]
+                        adaptive_hurdle = max(0.03, percentile_70 + 0.02)
+                    else:
+                        adaptive_hurdle = 0.03  # pas assez d'historique → plancher
                     
-                    if expected_return > _hurdle:
-                        # ── Percentile filter (3 audits, 20/07/2026) ──
-                        # Vérifie que le funding est dans le top 20% des 90 derniers jours.
-                        # Évite d'entrer sur un spike isolé non représentatif.
-                        if not self._funding_in_top_percentile(funding_rate, pct=0.20, window_days=90):
-                            reason = (f"funding percentile trop bas (< top 20% sur 90j) | "
-                                      f"er={expected_return*100:.1f}%/an > hurdle={_hurdle*100:.0f}%")
+                    # Le percentile check existant devient redondant avec le hurdle adaptatif
+                    # → on le garde en filtre additionnel uniquement si l'historique est court
+                    if len(self._funding_rate_history) < 20:
+                        if not self._funding_in_top_percentile(funding_rate, pct=0.30, window_days=90):
+                            reason = (f"funding percentile trop bas (peu d'historique) | "
+                                      f"er={expected_return*100:.1f}%/an > hurdle={adaptive_hurdle*100:.0f}%")
                             confidence = 0.4
-                        else:
+                            adaptive_hurdle = 999  # bloque
+                    
+                    if expected_return > adaptive_hurdle:
                             # ── Risk budgeting (GPT 5.5 + 3 audits) ──
                             # Stress loss spécifique par actif (pas uniforme 10%)
                             # Majors: basis plus stable → stress plus faible
@@ -429,7 +433,7 @@ class FundingCarryNode:
                             }
                             stress_loss_pct = _per_asset_stress.get(
                                 self.symbol.split("/")[0].upper(), 0.10)
-                            net_return = expected_return - _hurdle
+                            net_return = expected_return - adaptive_hurdle
                             score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                             raw_size = self.capital * self.fraction * min(score, 0.25)
                             
@@ -465,10 +469,10 @@ class FundingCarryNode:
                                     signal = "open_carry"
                                     confidence = min(0.90, 0.50 + score * 2)
                                     reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                              f"→ {expected_return*100:.1f}%/an (hurdle={_hurdle*100:.0f}%) | "
+                                              f"→ {expected_return*100:.1f}%/an (hurdle={adaptive_hurdle*100:.0f}%) | "
                                               f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
-                        reason = f"retour {expected_return*100:.1f}%/an < {_hurdle*100:.0f}% hurdle"
+                        reason = f"retour {expected_return*100:.1f}%/an < {adaptive_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
             else:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"
@@ -508,12 +512,12 @@ class FundingCarryNode:
                             # DERISK: fermer si le forward funding ne justifie plus la position
                             forward_funding = funding_rate * periods_per_year
                             exit_cost_annual = 0.0028 * (365 / max(days_held, 1))  # 28bps amortis
-                            if forward_funding < _hurdle + exit_cost_annual:
+                            if forward_funding < adaptive_hurdle + exit_cost_annual:
                                 signal = "close_carry"
                                 self.state.position_open = False
                                 reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}j, "
                                           f"forward funding={forward_funding*100:.1f}%/an < "
-                                          f"hurdle+exit={(_hurdle+exit_cost_annual)*100:.1f}%/an")
+                                          f"hurdle+exit={(adaptive_hurdle+exit_cost_annual)*100:.1f}%/an")
                                 confidence = 0.75
                                 logger.warning("[%s] %s", self.node_id, reason)
                             else:

@@ -145,14 +145,14 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         size_usd = result.get("size_usd", 0)
         total_funding = max(total_funding, result.get("total_funding_received", 0) or 0)
 
-        # Frais simulés
+        # Frais simulés (10bps/leg × 4 legs = 40bps round-trip, Round 3)
         if signal == "open_carry" and size_usd > 0:
-            fee = size_usd * 0.0007
+            fee = size_usd * 0.0010  # 10bps par jambe
             total_fees += fee
             trades.append({"open_ts": ts, "size": size_usd, "fee": fee})
 
         if signal == "close_carry":
-            fee = node.state.entry_capital * 0.0007
+            fee = node.state.entry_capital * 0.0010  # 10bps par jambe
             total_fees += fee
 
     # 5) Métriques

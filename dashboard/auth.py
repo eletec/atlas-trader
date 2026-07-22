@@ -34,11 +34,21 @@ _USERS_FILE = Path(__file__).parent.parent / "config" / "users.yaml"
 # Store de sessions SQLite (survit aux redémarrages Streamlit et aux multi-workers)
 # ─────────────────────────────────────────────────────────────────────────────
 import os as _os
+import shutil as _shutil
 _SESSION_DB = Path(__file__).parent.parent / "storage" / "atlas_sessions.db"
 # Forcer un chemin writable dans Docker (mount read-only /app/src)
 _DATA_DIR = _os.environ.get("V4_DATA_DIR", "/app/data")
 if str(_SESSION_DB).startswith("/app/src/"):
     _SESSION_DB = Path(_DATA_DIR) / "atlas_sessions.db"
+
+# users.yaml → /app/data/ pour écriture (Docker mount read-only sur /app/src)
+_RUNTIME_USERS = Path(_DATA_DIR) / "users.yaml"
+if str(_USERS_FILE).startswith("/app/src/"):
+    # Bootstrap : copier du git-tracked vers /app/data/ au premier lancement
+    if not _RUNTIME_USERS.exists() and _USERS_FILE.exists():
+        _RUNTIME_USERS.parent.mkdir(parents=True, exist_ok=True)
+        _shutil.copy2(_USERS_FILE, _RUNTIME_USERS)
+    _USERS_FILE = _RUNTIME_USERS
 _SESSION_LOCK = threading.Lock()
 
 

@@ -13,8 +13,20 @@ Usage (dans main.py):
 from __future__ import annotations
 from v4.api.models import DAGSpec, NodeSpec, EdgeSpec
 
-SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-CAPITAL_PER_ASSET = 2_000  # $2K par actif en carry
+def _get_symbols_and_capital():
+    """Lit les actifs actifs et leurs paramètres depuis carry_assets.yaml."""
+    try:
+        from v7.core.asset_config import get_active_assets, get_asset_params, get_global_params
+        symbols = get_active_assets()
+        if not symbols:
+            raise ValueError("No active assets in carry_assets.yaml")
+        global_cfg = get_global_params()
+        default_capital = float(global_cfg.get("total_capital", 14000)) / max(len(symbols), 1)
+        return symbols, default_capital
+    except Exception:
+        return ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"], 2_000
+
+SYMBOLS, CAPITAL_PER_ASSET = _get_symbols_and_capital()
 
 
 def _carry_defaults():
@@ -29,29 +41,42 @@ def _carry_defaults():
         return {}
 
 
-def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -> DAGSpec:
-    """Fabrique un DAG V7: AssetDef → FundingCarry → PaperTrader + Record + LLM."""
+def _make_v7_dag(dag_id: str, symbol: str, capital: float | None = None) -> DAGSpec:
+    """Fabrique un DAG V7: AssetDef → FundingCarry → PaperTrader + Record + LLM.
+    
+    Les paramètres sont lus depuis carry_assets.yaml (per-asset) avec fallback sur les defaults.
+    """
     pfx = symbol.split("/")[0].lower()[:3]
-    cd = _carry_defaults()
+    
+    # Lire les params per-asset depuis carry_assets.yaml
+    try:
+        from v7.core.asset_config import get_asset_params
+        ap = get_asset_params(symbol)
+    except Exception:
+        ap = {}
+    
+    if capital is None:
+        capital = float(ap.get("capital", CAPITAL_PER_ASSET))
 
     nodes = [
         NodeSpec(id=f"{pfx}_asset", type="AssetDef",
                  params={"symbol": symbol, "exchange": "binance",
-                          "capital_usd": capital, "fraction": cd.get("fraction", 0.80),
+                          "capital_usd": capital, "fraction": ap.get("fraction", 0.80),
                           "max_positions": 3}),
-        # V7 Funding Carry (params depuis asset_profiles.yaml → v7_carry_defaults)
+        # V7 Funding Carry (params depuis carry_assets.yaml per-asset)
         NodeSpec(id=f"{pfx}_carry", type="FundingCarryNode",
                  params={"symbol": symbol, "capital": capital,
-                          "fraction": cd.get("fraction", 0.80),
-                          "min_funding": cd.get("min_funding", 0.00001),
-                          "max_funding": cd.get("max_funding", 0.003),
-                          "exit_after_hours": cd.get("exit_after_hours", 72),
-                          "kelly_fraction": cd.get("kelly_fraction", 0.35),
-                          "max_hold_days": cd.get("max_hold_days", 10),
-                          "stop_loss_pct": cd.get("stop_loss_pct", -0.045),
-                          "max_portfolio_dd_pct": cd.get("max_portfolio_dd_pct", 0.20),
-                          "max_loss_pct": cd.get("max_loss_pct", -0.05),
-                          "min_volatility_30d": cd.get("min_volatility_30d", 0.02)}),
+                          "fraction": ap.get("fraction", 0.50),
+                          "min_funding": ap.get("min_funding", 0.00005),
+                          "max_funding": ap.get("max_funding", 0.003),
+                          "exit_after_hours": ap.get("exit_after_hours", 72),
+                          "leverage": ap.get("leverage", 1.0),
+                          "max_hold_days": ap.get("max_hold_days", 14),
+                          "safety_cap": ap.get("safety_cap", 200),
+                          "stress_loss_pct": ap.get("stress_loss_pct", 0.10),
+                          "stop_loss_pct": ap.get("stop_loss_pct", -0.045),
+                          "max_portfolio_dd_pct": ap.get("max_portfolio_dd_pct", 0.20),
+                          "max_loss_pct": ap.get("max_loss_pct", -0.05)}),
         # PaperTrader — exécute le signal carry (max 1 position par actif)
         NodeSpec(id=f"{pfx}_paper", type="PaperTrader",
                  params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),
@@ -99,6 +124,6 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float = CAPITAL_PER_ASSET) -
 
 # ── DAGs pré-construits ──
 V7_DAGS = [
-    _make_v7_dag(f"v7_{sym.split('/')[0].lower()}", sym)
+    _make_v7_dag(f"v7_{sym.split('/')[0].lower()}", sym, CAPITAL_PER_ASSET)
     for sym in SYMBOLS
 ]

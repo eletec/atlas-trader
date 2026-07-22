@@ -3,11 +3,17 @@ v7/core/asset_config.py — Chargeur de configuration des actifs Funding Carry.
 
 Lit config/carry_assets.yaml et expose les actifs activés avec leurs paramètres.
 Utilisé par la DAG factory, le backtest, et le dashboard.
+
+Chemins :
+- Runtime (writable) : /app/data/carry_assets.yaml  (volume v4_storage)
+- Git-tracked (read-only) : config/carry_assets.yaml
+- Bootstrap : si le runtime n'existe pas, copie depuis le git-tracked.
 """
 
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -15,19 +21,36 @@ import yaml
 
 logger = logging.getLogger("v7.core.asset_config")
 
-_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
+# Chemin runtime (writable, persistant) — prioritaire
+_RUNTIME_PATH = Path("/app/data/carry_assets.yaml")
+# Chemin git-tracked (read-only dans le container)
+_GIT_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
 _CACHE: dict | None = None
 
 
+def _bootstrap_config() -> Path:
+    """Copie le fichier git-tracked vers /app/data/ au premier lancement."""
+    if _RUNTIME_PATH.exists():
+        return _RUNTIME_PATH
+    if _GIT_PATH.exists():
+        _RUNTIME_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_GIT_PATH, _RUNTIME_PATH)
+        logger.info("Bootstrapped carry_assets.yaml → /app/data/")
+        return _RUNTIME_PATH
+    logger.warning("No carry_assets.yaml found — using empty config")
+    return _GIT_PATH  # fallback (n'existe pas, mais load_config gère)
+
+
 def load_config() -> dict:
-    """Charge la configuration YAML (avec cache)."""
+    """Charge la configuration YAML (runtime > git, avec cache)."""
     global _CACHE
     if _CACHE is not None:
         return _CACHE
+    path = _bootstrap_config()
     try:
-        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             _CACHE = yaml.safe_load(f) or {}
-        logger.info("Loaded carry_assets.yaml: %d assets", len(_CACHE.get("assets", {})))
+        logger.info("Loaded carry_assets.yaml from %s: %d assets", path, len(_CACHE.get("assets", {})))
     except Exception as e:
         logger.warning("Cannot load carry_assets.yaml: %s — using defaults", e)
         _CACHE = {"assets": {}, "global": {}}
@@ -35,13 +58,15 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
-    """Sauvegarde la configuration YAML."""
+    """Sauvegarde la configuration YAML dans /app/data/ (writable)."""
     global _CACHE
+    path = _RUNTIME_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False)
         _CACHE = cfg
-        logger.info("Saved carry_assets.yaml")
+        logger.info("Saved carry_assets.yaml → %s", path)
     except Exception as e:
         logger.error("Cannot save carry_assets.yaml: %s", e)
 

@@ -28,9 +28,19 @@ from v7.strategies.dominance_rotation import DominanceRotationEngine, DominanceS
 from v7.core.meta_allocator import MetaAllocator, StrategyScore, MetaAllocation
 from v7.core.regime_engine import RegimeEngineV7, RegimeDistribution
 
-# ── Assets ──
-ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-ALT_ASSETS = ["ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+# ── Assets (lus dynamiquement depuis carry_assets.yaml) ──
+def _get_v7_assets():
+    try:
+        from v7.core.asset_config import get_active_assets
+        symbols = get_active_assets()
+        if symbols:
+            return symbols
+    except Exception:
+        pass
+    return ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+
+ASSETS = _get_v7_assets()
+ALT_ASSETS = [s for s in ASSETS if s != "BTC/USDT"]
 
 
 @dataclass

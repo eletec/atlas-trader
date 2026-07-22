@@ -121,13 +121,12 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         params={"_backtest": True},  # ne pas fetch CCXT live, utiliser les inputs
     )
 
-    # 4) Boucle de backtest
+    # 4) Boucle de backtest avec NAV tracking (Round 4, 22/07/2026)
     trades: list[dict] = []
     total_funding = 0.0
     total_fees = 0.0
-    pnl_history: list[float] = []
-    daily_pnl: float = 0.0
-    prev_ts = None
+    nav_history: list[tuple] = []  # (timestamp, nav_value)
+    prev_nav = capital  # start at capital
 
     for ts, row in combined.iterrows():
         fr = float(row["funding_rate"])
@@ -144,23 +143,50 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         signal = result.get("signal", "flat")
         size_usd = result.get("size_usd", 0)
         total_funding = max(total_funding, result.get("total_funding_received", 0) or 0)
+        unrealized_pct = result.get("unrealized_pnl_pct", 0) or 0
+        position_open = result.get("position_open", False)
 
         # Frais simulés (12bps/leg × 4 legs = 48bps round-trip, Round 4)
-        # 10bps fees + 2bps slippage par jambe
+        cost_this_step = 0.0
         if signal == "open_carry" and size_usd > 0:
-            fee = size_usd * 0.0012  # 12bps par jambe (fees + slippage)
-            total_fees += fee
-            trades.append({"open_ts": ts, "size": size_usd, "fee": fee})
+            cost_this_step = size_usd * 0.0012  # 12bps par jambe
+            total_fees += cost_this_step
+            trades.append({"open_ts": ts, "size": size_usd, "fee": cost_this_step})
 
         if signal == "close_carry":
-            fee = node.state.entry_capital * 0.0012  # 12bps par jambe
-            total_fees += fee
+            cost_this_step = node.state.entry_capital * 0.0012
+            total_fees += cost_this_step
 
-    # 5) Métriques
+        # ── NAV computation ──
+        # NAV = capital + funding_collected + staking - fees + unrealized_carry_pnl
+        staking_now = node.state.staking_earned
+        unrealized_usd = unrealized_pct * (node.state.entry_capital if position_open else 0) if position_open else 0
+        nav = capital + total_funding + staking_now - total_fees + unrealized_usd
+        nav_history.append((ts, nav))
+        prev_nav = nav
+
+    # 5) Métriques (Round 4: NAV-based Sharpe + Max DD)
     staking = node.state.staking_earned
     total_pnl = total_funding + staking - total_fees
-    returns = pd.Series(pnl_history).dropna()
-    sharpe = float(returns.mean() / returns.std() * np.sqrt(365)) if len(returns) > 5 and returns.std() > 0 else 0.0
+
+    # NAV returns
+    if len(nav_history) > 2:
+        nav_df = pd.DataFrame(nav_history, columns=["ts", "nav"]).set_index("ts")
+        nav_df["return"] = nav_df["nav"].pct_change().fillna(0)
+        # Sharpe annualisé (×√365 pour daily, ×√1095 pour 8h)
+        periods_per_day = 3  # funding 8h
+        nav_returns = nav_df["return"].dropna()
+        if len(nav_returns) > 10 and nav_returns.std() > 0:
+            sharpe = float(nav_returns.mean() / nav_returns.std() * np.sqrt(365 * periods_per_day))
+        else:
+            sharpe = 0.0
+        # Max drawdown
+        nav_df["peak"] = nav_df["nav"].cummax()
+        nav_df["dd"] = (nav_df["nav"] - nav_df["peak"]) / nav_df["peak"] * 100
+        max_dd = float(nav_df["dd"].min())
+    else:
+        sharpe = 0.0
+        max_dd = 0.0
 
     return {
         "symbol": symbol,
@@ -171,6 +197,7 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         "fees": round(total_fees, 2),
         "trades": len(trades),
         "sharpe": round(sharpe, 2),
+        "max_dd_pct": round(max_dd, 2),
         "days": days,
     }
 
@@ -197,7 +224,7 @@ def main():
         results.append(r)
         if "error" not in r:
             print(f"  {sym:<12} PnL=${r['pnl']:>8,.2f} ({r['pnl_pct']:>5.1f}%)  "
-                  f"Sharpe={r['sharpe']:>6.2f}  Trades={r['trades']:>3d}  "
+                  f"Sharpe={r['sharpe']:>6.2f}  MaxDD={r['max_dd_pct']:>5.1f}%  Trades={r['trades']:>3d}  "
                   f"Funding=${r['funding']:,.2f}  Staking=${r['staking']:,.2f}  Fees=${r['fees']:,.2f}")
         else:
             print(f"  {sym:<12} ERROR: {r['error']}")

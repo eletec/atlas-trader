@@ -20,7 +20,6 @@ name: atlas-trader-v4
 volumes:
   v4_storage:          # SQLite, DAG JSON, logs
   v4_models:           # modèles Ollama téléchargés
-  v4_config:
 
 networks:
   v4_net:
@@ -42,8 +41,8 @@ services:
       - "8000:8000"
     volumes:
       - v4_storage:/app/data
-      - v4_config:/app/src/config
-      - .:/app/src:ro          # code source monté en lecture seule (hot reload)
+      - ./config:/app/src/config:ro   # config files (carry_assets.yaml, etc.) — bind mount pour hot reload
+      - .:/app/src:ro                 # code source monté en lecture seule (hot reload)
     environment:
       - V4_ENV=development
       - V4_TESTNET=true
@@ -104,7 +103,7 @@ services:
       - V4_FRONTEND_URL=http://192.168.1.80:3000
     volumes:
       - v4_storage:/app/data
-      - v4_config:/app/src/config
+      - ./config:/app/src/config:ro
       - .:/app/src:ro
     depends_on:
       - atlas-v4-api

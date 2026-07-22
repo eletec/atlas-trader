@@ -321,14 +321,16 @@ def _render_first_setup(cfg: dict) -> None:
         elif pwd1 != pwd2:
             st.error(t("usr_pwd_mismatch"))
         else:
-            cfg.setdefault("users", {})[username] = {
+            cfg["users"] = cfg.get("users") or {}
+            cfg["users"][username] = {
                 "password_hash": hash_password(pwd1),
                 "roles": ["front", "back"],
                 "totp_enabled": True,
                 "totp_secret": "",
             }
-            cfg.setdefault("settings", {}).setdefault("guest_mode", True)
-            cfg["settings"].setdefault("cookie_expiry_days", 7)
+            cfg["settings"] = cfg.get("settings") or {}
+            cfg["settings"]["guest_mode"] = cfg["settings"].get("guest_mode", True)
+            cfg["settings"]["cookie_expiry_days"] = cfg["settings"].get("cookie_expiry_days", 7)
             save_users_config(cfg)
             st.success(t("setup_success").format(uname=username))
             _outer = st.session_state.get("_auth_slot")
@@ -633,7 +635,8 @@ def render_users_admin() -> None:
                 new_roles.append("front")
             if role_back:
                 new_roles.append("back")
-            cfg.setdefault("users", {})[new_username] = {
+            cfg["users"] = cfg.get("users") or {}
+            cfg["users"][new_username] = {
                 "password_hash": hash_password(new_pwd1),
                 "roles": new_roles,
                 "totp_enabled": role_back,

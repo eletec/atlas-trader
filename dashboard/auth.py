@@ -45,9 +45,13 @@ if str(_SESSION_DB).startswith("/app/src/"):
 _RUNTIME_USERS = Path(_DATA_DIR) / "users.yaml"
 if str(_USERS_FILE).startswith("/app/src/"):
     # Bootstrap : copier du git-tracked vers /app/data/ au premier lancement
-    if not _RUNTIME_USERS.exists() and _USERS_FILE.exists():
+    if not _RUNTIME_USERS.exists():
         _RUNTIME_USERS.parent.mkdir(parents=True, exist_ok=True)
-        _shutil.copy2(_USERS_FILE, _RUNTIME_USERS)
+        if _USERS_FILE.is_file():
+            _shutil.copy2(_USERS_FILE, _RUNTIME_USERS)
+        else:
+            # Fichier absent ou dossier vide → créer un fichier vierge
+            _RUNTIME_USERS.write_text("users: {}\nsettings:\n  guest_mode: true\n")
     _USERS_FILE = _RUNTIME_USERS
 _SESSION_LOCK = threading.Lock()
 
@@ -117,7 +121,7 @@ def _delete_session(session_id: str) -> None:
 
 def load_users_config() -> dict:
     """Charge la configuration utilisateurs. Retourne un dict vide si absent."""
-    if _USERS_FILE.exists():
+    if _USERS_FILE.is_file():
         with open(_USERS_FILE, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {"users": {}, "settings": {}}
     return {"users": {}, "settings": {}}

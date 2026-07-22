@@ -3042,7 +3042,7 @@ def render_agent_scores_chart(asset: str):
 
 def _render_carry_config():
     """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
-    st.markdown(f"### 🎯 {t('tab_carry_cfg')}")
+    st.markdown(f"### {t('tab_carry_cfg')}")
     st.caption("Activez/désactivez les actifs et ajustez leurs paramètres. "
                "Les modifications sont sauvegardées dans `config/carry_assets.yaml`.")
 
@@ -3091,6 +3091,11 @@ def _render_carry_config():
 
     all_symbols = get_all_assets()
     edited = False
+
+    if not all_symbols:
+        st.warning("⚠️ Aucun actif trouvé dans `config/carry_assets.yaml`. "
+                   "Le fichier est-il déployé sur le serveur ? Faire `git pull origin v7-dev` puis `docker compose restart`.")
+        return
 
     for sym in all_symbols:
         params = assets.get(sym, {})

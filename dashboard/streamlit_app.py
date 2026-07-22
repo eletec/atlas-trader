@@ -915,6 +915,8 @@ def _save_settings(settings: dict) -> bool:
         settings_file = os.environ.get("SETTINGS_FILE")
         if settings_file:
             _cfg_path = Path(settings_file)
+        elif Path("/app/data").is_dir():
+            _cfg_path = Path("/app/data") / "settings.yaml"
         else:
             _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
         save_settings(settings, _cfg_path)

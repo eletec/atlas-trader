@@ -891,7 +891,7 @@ def render_marches_admin_tab() -> None:
         try:
             from utils.config import load_settings, save_settings
             from pathlib import Path
-            cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
+            cfg_path = Path("/app/data") / "settings.yaml" if Path("/app/data").is_dir() else Path(__file__).parent.parent / "config" / "settings.yaml"
             settings = load_settings(cfg_path)
             settings.setdefault("project", {})["active_assets"] = new_active
             save_settings(settings, cfg_path)

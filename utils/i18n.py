@@ -4883,6 +4883,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "tab_historique": {"fr": "Historique", "en": "History", "de": "Verlauf", "es": "Historial", "it": "Storico", "pt": "Histórico", "nl": "Geschiedenis", "zh": "历史"},
     "tab_decisions": {"fr": "Décisions IA", "en": "AI Decisions", "de": "KI-Entscheidungen", "es": "Decisiones IA", "it": "Decisioni IA", "pt": "Decisões IA", "nl": "AI-beslissingen", "zh": "AI决策"},
     "tab_config": {"fr": "Configuration", "en": "Configuration", "de": "Konfiguration", "es": "Configuración", "it": "Configurazione", "pt": "Configuração", "nl": "Configuratie", "zh": "配置"},
+    "tab_carry_cfg": {"fr": "🎯 Actifs Carry", "en": "🎯 Carry Assets", "de": "🎯 Carry-Assets", "es": "🎯 Activos Carry", "it": "🎯 Asset Carry", "pt": "🎯 Ativos Carry", "nl": "🎯 Carry-Activa", "zh": "🎯 套利资产"},
     "tab_monitoring": {"fr": "Monitoring", "en": "Monitoring", "de": "Überwachung", "es": "Monitoreo", "it": "Monitoraggio", "pt": "Monitoramento", "nl": "Monitoring", "zh": "监控"},
     "tab_canvas": {"fr": "Canvas DAG", "en": "DAG Canvas", "de": "DAG-Leinwand", "es": "Lienzo DAG", "it": "Canvas DAG", "pt": "Canvas DAG", "nl": "DAG-canvas", "zh": "DAG画布"},
     "tab_sources": {"fr": "Sources de données", "en": "Data Sources", "de": "Datenquellen", "es": "Fuentes de datos", "it": "Fonti dati", "pt": "Fontes de dados", "nl": "Gegevensbronnen", "zh": "数据源"},

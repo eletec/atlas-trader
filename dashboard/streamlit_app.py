@@ -3040,6 +3040,114 @@ def render_agent_scores_chart(asset: str):
                     key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
 
 
+def _render_carry_config():
+    """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
+    st.markdown(f"### 🎯 {t('tab_carry_cfg')}")
+    st.caption("Activez/désactivez les actifs et ajustez leurs paramètres. "
+               "Les modifications sont sauvegardées dans `config/carry_assets.yaml`.")
+
+    try:
+        from v7.core.asset_config import load_config, save_config, get_all_assets, get_global_params
+    except ImportError:
+        st.warning("Module asset_config non disponible. Déployez la dernière version.")
+        return
+
+    cfg = load_config()
+    assets = cfg.get("assets", {})
+    global_cfg = cfg.get("global", {})
+
+    # ── Global settings ──
+    with st.expander("🌐 Paramètres globaux", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            new_total = st.number_input("Capital total ($)", value=float(global_cfg.get("total_capital", 14000)), step=1000)
+        with col2:
+            new_max_exp = st.slider("Exposition max (% capital)", 10, 80, int(global_cfg.get("max_total_exposure_pct", 0.40) * 100)) / 100
+        with col3:
+            new_max_pos = st.number_input("Max positions simultanées", 1, 13, int(global_cfg.get("max_simultaneous_positions", 4)))
+        
+        col4, col5 = st.columns(2)
+        with col4:
+            new_rt_cost = st.number_input("Coût round-trip (bps)", 10, 100, int(global_cfg.get("round_trip_cost_bps", 48)))
+        with col5:
+            new_hold = st.number_input("Hold estimé (jours)", 14, 180, int(global_cfg.get("estimated_hold_days", 60)))
+
+        if st.button("💾 Sauvegarder paramètres globaux", key="save_global"):
+            cfg["global"] = {
+                "total_capital": new_total,
+                "max_total_exposure_pct": new_max_exp,
+                "max_simultaneous_positions": int(new_max_pos),
+                "round_trip_cost_bps": int(new_rt_cost),
+                "estimated_hold_days": int(new_hold),
+            }
+            save_config(cfg)
+            st.success("✅ Paramètres globaux sauvegardés.")
+            st.rerun()
+
+    st.markdown("---")
+
+    # ── Per-asset table ──
+    st.markdown("#### Actifs configurés")
+
+    all_symbols = get_all_assets()
+    edited = False
+
+    for sym in all_symbols:
+        params = assets.get(sym, {})
+        enabled = params.get("enabled", False)
+        icon = "🟢" if enabled else "⚫"
+
+        with st.expander(f"{icon} {sym}", expanded=enabled):
+            col1, col2, col3 = st.columns([1, 1, 1])
+
+            with col1:
+                new_enabled = st.checkbox("Activé", value=enabled, key=f"en_{sym}")
+                new_capital = st.number_input("Capital ($)", value=float(params.get("capital", 2000)), step=500, key=f"cap_{sym}")
+                new_fraction = st.slider("Fraction", 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
+
+            with col2:
+                new_cap = st.number_input("Safety cap ($)", value=int(params.get("safety_cap", 200)), step=50, key=f"scap_{sym}")
+                new_stress = st.slider("Stress loss (%)", 1.0, 20.0, float(params.get("stress_loss_pct", 0.10)) * 100, 1.0, key=f"stress_{sym}") / 100
+                new_leverage = st.selectbox("Levier", [1.0, 1.5, 2.0, 3.0], index=[1.0, 1.5, 2.0, 3.0].index(float(params.get("leverage", 1.0))) if float(params.get("leverage", 1.0)) in [1.0, 1.5, 2.0, 3.0] else 0, key=f"lev_{sym}")
+
+            with col3:
+                new_min_fund = st.number_input("Funding min (%/8h)", 0.0001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
+                new_max_hold = st.number_input("Max hold (jours)", 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
+                new_exit_h = st.number_input("Exit funding nég (h)", 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
+
+            # Détecter les changements
+            if (new_enabled != enabled or new_capital != params.get("capital", 2000) or
+                new_fraction != params.get("fraction", 0.50) or new_cap != params.get("safety_cap", 200) or
+                new_stress != params.get("stress_loss_pct", 0.10) or
+                new_leverage != params.get("leverage", 1.0) or
+                new_min_fund != params.get("min_funding", 0.00005) or
+                new_max_hold != params.get("max_hold_days", 14) or
+                new_exit_h != params.get("exit_after_hours", 72)):
+                if st.button(f"💾 Sauvegarder {sym}", key=f"save_{sym}"):
+                    cfg["assets"][sym] = {
+                        "enabled": new_enabled,
+                        "capital": new_capital,
+                        "fraction": new_fraction,
+                        "safety_cap": int(new_cap),
+                        "stress_loss_pct": new_stress,
+                        "max_hold_days": int(new_max_hold),
+                        "min_funding": new_min_fund,
+                        "max_funding": float(params.get("max_funding", 0.003)),
+                        "exit_after_hours": int(new_exit_h),
+                        "leverage": new_leverage,
+                    }
+                    save_config(cfg)
+                    st.success(f"✅ {sym} sauvegardé.")
+                    st.rerun()
+
+    # ── Résumé ──
+    st.markdown("---")
+    active_count = sum(1 for s in all_symbols if assets.get(s, {}).get("enabled", False))
+    st.metric("Actifs activés", f"{active_count}/{len(all_symbols)}")
+    st.caption("💡 Les DAGs sont créés uniquement pour les actifs activés. "
+               "Les modifications prennent effet au prochain redémarrage de l'API.")
+
+
 def _render_v4_config():
     """Configuration Funding Carry."""
     import yaml
@@ -3491,6 +3599,7 @@ def render_admin_panel():
         ('<i class="fas fa-chart-line"></i>',      "v4_monitor", t("tab_monitoring")),
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  t("tab_trades")),
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   t("tab_config")),
+        ('<i class="fas fa-coins"></i>',            "carry_cfg",  t("tab_carry_cfg")),
         # ── Infra & Monitoring ───────────────────────────────────────
         (None, None,      t("section_infra_mon")),
         ('<i class="fas fa-database"></i>',        "sources",    t("tab_sources")),
@@ -4461,6 +4570,9 @@ def render_admin_panel():
         pass  # le panneau historique gère son propre affichage
     elif _atab == "decisions":
         pass  # le panneau décisions gère son propre affichage
+    elif _atab == "carry_cfg":
+        _render_carry_config()
+        return
     elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
         # ── Configuration ──
         if _atab == "v4_admin":

@@ -473,10 +473,10 @@ class FundingCarryNode:
                                     signal = "open_carry"
                                     confidence = min(0.90, 0.50 + score * 2)
                                     reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                              f"→ {expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
+                                              f"→ net={net_expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
                                               f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
-                        reason = f"retour {expected_return*100:.1f}%/an < {economic_hurdle*100:.0f}% hurdle"
+                        reason = f"retour net {net_expected_return*100:.1f}%/an < {economic_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
             else:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"

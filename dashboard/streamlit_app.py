@@ -3060,7 +3060,7 @@ def _render_carry_config():
     with st.expander("🌐 Paramètres globaux", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
-            new_total = st.number_input("Capital total ($)", value=float(global_cfg.get("total_capital", 14000)), step=1000)
+            new_total = st.number_input("Capital total ($)", value=float(global_cfg.get("total_capital", 14000)), step=1000.0)
         with col2:
             new_max_exp = st.slider("Exposition max (% capital)", 10, 80, int(global_cfg.get("max_total_exposure_pct", 0.40) * 100)) / 100
         with col3:
@@ -3102,7 +3102,7 @@ def _render_carry_config():
 
             with col1:
                 new_enabled = st.checkbox("Activé", value=enabled, key=f"en_{sym}")
-                new_capital = st.number_input("Capital ($)", value=float(params.get("capital", 2000)), step=500, key=f"cap_{sym}")
+                new_capital = st.number_input("Capital ($)", value=float(params.get("capital", 2000)), step=500.0, key=f"cap_{sym}")
                 new_fraction = st.slider("Fraction", 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
 
             with col2:

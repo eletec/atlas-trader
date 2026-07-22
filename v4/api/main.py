@@ -62,25 +62,44 @@ async def _auto_schedule_demo():
     from v4.api.dag_store import load_all, get_defaults, save_all
     
     registry = DAGRegistry.instance()
-    existing_ids = {e.dag_id for e in registry.status()}
-    
-    # 1) Charger les DAGs persistés (source de vérité = canvas)
-    dags_to_schedule = load_all()
-    
-    # 2) Fallback: si aucun DAG persisté, utiliser les V7 par défaut et les sauver
-    if not dags_to_schedule:
-        logger = logging.getLogger("v4.api.main")
-        logger.info("No persisted DAGs — initializing with defaults")
-        dags_to_schedule = get_defaults()
-        save_all(dags_to_schedule)
-    
-    # 3) Scheduler tous les DAGs
     logger = logging.getLogger("v4.api.main")
+    
+    # 1) Charger les DAGs persistés
+    persisted = load_all()
+    persisted_ids = {d.dag_id for d in persisted}
+    
+    # 2) Déterminer les DAGs souhaités (depuis carry_assets.yaml)
+    desired_dags = get_defaults()  # V7_DAGS — lit get_active_assets()
+    desired_ids = {d.dag_id for d in desired_dags}
+    
+    # 3) Réconcilier : ajouter les nouveaux, retirer les anciens
+    dags_to_schedule: list = []
+    
+    for dag in desired_dags:
+        if dag.dag_id not in persisted_ids:
+            logger.info("New asset activated — adding DAG '%s'", dag.dag_id)
+        dags_to_schedule.append(dag)
+    
+    removed = persisted_ids - desired_ids
+    if removed:
+        logger.info("Assets deactivated — removing DAGs: %s", removed)
+    
+    # Sauver la nouvelle liste (écrase l'ancienne)
+    save_all(dags_to_schedule)
+    
+    # 4) Scheduler tous les DAGs souhaités
+    existing_ids = {e.dag_id for e in registry.status()}
     for dag in dags_to_schedule:
         if dag.dag_id not in existing_ids:
             cycle = getattr(dag, "cycle_s", None) or 28800
             registry.schedule(dag, cycle_s=cycle)
             logger.info("DAG '%s' scheduled (cycle=%ds)", dag.dag_id, cycle)
+    
+    # Arrêter les DAGs qui ne sont plus dans la config
+    for sid in existing_ids:
+        if sid not in desired_ids:
+            registry.stop(sid)
+            logger.info("DAG '%s' stopped (asset deactivated)", sid)
     
     # 2) V5 DAGs directionnels — désactivés (monitoring uniquement si besoin)
     # Note: V5 est remplacé par V7. Décommenter ci-dessous pour réactiver le monitoring.
@@ -88,12 +107,16 @@ async def _auto_schedule_demo():
     #     from v5.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
     #     for dag in (...) 
 
-    # 2) Tickers prix (Binance WS) pour les symboles par défaut
+    # Tickers prix (Binance WS) pour les actifs actifs
     try:
         from v4.api.routes.prices import ensure_ticker
-        for sym in ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]:
+        from v7.core.asset_config import get_active_assets
+        active = get_active_assets()
+        if not active:
+            active = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+        for sym in active:
             ensure_ticker(sym)
-        logging.getLogger("v4.api.main").info("Tickers prix démarrés (7 actifs)")
+        logging.getLogger("v4.api.main").info("Tickers prix démarrés (%d actifs)", len(active))
     except Exception as exc:
         logging.getLogger("v4.api.main").warning(f"Tickers prix non démarrés : {exc}")
 

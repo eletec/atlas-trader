@@ -17,6 +17,17 @@ load_dotenv()
 # Permet de surcharger le fichier settings via variable d'environnement
 # Ex: SETTINGS_FILE=/app/config/settings.gx10.yaml dans docker-compose.yml
 _SETTINGS_PATH = Path(os.environ.get("SETTINGS_FILE", "config/settings.yaml"))
+
+# Rediriger vers /app/data/ pour écriture (Docker mount read-only sur /app/src)
+_DATA_DIR = os.environ.get("V4_DATA_DIR", "/app/data")
+_RUNTIME_SETTINGS = Path(_DATA_DIR) / "settings.yaml"
+if str(_SETTINGS_PATH).startswith("config/") and Path(_DATA_DIR).exists():
+    # Bootstrap : copier du git-tracked vers /app/data/ au premier lancement
+    if not _RUNTIME_SETTINGS.exists() and _SETTINGS_PATH.exists():
+        import shutil
+        _RUNTIME_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_SETTINGS_PATH, _RUNTIME_SETTINGS)
+    _SETTINGS_PATH = _RUNTIME_SETTINGS
 _ASSETS_DIR = Path("config/assets")
 
 

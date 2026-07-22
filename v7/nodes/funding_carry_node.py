@@ -393,12 +393,12 @@ class FundingCarryNode:
                     reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
                 else:
-                    # ── Rendement annualisé corrigé (3 audits, 20/07/2026) ──
-                    # Le funding est déjà annualisé (×3×365).
-                    # Le basis est un écart ponctuel → on l'annualise avec l'hypothèse
-                    # de convergence sur max_hold_days (cash & carry standard).
-                    annual_basis = (basis_pct / self.max_hold_days) * 365
-                    expected_return = annual_funding + annual_basis
+                    # ── Rendement attendu (22/07/2026) ──
+                    # Le funding est annualisé, le basis est un filtre de qualité d'entrée.
+                    # Le basis N'EST PAS annualisé dans le rendement — il n'y a pas de
+                    # garantie de convergence, et un basis négatif ne doit pas annuler
+                    # le rendement du funding (GPT Round 2: expected_basis_return = 0).
+                    expected_return = annual_funding  # rendement du funding uniquement
                     
                     # ── Adaptive hurdle v2 (22/07/2026) ──
                     # Hurdle = max(plancher 2%, P50 funding annualisé 90j + 1%)

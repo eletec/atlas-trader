@@ -401,21 +401,22 @@ class FundingCarryNode:
                     expected_return = annual_funding  # rendement du funding uniquement
                     
                     # ── Economic hurdle (Round 4, 22/07/2026) ──
-                    # Hurdle = coûts annualisés + primes de risque + coût d'opportunité
-                    # N'est PLUS un percentile auto-référentiel du funding.
-                    round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage, 4 jambes)
-                    expected_hold = max(30, self.max_hold_days)  # au moins 30j
-                    annualized_cost = round_trip_cost * 365 / expected_hold
-                    
+                    # Hurdle = coût d'opportunité + primes de risque.
+                    # Les coûts de trading sont déduits du rendement, pas ajoutés au hurdle.
+                    # (sinon le hurdle devient 10-13% et rien ne passe)
                     alternative_return = 0.05   # SOFR ~5%
                     venue_risk = 0.01           # Binance 1%
                     stablecoin_risk = 0.005     # USDT 0.5%
                     operational_risk = 0.005    # 0.5%
-                    risk_premium = venue_risk + stablecoin_risk + operational_risk
+                    economic_hurdle = alternative_return + venue_risk + stablecoin_risk + operational_risk
+                    # ≈ 7% — le coût d'opportunité + risque minimum
                     
-                    economic_hurdle = alternative_return + risk_premium + annualized_cost
-                    # ≈ 5% + 2% + 5.8% = 12.8% pour expected_hold=30j
-                    # ≈ 5% + 2% + 2.9% = 9.9% pour expected_hold=60j
+                    # ── Coûts annualisés (déduits du rendement, pas du hurdle) ──
+                    round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage)
+                    # Utiliser la durée de détention réelle estimée (zone CLOSE = 60j)
+                    estimated_hold = 60
+                    annualized_cost = round_trip_cost * 365 / estimated_hold  # ~2.9%/an
+                    net_expected_return = expected_return - annualized_cost
                     
                     # ── Percentile filter (relatif, séparé du hurdle éco) ──
                     percentile_ok = True
@@ -424,7 +425,7 @@ class FundingCarryNode:
                         p60 = annualized_hist[int(len(annualized_hist) * 0.60)]
                         percentile_ok = annual_funding >= p60
                     
-                    if expected_return > economic_hurdle and percentile_ok:
+                    if net_expected_return > economic_hurdle and percentile_ok:
                             # ── Risk budgeting (GPT 5.5 + 3 audits) ──
                             # Stress loss spécifique par actif (pas uniforme 10%)
                             # Majors: basis plus stable → stress plus faible
@@ -436,7 +437,7 @@ class FundingCarryNode:
                             }
                             stress_loss_pct = _per_asset_stress.get(
                                 self.symbol.split("/")[0].upper(), 0.10)
-                            net_return = expected_return - economic_hurdle
+                            net_return = net_expected_return - economic_hurdle
                             score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                             raw_size = self.capital * self.fraction * min(score, 0.25)
                             
@@ -515,7 +516,7 @@ class FundingCarryNode:
                         elif days_held > 30:
                             # DERISK: fermer si le forward funding ne justifie plus la position
                             forward_funding = funding_rate * periods_per_year
-                            exit_cost_annual = 0.0028 * (365 / max(days_held, 1))  # 28bps amortis
+                            exit_cost_annual = 0.0048 * (365 / max(days_held, 1))  # 48bps round-trip amortis
                             if forward_funding < economic_hurdle + exit_cost_annual:
                                 signal = "close_carry"
                                 self.state.position_open = False

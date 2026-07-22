@@ -213,8 +213,8 @@ def render_auth(cm=None) -> None:
         return
 
     cfg = load_users_config()
-    users: dict = cfg.get("users", {})
-    settings: dict = cfg.get("settings", {})
+    users: dict = cfg.get("users") or {}
+    settings: dict = cfg.get("settings") or {}
     expiry_days = int(settings.get("cookie_expiry_days", 7))
 
     # Garde-fou: si l'utilisateur est deja authentifie, ne jamais afficher
@@ -392,7 +392,7 @@ def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
 
     if submitted:
         if pyotp.TOTP(secret).verify(code, valid_window=1):
-            users = cfg.get("users", {})
+            users = cfg.get("users") or {}
             users[username]["totp_secret"] = secret
             users[username]["totp_enabled"] = True
             save_users_config(cfg)
@@ -430,7 +430,7 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
 
     import pyotp
 
-    users = cfg.get("users", {})
+    users = cfg.get("users") or {}
 
     # st.empty() : tout le formulaire TOTP est rendu dans ce slot.
     # Sur validation réussie → _totp_slot.empty() efface le slot AVANT st.rerun().
@@ -521,7 +521,7 @@ def render_users_admin() -> None:
     import streamlit as st
 
     cfg = load_users_config()
-    users: dict = cfg.get("users", {})
+    users: dict = cfg.get("users") or {}
     settings: dict = cfg.get("settings", {})
 
     st.markdown(

@@ -400,19 +400,31 @@ class FundingCarryNode:
                     # le rendement du funding (GPT Round 2: expected_basis_return = 0).
                     expected_return = annual_funding  # rendement du funding uniquement
                     
-                    # ── Adaptive hurdle v2 (22/07/2026) ──
-                    # Hurdle = max(plancher 2%, P50 funding annualisé 90j + 1%)
-                    # P50 (médiane) + 1% au lieu de P70 + 2% : moins restrictif
-                    if len(self._funding_rate_history) >= 15:
-                        annualized_history = [r * periods_per_year for r in self._funding_rate_history]
-                        annualized_history.sort()
-                        idx_50 = int(len(annualized_history) * 0.50)
-                        median_annual = annualized_history[min(idx_50, len(annualized_history) - 1)]
-                        adaptive_hurdle = max(0.02, median_annual + 0.01)
-                    else:
-                        adaptive_hurdle = 0.02  # pas assez d'historique → plancher bas
+                    # ── Economic hurdle (Round 4, 22/07/2026) ──
+                    # Hurdle = coûts annualisés + primes de risque + coût d'opportunité
+                    # N'est PLUS un percentile auto-référentiel du funding.
+                    round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage, 4 jambes)
+                    expected_hold = max(30, self.max_hold_days)  # au moins 30j
+                    annualized_cost = round_trip_cost * 365 / expected_hold
                     
-                    if expected_return > adaptive_hurdle:
+                    alternative_return = 0.05   # SOFR ~5%
+                    venue_risk = 0.01           # Binance 1%
+                    stablecoin_risk = 0.005     # USDT 0.5%
+                    operational_risk = 0.005    # 0.5%
+                    risk_premium = venue_risk + stablecoin_risk + operational_risk
+                    
+                    economic_hurdle = alternative_return + risk_premium + annualized_cost
+                    # ≈ 5% + 2% + 5.8% = 12.8% pour expected_hold=30j
+                    # ≈ 5% + 2% + 2.9% = 9.9% pour expected_hold=60j
+                    
+                    # ── Percentile filter (relatif, séparé du hurdle éco) ──
+                    percentile_ok = True
+                    if len(self._funding_rate_history) >= 30:
+                        annualized_hist = sorted([r * periods_per_year for r in self._funding_rate_history])
+                        p60 = annualized_hist[int(len(annualized_hist) * 0.60)]
+                        percentile_ok = annual_funding >= p60
+                    
+                    if expected_return > economic_hurdle and percentile_ok:
                             # ── Risk budgeting (GPT 5.5 + 3 audits) ──
                             # Stress loss spécifique par actif (pas uniforme 10%)
                             # Majors: basis plus stable → stress plus faible
@@ -424,7 +436,7 @@ class FundingCarryNode:
                             }
                             stress_loss_pct = _per_asset_stress.get(
                                 self.symbol.split("/")[0].upper(), 0.10)
-                            net_return = expected_return - adaptive_hurdle
+                            net_return = expected_return - economic_hurdle
                             score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                             raw_size = self.capital * self.fraction * min(score, 0.25)
                             
@@ -460,10 +472,10 @@ class FundingCarryNode:
                                     signal = "open_carry"
                                     confidence = min(0.90, 0.50 + score * 2)
                                     reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                              f"→ {expected_return*100:.1f}%/an (hurdle={adaptive_hurdle*100:.0f}%) | "
+                                              f"→ {expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
                                               f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
-                        reason = f"retour {expected_return*100:.1f}%/an < {adaptive_hurdle*100:.0f}% hurdle"
+                        reason = f"retour {expected_return*100:.1f}%/an < {economic_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
             else:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"
@@ -474,7 +486,8 @@ class FundingCarryNode:
                 # Short perp: on perd si perp monte vs spot, on gagne si perp baisse vs spot
                 basis_entry = (self.state.entry_perp - self.state.entry_spot) / self.state.entry_spot
                 basis_now = (perp_price - spot_price) / spot_price if perp_price > 0 else 0
-                unrealized_pct = basis_now - basis_entry  # positif = gain, négatif = perte
+                # LONG spot + SHORT perp → gain when basis CONTRACTS (Round 4 fix)
+                unrealized_pct = basis_entry - basis_now  # positif = gain, négatif = perte
                 unrealized_usd = unrealized_pct * self.state.entry_capital
                 
                 # Stop-loss : basis loss > 5% → close
@@ -503,12 +516,12 @@ class FundingCarryNode:
                             # DERISK: fermer si le forward funding ne justifie plus la position
                             forward_funding = funding_rate * periods_per_year
                             exit_cost_annual = 0.0028 * (365 / max(days_held, 1))  # 28bps amortis
-                            if forward_funding < adaptive_hurdle + exit_cost_annual:
+                            if forward_funding < economic_hurdle + exit_cost_annual:
                                 signal = "close_carry"
                                 self.state.position_open = False
                                 reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}j, "
                                           f"forward funding={forward_funding*100:.1f}%/an < "
-                                          f"hurdle+exit={(adaptive_hurdle+exit_cost_annual)*100:.1f}%/an")
+                                          f"hurdle+exit={(economic_hurdle+exit_cost_annual)*100:.1f}%/an")
                                 confidence = 0.75
                                 logger.warning("[%s] %s", self.node_id, reason)
                             else:

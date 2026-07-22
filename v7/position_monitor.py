@@ -453,10 +453,10 @@ class PositionMonitor:
                 logger.warning("PositionMonitor: entry_perp missing for %s → carry economics UNKNOWN", symbol)
                 return result
 
-            # Basis P&L
-            basis_entry = (entry_perp - entry_spot) / entry_spot if entry_spot > 0 else 0
-            basis_now = (current_perp - current_spot) / current_spot if current_spot > 0 else 0
-            basis_pnl = (basis_now - basis_entry) * size_usd
+            # Basis P&L (Round 4 fix, 22/07/2026)
+            # Position: LONG spot + SHORT perp → gains when basis CONTRACTS
+            # basis_entry > basis_now → gain (basis decreased)
+            basis_pnl = (basis_entry - basis_now) * size_usd
             result["basis_pnl"] = round(basis_pnl, 4)
 
             # Funding estimé (approximation : ~0.01%/8h moyen récent)

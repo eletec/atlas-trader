@@ -4630,7 +4630,7 @@ def render_admin_panel():
 </script>""", height=0)
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
-            st.success(f"✅ {t('config_saved')}")
+            st.success(t('config_saved'))
         else:
             _err = st.session_state.pop("_save_error", "inconnue")
             st.error(f"❌ {t('config_error')} — {_err}")

@@ -400,26 +400,17 @@ class FundingCarryNode:
                     annual_basis = (basis_pct / self.max_hold_days) * 365
                     expected_return = annual_funding + annual_basis
                     
-                    # ── Adaptive hurdle (Round 3 audit, 21/07/2026) ──
-                    # Hurdle = max(plancher éco, percentile 70% du funding annualisé 90j + 2%)
-                    # Le plancher économique = SOFR 5% + primes minimales 1% = 3% floor
-                    if len(self._funding_rate_history) >= 10:
+                    # ── Adaptive hurdle v2 (22/07/2026) ──
+                    # Hurdle = max(plancher 2%, P50 funding annualisé 90j + 1%)
+                    # P50 (médiane) + 1% au lieu de P70 + 2% : moins restrictif
+                    if len(self._funding_rate_history) >= 15:
                         annualized_history = [r * periods_per_year for r in self._funding_rate_history]
                         annualized_history.sort()
-                        idx_70 = int(len(annualized_history) * 0.70)
-                        percentile_70 = annualized_history[min(idx_70, len(annualized_history) - 1)]
-                        adaptive_hurdle = max(0.03, percentile_70 + 0.02)
+                        idx_50 = int(len(annualized_history) * 0.50)
+                        median_annual = annualized_history[min(idx_50, len(annualized_history) - 1)]
+                        adaptive_hurdle = max(0.02, median_annual + 0.01)
                     else:
-                        adaptive_hurdle = 0.03  # pas assez d'historique → plancher
-                    
-                    # Le percentile check existant devient redondant avec le hurdle adaptatif
-                    # → on le garde en filtre additionnel uniquement si l'historique est court
-                    if len(self._funding_rate_history) < 20:
-                        if not self._funding_in_top_percentile(funding_rate, pct=0.30, window_days=90):
-                            reason = (f"funding percentile trop bas (peu d'historique) | "
-                                      f"er={expected_return*100:.1f}%/an > hurdle={adaptive_hurdle*100:.0f}%")
-                            confidence = 0.4
-                            adaptive_hurdle = 999  # bloque
+                        adaptive_hurdle = 0.02  # pas assez d'historique → plancher bas
                     
                     if expected_return > adaptive_hurdle:
                             # ── Risk budgeting (GPT 5.5 + 3 audits) ──

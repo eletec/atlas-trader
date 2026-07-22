@@ -3116,7 +3116,7 @@ def _render_carry_config():
                 new_leverage = st.selectbox("Levier", [1.0, 1.5, 2.0, 3.0], index=[1.0, 1.5, 2.0, 3.0].index(float(params.get("leverage", 1.0))) if float(params.get("leverage", 1.0)) in [1.0, 1.5, 2.0, 3.0] else 0, key=f"lev_{sym}")
 
             with col3:
-                new_min_fund = st.number_input("Funding min (%/8h)", 0.0001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
+                new_min_fund = st.number_input("Funding min (%/8h)", 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
                 new_max_hold = st.number_input("Max hold (jours)", 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
                 new_exit_h = st.number_input("Exit funding nég (h)", 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
 

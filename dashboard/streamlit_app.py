@@ -3257,7 +3257,16 @@ def _render_backtest_v4():
         # ── Funding Carry Backtest ──
         st.caption("Backtest de la collecte de funding · Short Perp + Long Spot · Market-neutral")
         
-        symbol = st.selectbox(t("col_asset"), ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
+        # Charger les actifs depuis carry_assets.yaml
+        try:
+            from v7.core.asset_config import get_active_assets
+            _bt_assets = get_active_assets()
+            if not _bt_assets:
+                _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+        except Exception:
+            _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+        
+        symbol = st.selectbox(t("col_asset"), _bt_assets)
         days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
         
         col1, col2 = st.columns(2)

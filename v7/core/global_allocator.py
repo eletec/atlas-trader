@@ -25,16 +25,31 @@ MAX_SIMULTANEOUS_POSITIONS = 4     # max 4 simultaneous carries
 TOTAL_CAPITAL = 14_000             # 7 × $2,000
 
 # ── Per-asset safety caps (same as FundingCarryNode) ─────────────────────────
-SAFETY_CAPS: dict[str, float] = {
-    "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
-    "XRP": 200, "ADA": 150, "DOGE": 100,
-}
+# ── Per-asset safety caps (loaded from config or defaults) ──────────────────
+def _load_safety_caps() -> dict[str, float]:
+    try:
+        from v7.core.asset_config import get_all_assets, get_asset_params
+        caps = {}
+        for sym in get_all_assets():
+            coin = sym.split("/")[0].upper()
+            caps[coin] = float(get_asset_params(sym).get("safety_cap", 200))
+        return caps
+    except Exception:
+        pass
+    return {
+        "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
+        "XRP": 200, "ADA": 150, "DOGE": 100,
+    }
+
+SAFETY_CAPS: dict[str, float] = _load_safety_caps()
 
 # ── Per-asset stress loss (same as FundingCarryNode) ─────────────────────────
 ASSET_STRESS_LOSS: dict[str, float] = {
     "BTC": 0.04, "ETH": 0.04,
     "SOL": 0.08, "BNB": 0.08,
     "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12,
+    "AVAX": 0.10, "LINK": 0.10, "DOT": 0.10,
+    "LTC": 0.06, "NEAR": 0.12, "SUI": 0.12,
 }
 
 

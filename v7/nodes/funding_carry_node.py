@@ -427,27 +427,38 @@ class FundingCarryNode:
                     
                     if net_expected_return > economic_hurdle and percentile_ok:
                             # ── Risk budgeting (GPT 5.5 + 3 audits) ──
-                            # Stress loss spécifique par actif (pas uniforme 10%)
-                            # Majors: basis plus stable → stress plus faible
-                            # Alts: basis plus volatile → stress plus élevé
-                            _per_asset_stress = {
-                                "BTC": 0.04, "ETH": 0.04,   # majors : 4% stress
-                                "SOL": 0.08, "BNB": 0.08,   # mid    : 8% stress
-                                "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12,  # alts : 12% stress
-                            }
-                            stress_loss_pct = _per_asset_stress.get(
-                                self.symbol.split("/")[0].upper(), 0.10)
+                            # ── Risk budgeting — stress loss par actif (depuis config ou fallback) ──
+                            try:
+                                from v7.core.asset_config import get_asset_params
+                                _cfg = get_asset_params(self.symbol)
+                                stress_loss_pct = float(_cfg.get("stress_loss_pct", 0.10))
+                            except Exception:
+                                _per_asset_stress = {
+                                    "BTC": 0.04, "ETH": 0.04,
+                                    "SOL": 0.08, "BNB": 0.08,
+                                    "XRP": 0.12, "ADA": 0.12, "DOGE": 0.12,
+                                    "AVAX": 0.10, "LINK": 0.10, "DOT": 0.10,
+                                    "LTC": 0.06, "NEAR": 0.12, "SUI": 0.12,
+                                }
+                                stress_loss_pct = _per_asset_stress.get(
+                                    self.symbol.split("/")[0].upper(), 0.10)
                             net_return = net_expected_return - economic_hurdle
                             score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                             raw_size = self.capital * self.fraction * min(score, 0.25)
                             
-                            # ── Safety caps ──
-                            safety_caps = {
-                                "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
-                                "XRP": 200, "ADA": 150, "DOGE": 100,
-                            }
-                            coin = self.symbol.split("/")[0].upper()
-                            max_size = safety_caps.get(coin, 200)
+                            # ── Safety caps (depuis config ou fallback) ──
+                            try:
+                                _cfg = get_asset_params(self.symbol)
+                                max_size = float(_cfg.get("safety_cap", 200))
+                            except Exception:
+                                safety_caps = {
+                                    "BTC": 400, "ETH": 300, "SOL": 200, "BNB": 200,
+                                    "XRP": 200, "ADA": 150, "DOGE": 100,
+                                    "AVAX": 150, "LINK": 150, "DOT": 150,
+                                    "LTC": 200, "NEAR": 100, "SUI": 100,
+                                }
+                                coin = self.symbol.split("/")[0].upper()
+                                max_size = safety_caps.get(coin, 200)
                             min_size = 50
                             
                             size_usd = min(raw_size, max_size)

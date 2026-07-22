@@ -29,7 +29,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backtest_v7_node")
 
-SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+# ── Charger les actifs depuis la config ──
+try:
+    from v7.core.asset_config import get_active_assets, get_all_assets
+    SYMBOLS = get_active_assets()
+    ALL_SYMBOLS = get_all_assets()
+    if not SYMBOLS:
+        SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+    logger.info("Loaded %d active assets from config", len(SYMBOLS))
+except Exception:
+    SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
+    ALL_SYMBOLS = SYMBOLS
 
 
 def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
@@ -209,11 +219,11 @@ def main():
     parser.add_argument("--capital", type=float, default=2000)
     args = parser.parse_args()
 
-    symbols = SYMBOLS if args.symbol == "ALL" else [args.symbol]
+    symbols = ALL_SYMBOLS if args.symbol == "ALL" else (SYMBOLS if args.symbol == "ACTIVE" else [args.symbol])
 
     print("=" * 80)
     print("ATLAS V7 — Backtest (FundingCarryNode + prix spot/perp réels)")
-    print(f"Days: {args.days} | Capital: ${args.capital:,.0f}/asset | Staking: 5%/an sur idle")
+    print(f"Symbols: {len(symbols)} actifs | Days: {args.days} | Capital: ${args.capital:,.0f}/asset | Staking: 5%/an sur idle")
     print("=" * 80)
 
     results = []

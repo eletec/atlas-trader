@@ -1,0 +1,170 @@
+# Atlas Trader — Configuration des actifs Funding Carry
+# Chaque actif peut être activé/désactivé et paramétré individuellement.
+# Les DAGs sont créés uniquement pour les actifs activés (enabled: true).
+
+assets:
+  BTC/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 400
+    stress_loss_pct: 0.04        # 4% — major, basis stable
+    max_hold_days: 14
+    min_funding: 0.00005         # 0.005%/8h
+    max_funding: 0.003           # 0.3%/8h
+    exit_after_hours: 72
+    leverage: 2.0                # pour Margin Monitor
+
+  ETH/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 300
+    stress_loss_pct: 0.04
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 2.0
+
+  SOL/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 200
+    stress_loss_pct: 0.08        # 8% — mid cap
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.5
+
+  BNB/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 200
+    stress_loss_pct: 0.08
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.5
+
+  XRP/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 200
+    stress_loss_pct: 0.12        # 12% — alt
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  ADA/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 150
+    stress_loss_pct: 0.12
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  DOGE/USDT:
+    enabled: true
+    capital: 2000
+    fraction: 0.50
+    safety_cap: 100
+    stress_loss_pct: 0.12
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  # ── Candidats additionnels (désactivés par défaut) ──
+  AVAX/USDT:
+    enabled: false
+    capital: 2000
+    fraction: 0.40
+    safety_cap: 150
+    stress_loss_pct: 0.10
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  LINK/USDT:
+    enabled: false
+    capital: 2000
+    fraction: 0.40
+    safety_cap: 150
+    stress_loss_pct: 0.10
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  DOT/USDT:
+    enabled: false
+    capital: 2000
+    fraction: 0.40
+    safety_cap: 150
+    stress_loss_pct: 0.10
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  LTC/USDT:
+    enabled: false
+    capital: 2000
+    fraction: 0.40
+    safety_cap: 200
+    stress_loss_pct: 0.06
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.5
+
+  NEAR/USDT:
+    enabled: false
+    capital: 2000
+    fraction: 0.35
+    safety_cap: 100
+    stress_loss_pct: 0.12
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+  SUI/USDT:
+    enabled: false
+    capital: 2000
+    fraction: 0.35
+    safety_cap: 100
+    stress_loss_pct: 0.12
+    max_hold_days: 14
+    min_funding: 0.00005
+    max_funding: 0.003
+    exit_after_hours: 72
+    leverage: 1.0
+
+# ── Global settings ──
+global:
+  total_capital: 14000            # somme des capitaux des actifs activés
+  max_total_exposure_pct: 0.40   # 40% max en carry
+  max_simultaneous_positions: 4
+  round_trip_cost_bps: 48        # 40 fees + 8 slippage
+  estimated_hold_days: 60        # pour l'annualisation des coûts
+  staking_annual: 0.05           # 5%/an sur idle USDT

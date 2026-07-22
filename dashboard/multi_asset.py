@@ -416,7 +416,7 @@ function poll(){{
 setInterval(poll,3000);
 poll();
 </script>
-</body></html>""", height=170)
+</body></html>""", height=320, scrolling=False)
 
 
 

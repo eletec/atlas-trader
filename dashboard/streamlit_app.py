@@ -3122,9 +3122,16 @@ def _render_carry_config():
                 new_min_fund = st.number_input(t("carry_min_funding"), 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
                 new_max_hold = st.number_input(t("carry_max_hold"), 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
                 new_exit_h = st.number_input(t("carry_exit_hours"), 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
-                new_icon_url = st.text_input("🔗 Logo URL", value=params.get("icon_url", ""), placeholder="https://... (optionnel)", key=f"icon_{sym}")
+                # Logo upload local
+                current_logo = params.get("icon_url", "")
+                logo_preview = Path("/app/data/logos") / current_logo if current_logo else None
+                if logo_preview and logo_preview.exists():
+                    st.image(str(logo_preview), width=24)
+                new_logo_file = st.file_uploader("📷 Logo", type=["png","svg","jpg","webp"], key=f"logo_{sym}",
+                                                help="Logo officiel 16×16 — sauvegardé localement")
 
-            # Détecter les changements
+            # Détecter les changements (logo file traité séparément)
+            logo_changed = new_logo_file is not None
             if (new_enabled != enabled or new_capital != params.get("capital", 2000) or
                 new_fraction != params.get("fraction", 0.50) or new_cap != params.get("safety_cap", 200) or
                 new_stress != params.get("stress_loss_pct", 0.10) or
@@ -3132,8 +3139,18 @@ def _render_carry_config():
                 new_min_fund != params.get("min_funding", 0.00005) or
                 new_max_hold != params.get("max_hold_days", 14) or
                 new_exit_h != params.get("exit_after_hours", 72) or
-                new_icon_url != params.get("icon_url", "")):
+                logo_changed):
                 if st.button(f"{t('carry_save_asset_btn')} {sym}", key=f"save_{sym}"):
+                    # Sauvegarder le logo
+                    logo_filename = params.get("icon_url", "")
+                    if logo_changed and new_logo_file is not None:
+                        logos_dir = Path("/app/data/logos")
+                        logos_dir.mkdir(parents=True, exist_ok=True)
+                        ext = new_logo_file.name.rsplit(".", 1)[-1] if "." in new_logo_file.name else "png"
+                        logo_filename = f"{sym.replace('/', '_').lower()}.{ext}"
+                        with open(logos_dir / logo_filename, "wb") as f:
+                            f.write(new_logo_file.getbuffer())
+                    
                     cfg["assets"][sym] = {
                         "enabled": new_enabled,
                         "capital": new_capital,
@@ -3145,7 +3162,7 @@ def _render_carry_config():
                         "max_funding": float(params.get("max_funding", 0.003)),
                         "exit_after_hours": int(new_exit_h),
                         "leverage": new_leverage,
-                        "icon_url": new_icon_url,
+                        "icon_url": logo_filename,
                     }
                     save_config(cfg)
                     st.success(t("carry_save_asset_ok").format(sym=sym))

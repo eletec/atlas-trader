@@ -46,21 +46,25 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Picto de l'actif : URL custom dans carry_assets.yaml > cercle coloré."""
-    # Chercher une icône custom dans la config
-    icon_url = ""
+    """Picto de l'actif : logo local > cercle coloré fallback."""
+    # Chercher un logo local dans /app/data/logos/
     try:
         from v7.core.asset_config import get_asset_params
+        from pathlib import Path as _IPath
+        import base64 as _b64
         params = get_asset_params(asset)
-        icon_url = params.get("icon_url", "")
+        logo_file = params.get("icon_url", "")
+        if logo_file:
+            logo_path = _IPath("/app/data/logos") / logo_file
+            if logo_path.exists():
+                ext = logo_path.suffix.lower()
+                mime = "image/svg+xml" if ext == ".svg" else ("image/webp" if ext == ".webp" else "image/png")
+                data = _b64.b64encode(logo_path.read_bytes()).decode()
+                return (f'<img src="data:{mime};base64,{data}" width="16" height="16" '
+                        f'style="vertical-align:middle;border-radius:50%;">')
     except Exception:
         pass
 
-    if icon_url:
-        fallback = _fallback_icon_html(asset).replace("'", "\\'")
-        return (f'<img src="{icon_url}" width="16" height="16" '
-                f'style="vertical-align:middle;border-radius:50%;" '
-                f'onerror="this.outerHTML=\'{fallback}\'">')
     return _fallback_icon_html(asset)
 
 

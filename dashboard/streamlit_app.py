@@ -3122,6 +3122,7 @@ def _render_carry_config():
                 new_min_fund = st.number_input(t("carry_min_funding"), 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
                 new_max_hold = st.number_input(t("carry_max_hold"), 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
                 new_exit_h = st.number_input(t("carry_exit_hours"), 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
+                new_icon_url = st.text_input("🔗 Logo URL", value=params.get("icon_url", ""), placeholder="https://... (optionnel)", key=f"icon_{sym}")
 
             # Détecter les changements
             if (new_enabled != enabled or new_capital != params.get("capital", 2000) or
@@ -3130,7 +3131,8 @@ def _render_carry_config():
                 new_leverage != params.get("leverage", 1.0) or
                 new_min_fund != params.get("min_funding", 0.00005) or
                 new_max_hold != params.get("max_hold_days", 14) or
-                new_exit_h != params.get("exit_after_hours", 72)):
+                new_exit_h != params.get("exit_after_hours", 72) or
+                new_icon_url != params.get("icon_url", "")):
                 if st.button(f"{t('carry_save_asset_btn')} {sym}", key=f"save_{sym}"):
                     cfg["assets"][sym] = {
                         "enabled": new_enabled,
@@ -3143,6 +3145,7 @@ def _render_carry_config():
                         "max_funding": float(params.get("max_funding", 0.003)),
                         "exit_after_hours": int(new_exit_h),
                         "leverage": new_leverage,
+                        "icon_url": new_icon_url,
                     }
                     save_config(cfg)
                     st.success(t("carry_save_asset_ok").format(sym=sym))

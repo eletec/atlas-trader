@@ -278,6 +278,7 @@ def _update_carry_config(assets: list[dict[str, Any]]) -> None:
             "max_funding": 0.003,
             "exit_after_hours": 72,
             "leverage": 1.0,
+            "icon_url": "",  # à remplir manuellement avec le logo officiel
             "_scanner_spot_vol_24h": asset["spot_volume_24h_usd"],
             "_scanner_perp_vol_24h": asset["perp_volume_24h_usd"],
             "_scanner_oi": asset["open_interest_usd"],

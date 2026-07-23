@@ -46,10 +46,28 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Picto coloré avec l'initiale du token (fonctionne pour TOUS les actifs)."""
+    """Picto de l'actif : URL custom dans carry_assets.yaml > cercle coloré."""
+    # Chercher une icône custom dans la config
+    icon_url = ""
+    try:
+        from v7.core.asset_config import get_asset_params
+        params = get_asset_params(asset)
+        icon_url = params.get("icon_url", "")
+    except Exception:
+        pass
+
+    if icon_url:
+        fallback = _fallback_icon_html(asset).replace("'", "\\'")
+        return (f'<img src="{icon_url}" width="16" height="16" '
+                f'style="vertical-align:middle;border-radius:50%;" '
+                f'onerror="this.outerHTML=\'{fallback}\'">')
+    return _fallback_icon_html(asset)
+
+
+def _fallback_icon_html(asset: str) -> str:
+    """Cercle coloré avec les initiales du token."""
     ticker = asset.split("/")[0]
     initial = ticker[:2].upper() if len(ticker) > 1 else ticker[0].upper()
-    # Hash simple du ticker → couleur déterministe
     hue = (sum(ord(c) * (i + 1) for i, c in enumerate(ticker)) * 37) % 360
     return (f'<span style="display:inline-block;width:16px;height:16px;'
             f'background:hsl({hue},55%,45%);color:#fff;border-radius:50%;'

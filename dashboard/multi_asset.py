@@ -46,50 +46,19 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Emoji / lettre pour chaque actif (monochrome)."""
-    icons = {
-        "BTC/USDT":  "₿",
-        "ETH/USDT":  "⟠",
-        "SOL/USDT":  "◎",
-        "BNB/USDT":  "🔶",
-        "XRP/USDT":  "✕",
-        "ADA/USDT":  "🔵",
-        "DOGE/USDT": "🐕",
-        "AVAX/USDT": "🔺",
-        "LINK/USDT": "🔗",
-        "DOT/USDT":  "⬤",
-        "LTC/USDT":  "Ł",
-        "XAU/USD":   "🥇",
-        "XAG/USD":   "🥈",
-        "WTI/USD":   "🛢️",
-        "EUR/USD":   "€",
-        "GBP/USD":   "£",
-        "USD/JPY":   "¥",
-        # ── Scanner additions (43 actifs) ──
-        "TRX/USDT":  "Ⓣ", "BCH/USDT":  "Ⓑ", "XLM/USDT":  "✴",
-        "TON/USDT":  "Ⓣ", "SUI/USDT":  "Ⓢ", "APT/USDT":  "Ⓐ",
-        "NEAR/USDT": "Ⓝ", "ATOM/USDT": "⚛", "ETC/USDT":  "Ⓔ",
-        "FIL/USDT":  "Ⓕ", "HBAR/USDT": "Ⓗ", "ICP/USDT":  "Ⓘ",
-        "INJ/USDT":  "ⓘ", "ARB/USDT":  "ⓐ", "OP/USDT":   "Ⓞ",
-        "AAVE/USDT": "ⓐ", "UNI/USDT":  "Ⓤ", "PENDLE/USDT":"Ⓟ",
-        "RUNE/USDT": "Ⓡ", "SEI/USDT":  "Ⓢ", "TIA/USDT":  "Ⓣ",
-        "STRK/USDT": "Ⓢ", "ALGO/USDT": "ⓐ", "VET/USDT":  "Ⓥ",
-        "THETA/USDT":"Ⓣ", "EGLD/USDT": "Ⓔ", "CRV/USDT":  "Ⓒ",
-        "COMP/USDT": "Ⓒ", "LDO/USDT":  "Ⓛ", "ENA/USDT":  "Ⓔ",
-        "JUP/USDT":  "ⓙ", "DYDX/USDT": "Ⓓ", "GRT/USDT":  "Ⓖ",
-        "ONDO/USDT": "Ⓞ", "OM/USDT":   "Ⓞ", "IMX/USDT":  "Ⓘ",
-        "WLD/USDT":  "ⓦ", "TAO/USDT":  "Ⓣ", "RENDER/USDT":"Ⓡ",
-        "SHIB/USDT": "Ⓢ", "PEPE/USDT": "Ⓟ", "FLOKI/USDT":"Ⓕ",
-        "BONK/USDT": "Ⓑ", "WIF/USDT":  "Ⓦ",
-        "RE/USDT":   "Ⓡ", "AERO/USDT": "ⓐ", "BANK/USDT": "Ⓑ",
-        "KITE/USDT": "Ⓚ", "ZEC/USDT":  "Ⓩ", "DEXE/USDT": "Ⓓ",
-        "ERA/USDT":  "Ⓔ", "ZAMA/USDT": "Ⓩ", "OPN/USDT":  "Ⓞ",
-        "XAUT/USDT": "Ⓧ", "PAXG/USDT": "Ⓟ", "WLFI/USDT": "Ⓦ",
-        "GRAM/USDT": "Ⓖ", "MIRA/USDT": "Ⓜ", "RIF/USDT":  "Ⓡ",
-        "PUMP/USDT": "Ⓟ", "EPIC/USDT": "Ⓔ", "TRUMP/USDT":"Ⓣ",
-        "TLM/USDT":  "Ⓣ", "NIGHT/USDT":"Ⓝ",
+    """Icône officielle de la crypto (SVG depuis CDN cryptocurrency-icons)."""
+    ticker = asset.split("/")[0].lower()
+    # Certains tickers ont des noms différents dans la librairie
+    alias = {
+        "1000pepe": "pepe", "1000shib": "shib", "1000bonk": "bonk",
+        "1000floki": "floki", "1000lunc": "lunc",
     }
-    return icons.get(asset, "◈")
+    slug = alias.get(ticker, ticker)
+    url = (f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons"
+           f"/master/svg/color/{slug}.svg")
+    return (f'<img src="{url}" width="16" height="16" '
+            f'style="vertical-align:middle;border-radius:50%;" '
+            f'onerror="this.outerHTML=\'<b style=font-size:10px;vertical-align:middle>◆</b>\'">')
 
 
 def _action_badge(action: str) -> str:

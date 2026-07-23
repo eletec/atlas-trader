@@ -46,7 +46,7 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Emoji / lettre pour chaque actif."""
+    """Emoji / lettre pour chaque actif (monochrome)."""
     icons = {
         "BTC/USDT":  "₿",
         "ETH/USDT":  "⟠",
@@ -58,12 +58,36 @@ def _asset_icon(asset: str) -> str:
         "AVAX/USDT": "🔺",
         "LINK/USDT": "🔗",
         "DOT/USDT":  "⬤",
+        "LTC/USDT":  "Ł",
         "XAU/USD":   "🥇",
         "XAG/USD":   "🥈",
         "WTI/USD":   "🛢️",
         "EUR/USD":   "€",
         "GBP/USD":   "£",
         "USD/JPY":   "¥",
+        # ── Scanner additions (43 actifs) ──
+        "TRX/USDT":  "Ⓣ", "BCH/USDT":  "Ⓑ", "XLM/USDT":  "✴",
+        "TON/USDT":  "Ⓣ", "SUI/USDT":  "Ⓢ", "APT/USDT":  "Ⓐ",
+        "NEAR/USDT": "Ⓝ", "ATOM/USDT": "⚛", "ETC/USDT":  "Ⓔ",
+        "FIL/USDT":  "Ⓕ", "HBAR/USDT": "Ⓗ", "ICP/USDT":  "Ⓘ",
+        "INJ/USDT":  "ⓘ", "ARB/USDT":  "ⓐ", "OP/USDT":   "Ⓞ",
+        "AAVE/USDT": "ⓐ", "UNI/USDT":  "Ⓤ", "PENDLE/USDT":"Ⓟ",
+        "RUNE/USDT": "Ⓡ", "SEI/USDT":  "Ⓢ", "TIA/USDT":  "Ⓣ",
+        "STRK/USDT": "Ⓢ", "ALGO/USDT": "ⓐ", "VET/USDT":  "Ⓥ",
+        "THETA/USDT":"Ⓣ", "EGLD/USDT": "Ⓔ", "CRV/USDT":  "Ⓒ",
+        "COMP/USDT": "Ⓒ", "LDO/USDT":  "Ⓛ", "ENA/USDT":  "Ⓔ",
+        "JUP/USDT":  "ⓙ", "DYDX/USDT": "Ⓓ", "GRT/USDT":  "Ⓖ",
+        "ONDO/USDT": "Ⓞ", "OM/USDT":   "Ⓞ", "IMX/USDT":  "Ⓘ",
+        "WLD/USDT":  "ⓦ", "TAO/USDT":  "Ⓣ", "RENDER/USDT":"Ⓡ",
+        "SHIB/USDT": "Ⓢ", "PEPE/USDT": "Ⓟ", "FLOKI/USDT":"Ⓕ",
+        "BONK/USDT": "Ⓑ", "WIF/USDT":  "Ⓦ",
+        "RE/USDT":   "Ⓡ", "AERO/USDT": "ⓐ", "BANK/USDT": "Ⓑ",
+        "KITE/USDT": "Ⓚ", "ZEC/USDT":  "Ⓩ", "DEXE/USDT": "Ⓓ",
+        "ERA/USDT":  "Ⓔ", "ZAMA/USDT": "Ⓩ", "OPN/USDT":  "Ⓞ",
+        "XAUT/USDT": "Ⓧ", "PAXG/USDT": "Ⓟ", "WLFI/USDT": "Ⓦ",
+        "GRAM/USDT": "Ⓖ", "MIRA/USDT": "Ⓜ", "RIF/USDT":  "Ⓡ",
+        "PUMP/USDT": "Ⓟ", "EPIC/USDT": "Ⓔ", "TRUMP/USDT":"Ⓣ",
+        "TLM/USDT":  "Ⓣ", "NIGHT/USDT":"Ⓝ",
     }
     return icons.get(asset, "◈")
 
@@ -520,6 +544,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
     'border-right:1px solid ' + NAV_BDR + ';' +
     'transition:width .2s ease;overflow:hidden;box-sizing:border-box;}}' +
     '#atlas-sidenav.c{{width:' + MINI + 'px;}}' +
+    '#atlas-sidenav-scroll{{flex:1;overflow-y:auto;overflow-x:hidden;}}' +
     '#ant{{display:flex;align-items:center;justify-content:flex-end;height:34px;' +
     'padding:0 10px;cursor:pointer;border-bottom:1px solid ' + ANT_BDR + ';' +
     'color:' + ANT_FG + ';font-size:17px;user-select:none;flex-shrink:0;}}' +
@@ -551,6 +576,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
 
   nav.innerHTML =
     '<div id="ant" title="Réduire / Agrandir">&#9776;</div>' +
+    '<div id="atlas-sidenav-scroll">' +
     ITEMS.map(function(it) {{
       if (it.section) {{
         return '<div class="ans">' + it.section + '</div>';
@@ -559,7 +585,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
       return '<a class="' + cls + '" href="' + navUrl(it.key) + '" title="' + it.text + '">' +
              '<span class="ani-ic">' + it.icon + '</span>' +
              '<span class="ani-tx">' + it.text + '</span></a>';
-    }}).join('');
+    }}).join('') + '</div>';
 
   if (existing) existing.replaceWith(nav);
   else d.body.appendChild(nav);

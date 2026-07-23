@@ -4208,6 +4208,16 @@ def render_admin_panel():
         except Exception as e:
             st.warning(f"{t('reflections_error')}: {e}")
 
+        # ── Latest AI Analysis (per-asset LLM results) ──
+        st.markdown("---")
+        st.markdown(f"#### 🧠 {t('latest_ai_title')}")
+        assets = _active_assets_v4() or ["BTC/USDT"]
+        if assets:
+            for asset in assets:
+                _render_ai_analysis(asset, expanded=False)
+        else:
+            st.caption(t('no_transactions'))
+
     elif _atab == "backup":  # Sauvegarde / Restauration
         st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)
         st.info(t("bkp_info"))
@@ -4950,11 +4960,7 @@ def main():
                 render_portfolio(portfolio)
 
             def _render_global():
-                """Vue consolidée : PnL tous actifs + analyses IA."""
-                st.markdown("### 🧠 " + t("latest_ai_title"))
-                assets = _active_assets_v4() or ["BTC/USDT"]
-                for asset in assets:
-                    _render_ai_analysis(asset, expanded=False)
+                """Vue consolidée : PnL tous actifs."""
                 st.markdown("---")
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)

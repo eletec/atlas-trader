@@ -3162,23 +3162,6 @@ def _render_carry_config():
         with col_v2:
             if st.button("🚀 Apply & Reload DAGs", type="primary"):
                 _reload_dags()
-                    import urllib.request, json
-                    req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
-                    with urllib.request.urlopen(req, timeout=10) as resp:
-                        result = json.loads(resp.read())
-                    added = result.get("added", [])
-                    removed = result.get("removed", [])
-                    running = result.get("running", 0)
-                    if isinstance(running, list):
-                        running = len(running)
-                    msg = f"✅ {running} DAGs actifs"
-                    if added:
-                        msg += f" — +{len(added)} ajoutés"
-                    if removed:
-                        msg += f" — -{len(removed)} retirés"
-                    st.success(msg)
-                except Exception as exc:
-                    st.error(f"Échec reload DAGs — {exc}")
     
     # ── Global settings ──
     with st.expander(t("carry_global_params"), expanded=False):

@@ -105,7 +105,60 @@ async def stop_dag(dag_id: str):
     return {"dag_id": dag_id, "status": "stopped"}
 
 
-@router.post("/restart-demo")
+@router.post("/reload")
+async def reload_dags_from_config():
+    """Re-synchronise les DAGs avec carry_assets.yaml (actifs activés).
+    
+    Ajoute les DAGs pour les nouveaux actifs activés, retire ceux désactivés.
+    Ne nécessite pas de redémarrage complet de l'API.
+    """
+    from v4.api.dag_registry import DAGRegistry
+    from v4.api.dag_store import load_all, get_defaults, save_all
+    
+    registry = DAGRegistry.instance()
+    
+    # 1) DAGs souhaités (depuis carry_assets.yaml)
+    desired = get_defaults()  # V7_DAGS — lit get_active_assets()
+    desired_ids = {d.dag_id for d in desired}
+    desired_map = {d.dag_id: d for d in desired}
+    
+    # 2) DAGs actuels (persistés + running)
+    persisted = load_all()
+    persisted_ids = {d.dag_id for d in persisted}
+    running_ids = {e.dag_id for e in registry.status()}
+    
+    added, removed, restarted = [], [], []
+    
+    # Ajouter les nouveaux
+    for dag_id in desired_ids - running_ids:
+        if dag_id in desired_map:
+            try:
+                cycle = getattr(desired_map[dag_id], "cycle_s", None) or 28800
+                registry.schedule(desired_map[dag_id], cycle_s=cycle)
+                added.append(dag_id)
+                logger.info("Reload: added DAG '%s'", dag_id)
+            except Exception as exc:
+                logger.warning("Reload: failed to add %s: %s", dag_id, exc)
+    
+    # Retirer les DAGs qui ne sont plus dans la config
+    for dag_id in running_ids - desired_ids:
+        try:
+            registry.stop(dag_id)
+            removed.append(dag_id)
+            logger.info("Reload: removed DAG '%s'", dag_id)
+        except Exception as exc:
+            logger.warning("Reload: failed to remove %s: %s", dag_id, exc)
+    
+    # Sauvegarder la nouvelle liste
+    save_all(list(desired))
+    
+    return {
+        "status": "ok",
+        "desired": len(desired),
+        "added": added,
+        "removed": removed,
+        "running": len(registry.status()),
+    }
 async def restart_demo_dags():
     """Redémarre les DAGs depuis le store persisté (ou V7 par défaut)."""
     from v4.api.dag_store import load_all, get_defaults, save_all

@@ -3148,6 +3148,30 @@ def _render_carry_config():
                     st.success(t("carry_save_asset_ok").format(sym=sym))
                     st.rerun()
 
+    # ── Apply to API ──
+    st.markdown("---")
+    col_a1, col_a2 = st.columns([3, 1])
+    with col_a1:
+        st.caption("⚡ Les modifications ci-dessus prennent effet immédiatement pour la config. "
+                   "Pour appliquer aux DAGs (créer/supprimer), utiliser le bouton →")
+    with col_a2:
+        if st.button("🚀 Apply & Reload DAGs", type="primary", help="Re-synchronise les DAGs avec la config active"):
+            try:
+                import urllib.request, json
+                req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    result = json.loads(resp.read())
+                added = result.get("added", [])
+                removed = result.get("removed", [])
+                msg = f"✅ {len(result.get('running',0))} DAGs actifs"
+                if added:
+                    msg += f" — +{len(added)} ajoutés"
+                if removed:
+                    msg += f" — -{len(removed)} retirés"
+                st.success(msg)
+            except Exception as exc:
+                st.error(f"Échec reload DAGs — {exc}. L'API est-elle en ligne ?")
+
     # ── Résumé ──
     st.markdown("---")
     active_count = sum(1 for s in all_symbols if assets.get(s, {}).get("enabled", False))

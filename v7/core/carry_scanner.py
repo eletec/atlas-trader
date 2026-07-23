@@ -307,14 +307,11 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
             pass
 
         optimized[sym] = opt
-        # Flag de viabilité
-        # Un actif est viable si le funding est positif au moins 5% du temps
-        # OU si on n'a pas pu fetcher les données (on garde par défaut)
-        has_data = "_optimized_funding_positive_pct" in opt
-        funding_ok = not has_data or opt.get("_optimized_funding_positive_pct", 0) >= 5
-        vol_ok = opt.get("_optimized_volatility_30d_pct", 999) < 150
-        stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.25
-        opt["_optimized_viable"] = funding_ok and vol_ok and stress_ok
+        # Flag de viabilité : seulement basé sur la volatilité (le reste = backtest)
+        # On ne filtre PAS sur le funding car il varie trop à court terme
+        vol_ok = opt.get("_optimized_volatility_30d_pct", 0) < 200  # pas d'extrême volatilité
+        stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.30  # pas de stress loss > 30%
+        opt["_optimized_viable"] = vol_ok and stress_ok
 
     logger.info("Optimisation terminée pour %d actifs", len(optimized))
     return optimized

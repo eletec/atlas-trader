@@ -3049,17 +3049,31 @@ def _render_carry_config():
                 n=scanner_meta.get('total_eligible', '?'),
                 t=scanner_meta.get('total_spot_pairs', '?')))
     with col_scan2:
-        if st.button(t("carry_scan_btn"), help=t("carry_scan_help")):
-            with st.spinner(t("carry_scanning")):
-                try:
-                    from v7.core.carry_scanner import scan_carry_universe
-                    from v7.core.asset_config import reload_config
-                    scan_carry_universe(save=True)
-                    reload_config()
-                    st.success(t("carry_scan_ok"))
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"{t('carry_scan_error')} — {exc}")
+        col_scan_btn1, col_scan_btn2 = st.columns(2)
+        with col_scan_btn1:
+            if st.button(t("carry_scan_btn"), help=t("carry_scan_help")):
+                with st.spinner(t("carry_scanning")):
+                    try:
+                        from v7.core.carry_scanner import scan_carry_universe
+                        from v7.core.asset_config import reload_config
+                        scan_carry_universe(save=True)
+                        reload_config()
+                        st.success(t("carry_scan_ok"))
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"{t('carry_scan_error')} — {exc}")
+        with col_scan_btn2:
+            if st.button("📊 Optimize", help="Calcule les paramètres optimisés (volatilité, funding, OI) sans les appliquer"):
+                with st.spinner("Calcul des paramètres optimisés..."):
+                    try:
+                        from v7.core.carry_scanner import scan_carry_universe
+                        from v7.core.asset_config import reload_config
+                        scan_carry_universe(save=True, optimize=True)
+                        reload_config()
+                        st.success("📊 Paramètres optimisés calculés (voir champs _optimized_*)")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Optimisation échouée — {exc}")
 
     # ── Global settings ──
     with st.expander(t("carry_global_params"), expanded=False):

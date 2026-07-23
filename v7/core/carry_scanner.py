@@ -214,12 +214,101 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
                 len(results), len(candidates))
 
     if save:
-        _update_carry_config(results)
+        _update_carry_config(results, optimize=optimize)
 
     return results
 
 
-def _update_carry_config(assets: list[dict[str, Any]]) -> None:
+def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """
+    Calcule les paramètres optimisés pour chaque actif à partir des données réelles.
+    
+    Retourne un dict {symbol: {_optimized_capital, _optimized_stress_loss_pct, ...}}
+    qui sera stocké dans carry_assets.yaml sans écraser les valeurs actuelles.
+    """
+    try:
+        import ccxt
+        import numpy as np
+    except ImportError:
+        logger.warning("CCXT ou numpy non disponible — optimisation ignorée")
+        return {}
+
+    perp_ex = ccxt.binanceusdm({"enableRateLimit": True})
+    optimized: dict[str, dict[str, Any]] = {}
+
+    total_spot_vol = sum(a.get("spot_volume_24h_usd", 0) for a in assets) or 1
+    total_oi = sum(a.get("open_interest_usd", 0) for a in assets) or 1
+
+    for i, asset in enumerate(assets):
+        sym = asset["symbol"]
+        perp_sym = asset["perp_symbol"]
+        logger.info("Optimisation %s (%d/%d)...", sym, i + 1, len(assets))
+
+        opt: dict[str, Any] = {}
+
+        # ── 1. Capital proportionnel au volume spot ──
+        spot_vol = asset.get("spot_volume_24h_usd", 0)
+        vol_share = spot_vol / total_spot_vol if total_spot_vol > 0 else 1.0 / len(assets)
+        opt["_optimized_capital"] = max(500, min(5000, int(14000 * vol_share)))
+
+        # ── 2. Stress loss basé sur la volatilité 30j ──
+        try:
+            ohlcv = perp_ex.fetch_ohlcv(perp_sym, "1d", limit=30)
+            if ohlcv and len(ohlcv) >= 7:
+                closes = [c[4] for c in ohlcv if c[4] is not None]
+                if len(closes) >= 7:
+                    returns = np.diff(np.log(closes))
+                    vol_30d = float(np.std(returns) * np.sqrt(365) * 100)  # volatilité annualisée %
+                    opt["_optimized_stress_loss_pct"] = round(max(0.03, min(0.25, vol_30d / 100)), 2)
+                    opt["_optimized_volatility_30d_pct"] = round(vol_30d, 1)
+        except Exception as e:
+            logger.debug("Volatilité %s: %s", sym, e)
+
+        # ── 3. Min funding basé sur l'historique ──
+        try:
+            funding_rates = perp_ex.fetch_funding_rate_history(perp_sym, limit=90)
+            if funding_rates and len(funding_rates) >= 10:
+                rates = [f["fundingRate"] for f in funding_rates if f.get("fundingRate") is not None]
+                rates = [float(r) for r in rates]
+                if rates:
+                    pct_positive = sum(1 for r in rates if r > 0) / len(rates)
+                    opt["_optimized_min_funding"] = round(max(0.00001, min(0.005, 
+                        float(np.median([r for r in rates if r > 0]) or 0.0001) * 0.5)), 5)
+                    opt["_optimized_funding_positive_pct"] = round(pct_positive * 100, 1)
+                    opt["_optimized_funding_samples"] = len(rates)
+        except Exception as e:
+            logger.debug("Funding %s: %s", sym, e)
+
+        # ── 4. Safety cap basé sur l'open interest ──
+        oi = asset.get("open_interest_usd", 0)
+        oi_share = oi / total_oi if total_oi > 0 else 1.0 / len(assets)
+        opt["_optimized_safety_cap"] = max(50, min(500, int(opt.get("_optimized_capital", 2000) * max(0.05, oi_share))))
+
+        # ── 5. Max hold days basé sur la persistance du funding ──
+        try:
+            if funding_rates and len(funding_rates) >= 30:
+                # Compter les séquences consécutives de funding positif
+                signs = [1 if float(f["fundingRate"]) > 0 else 0 for f in funding_rates]
+                max_streak = 0
+                current_streak = 0
+                for s in signs:
+                    if s == 1:
+                        current_streak += 1
+                        max_streak = max(max_streak, current_streak)
+                    else:
+                        current_streak = 0
+                opt["_optimized_max_hold_days"] = max(7, min(30, max_streak * 8 // 24))  # 8h intervals → days
+                opt["_optimized_funding_max_streak"] = max_streak
+        except Exception:
+            pass
+
+        optimized[sym] = opt
+
+    logger.info("Optimisation terminée pour %d actifs", len(optimized))
+    return optimized
+
+
+def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -> None:
     """Met à jour carry_assets.yaml avec les actifs scannés (préserve les params existants)."""
     config_path = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
     # Priorité runtime writable
@@ -235,6 +324,12 @@ def _update_carry_config(assets: list[dict[str, Any]]) -> None:
 
     existing_assets = existing.get("assets", {})
     global_cfg = existing.get("global", {})
+
+    # Calculer les paramètres optimisés si demandé
+    optimized_params: dict = {}
+    if optimize:
+        logger.info("Calcul des paramètres optimisés...")
+        optimized_params = compute_optimized_params(assets)
 
     # Fusion : nouveaux actifs ajoutés avec defaults, existants préservés
     new_assets: dict = {}
@@ -284,8 +379,11 @@ def _update_carry_config(assets: list[dict[str, Any]]) -> None:
             "_scanner_oi": asset["open_interest_usd"],
             "_scanner_multiplier": asset["multiplier"],
             "_scanner_contract_size": asset["contract_size"],
-            "_scanner_last_scan": None,  # sera rempli par le scheduler
+            "_scanner_last_scan": None,
         }
+        # Fusionner les params optimisés (ne modifie pas les valeurs actuelles)
+        if sym in optimized_params:
+            new_assets[sym].update(optimized_params[sym])
 
     cfg = {
         "global": global_cfg,
@@ -312,8 +410,9 @@ def _update_carry_config(assets: list[dict[str, Any]]) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     save_flag = "--save" in sys.argv
+    optimize_flag = "--optimize" in sys.argv
 
-    universe = scan_carry_universe(save=save_flag)
+    universe = scan_carry_universe(save=save_flag, optimize=optimize_flag)
 
     # Affichage
     print(f"\n{'='*80}")

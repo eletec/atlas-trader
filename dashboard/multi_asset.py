@@ -37,10 +37,12 @@ def _active_assets() -> list[str]:
     except Exception:
         pass
 
-    # 2) Fallback config
+    # 2) Fallback: carry_assets.yaml (via v7.core.asset_config)
     try:
-        from utils.config import get_active_assets
-        return get_active_assets()
+        from v7.core.asset_config import get_active_assets as _cfg_active
+        assets = _cfg_active()
+        if assets:
+            return assets
     except Exception:
         return ["BTC/USDT"]
 

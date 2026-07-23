@@ -259,6 +259,24 @@ def main():
             print(f"  {sym:<12} ERROR: {r['error']}")
 
     elapsed = time.time() - t0
+
+    # ── Sauvegarder les résultats en JSON pour l'optimiseur ──
+    try:
+        import json as _json
+        out_path = Path("/app/data/backtest_results.json")
+        summary = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "days": args.days,
+            "capital_per_asset": args.capital,
+            "symbols": symbols,
+            "results": results,
+        }
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            _json.dump(summary, f, default=str)
+    except Exception:
+        pass
+
     valid = [r for r in results if "error" not in r and r.get("trades", 0) > 0]
     staking_only = [r for r in results if "error" not in r and r.get("trades", 0) == 0]
     total_pnl = sum(r["pnl"] for r in results if "error" not in r)

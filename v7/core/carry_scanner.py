@@ -307,11 +307,34 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
             pass
 
         optimized[sym] = opt
-        # Flag de viabilité : seulement basé sur la volatilité (le reste = backtest)
-        # On ne filtre PAS sur le funding car il varie trop à court terme
-        vol_ok = opt.get("_optimized_volatility_30d_pct", 0) < 200  # pas d'extrême volatilité
-        stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.30  # pas de stress loss > 30%
+        # Flag de viabilité : volatilité + backtest (si disponible)
+        vol_ok = opt.get("_optimized_volatility_30d_pct", 0) < 200
+        stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.30
         opt["_optimized_viable"] = vol_ok and stress_ok
+
+    # ── Intégrer les résultats du backtest (source de vérité ultime) ──
+    try:
+        import json as _json
+        bt_path = Path("/app/data/backtest_results.json")
+        if bt_path.exists():
+            with open(bt_path) as f:
+                bt = _json.load(f)
+            bt_results = {r["symbol"]: r for r in bt.get("results", []) if "error" not in r}
+            for sym, opt_data in optimized.items():
+                bt_r = bt_results.get(sym, {})
+                trades = bt_r.get("trades", -1)
+                max_dd = bt_r.get("max_dd_pct", 0)
+                sharpe = bt_r.get("sharpe", 0)
+                # Backtest-validé : au moins 1 trade, MaxDD < 20%, Sharpe >= 0
+                bt_viable = trades > 0 and max_dd > -20 and sharpe >= 0
+                if trades >= 0:  # backtest a tourné pour cet actif
+                    opt_data["_optimized_viable"] = opt_data.get("_optimized_viable", True) and bt_viable
+                    opt_data["_bt_trades"] = trades
+                    opt_data["_bt_max_dd"] = round(max_dd, 2)
+                    opt_data["_bt_sharpe"] = round(sharpe, 2)
+            logger.info("Backtest results merged: %d assets", len(bt_results))
+    except Exception as e:
+        logger.debug("Backtest merge skipped: %s", e)
 
     logger.info("Optimisation terminée pour %d actifs", len(optimized))
     return optimized

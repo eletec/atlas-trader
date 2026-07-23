@@ -3115,7 +3115,9 @@ def _render_carry_config():
                     except Exception as exc:
                         st.error(f"{t('carry_scan_error')} — {exc}")
         with col_scan_btn2:
-            if st.button("📊 Optimize", help="Calcule les paramètres optimisés (volatilité, funding, OI) sans les appliquer"):
+            if st.button("📊 Optimize", 
+                         help="⚠️ Prérequis : lancer le backtest d'abord (🧪 Backtest → ALL → 365j). "
+                              "L'Optimizer lit les résultats du backtest + calcule capital/volatilité/stress loss optimisés."):
                 with st.spinner("Calcul des paramètres optimisés..."):
                     try:
                         from v7.core.carry_scanner import scan_carry_universe
@@ -3132,7 +3134,8 @@ def _render_carry_config():
                   if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
     not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
     if not_optimized and len(not_optimized) == len(assets):
-        st.info("📊 Lancez **Optimize** après un backtest pour calculer la viabilité (backtest + volatilité)")
+        st.info("📊 **Optimize** nécessite un backtest préalable (🧪 Backtest → ALL → 365j). "
+                "Il lit les résultats et calcule les paramètres optimisés par actif.")
     elif non_viable:
         st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (backtest: 0 trades, MaxDD extrême, ou Sharpe négatif)")
         col_q1, col_q2, col_q3 = st.columns(3)

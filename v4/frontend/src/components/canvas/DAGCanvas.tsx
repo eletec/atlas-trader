@@ -300,8 +300,8 @@ export function DAGCanvas() {
           {showDagMenu && (
             <>
               <div className="fixed inset-0 z-50" onClick={() => setShowDagMenu(false)} />
-              <div className="absolute top-full left-0 mt-1 w-52 rounded-lg border border-canvas-border bg-canvas-node shadow-2xl py-1 z-50">
-                <div className="px-2 py-1 text-[9px] font-semibold text-slate-500 uppercase">Flows</div>
+              <div className="absolute top-full left-0 mt-1 w-52 rounded-lg border border-canvas-border bg-canvas-node shadow-2xl py-1 z-50 max-h-[60vh] overflow-y-auto">
+                <div className="px-2 py-1 text-[9px] font-semibold text-slate-500 uppercase sticky top-0 bg-canvas-node">Flows</div>
 
                 {dags.map((d) => (
                   <div key={d.id} className={`flex items-center group ${d.id === activeId ? "bg-canvas-accent/10" : ""}`}>
@@ -343,7 +343,7 @@ export function DAGCanvas() {
                   </div>
                 ))}
 
-                <div className="border-t border-canvas-border mt-1 pt-1 px-2 flex gap-1">
+                <div className="border-t border-canvas-border mt-1 pt-1 px-2 flex gap-1 sticky bottom-0 bg-canvas-node">
                   <input
                     value={newDagName}
                     onChange={(e) => setNewDagName(e.target.value)}

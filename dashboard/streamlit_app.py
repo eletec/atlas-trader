@@ -3644,14 +3644,14 @@ def render_admin_panel():
         (None, None,      t("section_infra_mon")),
         ('<i class="fas fa-database"></i>',        "sources",    t("tab_sources")),
         ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset")),
-        ('<i class="fas fa-flask"></i>',           "backtest",   t("tab_backtest")),
         ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging_v4")),
         ('<i class="fas fa-history"></i>',         "historique", t("tab_historique")),
         ('<i class="fas fa-brain"></i>',           "decisions",   t("tab_decisions")),
         ('<i class="fas fa-lightbulb"></i>',       "reflections", t("tab_reflections")),
         ('<i class="fas fa-user"></i>',            "users",      t("tab_users_v4")),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup_v4")),
+        ('<i class="fas fa-flask"></i>',           "backtest",   t("tab_backtest")),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset")),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [

@@ -3124,7 +3124,7 @@ def _render_carry_config():
 
     # ── Quick actions ──
     non_viable = [sym for sym, p in assets.items() 
-                  if p.get("_optimized_viable") is False and not p.get("locked", False)]
+                  if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
     not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
     if not_optimized and len(not_optimized) == len(assets):
         st.info("📊 Lancez **Optimize** après un backtest pour calculer la viabilité (backtest + volatilité)")
@@ -3144,7 +3144,10 @@ def _render_carry_config():
             if st.button("📊 Appliquer optimisés", type="secondary", 
                          help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
                 count = _apply_optimized_params(cfg)
-                st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
+                if count > 0:
+                    st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
+                else:
+                    st.info("📊 Aucun changement — les params sont déjà optimaux ou aucun _optimized_* trouvé")
                 st.rerun()
         with col_q3:
             if st.button("🚀 Apply & Reload DAGs", type="primary"):
@@ -3157,7 +3160,10 @@ def _render_carry_config():
             if st.button("📊 Appliquer optimisés", type="secondary",
                          help="Copie les params _optimized_* vers les params réels"):
                 count = _apply_optimized_params(cfg)
-                st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
+                if count > 0:
+                    st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
+                else:
+                    st.info("📊 Aucun changement — les params sont déjà optimaux ou aucun _optimized_* trouvé")
                 st.rerun()
         with col_v2:
             if st.button("🚀 Apply & Reload DAGs", type="primary"):

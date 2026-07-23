@@ -3209,7 +3209,7 @@ def _render_carry_config():
         return
 
     # Collapse/Expand all (à droite)
-    col_exp1, col_exp2, col_spacer = st.columns([1, 1, 6])
+    col_spacer, col_exp2, col_exp1 = st.columns([6, 1, 1])
     with col_exp1:
         if st.button(t("carry_expand_all"), key="expand_all"):
             st.session_state["_carry_expand"] = True
@@ -3224,10 +3224,13 @@ def _render_carry_config():
         params = assets.get(sym, {})
         enabled = params.get("enabled", False)
         icon = "🟢" if enabled else "⚫"
+        # Ticker initials for title
+        ticker = sym.split("/")[0]
+        initials = f"[{ticker[:2].upper()}]" if len(ticker) > 1 else f"[{ticker[0].upper()}]"
         # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
         expanded = expand_default if expand_default is not None else enabled
 
-        with st.expander(f"{icon} {sym}", expanded=expanded):
+        with st.expander(f"{icon} {initials} {sym}", expanded=expanded):
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:

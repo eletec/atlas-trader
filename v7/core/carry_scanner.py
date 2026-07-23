@@ -273,9 +273,11 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
                 rates = [float(r) for r in rates]
                 if rates:
                     pct_positive = sum(1 for r in rates if r > 0) / len(rates)
+                    pct_above_hurdle = sum(1 for r in rates if r * 3 * 365 >= 0.07) / len(rates)
                     opt["_optimized_min_funding"] = round(max(0.00001, min(0.005, 
                         float(np.median([r for r in rates if r > 0]) or 0.0001) * 0.5)), 5)
                     opt["_optimized_funding_positive_pct"] = round(pct_positive * 100, 1)
+                    opt["_optimized_funding_above_hurdle_pct"] = round(pct_above_hurdle * 100, 1)
                     opt["_optimized_funding_samples"] = len(rates)
         except Exception as e:
             logger.debug("Funding %s: %s", sym, e)
@@ -304,12 +306,11 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
             pass
 
         optimized[sym] = opt
-        # Flag de viabilité
-        opt["_optimized_viable"] = (
-            opt.get("_optimized_funding_positive_pct", 0) > 0 and
-            opt.get("_optimized_stress_loss_pct", 0) < 0.30 and
-            opt.get("_optimized_volatility_30d_pct", 999) < 200
-        )
+        # Flag de viabilité (critères backtest-validés)
+        funding_ok = opt.get("_optimized_funding_above_hurdle_pct", 0) > 0  # au moins 1× au-dessus du hurdle 7%
+        vol_ok = opt.get("_optimized_volatility_30d_pct", 999) < 150
+        stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.25
+        opt["_optimized_viable"] = funding_ok and vol_ok and stress_ok
 
     logger.info("Optimisation terminée pour %d actifs", len(optimized))
     return optimized

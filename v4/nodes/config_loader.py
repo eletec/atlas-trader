@@ -21,7 +21,15 @@ _cache_mtime: float = 0.0
 def _get_settings() -> dict:
     """Charge settings.yaml + secrets.yaml avec cache (invalidation si fichier modifié)."""
     global _cache, _cache_mtime
-    settings_path = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
+    # Priorité : /app/data/ (writable, persistant) > config/ (git-tracked, read-only)
+    _git_settings = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
+    _data_settings = Path("/app/data") / "settings.yaml"
+    # Bootstrap : copier vers /app/data/ au premier lancement
+    if not _data_settings.exists() and _git_settings.exists():
+        import shutil
+        _data_settings.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_git_settings, _data_settings)
+    settings_path = _data_settings if _data_settings.exists() else _git_settings
     secrets_path = Path(__file__).resolve().parent.parent.parent / "config" / "secrets.yaml"
     try:
         mtime = settings_path.stat().st_mtime if settings_path.exists() else 0

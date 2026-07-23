@@ -243,6 +243,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
     for i, asset in enumerate(assets):
         sym = asset["symbol"]
         perp_sym = asset["perp_symbol"]
+        perp_id = asset.get("perp_id", perp_sym.replace("/", "").replace(":", ""))
         logger.info("Optimisation %s (%d/%d)...", sym, i + 1, len(assets))
 
         opt: dict[str, Any] = {}
@@ -267,7 +268,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
 
         # ── 3. Min funding basé sur l'historique ──
         try:
-            funding_rates = perp_ex.fetch_funding_rate_history(perp_sym, limit=90)
+            funding_rates = perp_ex.fetch_funding_rate_history(perp_id, limit=90)
             if funding_rates and len(funding_rates) >= 10:
                 rates = [f["fundingRate"] for f in funding_rates if f.get("fundingRate") is not None]
                 rates = [float(r) for r in rates]
@@ -306,10 +307,11 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
             pass
 
         optimized[sym] = opt
-        # Flag de viabilité (critères corrélés au backtest)
-        # Un actif est viable si le funding est positif au moins 10% du temps
-        # ET la volatilité n'est pas extrême
-        funding_ok = opt.get("_optimized_funding_positive_pct", 0) >= 10
+        # Flag de viabilité
+        # Un actif est viable si le funding est positif au moins 5% du temps
+        # OU si on n'a pas pu fetcher les données (on garde par défaut)
+        has_data = "_optimized_funding_positive_pct" in opt
+        funding_ok = not has_data or opt.get("_optimized_funding_positive_pct", 0) >= 5
         vol_ok = opt.get("_optimized_volatility_30d_pct", 999) < 150
         stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.25
         opt["_optimized_viable"] = funding_ok and vol_ok and stress_ok

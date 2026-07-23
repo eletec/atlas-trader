@@ -3098,7 +3098,10 @@ def _render_carry_config():
                         result = json.loads(resp.read())
                     added = result.get("added", [])
                     removed = result.get("removed", [])
-                    msg = f"✅ {len(result.get('running',0))} DAGs actifs"
+                    running = result.get("running", 0)
+                    if isinstance(running, list):
+                        running = len(running)
+                    msg = f"✅ {running} DAGs actifs"
                     if added:
                         msg += f" — +{len(added)} ajoutés"
                     if removed:

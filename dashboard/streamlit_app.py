@@ -3127,9 +3127,9 @@ def _render_carry_config():
                   if p.get("_optimized_viable") is False and not p.get("locked", False)]
     not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
     if not_optimized and len(not_optimized) == len(assets):
-        st.info("📊 Lancez **Optimize** pour calculer la viabilité des actifs (volatilité, funding, OI)")
+        st.info("📊 Lancez **Optimize** après un backtest pour calculer la viabilité (backtest + volatilité)")
     elif non_viable:
-        st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (0% funding positif ou volatilité extrême)")
+        st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (backtest: 0 trades, MaxDD extrême, ou Sharpe négatif)")
         col_q1, col_q2, col_q3 = st.columns(3)
         with col_q1:
             if st.button(f"🛑 Désactiver les {len(non_viable)}", type="secondary"):

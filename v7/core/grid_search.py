@@ -32,6 +32,7 @@ COARSE_GRID = {
     "min_funding":    [0.00001, 0.00005, 0.0001],   # 0.001%, 0.005%, 0.01%
     "max_hold_days":  [7, 14, 30],
     "fraction":       [0.30, 0.50],
+    "economic_hurdle":[0.05, 0.07],                 # 5% (SOFR seul), 7% (standard)
 }
 
 def refine_grid(best_params: dict) -> dict[str, list]:
@@ -39,11 +40,13 @@ def refine_grid(best_params: dict) -> dict[str, list]:
     mf = best_params.get("min_funding", 0.00005)
     hold = best_params.get("max_hold_days", 14)
     frac = best_params.get("fraction", 0.50)
+    hurdle = best_params.get("economic_hurdle", 0.07)
     
     return {
-        "min_funding":   sorted(set([max(0.000005, mf * 0.5), mf, min(0.0005, mf * 2)])),
-        "max_hold_days": sorted(set([max(3, hold - 4), hold, min(60, hold + 7)])),
-        "fraction":      sorted(set([max(0.10, round(frac - 0.15, 2)), frac, min(1.0, round(frac + 0.15, 2))])),
+        "min_funding":    sorted(set([max(0.000005, mf * 0.5), mf, min(0.0005, mf * 2)])),
+        "max_hold_days":  sorted(set([max(3, hold - 4), hold, min(60, hold + 7)])),
+        "fraction":       sorted(set([max(0.10, round(frac - 0.15, 2)), frac, min(1.0, round(frac + 0.15, 2))])),
+        "economic_hurdle": sorted(set([max(0.03, hurdle - 0.02), hurdle, min(0.10, hurdle + 0.02)])),
     }
 
 # Métrique à optimiser : "sharpe", "pnl", "sortino", "calmar"

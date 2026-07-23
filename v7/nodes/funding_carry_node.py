@@ -99,8 +99,11 @@ class FundingCarryNode:
         self.fee_bps = fee_bps
         self.slippage_bps = slippage_bps
         
-        # Filtre de régime : volatilité 30j minimum pour entrer (via params DAG ou défaut)
+        # Filtre de regime : volatilite 30j minimum pour entrer (via params DAG ou defaut)
         self.min_volatility_30d = float(self.params.get("min_volatility_30d", 0.02))
+        
+        # Hurdle economique (configurable via grid search)
+        self.economic_hurdle = float(self.params.get("economic_hurdle", 0.07))
         
         self.state = FundingCarryState(symbol=symbol)
         self._funding_rate_history: list[float] = []  # MA 7j (~21 valeurs)
@@ -408,7 +411,8 @@ class FundingCarryNode:
                     venue_risk = 0.01           # Binance 1%
                     stablecoin_risk = 0.005     # USDT 0.5%
                     operational_risk = 0.005    # 0.5%
-                    economic_hurdle = alternative_return + venue_risk + stablecoin_risk + operational_risk
+                    default_hurdle = alternative_return + venue_risk + stablecoin_risk + operational_risk
+                    economic_hurdle = self.economic_hurdle if self.economic_hurdle != 0.07 else default_hurdle
                     # ≈ 7% — le coût d'opportunité + risque minimum
                     
                     # ── Coûts annualisés (déduits du rendement, pas du hurdle) ──

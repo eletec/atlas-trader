@@ -46,26 +46,42 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Picto de l'actif : logo local > cercle coloré fallback."""
-    # Chercher un logo local dans /app/data/logos/
+    """Picto de l'actif : logo local (upload) > logo git (images/assets/) > cercle coloré fallback."""
+    from pathlib import Path as _IPath
+    import base64 as _b64
+
+    ticker = asset.split("/")[0]
+
+    # 1) Logo uploadé dans /app/data/logos/ (icon_url dans la config)
     try:
         from v7.core.asset_config import get_asset_params
-        from pathlib import Path as _IPath
-        import base64 as _b64
         params = get_asset_params(asset)
         logo_file = params.get("icon_url", "")
         if logo_file:
             logo_path = _IPath("/app/data/logos") / logo_file
             if logo_path.exists():
-                ext = logo_path.suffix.lower()
-                mime = "image/svg+xml" if ext == ".svg" else ("image/webp" if ext == ".webp" else "image/png")
-                data = _b64.b64encode(logo_path.read_bytes()).decode()
-                return (f'<img src="data:{mime};base64,{data}" width="16" height="16" '
-                        f'style="vertical-align:middle;border-radius:50%;">')
+                return _img_b64(logo_path)
     except Exception:
         pass
 
+    # 2) Logo git-tracked dans images/assets/{TICKER}.svg
+    for ext in (".svg", ".png", ".webp", ".jpg"):
+        git_path = _IPath("/app/src/images/assets") / f"{ticker}{ext}"
+        if git_path.exists():
+            return _img_b64(git_path)
+
+    # 3) Fallback cercle coloré
     return _fallback_icon_html(asset)
+
+
+def _img_b64(path) -> str:
+    """Encode une image en data URI base64."""
+    import base64 as _b64
+    ext = path.suffix.lower()
+    mime = "image/svg+xml" if ext == ".svg" else ("image/webp" if ext == ".webp" else "image/png")
+    data = _b64.b64encode(path.read_bytes()).decode()
+    return (f'<img src="data:{mime};base64,{data}" width="16" height="16" '
+            f'style="vertical-align:middle;border-radius:50%;">')
 
 
 def _fallback_icon_html(asset: str) -> str:

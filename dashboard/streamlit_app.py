@@ -3035,9 +3035,9 @@ def _apply_optimized_params(cfg: dict) -> int:
         changed = False
         for opt_key, real_key in [("_optimized_capital", "capital"),
                                    ("_optimized_stress_loss_pct", "stress_loss_pct"),
-                                   ("_optimized_min_funding", "min_funding"),
                                    ("_optimized_safety_cap", "safety_cap"),
                                    ("_optimized_max_hold_days", "max_hold_days")]:
+            # Note: min_funding N'EST PAS appliqué — trop sensible, le défaut 0.005% est meilleur
             if opt_key in p:
                 cfg["assets"][sym][real_key] = p[opt_key]
                 changed = True

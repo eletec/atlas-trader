@@ -159,6 +159,9 @@ async def reload_dags_from_config():
         "removed": removed,
         "running": len(registry.status()),
     }
+
+
+@router.post("/restart-demo")
 async def restart_demo_dags():
     """Redémarre les DAGs depuis le store persisté (ou V7 par défaut)."""
     from v4.api.dag_store import load_all, get_defaults, save_all

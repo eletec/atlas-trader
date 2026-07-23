@@ -325,9 +325,11 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
                 trades = bt_r.get("trades", -1)
                 max_dd = bt_r.get("max_dd_pct", 0)
                 sharpe = bt_r.get("sharpe", 0)
-                # Backtest-validé : au moins 1 trade, MaxDD < 20%, Sharpe >= 0
-                bt_viable = trades > 0 and max_dd > -20 and sharpe >= 0
-                if trades >= 0:  # backtest a tourné pour cet actif
+                # Backtest-validé : au moins 1 trade, MaxDD > -50%, Sharpe >= 0 si >5 trades
+                bt_viable = trades > 0 and max_dd > -50
+                if trades > 5 and sharpe < 0:
+                    bt_viable = False  # sous-performance persistante
+                if trades >= 0:
                     opt_data["_optimized_viable"] = opt_data.get("_optimized_viable", True) and bt_viable
                     opt_data["_bt_trades"] = trades
                     opt_data["_bt_max_dd"] = round(max_dd, 2)

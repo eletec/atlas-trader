@@ -81,8 +81,6 @@ def run_backtest(symbol: str, days: int, capital: float, params: dict) -> dict:
         exit_after_hours=72,
         max_hold_days=params.get("max_hold_days", 14),
         stop_loss_pct=-0.05,
-        stress_loss_pct=params.get("stress_loss_pct", 0.10),
-        safety_cap=params.get("safety_cap", 200),
         params={"_backtest": True},
     )
 

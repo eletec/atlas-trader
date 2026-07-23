@@ -48,8 +48,8 @@ def grid_search_symbol(symbol: str, days: int, capital: float) -> dict:
     """Grid search pour un actif. Retourne les meilleurs params."""
     keys = list(PARAM_GRID.keys())
     values = list(PARAM_GRID.values())
-    best_score = -999
-    best_result = None
+    best_score = -999.0
+    best_result: dict | None = None
     results = []
 
     total_combos = 1
@@ -65,9 +65,12 @@ def grid_search_symbol(symbol: str, days: int, capital: float) -> dict:
             continue
 
         score = r.get(OBJECTIVE, 0)
-        results.append({"params": params, "score": score, "pnl": r["pnl"], "trades": r["trades"]})
+        pnl = r.get("pnl", 0)
+        results.append({"params": params, "score": score, "pnl": pnl, "trades": r["trades"]})
 
-        if score > best_score:
+        # Sharpe comme critere principal, PnL comme tiebreaker
+        best_pnl = best_result.get("pnl", -999) if best_result else -999
+        if score > best_score or (score == best_score and pnl > best_pnl):
             best_score = score
             best_result = r
 

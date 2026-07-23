@@ -155,6 +155,12 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
         fr = float(row["funding_rate"])
         spot_price = float(row["spot_price"])
         perp_price = float(row["perp_price"])
+        
+        # Ajuster le prix perp pour les contrats à multiplicateur (1000PEPE, etc.)
+        base = symbol.split("/")[0]
+        MULT = {"PEPE": 1000, "SHIB": 1000, "BONK": 1000, "FLOKI": 1000, "LUNC": 1000}
+        contract_mult = MULT.get(base, 1)
+        perp_price = perp_price / contract_mult
 
         result = node.run({
             "symbol": symbol,

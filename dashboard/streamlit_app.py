@@ -3079,14 +3079,33 @@ def _render_carry_config():
     non_viable = [sym for sym, p in assets.items() if p.get("_optimized_viable") is False]
     if non_viable:
         st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (0% funding positif ou volatilité extrême)")
-        if st.button(f"🛑 Désactiver les {len(non_viable)} actifs non viables", type="secondary"):
-            for sym in non_viable:
-                if sym in cfg.get("assets", {}):
-                    cfg["assets"][sym]["enabled"] = False
-            save_config(cfg)
-            reload_config()
-            st.success(f"✅ {len(non_viable)} actifs désactivés")
-            st.rerun()
+        col_q1, col_q2 = st.columns(2)
+        with col_q1:
+            if st.button(f"🛑 Désactiver les {len(non_viable)} actifs non viables", type="secondary"):
+                for sym in non_viable:
+                    if sym in cfg.get("assets", {}):
+                        cfg["assets"][sym]["enabled"] = False
+                save_config(cfg)
+                reload_config()
+                st.success(f"✅ {len(non_viable)} actifs désactivés")
+                st.rerun()
+        with col_q2:
+            if st.button("🚀 Apply & Reload DAGs", type="primary", help="Re-synchronise les DAGs avec la config active"):
+                try:
+                    import urllib.request, json
+                    req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        result = json.loads(resp.read())
+                    added = result.get("added", [])
+                    removed = result.get("removed", [])
+                    msg = f"✅ {len(result.get('running',0))} DAGs actifs"
+                    if added:
+                        msg += f" — +{len(added)} ajoutés"
+                    if removed:
+                        msg += f" — -{len(removed)} retirés"
+                    st.success(msg)
+                except Exception as exc:
+                    st.error(f"Échec reload DAGs — {exc}")
     
     # ── Global settings ──
     with st.expander(t("carry_global_params"), expanded=False):
@@ -3208,30 +3227,6 @@ def _render_carry_config():
                     save_config(cfg)
                     st.success(t("carry_save_asset_ok").format(sym=sym))
                     st.rerun()
-
-    # ── Apply to API ──
-    st.markdown("---")
-    col_a1, col_a2 = st.columns([3, 1])
-    with col_a1:
-        st.caption("⚡ Les modifications ci-dessus prennent effet immédiatement pour la config. "
-                   "Pour appliquer aux DAGs (créer/supprimer), utiliser le bouton →")
-    with col_a2:
-        if st.button("🚀 Apply & Reload DAGs", type="primary", help="Re-synchronise les DAGs avec la config active"):
-            try:
-                import urllib.request, json
-                req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    result = json.loads(resp.read())
-                added = result.get("added", [])
-                removed = result.get("removed", [])
-                msg = f"✅ {len(result.get('running',0))} DAGs actifs"
-                if added:
-                    msg += f" — +{len(added)} ajoutés"
-                if removed:
-                    msg += f" — -{len(removed)} retirés"
-                st.success(msg)
-            except Exception as exc:
-                st.error(f"Échec reload DAGs — {exc}. L'API est-elle en ligne ?")
 
     # ── Résumé ──
     st.markdown("---")

@@ -378,6 +378,12 @@ def render_global_live_prices() -> None:
 
     symbols_js = _json.dumps(dag_assets)
     pos_data_js = _json.dumps(pos_data)
+    
+    # Hauteur dynamique : ~4.5 cartes par ligne, ~90px par ligne, minimum 200px
+    cards_per_row = 4.5
+    row_h = 90
+    n_assets = len(dag_assets)
+    dyn_height = max(200, int((n_assets / cards_per_row + 0.5) * row_h))
 
     st.components.v1.html(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
@@ -445,7 +451,7 @@ function poll(){{
 setInterval(poll,3000);
 poll();
 </script>
-</body></html>""", height=320, scrolling=False)
+</body></html>""", height=dyn_height, scrolling=False)
 
 
 

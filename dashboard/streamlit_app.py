@@ -3127,12 +3127,26 @@ def _render_carry_config():
         st.warning(t("carry_no_assets"))
         return
 
+    # Collapse/Expand all
+    col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 4])
+    with col_exp1:
+        if st.button("📂 Expand all", key="expand_all"):
+            st.session_state["_carry_expand"] = True
+            st.rerun()
+    with col_exp2:
+        if st.button("📁 Collapse all", key="collapse_all"):
+            st.session_state["_carry_expand"] = False
+            st.rerun()
+    expand_default = st.session_state.get("_carry_expand", None)
+
     for sym in all_symbols:
         params = assets.get(sym, {})
         enabled = params.get("enabled", False)
         icon = "🟢" if enabled else "⚫"
+        # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
+        expanded = expand_default if expand_default is not None else enabled
 
-        with st.expander(f"{icon} {sym}", expanded=enabled):
+        with st.expander(f"{icon} {sym}", expanded=expanded):
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:

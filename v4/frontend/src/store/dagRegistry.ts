@@ -112,7 +112,7 @@ export const useDagRegistry = create<DAGRegistryState>()(
 
       ensureDefault: () => {
         const { dags } = get();
-        // V7 — 7 actifs
+        // V7 — 13 actifs (sync avec carry_assets.yaml)
         const required = [
           { id: "default", name: "BTC/USDT" },
           { id: "eth",     name: "ETH/USDT" },
@@ -121,6 +121,12 @@ export const useDagRegistry = create<DAGRegistryState>()(
           { id: "xrp",     name: "XRP/USDT" },
           { id: "ada",     name: "ADA/USDT" },
           { id: "doge",    name: "DOGE/USDT" },
+          { id: "avax",    name: "AVAX/USDT" },
+          { id: "link",    name: "LINK/USDT" },
+          { id: "dot",     name: "DOT/USDT" },
+          { id: "ltc",     name: "LTC/USDT" },
+          { id: "near",    name: "NEAR/USDT" },
+          { id: "sui",     name: "SUI/USDT" },
         ];
         const existing = new Set(dags.map((d) => d.id));
         const missing = required.filter((r) => !existing.has(r.id));

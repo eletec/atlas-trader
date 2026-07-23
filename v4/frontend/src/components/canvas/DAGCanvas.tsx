@@ -80,6 +80,8 @@ export function DAGCanvas() {
       const assetMap: Record<string, string> = {
         default: "BTC/USDT", eth: "ETH/USDT", sol: "SOL/USDT",
         bnb: "BNB/USDT", xrp: "XRP/USDT", ada: "ADA/USDT", doge: "DOGE/USDT",
+        avax: "AVAX/USDT", link: "LINK/USDT", dot: "DOT/USDT",
+        ltc: "LTC/USDT", near: "NEAR/USDT", sui: "SUI/USDT",
       };
       const asset = assetMap[flowFromUrl] || "BTC/USDT";
       const coin = asset.split("/")[0].toLowerCase();

@@ -3222,6 +3222,12 @@ def _render_carry_config():
         expanded = expand_default if expand_default is not None else enabled
 
         with st.expander(f"{icon} {sym}", expanded=expanded):
+            # Logo officiel
+            try:
+                from dashboard.multi_asset import _asset_icon
+                st.markdown(f"{_asset_icon(sym)} {sym}", unsafe_allow_html=True)
+            except Exception:
+                pass
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:

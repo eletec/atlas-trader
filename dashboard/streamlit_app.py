@@ -3077,6 +3077,11 @@ def _render_carry_config():
     st.markdown(f"### {t('tab_carry_cfg')}")
     st.caption(t("carry_cfg_subtitle"))
 
+    # Afficher un message persistent (évite qu'il disparaisse au rerun)
+    msg = st.session_state.pop("_carry_msg", None)
+    if msg:
+        st.success(msg)
+
     try:
         from v7.core.asset_config import load_config, save_config, get_all_assets, reload_config
     except ImportError:
@@ -3138,16 +3143,13 @@ def _render_carry_config():
                         cfg["assets"][sym]["enabled"] = False
                 save_config(cfg)
                 reload_config()
-                st.success(f"✅ {len(non_viable)} actifs désactivés")
+                st.session_state["_carry_msg"] = f"✅ {len(non_viable)} actifs désactivés — cliquez 'Apply & Reload DAGs' pour synchroniser"
                 st.rerun()
         with col_q2:
             if st.button("📊 Appliquer optimisés", type="secondary", 
                          help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
                 count = _apply_optimized_params(cfg)
-                if count > 0:
-                    st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
-                else:
-                    st.info("📊 Aucun changement — les params sont déjà optimaux ou aucun _optimized_* trouvé")
+                st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
                 st.rerun()
         with col_q3:
             if st.button("🚀 Apply & Reload DAGs", type="primary"):
@@ -3160,10 +3162,7 @@ def _render_carry_config():
             if st.button("📊 Appliquer optimisés", type="secondary",
                          help="Copie les params _optimized_* vers les params réels"):
                 count = _apply_optimized_params(cfg)
-                if count > 0:
-                    st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
-                else:
-                    st.info("📊 Aucun changement — les params sont déjà optimaux ou aucun _optimized_* trouvé")
+                st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
                 st.rerun()
         with col_v2:
             if st.button("🚀 Apply & Reload DAGs", type="primary"):

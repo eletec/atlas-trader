@@ -3040,6 +3040,24 @@ def _render_carry_config():
     assets = cfg.get("assets", {})
     global_cfg = cfg.get("global", {})
 
+    # ── Scanner button ──
+    col_scan1, col_scan2 = st.columns([3, 1])
+    with col_scan1:
+        scanner_meta = cfg.get("_scanner_meta", {})
+        if scanner_meta:
+            st.caption(f"🔍 Dernier scan : {scanner_meta.get('total_eligible', '?')} actifs éligibles "
+                       f"(sur {scanner_meta.get('total_spot_pairs', '?')} paires spot)")
+    with col_scan2:
+        if st.button("🔄 Scanner Binance", help="Détecte automatiquement tous les couples Spot/Perp éligibles"):
+            with st.spinner("Scan de l'univers Binance Spot ∩ Perp..."):
+                try:
+                    from v7.core.carry_scanner import scan_carry_universe
+                    scan_carry_universe(save=True)
+                    st.success("✅ Univers mis à jour !")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Scan échoué — {exc}")
+
     # ── Global settings ──
     with st.expander(t("carry_global_params"), expanded=False):
         col1, col2, col3 = st.columns(3)

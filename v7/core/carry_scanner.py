@@ -1,0 +1,279 @@
+"""
+v7/core/carry_scanner.py — Scanner dynamique de l'univers Funding Carry.
+
+Détecte automatiquement tous les couples Spot/USDT + Perp USDⓈ-M compatibles
+sur Binance, avec filtres de liquidité et gestion des contrats à multiplicateur.
+
+Usage:
+    python -m v7.core.carry_scanner              # affiche la liste
+    python -m v7.core.carry_scanner --save       # met à jour carry_assets.yaml
+"""
+
+from __future__ import annotations
+
+import logging
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+logger = logging.getLogger("v7.core.carry_scanner")
+
+# ── Seuils de liquidité ──
+MIN_SPOT_VOLUME_24H_USD = 5_000_000    # $5M volume spot minimum
+MIN_PERP_VOLUME_24H_USD = 10_000_000   # $10M volume perp minimum
+MIN_OPEN_INTEREST_USD    = 2_000_000   # $2M open interest minimum
+MAX_SPREAD_BPS           = 15           # spread max 0.15%
+MIN_FUNDING_HISTORY_DAYS = 90           # au moins 90j d'historique de funding
+
+# ── Multiplier contracts ──
+# Binance utilise des symboles comme 1000PEPEUSDT, 1000SHIBUSDT, etc.
+# Le champ contractSize donne la taille réelle du contrat.
+MULTIPLIER_PREFIXES = [
+    ("1000000", 1_000_000.0),
+    ("1000",    1_000.0),
+    ("100",     100.0),
+]
+
+
+def _resolve_spot_underlying(futures_base: str, spot_bases: set[str]) -> tuple[str | None, float]:
+    """Résout le sous-jacent spot pour un contrat perp (ex: 1000PEPE → PEPE, ×1000)."""
+    if futures_base in spot_bases:
+        return futures_base, 1.0
+
+    for prefix, multiplier in MULTIPLIER_PREFIXES:
+        if futures_base.startswith(prefix):
+            candidate = futures_base[len(prefix):]
+            if candidate in spot_bases:
+                return candidate, multiplier
+
+    return None, 0.0
+
+
+def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VOLUME_24H_USD,
+                         min_perp_vol: float = MIN_PERP_VOLUME_24H_USD,
+                         min_oi: float = MIN_OPEN_INTEREST_USD,
+                         max_spread_bps: int = MAX_SPREAD_BPS) -> list[dict[str, Any]]:
+    """
+    Scanne Binance pour trouver tous les couples Spot/USDT ∩ Perp USDⓈ-M éligibles.
+
+    Returns:
+        Liste de dicts avec: symbol, spot_symbol, perp_symbol, multiplier,
+        contract_size, spot_volume_24h, perp_volume_24h, open_interest, spread_bps.
+    """
+    try:
+        import ccxt
+    except ImportError:
+        logger.error("CCXT non installé. pip install ccxt")
+        return []
+
+    spot_ex = ccxt.binance({"enableRateLimit": True})
+    perp_ex = ccxt.binanceusdm({"enableRateLimit": True})
+
+    logger.info("Chargement des marchés Spot...")
+    try:
+        spot_markets = spot_ex.load_markets()
+    except Exception as e:
+        logger.error("Échec chargement marchés Spot: %s", e)
+        return []
+
+    logger.info("Chargement des marchés Perp USDⓈ-M...")
+    try:
+        perp_markets = perp_ex.load_markets()
+    except Exception as e:
+        logger.error("Échec chargement marchés Perp: %s", e)
+        return []
+
+    # Indexer les marchés spot USDT actifs
+    spot_usdt: dict[str, dict] = {}
+    for market in spot_markets.values():
+        if (market.get("spot") and market.get("active")
+                and market.get("quote") == "USDT"):
+            spot_usdt[market["base"]] = market
+
+    logger.info("Spot USDT actifs: %d paires", len(spot_usdt))
+
+    spot_bases = set(spot_usdt.keys())
+    results: list[dict[str, Any]] = []
+
+    for market in perp_markets.values():
+        if not (market.get("swap") and market.get("active")
+                and market.get("quote") == "USDT"
+                and market.get("settle") == "USDT"
+                and market.get("linear")):
+            continue
+
+        # Exclure les perpetuals TradFi (actions, ETF, métaux — pas de spot Binance)
+        futures_base = market["base"]
+        spot_base, multiplier = _resolve_spot_underlying(futures_base, spot_bases)
+
+        if spot_base is None:
+            continue  # pas de paire spot correspondante
+
+        spot_market = spot_usdt[spot_base]
+
+        # ── Filtres de liquidité ──
+        spot_vol = spot_market.get("info", {}).get("quoteVolume", "0")
+        try:
+            spot_vol_24h = float(spot_vol) if spot_vol else 0.0
+        except (ValueError, TypeError):
+            spot_vol_24h = 0.0
+
+        perp_vol = market.get("info", {}).get("quoteVolume", "0")
+        try:
+            perp_vol_24h = float(perp_vol) if perp_vol else 0.0
+        except (ValueError, TypeError):
+            perp_vol_24h = 0.0
+
+        oi = market.get("info", {}).get("openInterest", "0")
+        try:
+            open_interest = float(oi) if oi else 0.0
+        except (ValueError, TypeError):
+            open_interest = 0.0
+
+        if spot_vol_24h < min_spot_vol:
+            continue
+        if perp_vol_24h < min_perp_vol:
+            continue
+        if open_interest < min_oi:
+            continue
+
+        contract_size = market.get("contractSize", 1.0) or 1.0
+
+        results.append({
+            "symbol": f"{spot_base}/USDT",
+            "spot_symbol": spot_market["symbol"],
+            "perp_symbol": market["symbol"],
+            "multiplier": multiplier,
+            "contract_size": float(contract_size),
+            "spot_volume_24h_usd": spot_vol_24h,
+            "perp_volume_24h_usd": perp_vol_24h,
+            "open_interest_usd": open_interest,
+            "perp_id": market.get("id", ""),
+        })
+
+    # Trier par volume spot décroissant
+    results.sort(key=lambda r: r["spot_volume_24h_usd"], reverse=True)
+
+    logger.info("Univers carry éligible: %d actifs (filtré depuis %d spot, %d perp)",
+                len(results), len(spot_usdt), len(perp_markets))
+
+    if save:
+        _update_carry_config(results)
+
+    return results
+
+
+def _update_carry_config(assets: list[dict[str, Any]]) -> None:
+    """Met à jour carry_assets.yaml avec les actifs scannés (préserve les params existants)."""
+    config_path = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
+    # Priorité runtime writable
+    data_path = Path("/app/data") / "carry_assets.yaml"
+    if data_path.exists():
+        config_path = data_path
+
+    # Charger la config existante
+    existing: dict = {}
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            existing = yaml.safe_load(f) or {}
+
+    existing_assets = existing.get("assets", {})
+    global_cfg = existing.get("global", {})
+
+    # Fusion : nouveaux actifs ajoutés avec defaults, existants préservés
+    new_assets: dict = {}
+    # Niveau 1 (top 15 par volume) → capital standard
+    tier1_capital = 2000
+    # Niveau 2 (16-30) → capital réduit
+    tier2_capital = 1000
+    # Niveau 3 (meme coins, 31+) → capital minimal
+    tier3_capital = 500
+
+    meme_coins = {"SHIB", "PEPE", "FLOKI", "BONK", "WIF", "TURBO", "NEIRO"}
+
+    for i, asset in enumerate(assets):
+        sym = asset["symbol"]
+        base = sym.split("/")[0]
+
+        # Préserver les params existants si déjà configurés
+        if sym in existing_assets:
+            new_assets[sym] = existing_assets[sym]
+            continue
+
+        # Déterminer le tier
+        if base in meme_coins or i >= 30:
+            capital = tier3_capital
+            fraction = 0.30
+        elif i >= 15:
+            capital = tier2_capital
+            fraction = 0.40
+        else:
+            capital = tier1_capital
+            fraction = 0.50
+
+        new_assets[sym] = {
+            "enabled": i < 15,  # actif par défaut pour le top 15
+            "capital": capital,
+            "fraction": fraction,
+            "safety_cap": int(capital * 0.10),
+            "stress_loss_pct": 0.10,
+            "max_hold_days": 14,
+            "min_funding": 0.00005,
+            "max_funding": 0.003,
+            "exit_after_hours": 72,
+            "leverage": 1.0,
+            "_scanner_spot_vol_24h": asset["spot_volume_24h_usd"],
+            "_scanner_perp_vol_24h": asset["perp_volume_24h_usd"],
+            "_scanner_oi": asset["open_interest_usd"],
+            "_scanner_multiplier": asset["multiplier"],
+            "_scanner_contract_size": asset["contract_size"],
+            "_scanner_last_scan": None,  # sera rempli par le scheduler
+        }
+
+    cfg = {
+        "global": global_cfg,
+        "assets": new_assets,
+        "_scanner_meta": {
+            "total_spot_pairs": len(assets),
+            "total_eligible": len(assets),
+            "filters": {
+                "min_spot_volume_24h_usd": MIN_SPOT_VOLUME_24H_USD,
+                "min_perp_volume_24h_usd": MIN_PERP_VOLUME_24H_USD,
+                "min_open_interest_usd": MIN_OPEN_INTEREST_USD,
+                "max_spread_bps": MAX_SPREAD_BPS,
+            },
+        },
+    }
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    logger.info("carry_assets.yaml mis à jour: %d actifs", len(new_assets))
+
+
+# ── CLI ──
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    save_flag = "--save" in sys.argv
+
+    universe = scan_carry_universe(save=save_flag)
+
+    # Affichage
+    print(f"\n{'='*80}")
+    print(f"Univers Funding Carry — {len(universe)} actifs éligibles")
+    print(f"{'='*80}")
+    print(f"{'Actif':<12} {'Spot Vol 24h':>14} {'Perp Vol 24h':>14} {'OI':>12} {'Multiplier':>10}")
+    print(f"{'-'*12} {'-'*14} {'-'*14} {'-'*12} {'-'*10}")
+    for a in universe:
+        print(f"{a['symbol']:<12} ${a['spot_volume_24h_usd']:>13,.0f} "
+              f"${a['perp_volume_24h_usd']:>13,.0f} "
+              f"${a['open_interest_usd']:>11,.0f} "
+              f"{a['multiplier']:>10.0f}")
+    print(f"{'='*80}")
+
+    if save_flag:
+        print("\n✅ carry_assets.yaml mis à jour.")
+    else:
+        print("\n💡 Utilise --save pour mettre à jour carry_assets.yaml.")

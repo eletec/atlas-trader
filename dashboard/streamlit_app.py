@@ -3025,6 +3025,53 @@ def render_agent_scores_chart(asset: str):
                     key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
 
 
+def _apply_optimized_params(cfg: dict) -> int:
+    """Copie les _optimized_* vers les params réels (actifs non verrouillés)."""
+    assets = cfg.get("assets", {})
+    count = 0
+    for sym, p in assets.items():
+        if p.get("locked", False):
+            continue
+        changed = False
+        for opt_key, real_key in [("_optimized_capital", "capital"),
+                                   ("_optimized_stress_loss_pct", "stress_loss_pct"),
+                                   ("_optimized_min_funding", "min_funding"),
+                                   ("_optimized_safety_cap", "safety_cap"),
+                                   ("_optimized_max_hold_days", "max_hold_days")]:
+            if opt_key in p:
+                cfg["assets"][sym][real_key] = p[opt_key]
+                changed = True
+        if changed:
+            count += 1
+    if count > 0:
+        from v7.core.asset_config import save_config, reload_config
+        save_config(cfg)
+        reload_config()
+    return count
+
+
+def _reload_dags():
+    """Appelle POST /dag/reload et affiche le résultat."""
+    import urllib.request, json
+    try:
+        req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+        added = result.get("added", [])
+        removed = result.get("removed", [])
+        running = result.get("running", 0)
+        if isinstance(running, list):
+            running = len(running)
+        msg = f"✅ {running} DAGs actifs"
+        if added:
+            msg += f" — +{len(added)} ajoutés"
+        if removed:
+            msg += f" — -{len(removed)} retirés"
+        st.success(msg)
+    except Exception as exc:
+        st.error(f"Échec reload DAGs — {exc}")
+
+
 def _render_carry_config():
     """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
     st.markdown(f"### {t('tab_carry_cfg')}")
@@ -3083,9 +3130,9 @@ def _render_carry_config():
         st.info("📊 Lancez **Optimize** pour calculer la viabilité des actifs (volatilité, funding, OI)")
     elif non_viable:
         st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (0% funding positif ou volatilité extrême)")
-        col_q1, col_q2 = st.columns(2)
+        col_q1, col_q2, col_q3 = st.columns(3)
         with col_q1:
-            if st.button(f"🛑 Désactiver les {len(non_viable)} actifs non viables", type="secondary"):
+            if st.button(f"🛑 Désactiver les {len(non_viable)}", type="secondary"):
                 for sym in non_viable:
                     if sym in cfg.get("assets", {}):
                         cfg["assets"][sym]["enabled"] = False
@@ -3094,8 +3141,27 @@ def _render_carry_config():
                 st.success(f"✅ {len(non_viable)} actifs désactivés")
                 st.rerun()
         with col_q2:
-            if st.button("🚀 Apply & Reload DAGs", type="primary", help="Re-synchronise les DAGs avec la config active"):
-                try:
+            if st.button("📊 Appliquer optimisés", type="secondary", 
+                         help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
+                count = _apply_optimized_params(cfg)
+                st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
+                st.rerun()
+        with col_q3:
+            if st.button("🚀 Apply & Reload DAGs", type="primary"):
+                _reload_dags()
+    else:
+        # Tous viables — proposer d'appliquer les optimisés et reload
+        st.success(f"✅ Tous les actifs sont viables")
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            if st.button("📊 Appliquer optimisés", type="secondary",
+                         help="Copie les params _optimized_* vers les params réels"):
+                count = _apply_optimized_params(cfg)
+                st.success(f"📊 Paramètres optimisés appliqués à {count} actifs")
+                st.rerun()
+        with col_v2:
+            if st.button("🚀 Apply & Reload DAGs", type="primary"):
+                _reload_dags()
                     import urllib.request, json
                     req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
                     with urllib.request.urlopen(req, timeout=10) as resp:

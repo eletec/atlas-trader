@@ -27,6 +27,13 @@ MIN_OPEN_INTEREST_USD    = 2_000_000   # $2M open interest minimum
 MAX_SPREAD_BPS           = 15           # spread max 0.15%
 MIN_FUNDING_HISTORY_DAYS = 90           # au moins 90j d'historique de funding
 
+# ── Actifs exclus (stablecoins, wrapped, tokens problématiques) ──
+EXCLUDED_BASES = {
+    "USDC", "USDT", "DAI", "TUSD", "BUSD", "USDP", "FDUSD",  # stablecoins
+    "WBTC", "WETH", "WBETH",  # wrapped (suivre l'original)
+    "USTC", "LUNC",  # effondrés
+}
+
 # ── Multiplier contracts ──
 # Binance utilise des symboles comme 1000PEPEUSDT, 1000SHIBUSDT, etc.
 # Le champ contractSize donne la taille réelle du contrat.
@@ -109,6 +116,8 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
         spot_base, multiplier = _resolve_spot_underlying(futures_base, spot_bases)
         if spot_base is None:
             continue
+        if spot_base.upper() in EXCLUDED_BASES:
+            continue
 
         contract_size = market.get("contractSize", 1.0) or 1.0
         candidates.append({
@@ -159,7 +168,11 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
 
         spot_vol = spot_t.get("quoteVolume") or spot_t.get("quote_volume") or 0
         perp_vol = perp_t.get("quoteVolume") or perp_t.get("quote_volume") or 0
-        oi = perp_t.get("info", {}).get("openInterest") or perp_t.get("openInterest") or 0
+        # OI: Binance USDⓈ-M ticker → info.openInterest (string), CCXT ≥4.4 → openInterest (float)
+        oi_raw = (perp_t.get("info", {}).get("openInterest")
+                  or perp_t.get("openInterest")
+                  or perp_t.get("openInterestValue")
+                  or 0)
 
         try:
             spot_vol_24h = float(spot_vol) if spot_vol else 0.0
@@ -170,7 +183,7 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
         except (ValueError, TypeError):
             perp_vol_24h = 0.0
         try:
-            open_interest = float(oi) if oi else 0.0
+            open_interest = float(oi_raw) if oi_raw else 0.0
         except (ValueError, TypeError):
             open_interest = 0.0
 

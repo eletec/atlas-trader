@@ -303,6 +303,12 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
             pass
 
         optimized[sym] = opt
+        # Flag de viabilité
+        opt["_optimized_viable"] = (
+            opt.get("_optimized_funding_positive_pct", 0) > 0 and
+            opt.get("_optimized_stress_loss_pct", 0) < 0.30 and
+            opt.get("_optimized_volatility_30d_pct", 999) < 200
+        )
 
     logger.info("Optimisation terminée pour %d actifs", len(optimized))
     return optimized

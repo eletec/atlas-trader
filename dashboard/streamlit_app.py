@@ -3031,7 +3031,7 @@ def _render_carry_config():
     st.caption(t("carry_cfg_subtitle"))
 
     try:
-        from v7.core.asset_config import load_config, save_config, get_all_assets, get_global_params
+        from v7.core.asset_config import load_config, save_config, get_all_assets, reload_config
     except ImportError:
         st.warning("Module asset_config non disponible. Déployez la dernière version.")
         return
@@ -3075,6 +3075,19 @@ def _render_carry_config():
                     except Exception as exc:
                         st.error(f"Optimisation échouée — {exc}")
 
+    # ── Quick actions ──
+    non_viable = [sym for sym, p in assets.items() if p.get("_optimized_viable") is False]
+    if non_viable:
+        st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (0% funding positif ou volatilité extrême)")
+        if st.button(f"🛑 Désactiver les {len(non_viable)} actifs non viables", type="secondary"):
+            for sym in non_viable:
+                if sym in cfg.get("assets", {}):
+                    cfg["assets"][sym]["enabled"] = False
+            save_config(cfg)
+            reload_config()
+            st.success(f"✅ {len(non_viable)} actifs désactivés")
+            st.rerun()
+    
     # ── Global settings ──
     with st.expander(t("carry_global_params"), expanded=False):
         col1, col2, col3 = st.columns(3)

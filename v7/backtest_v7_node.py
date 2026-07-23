@@ -101,11 +101,12 @@ def fetch_funding_history(symbol: str, days: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
-    """Backtest un actif avec le vrai FundingCarryNode + prix réels."""
+def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
+                   params_override: dict | None = None) -> dict:
+    """Backtest un actif avec le vrai FundingCarryNode + prix reels."""
     from v7.nodes.funding_carry_node import FundingCarryNode
 
-    # 1) Charger les données
+    # 1) Charger les donnees
     spot_df = fetch_prices(symbol, days, is_perp=False)
     perp_df = fetch_prices(symbol, days, is_perp=True)
     funding_df = fetch_funding_history(symbol, days)
@@ -129,19 +130,19 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
     if combined.empty:
         return {"symbol": symbol, "error": "no merged data"}
 
-    # 3) Initialiser le nœud (mêmes params que le live V7.2 — 20/07/2026)
+    # 3) Initialiser le noeud (params override pour grid search)
+    ov = params_override or {}
     node = FundingCarryNode(
         node_id=f"bt_{symbol.split('/')[0].lower()}",
         symbol=symbol,
         capital=capital,
-        fraction=0.50,         # live: 50% (pas 80%)
-        min_funding=0.00005,   # live: 0.005% (pas 0.001%)
+        fraction=ov.get("fraction", 0.50),
+        min_funding=ov.get("min_funding", 0.00005),
         max_funding=0.003,
-        exit_after_hours=72,   # live: 72h (pas 168h)
-        kelly_fraction=0.35,   # conservé mais pas utilisé (risk budgeting actif)
-        max_hold_days=14,
+        exit_after_hours=72,
+        max_hold_days=ov.get("max_hold_days", 14),
         stop_loss_pct=-0.05,
-        params={"_backtest": True},  # ne pas fetch CCXT live, utiliser les inputs
+        params={"_backtest": True},
     )
 
     # 4) Boucle de backtest avec NAV tracking (Round 4, 22/07/2026)

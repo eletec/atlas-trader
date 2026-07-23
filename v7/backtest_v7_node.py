@@ -229,6 +229,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         "sharpe": round(sharpe, 2),
         "max_dd_pct": round(max_dd, 2),
         "days": days,
+        "params": params_override or {},  # pour le grid search
     }
 
 

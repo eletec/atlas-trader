@@ -42,12 +42,25 @@ except Exception:
     ALL_SYMBOLS = SYMBOLS
 
 
+def _perp_symbol(symbol: str) -> str:
+    """Convertit un symbole spot en symbole perp USDⓈ-M (gère les contrats ×1000)."""
+    base = symbol.split("/")[0]
+    MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB", "BONK": "1000BONK",
+                      "FLOKI": "1000FLOKI", "LUNC": "1000LUNC"}
+    base_perp = MULTIPLIER_MAP.get(base, base)
+    return f"{base_perp}/USDT:USDT"
+
+
 def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
     """Fetch daily OHLCV spot ou perp via CCXT."""
     try:
         import ccxt
-        ex = ccxt.binance({"enableRateLimit": True})
-        sym = f"{symbol}:USDT" if is_perp and ":" not in symbol else symbol
+        if is_perp:
+            ex = ccxt.binanceusdm({"enableRateLimit": True})
+            sym = _perp_symbol(symbol)
+        else:
+            ex = ccxt.binance({"enableRateLimit": True})
+            sym = symbol
         since = ex.parse8601((datetime.utcnow() - timedelta(days=days + 7)).strftime("%Y-%m-%dT00:00:00Z"))
         ohlcv = ex.fetch_ohlcv(sym, "1d", since=since, limit=days + 10)
         df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "volume"])
@@ -60,11 +73,11 @@ def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
 
 
 def fetch_funding_history(symbol: str, days: int) -> pd.DataFrame:
-    """Récupère l'historique des funding rates depuis Binance."""
+    """Récupère l'historique des funding rates depuis Binance USDⓈ-M."""
     try:
         import ccxt
-        exchange = ccxt.binance({"enableRateLimit": True})
-        symbol_perp = f"{symbol}:USDT" if ":" not in symbol else symbol
+        exchange = ccxt.binanceusdm({"enableRateLimit": True})
+        symbol_perp = _perp_symbol(symbol)
         since = int((datetime.utcnow() - timedelta(days=days + 1)).timestamp() * 1000)
         rates = exchange.fetch_funding_rate_history(symbol_perp, since=since, limit=1000)
         if not rates:
@@ -180,7 +193,7 @@ def backtest_asset(symbol: str, days: int, capital: float) -> dict[str, Any]:
     total_pnl = total_funding + staking - total_fees
 
     # NAV returns
-    if len(nav_history) > 2:
+    if len(nav_history) > 2 and len(trades) > 0:
         nav_df = pd.DataFrame(nav_history, columns=["ts", "nav"]).set_index("ts")
         nav_df["return"] = nav_df["nav"].pct_change().fillna(0)
         # Sharpe annualisé (×√365 pour daily, ×√1095 pour 8h)
@@ -240,15 +253,19 @@ def main():
             print(f"  {sym:<12} ERROR: {r['error']}")
 
     elapsed = time.time() - t0
-    valid = [r for r in results if "error" not in r]
+    valid = [r for r in results if "error" not in r and r.get("trades", 0) > 0]
+    staking_only = [r for r in results if "error" not in r and r.get("trades", 0) == 0]
+    total_pnl = sum(r["pnl"] for r in results if "error" not in r)
+    total_cap = args.capital * len([r for r in results if "error" not in r])
     if valid:
-        total_pnl = sum(r["pnl"] for r in valid)
-        total_cap = args.capital * len(valid)
         avg_sharpe = np.mean([r["sharpe"] for r in valid])
-        print("\n" + "=" * 80)
-        print(f"Portfolio: {len(valid)} actifs | PnL=${total_pnl:,.2f} ({total_pnl/total_cap*100:.1f}%)")
-        print(f"Sharpe moyen={avg_sharpe:.2f} | Durée={elapsed:.0f}s | Capital total=${total_cap:,.0f}")
-        print("=" * 80)
+    else:
+        avg_sharpe = 0.0
+    print("\n" + "=" * 80)
+    print(f"Portfolio: {len(symbols)} actifs | {len(valid)} tradés, {len(staking_only)} staking seul | "
+          f"PnL=${total_pnl:,.2f} ({total_pnl/total_cap*100:.1f}%)")
+    print(f"Sharpe moyen={avg_sharpe:.2f} (actifs tradés) | Durée={elapsed:.0f}s | Capital total=${total_cap:,.0f}")
+    print("=" * 80)
 
 
 if __name__ == "__main__":

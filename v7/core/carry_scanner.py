@@ -356,8 +356,8 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
         # Préserver les params existants si déjà configurés
         if sym in existing_assets:
             new_assets[sym] = dict(existing_assets[sym])
-            # Fusionner les params optimisés (même pour les actifs existants)
-            if sym in optimized_params:
+            # Fusionner les params optimisés (sauf si l'actif est verrouillé)
+            if sym in optimized_params and not existing_assets[sym].get("locked", False):
                 new_assets[sym].update(optimized_params[sym])
             continue
 

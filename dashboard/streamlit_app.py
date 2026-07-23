@@ -3076,7 +3076,8 @@ def _render_carry_config():
                         st.error(f"Optimisation échouée — {exc}")
 
     # ── Quick actions ──
-    non_viable = [sym for sym, p in assets.items() if p.get("_optimized_viable") is False]
+    non_viable = [sym for sym, p in assets.items() 
+                  if p.get("_optimized_viable") is False and not p.get("locked", False)]
     not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
     if not_optimized and len(not_optimized) == len(assets):
         st.info("📊 Lancez **Optimize** pour calculer la viabilité des actifs (volatilité, funding, OI)")
@@ -3176,6 +3177,8 @@ def _render_carry_config():
 
             with col1:
                 new_enabled = st.checkbox(t("carry_enabled"), value=enabled, key=f"en_{sym}")
+                new_locked = st.checkbox("🔒 Figé", value=params.get("locked", False), key=f"lock_{sym}",
+                                         help="Protège la config contre l'optimisation automatique")
                 new_capital = st.number_input(t("carry_capital"), value=float(params.get("capital", 2000)), step=500.0, key=f"cap_{sym}")
                 new_fraction = st.slider(t("carry_fraction"), 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
 
@@ -3198,7 +3201,8 @@ def _render_carry_config():
 
             # Détecter les changements (logo file traité séparément)
             logo_changed = new_logo_file is not None
-            if (new_enabled != enabled or new_capital != params.get("capital", 2000) or
+            if (new_enabled != enabled or new_locked != params.get("locked", False) or
+                new_capital != params.get("capital", 2000) or
                 new_fraction != params.get("fraction", 0.50) or new_cap != params.get("safety_cap", 200) or
                 new_stress != params.get("stress_loss_pct", 0.10) or
                 new_leverage != params.get("leverage", 1.0) or
@@ -3219,6 +3223,7 @@ def _render_carry_config():
                     
                     cfg["assets"][sym] = {
                         "enabled": new_enabled,
+                        "locked": new_locked,
                         "capital": new_capital,
                         "fraction": new_fraction,
                         "safety_cap": int(new_cap),

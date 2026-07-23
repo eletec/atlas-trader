@@ -27,12 +27,24 @@ from v7.core.asset_config import get_active_assets, get_all_assets
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("grid_search")
 
-# Grille de paramètres à tester (18 combinaisons par actif × ~3s = ~1min/actif)
-PARAM_GRID = {
+# Grille de paramètres — Pass 1 (coarse) + Pass 2 (fine autour du meilleur)
+COARSE_GRID = {
     "min_funding":    [0.00001, 0.00005, 0.0001],   # 0.001%, 0.005%, 0.01%
     "max_hold_days":  [7, 14, 30],
     "fraction":       [0.30, 0.50],
 }
+
+def refine_grid(best_params: dict) -> dict[str, list]:
+    """Genere une grille fine autour des meilleurs parametres."""
+    mf = best_params.get("min_funding", 0.00005)
+    hold = best_params.get("max_hold_days", 14)
+    frac = best_params.get("fraction", 0.50)
+    
+    return {
+        "min_funding":   sorted(set([max(0.000005, mf * 0.5), mf, min(0.0005, mf * 2)])),
+        "max_hold_days": sorted(set([max(3, hold - 4), hold, min(60, hold + 7)])),
+        "fraction":      sorted(set([max(0.10, round(frac - 0.15, 2)), frac, min(1.0, round(frac + 0.15, 2))])),
+    }
 
 # Métrique à optimiser : "sharpe", "pnl", "sortino", "calmar"
 OBJECTIVE = "sharpe"
@@ -44,51 +56,68 @@ def run_backtest(symbol: str, days: int, capital: float, params: dict) -> dict:
     return backtest_asset(symbol, days, capital, params_override=params)
 
 
-def grid_search_symbol(symbol: str, days: int, capital: float) -> dict:
-    """Grid search pour un actif. Retourne les meilleurs params."""
-    keys = list(PARAM_GRID.keys())
-    values = list(PARAM_GRID.values())
-    best_score = -999.0
-    best_result: dict | None = None
-    results = []
+def grid_search_symbol(symbol: str, days: int, capital: float, passes: int = 2) -> dict:
+    """Grid search en entonnoir (coarse → fine) pour un actif."""
+    grid = COARSE_GRID
+    best_result = None
+    all_results = []
 
-    total_combos = 1
-    for v in values:
-        total_combos *= len(v)
-    logger.info("%s: %d combinaisons...", symbol, total_combos)
+    for pn in range(1, passes + 1):
+        keys = list(grid.keys())
+        values = list(grid.values())
+        total_combos = 1
+        for v in values:
+            total_combos *= len(v)
+        logger.info("%s pass %d/%d: %d combos...", symbol, pn, passes, total_combos)
 
-    for combo in itertools.product(*values):
-        params = dict(zip(keys, combo))
-        r = run_backtest(symbol, days, capital, params)
+        best_score = -999.0
+        pass_best = None
 
-        if "error" in r:
-            continue
+        for combo in itertools.product(*values):
+            params = dict(zip(keys, combo))
+            r = run_backtest(symbol, days, capital, params)
 
-        score = r.get(OBJECTIVE, 0)
-        pnl = r.get("pnl", 0)
-        results.append({"params": params, "score": score, "pnl": pnl, "trades": r["trades"]})
+            if "error" in r:
+                continue
 
-        # Sharpe comme critere principal, PnL comme tiebreaker
-        best_pnl = best_result.get("pnl", -999) if best_result else -999
-        if score > best_score or (score == best_score and pnl > best_pnl):
-            best_score = score
-            best_result = r
+            score = r.get(OBJECTIVE, 0)
+            pnl = r.get("pnl", 0)
+            all_results.append({"pass": pn, "params": params, "score": score, "pnl": pnl, "trades": r["trades"]})
 
-    # Trier par score décroissant
-    results.sort(key=lambda x: x["score"], reverse=True)
+            best_pnl = pass_best.get("pnl", -999) if pass_best else -999
+            if score > best_score or (score == best_score and pnl > best_pnl):
+                best_score = score
+                pass_best = r
+                r["params"] = params  # injecter les params dans le resultat
 
-    if best_result:
-        logger.info("%s: best Sharpe=%.2f PnL=$%.2f trades=%d params=%s",
-                    symbol, best_result["sharpe"], best_result["pnl"],
-                    best_result["trades"], best_result.get("params", {}))
-    else:
-        logger.warning("%s: aucun résultat valide", symbol)
+        if pass_best:
+            logger.info("%s pass %d: best Sharpe=%.2f PnL=$%.2f trades=%d params=%s",
+                        symbol, pn, pass_best.get("sharpe", 0), pass_best.get("pnl", 0),
+                        pass_best.get("trades", 0), pass_best.get("params", {}))
+            best_result = pass_best
+            # Raffiner la grille pour le prochain passage
+            if pn < passes:
+                grid = refine_grid(pass_best.get("params", {}))
+        else:
+            logger.warning("%s pass %d: aucun resultat", symbol, pn)
+            break
+
+    # Dedup + tri
+    seen = set()
+    unique = []
+    for r in all_results:
+        key = str(r["params"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    unique.sort(key=lambda x: (x["score"], x["pnl"]), reverse=True)
 
     return {
         "symbol": symbol,
         "best": best_result,
-        "top5": results[:5],
-        "total_tested": len(results),
+        "top5": unique[:5],
+        "total_tested": len(all_results),
+        "passes": passes,
     }
 
 
@@ -97,6 +126,7 @@ def main():
     parser.add_argument("--symbol", default="ALL", help="Symbole ou ALL/ACTIVE")
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--capital", type=float, default=2000)
+    parser.add_argument("--passes", type=int, default=2, help="Nombre de passes (1=coarse, 2=coarse+fine)")
     parser.add_argument("--output", default="/app/data/grid_search_results.yaml")
     args = parser.parse_args()
 
@@ -113,7 +143,7 @@ def main():
     t0 = time.time()
 
     for sym in symbols:
-        r = grid_search_symbol(sym, args.days, args.capital)
+        r = grid_search_symbol(sym, args.days, args.capital, passes=args.passes)
         all_results[sym] = r
 
     elapsed = time.time() - t0
@@ -124,7 +154,7 @@ def main():
 
     # Résumé
     print(f"\n{'='*80}")
-    print(f"Grid search terminé — {len(symbols)} actifs — {elapsed:.0f}s")
+    print(f"Grid search termine — {len(symbols)} actifs, {args.passes} passes — {elapsed:.0f}s")
     print(f"Résultats : {args.output}")
     for sym, r in all_results.items():
         best = r.get("best")

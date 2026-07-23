@@ -3028,8 +3028,7 @@ def render_agent_scores_chart(asset: str):
 def _render_carry_config():
     """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
     st.markdown(f"### {t('tab_carry_cfg')}")
-    st.caption("Activez/désactivez les actifs et ajustez leurs paramètres. "
-               "Les modifications sont sauvegardées dans `config/carry_assets.yaml`.")
+    st.caption(t("carry_cfg_subtitle"))
 
     try:
         from v7.core.asset_config import load_config, save_config, get_all_assets, get_global_params
@@ -3042,22 +3041,22 @@ def _render_carry_config():
     global_cfg = cfg.get("global", {})
 
     # ── Global settings ──
-    with st.expander("🌐 Paramètres globaux", expanded=False):
+    with st.expander(t("carry_global_params"), expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
-            new_total = st.number_input("Capital total ($)", value=float(global_cfg.get("total_capital", 14000)), step=1000.0)
+            new_total = st.number_input(t("carry_total_capital"), value=float(global_cfg.get("total_capital", 14000)), step=1000.0)
         with col2:
-            new_max_exp = st.slider("Exposition max (% capital)", 10, 80, int(global_cfg.get("max_total_exposure_pct", 0.40) * 100)) / 100
+            new_max_exp = st.slider(t("carry_max_exposure"), 10, 80, int(global_cfg.get("max_total_exposure_pct", 0.40) * 100)) / 100
         with col3:
-            new_max_pos = st.number_input("Max positions simultanées", 1, 13, int(global_cfg.get("max_simultaneous_positions", 4)))
+            new_max_pos = st.number_input(t("carry_max_positions"), 1, 13, int(global_cfg.get("max_simultaneous_positions", 4)))
         
         col4, col5 = st.columns(2)
         with col4:
-            new_rt_cost = st.number_input("Coût round-trip (bps)", 10, 100, int(global_cfg.get("round_trip_cost_bps", 48)))
+            new_rt_cost = st.number_input(t("carry_roundtrip_cost"), 10, 100, int(global_cfg.get("round_trip_cost_bps", 48)))
         with col5:
-            new_hold = st.number_input("Hold estimé (jours)", 14, 180, int(global_cfg.get("estimated_hold_days", 60)))
+            new_hold = st.number_input(t("carry_hold_days"), 14, 180, int(global_cfg.get("estimated_hold_days", 60)))
 
-        if st.button("💾 Sauvegarder paramètres globaux", key="save_global"):
+        if st.button(t("carry_save_global_btn"), key="save_global"):
             cfg["global"] = {
                 "total_capital": new_total,
                 "max_total_exposure_pct": new_max_exp,
@@ -3066,20 +3065,18 @@ def _render_carry_config():
                 "estimated_hold_days": int(new_hold),
             }
             save_config(cfg)
-            st.success("✅ Paramètres globaux sauvegardés.")
+            st.success(t("carry_save_global_ok"))
             st.rerun()
 
     st.markdown("---")
 
     # ── Per-asset table ──
-    st.markdown("#### Actifs configurés")
+    st.markdown(f"#### {t('carry_configured_assets')}")
 
     all_symbols = get_all_assets()
-    edited = False
 
     if not all_symbols:
-        st.warning("⚠️ Aucun actif trouvé dans `config/carry_assets.yaml`. "
-                   "Le fichier est-il déployé sur le serveur ? Faire `git pull origin v7-dev` puis `docker compose restart`.")
+        st.warning(t("carry_no_assets"))
         return
 
     for sym in all_symbols:
@@ -3091,19 +3088,19 @@ def _render_carry_config():
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:
-                new_enabled = st.checkbox("Activé", value=enabled, key=f"en_{sym}")
-                new_capital = st.number_input("Capital ($)", value=float(params.get("capital", 2000)), step=500.0, key=f"cap_{sym}")
-                new_fraction = st.slider("Fraction", 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
+                new_enabled = st.checkbox(t("carry_enabled"), value=enabled, key=f"en_{sym}")
+                new_capital = st.number_input(t("carry_capital"), value=float(params.get("capital", 2000)), step=500.0, key=f"cap_{sym}")
+                new_fraction = st.slider(t("carry_fraction"), 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
 
             with col2:
-                new_cap = st.number_input("Safety cap ($)", value=int(params.get("safety_cap", 200)), step=50, key=f"scap_{sym}")
-                new_stress = st.slider("Stress loss (%)", 1.0, 20.0, float(params.get("stress_loss_pct", 0.10)) * 100, 1.0, key=f"stress_{sym}") / 100
-                new_leverage = st.selectbox("Levier", [1.0, 1.5, 2.0, 3.0], index=[1.0, 1.5, 2.0, 3.0].index(float(params.get("leverage", 1.0))) if float(params.get("leverage", 1.0)) in [1.0, 1.5, 2.0, 3.0] else 0, key=f"lev_{sym}")
+                new_cap = st.number_input(t("carry_safety_cap"), value=int(params.get("safety_cap", 200)), step=50, key=f"scap_{sym}")
+                new_stress = st.slider(t("carry_stress_loss"), 1.0, 20.0, float(params.get("stress_loss_pct", 0.10)) * 100, 1.0, key=f"stress_{sym}") / 100
+                new_leverage = st.selectbox(t("carry_leverage"), [1.0, 1.5, 2.0, 3.0], index=[1.0, 1.5, 2.0, 3.0].index(float(params.get("leverage", 1.0))) if float(params.get("leverage", 1.0)) in [1.0, 1.5, 2.0, 3.0] else 0, key=f"lev_{sym}")
 
             with col3:
-                new_min_fund = st.number_input("Funding min (%/8h)", 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
-                new_max_hold = st.number_input("Max hold (jours)", 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
-                new_exit_h = st.number_input("Exit funding nég (h)", 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
+                new_min_fund = st.number_input(t("carry_min_funding"), 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
+                new_max_hold = st.number_input(t("carry_max_hold"), 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
+                new_exit_h = st.number_input(t("carry_exit_hours"), 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
 
             # Détecter les changements
             if (new_enabled != enabled or new_capital != params.get("capital", 2000) or
@@ -3113,7 +3110,7 @@ def _render_carry_config():
                 new_min_fund != params.get("min_funding", 0.00005) or
                 new_max_hold != params.get("max_hold_days", 14) or
                 new_exit_h != params.get("exit_after_hours", 72)):
-                if st.button(f"💾 Sauvegarder {sym}", key=f"save_{sym}"):
+                if st.button(f"{t('carry_save_asset_btn')} {sym}", key=f"save_{sym}"):
                     cfg["assets"][sym] = {
                         "enabled": new_enabled,
                         "capital": new_capital,
@@ -3127,15 +3124,14 @@ def _render_carry_config():
                         "leverage": new_leverage,
                     }
                     save_config(cfg)
-                    st.success(f"✅ {sym} sauvegardé.")
+                    st.success(t("carry_save_asset_ok").format(sym=sym))
                     st.rerun()
 
     # ── Résumé ──
     st.markdown("---")
     active_count = sum(1 for s in all_symbols if assets.get(s, {}).get("enabled", False))
-    st.metric("Actifs activés", f"{active_count}/{len(all_symbols)}")
-    st.caption("💡 Les DAGs sont créés uniquement pour les actifs activés. "
-               "Les modifications prennent effet au prochain redémarrage de l'API.")
+    st.metric(t("carry_active_count"), f"{active_count}/{len(all_symbols)}")
+    st.caption(t("carry_dag_hint"))
 
 
 def _render_v4_config():

@@ -115,6 +115,13 @@ async def reload_dags_from_config():
     from v4.api.dag_registry import DAGRegistry
     from v4.api.dag_store import load_all, get_defaults, save_all
     
+    # Vider le cache asset_config pour recharger la derniere version
+    try:
+        from v7.core.asset_config import reload_config
+        reload_config()
+    except Exception:
+        pass
+    
     registry = DAGRegistry.instance()
     
     # 1) DAGs souhaités (depuis carry_assets.yaml)

@@ -3208,8 +3208,8 @@ def _render_carry_config():
         st.warning(t("carry_no_assets"))
         return
 
-    # Collapse/Expand all
-    col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 4])
+    # Collapse/Expand all (à droite)
+    col_exp1, col_exp2, col_spacer = st.columns([1, 1, 6])
     with col_exp1:
         if st.button(t("carry_expand_all"), key="expand_all"):
             st.session_state["_carry_expand"] = True
@@ -3228,12 +3228,6 @@ def _render_carry_config():
         expanded = expand_default if expand_default is not None else enabled
 
         with st.expander(f"{icon} {sym}", expanded=expanded):
-            # Logo officiel
-            try:
-                from dashboard.multi_asset import _asset_icon
-                st.markdown(f"{_asset_icon(sym)} {sym}", unsafe_allow_html=True)
-            except Exception:
-                pass
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:

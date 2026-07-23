@@ -3052,7 +3052,9 @@ def _render_carry_config():
             with st.spinner("Scan de l'univers Binance Spot ∩ Perp..."):
                 try:
                     from v7.core.carry_scanner import scan_carry_universe
+                    from v7.core.asset_config import reload_config
                     scan_carry_universe(save=True)
+                    reload_config()
                     st.success("✅ Univers mis à jour !")
                     st.rerun()
                 except Exception as exc:

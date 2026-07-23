@@ -57,6 +57,13 @@ def load_config() -> dict:
     return _CACHE
 
 
+def reload_config() -> dict:
+    """Vide le cache et recharge la configuration (après un scan ou une modif externe)."""
+    global _CACHE
+    _CACHE = None
+    return load_config()
+
+
 def save_config(cfg: dict) -> None:
     """Sauvegarde la configuration YAML dans /app/data/ (writable)."""
     global _CACHE

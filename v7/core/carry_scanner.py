@@ -71,6 +71,7 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
     spot_ex = ccxt.binance({"enableRateLimit": True})
     perp_ex = ccxt.binanceusdm({"enableRateLimit": True})
 
+    # ── 1. Charger la structure des marchés (exchangeInfo) ──
     logger.info("Chargement des marchés Spot...")
     try:
         spot_markets = spot_ex.load_markets()
@@ -93,10 +94,10 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
             spot_usdt[market["base"]] = market
 
     logger.info("Spot USDT actifs: %d paires", len(spot_usdt))
-
     spot_bases = set(spot_usdt.keys())
-    results: list[dict[str, Any]] = []
 
+    # ── 2. Intersection Spot ∩ Perp (sans volumes) ──
+    candidates: list[dict[str, Any]] = []
     for market in perp_markets.values():
         if not (market.get("swap") and market.get("active")
                 and market.get("quote") == "USDT"
@@ -104,60 +105,100 @@ def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VO
                 and market.get("linear")):
             continue
 
-        # Exclure les perpetuals TradFi (actions, ETF, métaux — pas de spot Binance)
         futures_base = market["base"]
         spot_base, multiplier = _resolve_spot_underlying(futures_base, spot_bases)
-
         if spot_base is None:
-            continue  # pas de paire spot correspondante
+            continue
 
-        spot_market = spot_usdt[spot_base]
+        contract_size = market.get("contractSize", 1.0) or 1.0
+        candidates.append({
+            "symbol": f"{spot_base}/USDT",
+            "spot_symbol": spot_usdt[spot_base]["symbol"],
+            "perp_symbol": market["symbol"],
+            "multiplier": multiplier,
+            "contract_size": float(contract_size),
+            "perp_id": market.get("id", ""),
+            "spot_base": spot_base,
+        })
 
-        # ── Filtres de liquidité ──
-        spot_vol = spot_market.get("info", {}).get("quoteVolume", "0")
+    logger.info("Candidats Spot∩Perp (avant filtres volume): %d", len(candidates))
+    if not candidates:
+        return []
+
+    # ── 3. Récupérer les volumes/ spreads via fetch_tickers ──
+    spot_symbols = [c["spot_symbol"] for c in candidates]
+    perp_symbols = [c["perp_symbol"] for c in candidates]
+
+    spot_tickers: dict[str, dict] = {}
+    perp_tickers: dict[str, dict] = {}
+
+    logger.info("Récupération des tickers spot (%d symboles)...", len(spot_symbols))
+    try:
+        # Binance limite ~100 symboles par appel, on découpe
+        for i in range(0, len(spot_symbols), 80):
+            chunk = spot_symbols[i:i+80]
+            tickers = spot_ex.fetch_tickers(chunk)
+            spot_tickers.update(tickers)
+    except Exception as e:
+        logger.warning("Échec tickers spot: %s — on continue sans filtre volume", e)
+
+    logger.info("Récupération des tickers perp (%d symboles)...", len(perp_symbols))
+    try:
+        for i in range(0, len(perp_symbols), 80):
+            chunk = perp_symbols[i:i+80]
+            tickers = perp_ex.fetch_tickers(chunk)
+            perp_tickers.update(tickers)
+    except Exception as e:
+        logger.warning("Échec tickers perp: %s — on continue sans filtre volume", e)
+
+    # ── 4. Appliquer les filtres ──
+    results: list[dict[str, Any]] = []
+    for c in candidates:
+        spot_t = spot_tickers.get(c["spot_symbol"], {})
+        perp_t = perp_tickers.get(c["perp_symbol"], {})
+
+        spot_vol = spot_t.get("quoteVolume") or spot_t.get("quote_volume") or 0
+        perp_vol = perp_t.get("quoteVolume") or perp_t.get("quote_volume") or 0
+        oi = perp_t.get("info", {}).get("openInterest") or perp_t.get("openInterest") or 0
+
         try:
             spot_vol_24h = float(spot_vol) if spot_vol else 0.0
         except (ValueError, TypeError):
             spot_vol_24h = 0.0
-
-        perp_vol = market.get("info", {}).get("quoteVolume", "0")
         try:
             perp_vol_24h = float(perp_vol) if perp_vol else 0.0
         except (ValueError, TypeError):
             perp_vol_24h = 0.0
-
-        oi = market.get("info", {}).get("openInterest", "0")
         try:
             open_interest = float(oi) if oi else 0.0
         except (ValueError, TypeError):
             open_interest = 0.0
 
-        if spot_vol_24h < min_spot_vol:
+        # Si pas de données ticker (API down), on inclut quand même
+        if spot_t and spot_vol_24h < min_spot_vol:
             continue
-        if perp_vol_24h < min_perp_vol:
+        if perp_t and perp_vol_24h < min_perp_vol:
             continue
-        if open_interest < min_oi:
+        if perp_t and open_interest > 0 and open_interest < min_oi:
             continue
-
-        contract_size = market.get("contractSize", 1.0) or 1.0
 
         results.append({
-            "symbol": f"{spot_base}/USDT",
-            "spot_symbol": spot_market["symbol"],
-            "perp_symbol": market["symbol"],
-            "multiplier": multiplier,
-            "contract_size": float(contract_size),
+            "symbol": c["symbol"],
+            "spot_symbol": c["spot_symbol"],
+            "perp_symbol": c["perp_symbol"],
+            "multiplier": c["multiplier"],
+            "contract_size": c["contract_size"],
             "spot_volume_24h_usd": spot_vol_24h,
             "perp_volume_24h_usd": perp_vol_24h,
             "open_interest_usd": open_interest,
-            "perp_id": market.get("id", ""),
+            "perp_id": c["perp_id"],
         })
 
     # Trier par volume spot décroissant
     results.sort(key=lambda r: r["spot_volume_24h_usd"], reverse=True)
 
-    logger.info("Univers carry éligible: %d actifs (filtré depuis %d spot, %d perp)",
-                len(results), len(spot_usdt), len(perp_markets))
+    logger.info("Univers carry éligible: %d actifs (filtré depuis %d candidats)",
+                len(results), len(candidates))
 
     if save:
         _update_carry_config(results)

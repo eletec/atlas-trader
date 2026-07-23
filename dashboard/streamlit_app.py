@@ -3077,7 +3077,10 @@ def _render_carry_config():
 
     # ── Quick actions ──
     non_viable = [sym for sym, p in assets.items() if p.get("_optimized_viable") is False]
-    if non_viable:
+    not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
+    if not_optimized and len(not_optimized) == len(assets):
+        st.info("📊 Lancez **Optimize** pour calculer la viabilité des actifs (volatilité, funding, OI)")
+    elif non_viable:
         st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (0% funding positif ou volatilité extrême)")
         col_q1, col_q2 = st.columns(2)
         with col_q1:

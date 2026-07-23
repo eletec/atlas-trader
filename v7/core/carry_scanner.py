@@ -58,7 +58,8 @@ def _resolve_spot_underlying(futures_base: str, spot_bases: set[str]) -> tuple[s
     return None, 0.0
 
 
-def scan_carry_universe(*, save: bool = False, min_spot_vol: float = MIN_SPOT_VOLUME_24H_USD,
+def scan_carry_universe(*, save: bool = False, optimize: bool = False,
+                         min_spot_vol: float = MIN_SPOT_VOLUME_24H_USD,
                          min_perp_vol: float = MIN_PERP_VOLUME_24H_USD,
                          min_oi: float = MIN_OPEN_INTEREST_USD,
                          max_spread_bps: int = MAX_SPREAD_BPS) -> list[dict[str, Any]]:

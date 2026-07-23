@@ -191,6 +191,16 @@ class DAGRegistry:
             entry.executor.stop()
         return True
 
+    def remove(self, dag_id: str) -> bool:
+        """Stop and remove a DAG from the registry. Returns True if found."""
+        with self._mu:
+            entry = self._dags.pop(dag_id, None)
+            if entry is None:
+                return False
+            entry.running = False
+            entry.executor.stop()
+        return True
+
     def status(self, dag_id: str | None = None) -> list[DAGEntry]:
         """Retourne le statut d'un DAG ou de tous les DAGs."""
         with self._mu:

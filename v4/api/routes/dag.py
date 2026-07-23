@@ -150,7 +150,7 @@ async def reload_dags_from_config():
     # Retirer les DAGs qui ne sont plus dans la config
     for dag_id in running_ids - desired_ids:
         try:
-            registry.stop(dag_id)
+            registry.remove(dag_id)
             removed.append(dag_id)
             logger.info("Reload: removed DAG '%s'", dag_id)
         except Exception as exc:

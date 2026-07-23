@@ -46,19 +46,15 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Icône officielle de la crypto (SVG depuis CDN cryptocurrency-icons)."""
-    ticker = asset.split("/")[0].lower()
-    # Certains tickers ont des noms différents dans la librairie
-    alias = {
-        "1000pepe": "pepe", "1000shib": "shib", "1000bonk": "bonk",
-        "1000floki": "floki", "1000lunc": "lunc",
-    }
-    slug = alias.get(ticker, ticker)
-    url = (f"https://raw.githubusercontent.com/spothq/cryptocurrency-icons"
-           f"/master/svg/color/{slug}.svg")
-    return (f'<img src="{url}" width="16" height="16" '
-            f'style="vertical-align:middle;border-radius:50%;" '
-            f'onerror="this.outerHTML=\'<b style=font-size:10px;vertical-align:middle>◆</b>\'">')
+    """Picto coloré avec l'initiale du token (fonctionne pour TOUS les actifs)."""
+    ticker = asset.split("/")[0]
+    initial = ticker[:2].upper() if len(ticker) > 1 else ticker[0].upper()
+    # Hash simple du ticker → couleur déterministe
+    hue = (sum(ord(c) * (i + 1) for i, c in enumerate(ticker)) * 37) % 360
+    return (f'<span style="display:inline-block;width:16px;height:16px;'
+            f'background:hsl({hue},55%,45%);color:#fff;border-radius:50%;'
+            f'text-align:center;line-height:16px;font-size:7px;'
+            f'font-weight:700;vertical-align:middle;">{initial}</span>')
 
 
 def _action_badge(action: str) -> str:

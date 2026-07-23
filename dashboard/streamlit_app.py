@@ -3115,9 +3115,8 @@ def _render_carry_config():
                     except Exception as exc:
                         st.error(f"{t('carry_scan_error')} — {exc}")
         with col_scan_btn2:
-            if st.button("📊 Optimize", 
-                         help="⚠️ Prérequis : lancer le backtest d'abord (🧪 Backtest → ALL → 365j). "
-                              "L'Optimizer lit les résultats du backtest + calcule capital/volatilité/stress loss optimisés."):
+            if st.button(t("carry_optimize_btn"), 
+                         help=t("carry_optimize_help")):
                 with st.spinner("Calcul des paramètres optimisés..."):
                     try:
                         from v7.core.carry_scanner import scan_carry_universe
@@ -3134,19 +3133,18 @@ def _render_carry_config():
                   if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
     not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
     if not_optimized and len(not_optimized) == len(assets):
-        st.info("📊 **Optimize** nécessite un backtest préalable (🧪 Backtest → ALL → 365j). "
-                "Il lit les résultats et calcule les paramètres optimisés par actif.")
+        st.info(t("carry_optimize_prerequisite"))
     elif non_viable:
         st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (backtest: 0 trades, MaxDD extrême, ou Sharpe négatif)")
         col_q1, col_q2, col_q3 = st.columns(3)
         with col_q1:
-            if st.button(f"🛑 Désactiver les {len(non_viable)}", type="secondary"):
+            if st.button(t("carry_disable_btn").format(n=len(non_viable)), type="secondary"):
                 for sym in non_viable:
                     if sym in cfg.get("assets", {}):
                         cfg["assets"][sym]["enabled"] = False
                 save_config(cfg)
                 reload_config()
-                st.session_state["_carry_msg"] = f"✅ {len(non_viable)} actifs désactivés — cliquez 'Apply & Reload DAGs' pour synchroniser"
+                st.session_state["_carry_msg"] = t("carry_disabled_ok").format(n=len(non_viable))
                 st.rerun()
         with col_q2:
             if st.button("📊 Appliquer optimisés", type="secondary", 
@@ -3213,11 +3211,11 @@ def _render_carry_config():
     # Collapse/Expand all
     col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 4])
     with col_exp1:
-        if st.button("📂 Expand all", key="expand_all"):
+        if st.button(t("carry_expand_all"), key="expand_all"):
             st.session_state["_carry_expand"] = True
             st.rerun()
     with col_exp2:
-        if st.button("📁 Collapse all", key="collapse_all"):
+        if st.button(t("carry_collapse_all"), key="collapse_all"):
             st.session_state["_carry_expand"] = False
             st.rerun()
     expand_default = st.session_state.get("_carry_expand", None)
@@ -3240,8 +3238,8 @@ def _render_carry_config():
 
             with col1:
                 new_enabled = st.checkbox(t("carry_enabled"), value=enabled, key=f"en_{sym}")
-                new_locked = st.checkbox("🔒 Figé", value=params.get("locked", False), key=f"lock_{sym}",
-                                         help="Protège la config contre l'optimisation automatique")
+                new_locked = st.checkbox(t("carry_locked"), value=params.get("locked", False), key=f"lock_{sym}",
+                                         help=t("carry_locked_help"))
                 new_capital = st.number_input(t("carry_capital"), value=float(params.get("capital", 2000)), step=500.0, key=f"cap_{sym}")
                 new_fraction = st.slider(t("carry_fraction"), 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
 
@@ -3259,8 +3257,8 @@ def _render_carry_config():
                 logo_preview = Path("/app/data/logos") / current_logo if current_logo else None
                 if logo_preview and logo_preview.exists():
                     st.image(str(logo_preview), width=24)
-                new_logo_file = st.file_uploader("📷 Logo", type=["png","svg","jpg","webp"], key=f"logo_{sym}",
-                                                help="Logo officiel 16×16 — sauvegardé localement")
+                new_logo_file = st.file_uploader(t("carry_logo"), type=["png","svg","jpg","webp"], key=f"logo_{sym}",
+                                                help=t("carry_logo_help"))
 
             # Détecter les changements (logo file traité séparément)
             logo_changed = new_logo_file is not None

@@ -300,6 +300,9 @@ def _summarize_node(nid: str, r: "NodeRunResult") -> str:
             rv = str(rv.iloc[0]) if len(rv) > 0 else "?"
         parts.append(f"regime={rv}")
     if "response" in out:
-        parts.append("AI: " + str(out["response"])[:60])
+        # AI analysis déplacée dans le BO — ne plus logger le placeholder
+        resp = str(out["response"])[:60]
+        if resp and "⏳" not in resp and "pending" not in str(out.get("parsed", {})):
+            parts.append("AI: " + resp)
     detail = " | ".join(parts) if parts else f"{len(out)} output(s)"
     return f"✓ {nid} ({dur_s:.1f}s) — {detail}"

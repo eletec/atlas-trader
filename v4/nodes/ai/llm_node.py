@@ -185,7 +185,7 @@ class LLMNode(Node):
                 response_text = body.get("response", "")
             else:
                 # DeepSeek / OpenAI-compatible via litellm
-                # Lire la clé API : param DAG > env > secrets.yaml
+                # Lire la clé API : param DAG > env > settings.yaml > secrets.yaml
                 import os as _os_key
                 api_key = self.params.get("api_key", "") or ""
                 if not api_key:
@@ -194,6 +194,22 @@ class LLMNode(Node):
                     api_key = _llm_cfg.get("deepseek_api_key", "") or ""
                 if not api_key:
                     api_key = _llm_cfg.get("api_key", "") or ""
+                # Chercher aussi dans secrets.yaml (séparé de settings.yaml pour sécurité)
+                if not api_key:
+                    try:
+                        import yaml as _yaml
+                        for _sec_path in ("/app/data/secrets.yaml", "/app/src/config/secrets.yaml"):
+                            try:
+                                with open(_sec_path) as _sf:
+                                    _secrets = _yaml.safe_load(_sf) or {}
+                                _sec_llm = _secrets.get("llm", {})
+                                api_key = _sec_llm.get("deepseek_api_key", "") or _sec_llm.get("api_key", "")
+                                if api_key:
+                                    break
+                            except FileNotFoundError:
+                                continue
+                    except Exception:
+                        pass
                 import litellm
                 litellm.drop_params = True
                 # LiteLLM lit DEEPSEEK_API_KEY depuis l'environnement

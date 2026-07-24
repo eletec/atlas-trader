@@ -2702,7 +2702,11 @@ def _inject_live_trade_prices_js() -> None:
 
   function apiUrl() {
     try {
+      var proto = window.top.location.protocol;
       var h = window.top.location.hostname;
+      // Via HTTPS (atlastrader.org) → use /api/ proxy on same domain
+      if (proto === 'https:') return proto + '//' + h + '/api';
+      // Local network → direct API port
       if (h) return 'http://' + h + ':8000';
     } catch(e) {}
     return 'http://192.168.1.80:8000';

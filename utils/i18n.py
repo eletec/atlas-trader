@@ -5202,10 +5202,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "zh": "✅ 我理解 **所有交易**（持仓和已平仓）将被 **不可逆地删除**。",
     },
     "admin_reset_btn": {
-        "fr": "🗑️ Reset complet V4", "en": "🗑️ Full V4 Reset",
-        "de": "🗑️ Vollständiger V4-Reset", "es": "🗑️ Reset completo V4",
-        "it": "🗑️ Reset completo V4", "pt": "🗑️ Reset completo V4",
-        "nl": "🗑️ Volledige V4-reset", "zh": "🗑️ 完全重置 V4",
+        "fr": "🗑️ Reset", "en": "🗑️ Reset",
+        "de": "🗑️ Reset", "es": "🗑️ Reset",
+        "it": "🗑️ Reset", "pt": "🗑️ Reset",
+        "nl": "🗑️ Reset", "zh": "🗑️ 重置",
     },
     "no_trades_recorded": {
         "fr": "Aucun trade enregistré.", "en": "No trades recorded.",

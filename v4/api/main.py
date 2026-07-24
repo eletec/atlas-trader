@@ -116,9 +116,9 @@ async def _auto_schedule_demo():
             active = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
         for sym in active:
             ensure_ticker(sym)
-        logging.getLogger("v4.api.main").info("Tickers prix démarrés (%d actifs)", len(active))
+        logging.getLogger("v4.api.main").info("Price tickers started (%d assets)", len(active))
     except Exception as exc:
-        logging.getLogger("v4.api.main").warning(f"Tickers prix non démarrés : {exc}")
+        logging.getLogger("v4.api.main").warning(f"Price tickers failed to start: {exc}")
 
     # 3) V7 Funding Carry Scheduler — DÉSACTIVÉ (remplacé par les DAGs V7 #1)
     # Le scheduler était redondant avec les DAGs et créait des doublons.
@@ -127,9 +127,9 @@ async def _auto_schedule_demo():
     try:
         from v7.position_monitor import start_monitor
         start_monitor()
-        logging.getLogger("v4.api.main").info("PositionMonitor démarré")
+        logging.getLogger("v4.api.main").info("PositionMonitor started")
     except Exception as exc:
-        logging.getLogger("v4.api.main").warning(f"PositionMonitor non démarré : {exc}")
+        logging.getLogger("v4.api.main").warning(f"PositionMonitor failed to start: {exc}")
 
 
 @app.get("/health")

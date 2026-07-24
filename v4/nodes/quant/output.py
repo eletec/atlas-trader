@@ -60,7 +60,7 @@ class PaperTrader(Node):
                 from storage.paper_trader import get_open_positions, close_position
                 open_positions = get_open_positions(symbol=symbol)
                 if not open_positions:
-                    logger.info("PaperTrader [%s] close_carry: aucune position ouverte", symbol)
+                    logger.info("PaperTrader [%s] close_carry: no open position", symbol)
                     return {"trade_result": {"status": "no_position", "symbol": symbol}}
                 # Fermer la première position ouverte (ou toutes)
                 closed = []
@@ -94,7 +94,7 @@ class PaperTrader(Node):
                 return {"trade_result": {"status": "closed", "symbol": symbol,
                                           "closed_ids": closed, "close_price": close_price}}
             except ImportError:
-                logger.warning("PaperTrader [%s] close_carry: storage.paper_trader indisponible", symbol)
+                logger.warning("PaperTrader [%s] close_carry: storage.paper_trader unavailable", symbol)
                 return {"trade_result": {"status": "error", "symbol": symbol, "reason": "storage unavailable"}}
 
         # ── Limite de positions simultanées (pyramiding control) ──
@@ -146,7 +146,7 @@ class PaperTrader(Node):
             return {"trade_result": {"status": "opened", "trade_id": trade_id, "symbol": symbol,
                                       "action": action, "entry_price": entry_price}}
         except ImportError:
-            logger.warning("storage.paper_trader non disponible — trade log-only")
+            logger.warning("storage.paper_trader not available — trade log-only")
             return {"trade_result": {"status": "logged_only", "decision": decision}}
 
 

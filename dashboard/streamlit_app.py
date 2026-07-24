@@ -3087,7 +3087,7 @@ def _reload_dags():
             msg += f" — -{len(removed)} retirés"
         st.success(msg)
     except Exception as exc:
-        st.error(f"Échec reload DAGs — {exc}")
+        st.error(f"DAG reload failed — {exc}")
 
 
 def _carry_logo_md(sym: str, params: dict) -> str:
@@ -3136,7 +3136,7 @@ def _render_carry_config():
     try:
         from v7.core.asset_config import load_config, save_config, get_all_assets, reload_config
     except ImportError:
-        st.warning("Module asset_config non disponible. Déployez la dernière version.")
+        st.warning("asset_config module not available. Please deploy the latest version.")
         return
 
     cfg = load_config()
@@ -3177,7 +3177,7 @@ def _render_carry_config():
                     st.session_state["_carry_msg"] = "📊 Paramètres optimisés calculés (voir champs _optimized_*)"
                     st.rerun()
                 except Exception as exc:
-                    st.error(f"Optimisation échouée — {exc}")
+                    st.error(f"Optimization failed — {exc}")
     with col_b3:
         if st.button("📊 Appliquer optimisés", type="secondary", use_container_width=True,
                      help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
@@ -3192,7 +3192,7 @@ def _render_carry_config():
     non_viable = [sym for sym, p in assets.items() 
                   if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
     if non_viable:
-        st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (backtest: 0 trades, MaxDD extrême, ou Sharpe négatif)")
+        st.warning(f"⚠️ {len(non_viable)} non-viable assets detected (backtest: 0 trades, extreme MaxDD, or negative Sharpe)")
         if st.button(t("carry_disable_btn").format(n=len(non_viable)), type="secondary"):
             for sym in non_viable:
                 if sym in cfg.get("assets", {}):

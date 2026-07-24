@@ -573,7 +573,7 @@ class FundingCarryNode:
             # En paper trading, on simule le risque de liquidation du short perp
             # Si la perte latente > 80% du capital → alerte liquidation
             if unrealized_pct < -0.80 and self.state.position_open:
-                logger.error("[%s] ⚠️ RISQUE LIQUIDATION: loss=%.1f%% → le short perp serait liquidé!",
+                logger.error("[%s] ⚠️ LIQUIDATION RISK: loss=%.1f%% → short perp would be liquidated!",
                            self.node_id, unrealized_pct * 100)
                 # En paper, on ne ferme pas automatiquement mais on alerte fortement
             

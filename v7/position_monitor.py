@@ -97,7 +97,7 @@ class PositionMonitor:
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="position-monitor")
         self._thread.start()
-        logger.info("PositionMonitor démarré (intervalle=%ds)", CHECK_INTERVAL_S)
+        logger.info("PositionMonitor started (interval=%ds)", CHECK_INTERVAL_S)
 
     def stop(self) -> None:
         """Arrête le thread proprement."""
@@ -105,7 +105,7 @@ class PositionMonitor:
             self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=5)
-        logger.info("PositionMonitor arrêté")
+        logger.info("PositionMonitor stopped")
 
     # ── Internal ───────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ class PositionMonitor:
         try:
             from storage.paper_trader import get_open_positions, close_position
         except ImportError:
-            logger.warning("PositionMonitor: storage.paper_trader indisponible")
+            logger.warning("PositionMonitor: storage.paper_trader unavailable")
             return
 
         positions = get_open_positions()
@@ -205,18 +205,18 @@ class PositionMonitor:
         max_cache_age = max(cache_ages) if cache_ages else 0
         if max_cache_age > 300:  # 5 minutes sans prix frais
             stale_data = True
-            logger.warning("🔶 TIER 0 CIRCUIT BREAKER: prix périmés (%.0fs) → NO NEW RISK", max_cache_age)
+            logger.warning("TIER 0 CIRCUIT BREAKER: stale prices (%.0fs) → NO NEW RISK", max_cache_age)
             self._circuit_breaker = True
         elif max_cache_age < 60 and self._circuit_breaker:
             self._circuit_breaker = False
-            logger.info("🟢 TIER 0: circuit breaker levé — prix OK")
+            logger.info("TIER 0: circuit breaker lifted — prices OK")
 
         # ── Phase 2 : Kill-switch multi-tier ─────────────────────────────
         total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
         
         # Tier 1: Operational — données périmées
         if stale_data:
-            logger.error("🔴 KILL-SWITCH TIER 1 (OPERATIONAL): prix périmés (%.0fs)", max_cache_age)
+            logger.error("KILL-SWITCH TIER 1 (OPERATIONAL): stale prices (%.0fs)", max_cache_age)
         
         # Tier 2: Market — P&L extrême (>10% capital)
         market_stress = abs(total_unrealized) > total_capital * 0.10
@@ -265,7 +265,7 @@ class PositionMonitor:
                 except Exception as exc:
                     logger.error("Kill-switch close failed %s: %s", pd["trade_id"], exc)
             if closed_count > 0:
-                logger.info("PositionMonitor: KILL-SWITCH %s — %d position(s) fermée(s)", kill_tier, closed_count)
+                logger.info("PositionMonitor: KILL-SWITCH %s — %d position(s) closed", kill_tier, closed_count)
             return
 
         # ── Kill-switch reset policy (3 audits, 20/07/2026) ──
@@ -275,7 +275,7 @@ class PositionMonitor:
         if self._kill_switch_triggered and kill_tier == "OPERATIONAL":
             if not stale_data:
                 self._kill_switch_triggered = False
-                logger.info("🟢 KILL-SWITCH TIER 1 auto-reset: données restaurées")
+                logger.info("KILL-SWITCH TIER 1 auto-reset: data restored")
         # Tier 2+ : pas d'auto-reset. Nécessite redémarrage du container ou
         # appel API /dag/reset-kill-switch pour réarmer.
 
@@ -378,12 +378,12 @@ class PositionMonitor:
                             pd["entry_price"], close_price, pd["size_usd"], pnl, reason,
                         )
                     else:
-                        logger.warning("PositionMonitor: échec close_position pour %s", pd["trade_id"])
+                        logger.warning("PositionMonitor: close_position failed for %s", pd["trade_id"])
                 except Exception as exc:
                     logger.error("PositionMonitor: exception close_position %s: %s", pd["trade_id"], exc)
 
         if closed_count > 0:
-            logger.info("PositionMonitor: %d position(s) fermée(s) ce cycle | P&L total=%.2f$ (%.2f%%)",
+            logger.info("PositionMonitor: %d position(s) closed this cycle | total P&L=%.2f$ (%.2f%%)",
                        closed_count, total_unrealized, total_pnl_pct)
 
     # ── Carry Economics (two-leg P&L) ────────────────────────────────────

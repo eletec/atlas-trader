@@ -817,6 +817,16 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
         for t in v4_trades:
+            # Extraire le score depuis context_json (carry) ou fallback 0
+            _score = 0
+            _ctx_raw = t.get("context_json")
+            if _ctx_raw:
+                try:
+                    import json as _json
+                    _ctx = _json.loads(_ctx_raw) if isinstance(_ctx_raw, str) else _ctx_raw
+                    _score = int(_ctx.get("score", 0))
+                except Exception:
+                    pass
             trades.append({
                 "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",
                 "timestamp": t.get("timestamp", ""),
@@ -829,6 +839,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 "result_24h": t.get("pnl_usd") if t.get("status") == "closed" else None,
                 "status": t.get("status", "open"),
                 "source": "v4",
+                "score": _score,
             })
     except Exception:
         pass

@@ -473,18 +473,41 @@ class FundingCarryNode:
                                     reason = f"GlobalAllocator: {alloc_reason}"
                                     confidence = 0.3
                                 else:
-                                    self.state.position_open = True
-                                    self.state.entry_capital = size_usd
-                                    self.state.entry_spot = spot_price
-                                    self.state.entry_perp = perp_price if perp_price > 0 else spot_price
-                                    self.state.entry_time = datetime.now().isoformat()
-                                    self.state.negative_since = None
-                                    
-                                    signal = "open_carry"
-                                    confidence = min(0.90, 0.50 + score * 2)
-                                    reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                              f"→ net={net_expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
-                                              f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
+                                    # ── DB safety check (anti-duplicate, 24/07/2026) ──
+                                    try:
+                                        from storage.paper_trader import get_open_positions
+                                        _db_open = get_open_positions(symbol=self.symbol)
+                                        _db_carry = [p for p in _db_open if p.get("action") in ("carry", "short")]
+                                        if _db_carry:
+                                            # Sync in-memory state with DB reality
+                                            self.state.position_open = True
+                                            reason = f"DB safety: position déjà ouverte (id={_db_carry[0].get('trade_id','?')})"
+                                            confidence = 0.1
+                                            logger.warning("[%s] %s", self.node_id, reason)
+                                        else:
+                                            self.state.position_open = True
+                                            self.state.entry_capital = size_usd
+                                            self.state.entry_spot = spot_price
+                                            self.state.entry_perp = perp_price if perp_price > 0 else spot_price
+                                            self.state.entry_time = datetime.now().isoformat()
+                                            self.state.negative_since = None
+                                            signal = "open_carry"
+                                            confidence = min(0.90, 0.50 + score * 2)
+                                            reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
+                                                      f"→ net={net_expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
+                                                      f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
+                                    except ImportError:
+                                        self.state.position_open = True
+                                        self.state.entry_capital = size_usd
+                                        self.state.entry_spot = spot_price
+                                        self.state.entry_perp = perp_price if perp_price > 0 else spot_price
+                                        self.state.entry_time = datetime.now().isoformat()
+                                        self.state.negative_since = None
+                                        signal = "open_carry"
+                                        confidence = min(0.90, 0.50 + score * 2)
+                                        reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
+                                                  f"→ net={net_expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
+                                                  f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
                         reason = f"retour net {net_expected_return*100:.1f}%/an < {economic_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
@@ -596,6 +619,8 @@ class FundingCarryNode:
         # Pour les trades carry : PAS de SL/TP spot (sémantiquement faux pour du delta-neutre).
         # Le PositionMonitor utilise max_loss_pct unifié (-5%) pour la sortie.
         # Le DAG gère le basis SL et le time-stop.
+        # Score arrondi 0-100 pour affichage dashboard
+        _display_score = round(min(score, 0.25) / 0.25 * 100) if signal == "open_carry" else 0
         decision = {
             "action": "flat",
             "size_usd": round(size_usd, 2),
@@ -607,6 +632,7 @@ class FundingCarryNode:
             "carry_signal": signal,
             "carry_expected_return": round(expected_return, 4),
             "carry_annual_pct": round(annual_funding * 100, 2),
+            "score": _display_score,  # pour affichage dashboard
         }
         if signal == "open_carry":
             decision["action"] = "carry"

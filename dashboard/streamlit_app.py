@@ -3083,6 +3083,39 @@ def _reload_dags():
         st.error(f"Échec reload DAGs — {exc}")
 
 
+def _carry_logo_md(sym: str, params: dict) -> str:
+    """Retourne un logo Markdown pour la barre d'expander (compatible label Streamlit).
+    
+    Fallback : upload local > SVG git > initiales texte.
+    """
+    from pathlib import Path as _P
+    import base64 as _b64
+    ticker = sym.split("/")[0]
+    size = 18
+
+    # 1) Logo uploadé
+    logo_file = params.get("icon_url", "")
+    if logo_file:
+        logo_path = _P("/app/data/logos") / logo_file
+        if logo_path.exists():
+            ext = logo_path.suffix.lower()
+            mime = "image/svg+xml" if ext == ".svg" else "image/png"
+            data = _b64.b64encode(logo_path.read_bytes()).decode()
+            return f"![icon](data:{mime};base64,{data})"
+
+    # 2) Logo git-tracked
+    for ext in (".svg", ".png", ".webp", ".jpg"):
+        git_path = _P("/app/src/images/assets") / f"{ticker}{ext}"
+        if git_path.exists():
+            mime = "image/svg+xml" if ext == ".svg" else "image/png"
+            data = _b64.b64encode(git_path.read_bytes()).decode()
+            return f"![icon](data:{mime};base64,{data})"
+
+    # 3) Fallback texte (initiales entre crochets)
+    initial = ticker[:2].upper() if len(ticker) > 1 else ticker[0].upper()
+    return f"[{initial}]"
+
+
 def _render_carry_config():
     """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
     st.markdown(f"### {t('tab_carry_cfg')}")
@@ -3235,21 +3268,13 @@ def _render_carry_config():
         params = assets.get(sym, {})
         enabled = params.get("enabled", False)
         icon = "🟢" if enabled else "⚫"
-        # Logo: use _asset_icon from multi_asset (3-level fallback: upload > SVG > colored circle)
-        try:
-            from dashboard.multi_asset import _asset_icon as _get_icon
-            logo_html = _get_icon(sym)
-        except Exception:
-            logo_html = ""
+        # Logo Markdown pour la barre d'expander (HTML ne marche pas dans les labels)
+        logo_md = _carry_logo_md(sym, params)
         ticker = sym.split("/")[0]
         # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
         expanded = expand_default if expand_default is not None else enabled
 
-        with st.expander(f"{icon} {sym}", expanded=expanded):
-            # Logo + ticker header
-            if logo_html:
-                st.markdown(f"{logo_html} &nbsp;**{sym}**", unsafe_allow_html=True)
-
+        with st.expander(f"{icon} {logo_md} {sym}", expanded=expanded):
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:
@@ -3269,8 +3294,12 @@ def _render_carry_config():
                 new_max_hold = st.number_input(t("carry_max_hold"), 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
                 new_exit_h = st.number_input(t("carry_exit_hours"), 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
                 # Logo preview (3-level fallback: upload > git SVG > colored circle)
-                if logo_html:
+                try:
+                    from dashboard.multi_asset import _asset_icon as _get_icon
+                    logo_html = _get_icon(sym)
                     st.markdown(f"**{t('carry_logo')}:** {logo_html}", unsafe_allow_html=True)
+                except Exception:
+                    logo_html = ""
                 new_logo_file = st.file_uploader(t("carry_logo"), type=["png","svg","jpg","webp"], key=f"logo_{sym}",
                                                 help=t("carry_logo_help"), label_visibility="collapsed")
 

@@ -3235,13 +3235,21 @@ def _render_carry_config():
         params = assets.get(sym, {})
         enabled = params.get("enabled", False)
         icon = "🟢" if enabled else "⚫"
-        # Ticker initials for title
+        # Logo: use _asset_icon from multi_asset (3-level fallback: upload > SVG > colored circle)
+        try:
+            from dashboard.multi_asset import _asset_icon as _get_icon
+            logo_html = _get_icon(sym)
+        except Exception:
+            logo_html = ""
         ticker = sym.split("/")[0]
-        initials = f"[{ticker[:2].upper()}]" if len(ticker) > 1 else f"[{ticker[0].upper()}]"
         # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
         expanded = expand_default if expand_default is not None else enabled
 
-        with st.expander(f"{icon} {initials} {sym}", expanded=expanded):
+        with st.expander(f"{icon} {sym}", expanded=expanded):
+            # Logo + ticker header
+            if logo_html:
+                st.markdown(f"{logo_html} &nbsp;**{sym}**", unsafe_allow_html=True)
+
             col1, col2, col3 = st.columns([1, 1, 1])
 
             with col1:
@@ -3260,13 +3268,11 @@ def _render_carry_config():
                 new_min_fund = st.number_input(t("carry_min_funding"), 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
                 new_max_hold = st.number_input(t("carry_max_hold"), 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
                 new_exit_h = st.number_input(t("carry_exit_hours"), 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
-                # Logo upload local
-                current_logo = params.get("icon_url", "")
-                logo_preview = Path("/app/data/logos") / current_logo if current_logo else None
-                if logo_preview and logo_preview.exists():
-                    st.image(str(logo_preview), width=24)
+                # Logo preview (3-level fallback: upload > git SVG > colored circle)
+                if logo_html:
+                    st.markdown(f"**{t('carry_logo')}:** {logo_html}", unsafe_allow_html=True)
                 new_logo_file = st.file_uploader(t("carry_logo"), type=["png","svg","jpg","webp"], key=f"logo_{sym}",
-                                                help=t("carry_logo_help"))
+                                                help=t("carry_logo_help"), label_visibility="collapsed")
 
             # Détecter les changements (logo file traité séparément)
             logo_changed = new_logo_file is not None

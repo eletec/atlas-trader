@@ -126,6 +126,8 @@ class LLMNode(Node):
             model    = self.params.get("model") or _llm_cfg.get("model", "deepseek-v4-pro")
             temperature = float(self.params.get("temperature", 0.3))
             max_tokens  = int(self.params.get("max_tokens", 512))
+        system_prompt = self.params.get("system_prompt", "You are a trading assistant. Respond in JSON.")
+        user_prompt   = self.params.get("user_prompt", "Analyze: {inputs}")
         ollama_url    = self.params.get("ollama_url", _llm_cfg.get("ollama_url", "http://atlas-v4-ollama:11434"))
         timeout_s     = int(self.params.get("timeout_s", 60))
 

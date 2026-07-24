@@ -145,6 +145,14 @@ Full runbook at [`OPS.md`](OPS.md):
 - Kill-switch management
 - Maintenance (DB reset, disk space)
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, code style, and PR guidelines.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE)
+
 ---
 
 **Built by Jako · July 2026**

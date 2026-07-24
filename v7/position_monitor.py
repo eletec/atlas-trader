@@ -222,7 +222,7 @@ class PositionMonitor:
         market_stress = abs(total_unrealized) > total_capital * 0.10
         
         # Tier 3: Portfolio drawdown (-20%)
-        portfolio_dd = total_pnl_pct < (max_portfolio_dd_pct * 100)
+        portfolio_dd = total_pnl_pct < -(max_portfolio_dd_pct * 100)
         
         # Tier 4: Pertes de basis corrélées (3 audits, 20/07/2026)
         # L'ancienne règle "≥3 positions perdantes" déclenchait sur un simple

@@ -109,9 +109,9 @@ class LLMNode(Node):
         """Exécution synchrone du LLM (utilisée par async mode en background)."""
         from v4.nodes.config_loader import load_v4_config
 
-        # ── Modèle : priorité DAG → settings.yaml global → défaut ──
+        # ── Modèle : priorité DAG → settings.yaml global → défaut Ollama local ──
         _llm_cfg = load_v4_config(None, "llm", {
-            "provider": "deepseek", "model": "deepseek-v4-pro",
+            "provider": "ollama", "model": "phi4:latest",
             "ollama_url": "http://atlas-v4-ollama:11434",
         })
         provider      = self.params.get("provider") or _llm_cfg.get("provider", "ollama")

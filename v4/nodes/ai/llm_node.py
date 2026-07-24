@@ -109,17 +109,23 @@ class LLMNode(Node):
         """Exécution synchrone du LLM (utilisée par async mode en background)."""
         from v4.nodes.config_loader import load_v4_config
 
-        # ── Modèle : priorité DAG → settings.yaml global → défaut Ollama local ──
+        # ── Modèle : priorité DAG params → settings.yaml (BO) → défaut DeepSeek ──
+        # Support dual config: "deep" (BO, reasoning) vs "fast" (DAG, quick analysis)
         _llm_cfg = load_v4_config(None, "llm", {
-            "provider": "ollama", "model": "phi4:latest",
+            "provider": "deepseek", "model": "deepseek-v4-pro",
             "ollama_url": "http://atlas-v4-ollama:11434",
         })
-        provider      = self.params.get("provider") or _llm_cfg.get("provider", "ollama")
-        model         = self.params.get("model") or _llm_cfg.get("model", "phi4:latest")
-        system_prompt = self.params.get("system_prompt", "You are a trading assistant. Respond in JSON.")
-        user_prompt   = self.params.get("user_prompt", "Analyze: {inputs}")
-        temperature   = float(self.params.get("temperature", 0.3))
-        max_tokens    = int(self.params.get("max_tokens", 512))
+        use_fast = bool(self.params.get("use_fast", False))
+        if use_fast:
+            provider = self.params.get("provider") or _llm_cfg.get("fast_provider") or _llm_cfg.get("provider", "deepseek")
+            model    = self.params.get("model") or _llm_cfg.get("fast_model", "deepseek-chat")
+            temperature = float(self.params.get("temperature") or _llm_cfg.get("fast_temperature", 0.3))
+            max_tokens  = int(self.params.get("max_tokens") or _llm_cfg.get("fast_max_tokens", 256))
+        else:
+            provider = self.params.get("provider") or _llm_cfg.get("provider", "deepseek")
+            model    = self.params.get("model") or _llm_cfg.get("model", "deepseek-v4-pro")
+            temperature = float(self.params.get("temperature", 0.3))
+            max_tokens  = int(self.params.get("max_tokens", 512))
         ollama_url    = self.params.get("ollama_url", _llm_cfg.get("ollama_url", "http://atlas-v4-ollama:11434"))
         timeout_s     = int(self.params.get("timeout_s", 60))
 

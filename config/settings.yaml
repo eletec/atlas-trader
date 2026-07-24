@@ -516,6 +516,11 @@ llm:
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
+  # Modèle rapide pour tâches légères (DAG carry analysis, résumés, etc.)
+  fast_provider: deepseek
+  fast_model: deepseek-chat
+  fast_temperature: 0.3
+  fast_max_tokens: 256
   # deepseek_api_key → voir config/secrets.yaml
 post_mortem:
   enabled: true

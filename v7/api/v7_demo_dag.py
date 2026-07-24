@@ -82,9 +82,9 @@ def _make_v7_dag(dag_id: str, symbol: str, capital: float | None = None) -> DAGS
                  params={"symbol": symbol, "dag_id": dag_id, "max_positions": 1}),
         NodeSpec(id=f"{pfx}_record", type="RecordDecision",
                  params={"db_path": "/app/data/v4.db", "symbol": symbol, "dag_id": dag_id}),
-        # LLM AI Analyst (analyse async de la décision carry)
+        # LLM AI Analyst (analyse async de la décision carry — modèle rapide)
         NodeSpec(id=f"{pfx}_llm", type="LLMNode",
-                 params={"model": "deepseek-chat", "temperature": 0.3,
+                 params={"use_fast": True, "temperature": 0.3,
                           "max_tokens": 256, "async_mode": True,
                           "dag_id": dag_id,
                           "system_prompt": "You are a crypto funding-rate analyst. Analyze the carry trade decision.",

@@ -4086,6 +4086,54 @@ def render_admin_panel():
         _llm["model"]    = _new_model
         if _key_name and _new_key:
             _llm[_key_name] = _new_key
+
+        # ── Modèle rapide (DAGs, tâches légères) ──
+        st.markdown("---")
+        st.markdown("#### ⚡ Modèle rapide (analyses DAGs, résumés)")
+        st.caption("Utilisé par les nœuds LLM des cycles DAG. Doit être rapide et économique.")
+
+        _fast_provider = _llm.get("fast_provider", _new_provider)
+        if _fast_provider not in _providers:
+            _providers_fast = [_fast_provider] + _providers
+        else:
+            _providers_fast = _providers
+        _fast_model_opts = _provider_models.get(_fast_provider, [_llm.get("fast_model", "deepseek-chat")])
+        _cur_fast_model = _llm.get("fast_model", _fast_model_opts[0] if _fast_model_opts else "deepseek-chat")
+        if _cur_fast_model not in _fast_model_opts:
+            _fast_model_opts = [_cur_fast_model] + _fast_model_opts
+
+        _fc1, _fc2 = st.columns(2)
+        with _fc1:
+            _new_fast_provider = st.selectbox(
+                "Provider", _providers_fast,
+                index=_providers_fast.index(_fast_provider),
+                key="ai_fast_provider_sel",
+                help="Même clé API que le modèle principal.",
+            )
+        with _fc2:
+            _new_fast_model = st.selectbox(
+                "Modèle", _fast_model_opts,
+                index=_fast_model_opts.index(_cur_fast_model) if _cur_fast_model in _fast_model_opts else 0,
+                key="ai_fast_model_sel",
+            )
+
+        _fc3, _fc4 = st.columns(2)
+        with _fc3:
+            _llm["fast_temperature"] = st.slider(
+                "Temperature", 0.0, 1.0,
+                float(_llm.get("fast_temperature", 0.3)), 0.05,
+                key="ai_fast_temp_sl",
+            )
+        with _fc4:
+            _llm["fast_max_tokens"] = st.number_input(
+                "Max tokens", 64, 4096,
+                int(_llm.get("fast_max_tokens", 256)), 64,
+                key="ai_fast_maxtok_ni",
+            )
+
+        _llm["fast_provider"] = _new_fast_provider
+        _llm["fast_model"]    = _new_fast_model
+
         settings["llm"] = _llm
 
     elif _atab == "sources":

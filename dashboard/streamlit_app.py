@@ -853,7 +853,7 @@ def _get_portfolio(asset: str | None = None) -> dict:
     """Portefeuille consolidé — positions ouvertes + PnL cumulé depuis la DB."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
-                 "live_mode": False}
+                 "live_mode": False, "exposure": 0, "exposure_pct": 0}
 
     # V4 : positions ouvertes + PnL cumulé depuis la DB
     try:
@@ -861,16 +861,20 @@ def _get_portfolio(asset: str | None = None) -> dict:
         all_trades = get_v4_trades(n=500, symbol=asset)
         total_pnl = 0.0
         n_open = 0
+        total_exposure = 0.0
         for t in all_trades:
             if t.get("status") == "open":
                 n_open += 1
+                total_exposure += float(t.get("size_usd", 0) or 0)
             pnl = t.get("pnl_usd")
             if pnl is not None:
                 total_pnl += float(pnl)
         portfolio["n_trades"] = n_open
+        portfolio["exposure"] = round(total_exposure, 2)
         portfolio["total_pnl"] = round(total_pnl, 2)
         if portfolio["capital"] > 0:
             portfolio["total_pnl_pct"] = round(total_pnl / portfolio["capital"] * 100, 2)
+            portfolio["exposure_pct"] = round(total_exposure / portfolio["capital"] * 100, 2)
     except Exception:
         pass
 
@@ -1790,6 +1794,9 @@ def render_portfolio(portfolio: dict):
         _html_card("fas fa-arrow-trend-up", t("pnl_label"),
                    f'<span style="color:{pnl_col}">${pnl:+,.2f}</span>',
                    delta=f"{pnl_pct:+.2f}%", d_pos=pnl_pos, **kw) +
+        _html_card("fas fa-chart-pie", "💸 Exposure",
+                   f'${portfolio.get("exposure", 0):,.0f}',
+                   delta=f"{portfolio.get('exposure_pct', 0):.1f}% du capital", d_pos=None, **kw) +
         _html_card("fas fa-right-left", t("trades_label"),
                    str(portfolio.get("n_trades", 0)), **kw)
     )

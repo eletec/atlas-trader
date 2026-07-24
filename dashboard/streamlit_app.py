@@ -4585,7 +4585,12 @@ def render_admin_panel():
             except Exception as e:
                 st.warning(f"⚠️ Redémarrage DAGs échoué : {e}")
 
+            # 4) Vider le cache Streamlit pour que les trades disparaissent
+            st.cache_data.clear()
+            st.session_state["_carry_msg"] = "✅ Reset complet. Les nouvelles positions apparaîtront au prochain cycle."
             st.balloons()
+            time.sleep(1)
+            st.rerun()
 
     elif _atab == "historique":  # Transaction history
         st.markdown(

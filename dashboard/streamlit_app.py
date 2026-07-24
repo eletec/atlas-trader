@@ -3136,82 +3136,64 @@ def _render_carry_config():
     assets = cfg.get("assets", {})
     global_cfg = cfg.get("global", {})
 
-    # ── Scanner button ──
-    col_scan1, col_scan2 = st.columns([3, 1])
-    with col_scan1:
-        scanner_meta = cfg.get("_scanner_meta", {})
-        if scanner_meta:
-            st.caption(t("carry_scan_last").format(
-                n=scanner_meta.get('total_eligible', '?'),
-                t=scanner_meta.get('total_spot_pairs', '?')))
-    with col_scan2:
-        col_scan_btn1, col_scan_btn2 = st.columns(2)
-        with col_scan_btn1:
-            if st.button(t("carry_scan_btn"), help=t("carry_scan_help")):
-                with st.spinner(t("carry_scanning")):
-                    try:
-                        from v7.core.carry_scanner import scan_carry_universe
-                        from v7.core.asset_config import reload_config
-                        scan_carry_universe(save=True)
-                        reload_config()
-                        st.success(t("carry_scan_ok"))
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"{t('carry_scan_error')} — {exc}")
-        with col_scan_btn2:
-            if st.button(t("carry_optimize_btn"), 
-                         help=t("carry_optimize_help")):
-                with st.spinner("Calcul des paramètres optimisés..."):
-                    try:
-                        from v7.core.carry_scanner import scan_carry_universe
-                        from v7.core.asset_config import reload_config
-                        scan_carry_universe(save=True, optimize=True)
-                        reload_config()
-                        st.success("📊 Paramètres optimisés calculés (voir champs _optimized_*)")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Optimisation échouée — {exc}")
+    # ── Scanner meta info ──
+    scanner_meta = cfg.get("_scanner_meta", {})
+    if scanner_meta:
+        st.caption(t("carry_scan_last").format(
+            n=scanner_meta.get('total_eligible', '?'),
+            t=scanner_meta.get('total_spot_pairs', '?')))
+    else:
+        st.caption(t("carry_optimize_prerequisite"))
 
-    # ── Quick actions ──
+    # ── 4 boutons sur une ligne ──
+    col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+    with col_b1:
+        if st.button(t("carry_scan_btn"), help=t("carry_scan_help"), use_container_width=True):
+            with st.spinner(t("carry_scanning")):
+                try:
+                    from v7.core.carry_scanner import scan_carry_universe
+                    from v7.core.asset_config import reload_config
+                    scan_carry_universe(save=True)
+                    reload_config()
+                    st.session_state["_carry_msg"] = t("carry_scan_ok")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"{t('carry_scan_error')} — {exc}")
+    with col_b2:
+        if st.button(t("carry_optimize_btn"), help=t("carry_optimize_help"), use_container_width=True):
+            with st.spinner("Calcul des paramètres optimisés..."):
+                try:
+                    from v7.core.carry_scanner import scan_carry_universe
+                    from v7.core.asset_config import reload_config
+                    scan_carry_universe(save=True, optimize=True)
+                    reload_config()
+                    st.session_state["_carry_msg"] = "📊 Paramètres optimisés calculés (voir champs _optimized_*)"
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Optimisation échouée — {exc}")
+    with col_b3:
+        if st.button("📊 Appliquer optimisés", type="secondary", use_container_width=True,
+                     help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
+            count = _apply_optimized_params(cfg)
+            st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
+            st.rerun()
+    with col_b4:
+        if st.button("🚀 Apply & Reload DAGs", type="primary", use_container_width=True):
+            _reload_dags()
+
+    # ── Warning: actifs non viables ──
     non_viable = [sym for sym, p in assets.items() 
                   if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
-    not_optimized = [sym for sym, p in assets.items() if "_optimized_viable" not in p]
-    if not_optimized and len(not_optimized) == len(assets):
-        st.info(t("carry_optimize_prerequisite"))
-    elif non_viable:
+    if non_viable:
         st.warning(f"⚠️ {len(non_viable)} actifs non viables détectés (backtest: 0 trades, MaxDD extrême, ou Sharpe négatif)")
-        col_q1, col_q2, col_q3 = st.columns(3)
-        with col_q1:
-            if st.button(t("carry_disable_btn").format(n=len(non_viable)), type="secondary"):
-                for sym in non_viable:
-                    if sym in cfg.get("assets", {}):
-                        cfg["assets"][sym]["enabled"] = False
-                save_config(cfg)
-                reload_config()
-                st.session_state["_carry_msg"] = t("carry_disabled_ok").format(n=len(non_viable))
-                st.rerun()
-        with col_q2:
-            if st.button("📊 Appliquer optimisés", type="secondary", 
-                         help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
-                count = _apply_optimized_params(cfg)
-                st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
-                st.rerun()
-        with col_q3:
-            if st.button("🚀 Apply & Reload DAGs", type="primary"):
-                _reload_dags()
-    else:
-        # Tous viables — proposer d'appliquer les optimisés et reload
-        st.success(f"✅ Tous les actifs sont viables")
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            if st.button("📊 Appliquer optimisés", type="secondary",
-                         help="Copie les params _optimized_* vers les params réels"):
-                count = _apply_optimized_params(cfg)
-                st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
-                st.rerun()
-        with col_v2:
-            if st.button("🚀 Apply & Reload DAGs", type="primary"):
-                _reload_dags()
+        if st.button(t("carry_disable_btn").format(n=len(non_viable)), type="secondary"):
+            for sym in non_viable:
+                if sym in cfg.get("assets", {}):
+                    cfg["assets"][sym]["enabled"] = False
+            save_config(cfg)
+            reload_config()
+            st.session_state["_carry_msg"] = t("carry_disabled_ok").format(n=len(non_viable))
+            st.rerun()
     
     # ── Global settings ──
     with st.expander(t("carry_global_params"), expanded=False):

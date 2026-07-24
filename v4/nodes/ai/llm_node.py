@@ -140,7 +140,10 @@ class LLMNode(Node):
             formatted_prompt = user_prompt.replace("{reflections}", "")
 
         try:
-            formatted_prompt = formatted_prompt.format(**inputs, inputs=json.dumps(inputs, default=str))
+            # Éviter conflit si 'inputs' est déjà une clé dans le dict
+            _fmt_inputs = dict(inputs)
+            _fmt_inputs.pop("inputs", None)  # on le passe explicitement
+            formatted_prompt = formatted_prompt.format(**_fmt_inputs, inputs=json.dumps(inputs, default=str))
         except (KeyError, ValueError):
             # Remplacer chaque placeholder manquant par "N/A" au lieu de laisser {key}
             import re as _re

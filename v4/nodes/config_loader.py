@@ -56,11 +56,15 @@ def _get_settings() -> dict:
 
 
 def _deep_merge(base: dict, override: dict) -> None:
-    """Fusionne override dans base (modifie base in-place, priorité override)."""
+    """Fusionne override dans base (modifie base in-place, priorité override).
+    Ne remplace PAS une valeur existante par une chaîne vide ou None."""
     for key, value in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             _deep_merge(base[key], value)
-        else:
+        elif value or not isinstance(value, (str, type(None))):
+            # skip empty strings and None — don't erase existing values
+            base[key] = value
+        elif key not in base:
             base[key] = value
 
 

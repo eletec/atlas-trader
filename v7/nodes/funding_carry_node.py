@@ -103,7 +103,8 @@ class FundingCarryNode:
         self.min_volatility_30d = float(self.params.get("min_volatility_30d", 0.02))
         
         # Hurdle economique (configurable via grid search)
-        self.economic_hurdle = float(self.params.get("economic_hurdle", 0.07))
+        # Default 5% = SOFR seul (grid search: 25/26 actifs preferent 5%)
+        self.economic_hurdle = float(self.params.get("economic_hurdle", 0.05))
         
         self.state = FundingCarryState(symbol=symbol)
         self._funding_rate_history: list[float] = []  # MA 7j (~21 valeurs)
@@ -363,6 +364,7 @@ class FundingCarryNode:
         reason = ""
         unrealized_pct = 0.0
         unrealized_usd = 0.0
+        economic_hurdle = self.economic_hurdle  # scoped for both open/close branches
         
         # Annualiser — utilise l'intervalle réel de Binance (3 audits, 20/07/2026)
         funding_interval_h = self._get_funding_interval()
@@ -403,17 +405,10 @@ class FundingCarryNode:
                     # le rendement du funding (GPT Round 2: expected_basis_return = 0).
                     expected_return = annual_funding  # rendement du funding uniquement
                     
-                    # ── Economic hurdle (Round 4, 22/07/2026) ──
-                    # Hurdle = coût d'opportunité + primes de risque.
-                    # Les coûts de trading sont déduits du rendement, pas ajoutés au hurdle.
-                    # (sinon le hurdle devient 10-13% et rien ne passe)
-                    alternative_return = 0.05   # SOFR ~5%
-                    venue_risk = 0.01           # Binance 1%
-                    stablecoin_risk = 0.005     # USDT 0.5%
-                    operational_risk = 0.005    # 0.5%
-                    default_hurdle = alternative_return + venue_risk + stablecoin_risk + operational_risk
-                    economic_hurdle = self.economic_hurdle if self.economic_hurdle != 0.07 else default_hurdle
-                    # ≈ 7% — le coût d'opportunité + risque minimum
+                    # ── Economic hurdle = SOFR (coût d'opportunité pur) ──
+                    # Les primes de risque (exchange, stablecoin, operational) sont
+                    # couvertes par le safety_cap et le stress_loss_pct, pas par le hurdle.
+                    # Grid search V7.3: 25/26 actifs preferent 5% vs 7%.
                     
                     # ── Coûts annualisés (déduits du rendement, pas du hurdle) ──
                     round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage)

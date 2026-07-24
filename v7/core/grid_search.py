@@ -40,7 +40,7 @@ def refine_grid(best_params: dict) -> dict[str, list]:
     mf = best_params.get("min_funding", 0.00005)
     hold = best_params.get("max_hold_days", 14)
     frac = best_params.get("fraction", 0.50)
-    hurdle = best_params.get("economic_hurdle", 0.07)
+    hurdle = best_params.get("economic_hurdle", 0.05)
     
     return {
         "min_funding":    sorted(set([max(0.000005, mf * 0.5), mf, min(0.0005, mf * 2)])),

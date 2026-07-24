@@ -4108,7 +4108,6 @@ def render_admin_panel():
                 "Provider", _providers_fast,
                 index=_providers_fast.index(_fast_provider),
                 key="ai_fast_provider_sel",
-                help="Même clé API que le modèle principal.",
             )
         with _fc2:
             _new_fast_model = st.selectbox(
@@ -4116,6 +4115,30 @@ def render_admin_panel():
                 index=_fast_model_opts.index(_cur_fast_model) if _cur_fast_model in _fast_model_opts else 0,
                 key="ai_fast_model_sel",
             )
+
+        # Clé API pour le modèle rapide (si provider différent du principal)
+        _fast_key_name = _key_field.get(_new_fast_provider)
+        if _fast_key_name:
+            if _new_fast_provider == _new_provider:
+                st.caption(f"ℹ️ Même provider que le modèle principal — clé `{_fast_key_name}` partagée.")
+            else:
+                _existing_fast_key = _llm.get("fast_api_key", "") or _llm.get(_fast_key_name, "")
+                _new_fast_key = st.text_input(
+                    f"Clé API ({_new_fast_provider})",
+                    value="",
+                    placeholder="Laisser vide pour conserver la clé actuelle",
+                    type="password",
+                    key="ai_fast_key_input",
+                )
+                if _existing_fast_key:
+                    _masked_fast = _existing_fast_key[:3] + "*" * (len(_existing_fast_key) - 7) + _existing_fast_key[-4:]
+                    st.caption(f"🔑 Clé actuelle : `{_masked_fast}`")
+                if not _new_fast_key:
+                    _new_fast_key = _existing_fast_key
+                if _new_fast_key:
+                    _llm["fast_api_key"] = _new_fast_key
+        else:
+            st.caption(f"ℹ️ {_new_fast_provider} — pas de clé API requise (local).")
 
         _fc3, _fc4 = st.columns(2)
         with _fc3:

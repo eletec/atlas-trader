@@ -185,7 +185,7 @@ class LLMNode(Node):
                 response_text = body.get("response", "")
             else:
                 # DeepSeek / OpenAI-compatible via litellm
-                # Lire la clé API : param DAG > env > settings.yaml > secrets.yaml
+                # Lire la clé API : param DAG > env > settings.yaml > secrets.yaml > fast_api_key
                 import os as _os_key
                 api_key = self.params.get("api_key", "") or ""
                 if not api_key:
@@ -194,6 +194,9 @@ class LLMNode(Node):
                     api_key = _llm_cfg.get("deepseek_api_key", "") or ""
                 if not api_key:
                     api_key = _llm_cfg.get("api_key", "") or ""
+                # Si mode rapide, chercher aussi fast_api_key (provider différent possible)
+                if not api_key and use_fast:
+                    api_key = _llm_cfg.get("fast_api_key", "") or ""
                 # Chercher aussi dans secrets.yaml (séparé de settings.yaml pour sécurité)
                 if not api_key:
                     try:
@@ -204,6 +207,9 @@ class LLMNode(Node):
                                     _secrets = _yaml.safe_load(_sf) or {}
                                 _sec_llm = _secrets.get("llm", {})
                                 api_key = _sec_llm.get("deepseek_api_key", "") or _sec_llm.get("api_key", "")
+                                # En mode rapide, chercher fast_api_key dans secrets aussi
+                                if not api_key and use_fast:
+                                    api_key = _sec_llm.get("fast_api_key", "")
                                 if api_key:
                                     break
                             except FileNotFoundError:
@@ -212,10 +218,6 @@ class LLMNode(Node):
                         pass
                 import litellm
                 litellm.drop_params = True
-                # LiteLLM lit DEEPSEEK_API_KEY depuis l'environnement
-                if api_key:
-                    import os as _os
-                    _os.environ.setdefault("DEEPSEEK_API_KEY", api_key)
                 kwargs = dict(
                     model=f"{provider}/{model}" if "/" not in model else model,
                     messages=[
@@ -226,6 +228,11 @@ class LLMNode(Node):
                     max_tokens=max_tokens,
                     timeout=timeout_s,
                 )
+                if api_key:
+                    kwargs["api_key"] = api_key
+                    # Fallback env var pour les providers qui en ont besoin
+                    import os as _os
+                    _os.environ.setdefault("DEEPSEEK_API_KEY", api_key)
                 try:
                     resp_obj = litellm.completion(**kwargs)
                     response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""

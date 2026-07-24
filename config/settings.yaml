@@ -521,6 +521,7 @@ llm:
   fast_model: deepseek-chat
   fast_temperature: 0.3
   fast_max_tokens: 256
+  # fast_api_key: sk-...  → clé séparée si provider différent du modèle principal
   # deepseek_api_key → voir config/secrets.yaml
 post_mortem:
   enabled: true

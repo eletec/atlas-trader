@@ -24,27 +24,15 @@ _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
 # ---------------------------------------------------------------------------
 
 def _active_assets() -> list[str]:
-    """Retourne les actifs des DAGs actifs. Fallback config si API injoignable."""
-    # 1) Actifs des DAGs actifs (prioritaire)
-    try:
-        import urllib.request, json
-        req = urllib.request.Request(f"{_API_BASE}/dag/status", method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            dags = json.loads(resp.read())
-        assets = [d.get("asset", "") for d in dags if d.get("asset")]
-        if assets:
-            return assets
-    except Exception:
-        pass
-
-    # 2) Fallback: carry_assets.yaml (via v7.core.asset_config)
+    """Retourne les actifs carry actifs depuis carry_assets.yaml (V7, plus de DAGs)."""
     try:
         from v7.core.asset_config import get_active_assets as _cfg_active
         assets = _cfg_active()
         if assets:
             return assets
     except Exception:
-        return ["BTC/USDT"]
+        pass
+    return ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
 
 
 def _asset_icon(asset: str) -> str:

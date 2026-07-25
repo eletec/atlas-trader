@@ -831,7 +831,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",
                 "timestamp": t.get("timestamp", ""),
                 "asset": t.get("symbol", ""),
-                "action": "BUY" if t.get("action") == "long" else "SELL",
+                "action": "CARRY" if t.get("action") in ("carry", "short") else ("BUY" if t.get("action") == "long" else "SELL"),
                 "entry_price": t.get("entry_price"),
                 "sl_price": t.get("stop_loss", 0),
                 "tp_price": t.get("take_profit", 0),

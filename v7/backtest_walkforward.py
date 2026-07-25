@@ -260,6 +260,7 @@ def run_walkforward(
     logger.info("=" * 70)
     
     funding_data: dict[str, pd.DataFrame] = {}
+    price_data: dict[str, dict[str, pd.DataFrame]] = {}  # sym → {spot, perp}
     
     t0 = time.time()
     for sym in symbols:
@@ -268,7 +269,20 @@ def run_walkforward(
             logger.warning("%s: no funding data, skipping", sym)
             continue
         funding_data[sym] = df_f
-        logger.info("  %s: %d periods (%s → %s)",
+        
+        # Load spot + perp prices (daily) for basis P&L modeling (DeepSeek audit, 25/07/2026)
+        df_spot = fetch_prices_3y(sym, days=days, is_perp=False)
+        df_perp = fetch_prices_3y(sym, days=days, is_perp=True)
+        if not df_spot.empty and not df_perp.empty:
+            # Handle multiplier contracts
+            base = sym.split("/")[0]
+            MULT = {"PEPE": 1000, "SHIB": 1000, "BONK": 1000, "FLOKI": 1000, "LUNC": 1000}
+            contract_mult = MULT.get(base, 1)
+            if contract_mult > 1 and "perp_price" in df_perp.columns:
+                df_perp["perp_price"] = df_perp["perp_price"] / contract_mult
+            price_data[sym] = {"spot": df_spot, "perp": df_perp}
+        
+        logger.info("  %s: %d funding periods (%s → %s)",
                     sym, len(df_f),
                     df_f.index.min().strftime("%Y-%m-%d"),
                     df_f.index.max().strftime("%Y-%m-%d"))
@@ -357,13 +371,31 @@ def run_walkforward(
             
             for ts, row in test_data.iterrows():
                 fr = float(row["funding_rate"])
-                # Use fixed prices (funding-only backtest for walk-forward speed)
-                # The basis risk is captured by the fee structure, not price modeling
+                # Real spot/perp prices (DeepSeek audit, 25/07/2026: basis P&L must be modeled)
+                spot_price = 1000.0
+                perp_price = 1000.0
+                sym_prices = price_data.get(sym, {})
+                if sym_prices:
+                    df_s = sym_prices.get("spot")
+                    df_p = sym_prices.get("perp")
+                    if df_s is not None and not df_s.empty:
+                        # Get nearest price at or before funding timestamp
+                        spot_slice = df_s[df_s.index <= ts]
+                        if not spot_slice.empty:
+                            spot_price = float(spot_slice.iloc[-1]["spot_price"])
+                    if df_p is not None and not df_p.empty:
+                        perp_slice = df_p[df_p.index <= ts]
+                        if not perp_slice.empty:
+                            col = "perp_price" if "perp_price" in df_p.columns else df_p.columns[0]
+                            perp_price = float(perp_slice.iloc[-1][col])
+                if perp_price <= 0:
+                    perp_price = spot_price
+                
                 result = node.run({
                     "symbol": sym,
-                    "spot_price": 1000.0,
+                    "spot_price": spot_price,
                     "funding_rate": fr,
-                    "perp_price": 1000.0,
+                    "perp_price": perp_price,
                 })
                 
                 signal = result.get("signal", "flat")

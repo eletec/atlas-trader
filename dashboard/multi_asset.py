@@ -154,29 +154,83 @@ def render_global_overview() -> None:
 
     theme = st.query_params.get("theme", "dark")
 
+    # Fetch latest carry status from dag_logs (V7 cycle writes there)
+    asset_status = {}  # sym → {net_return, funding_rate, signal}
+    try:
+        import sqlite3, os, re
+        db_path = os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
+        if db_path.startswith("sqlite:///"):
+            db_path = db_path[10:]
+        conn = sqlite3.connect(db_path)
+        # Get latest log per dag_id
+        rows = conn.execute(
+            "SELECT dag_id, message FROM dag_logs WHERE dag_id LIKE 'v7_%' "
+            "ORDER BY id DESC LIMIT 200"
+        ).fetchall()
+        seen = set()
+        for dag_id, msg in rows:
+            sym = dag_id[3:].upper()  # v7_btc → BTC
+            if sym in seen:
+                continue
+            seen.add(sym)
+            # Parse net return
+            m = re.search(r'net=([\d.]+)%/an', msg)
+            net_ret = float(m.group(1)) if m else None
+            m = re.search(r'funding=(-?[\d.]+)%', msg)
+            funding = float(m.group(1)) if m else None
+            m = re.search(r'retour net ([\d.]+)%/an', msg)
+            ret_net = float(m.group(1)) if m else None
+            asset_status[sym] = {
+                "net_return": net_ret or ret_net,
+                "funding_rate": funding,
+                "signal": "open_carry" if "open_carry" in msg else "flat",
+            }
+        conn.close()
+    except Exception:
+        pass
+
     html_rows = ""
     for asset in assets:
+        base = asset.split("/")[0].upper()
         pos = open_positions.get(asset, {})
         has_position = bool(pos)
         size_usd = float(pos.get("size_usd", 0) or 0)
         entry_price = float(pos.get("entry_price", 0) or 0)
         
-        status_str = "🟢 OPEN" if has_position else "⚫ flat"
-        size_str = f"${size_usd:,.0f}" if size_usd > 0 else "—"
-        entry_str = f"${entry_price:,.2f}" if entry_price > 0 else "—"
         icon = _asset_icon(asset) if asset else "◈"
         ts_str = pos.get("timestamp", "—")[:19] if pos.get("timestamp") else "—"
         
-        # V7: Funding Carry only
+        # Get latest cycle status
+        st_info = asset_status.get(base, {})
+        net_ret = st_info.get("net_return")
+        funding = st_info.get("funding_rate")
+        cycle_signal = st_info.get("signal", "flat")
+        
+        # Dynamic score based on net return vs hurdle (5%)
         if has_position:
+            score = 75
             signal_display = "💸 carry"
             trade_str = f"🟢 CARRY ${size_usd:,.0f}"
-            score = 70
             trend = f"entry @ ${entry_price:,.2f}"
+        elif net_ret is not None and net_ret > 5:
+            score = min(95, int(50 + net_ret * 3))
+            signal_display = "⏳ viable"
+            trade_str = f"net {net_ret:.1f}%/an"
+            trend = f"funding {funding:.4f}%" if funding else "—"
+        elif net_ret is not None:
+            score = max(5, int(30 + net_ret * 4))
+            signal_display = "flat"
+            trade_str = f"net {net_ret:.1f}%/an < 5%"
+            trend = f"funding {funding:.4f}%" if funding else "—"
+        elif funding is not None:
+            score = max(5, min(50, int(20 + funding * 200)))
+            signal_display = "flat"
+            trade_str = f"funding {funding:.4f}%"
+            trend = f"hors [min=0.0050%]" if funding < 0.005 else "—"
         else:
+            score = 50
             signal_display = "flat"
             trade_str = "—"
-            score = 50
             trend = "—"
 
         status_icon = "🟢" if has_position else "⚫"

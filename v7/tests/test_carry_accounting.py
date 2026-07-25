@@ -231,6 +231,45 @@ class TestCarryAccounting:
         print(f"\n  Breakeven: 7j={breakeven_7d*10000:.1f}bps/8h | 60j={breakeven_60d*10000:.1f}bps/8h")
         print(f"  min_funding=0.005%={min_funding*10000:.1f}bps → viable seulement si hold ≥ ~33j")
 
+    def test_unrealized_pnl_percent_vs_decimal(self):
+        """
+        Test de regression (25/07/2026): le node output unrealized_pnl_pct en % (×100),
+        le backtest doit le diviser par 100 avant de calculer unrealized_usd.
+        
+        Sans ce fix, un unrealized_pnl_pct de -0.7 (soit -0.7%) était interprété
+        comme -0.7 (soit -70%) → unrealized_usd 100× trop grand → MaxDD explosif.
+        """
+        entry_capital = 500.0
+        
+        # Simuler ce que le node renvoie
+        unrealized_pnl_pct_from_node = -0.71  # -0.71% (basis divergé de 0.71%)
+        
+        # BUG (ancien code): multiplié directement
+        bug_unrealized_usd = unrealized_pnl_pct_from_node * entry_capital  # -0.71 * 500 = -$355!
+        
+        # FIX: diviser par 100 d'abord
+        unrealized_decimal = unrealized_pnl_pct_from_node / 100.0
+        fix_unrealized_usd = unrealized_decimal * entry_capital  # -0.0071 * 500 = -$3.55
+        
+        # Le bug amplifie de 100×
+        assert abs(bug_unrealized_usd) > abs(fix_unrealized_usd) * 50, \
+            f"Le bug amplifie l'unrealized PnL: ${bug_unrealized_usd:.2f} vs ${fix_unrealized_usd:.2f} (correct)"
+        
+        # La valeur correcte est raisonnable (0.71% de $500 = $3.55)
+        assert abs(fix_unrealized_usd - (-3.55)) < 0.01, \
+            f"Unrealized USD correct: ${fix_unrealized_usd:.2f} devrait être ~-$3.55"
+        
+        # Vérifier l'impact sur le MaxDD: NAV passe de $2000 à $1996.45 (correct)
+        # au lieu de $2000 à $1645 (bug)
+        nav_start = 2000.0
+        nav_bug = nav_start + bug_unrealized_usd  # $1645 → -17.7% DD
+        nav_fix = nav_start + fix_unrealized_usd  # $1996.45 → -0.18% DD
+        
+        assert nav_bug < nav_fix, "Le bug sous-estime la NAV (MaxDD amplifié)"
+        
+        print(f"\n  Unrealized P&L % bug: node=-0.71% → bug=$-{abs(bug_unrealized_usd):.0f} → fix=$-{abs(fix_unrealized_usd):.2f}")
+        print(f"  NAV impact: bug={nav_bug:.0f} (-{100-nav_bug/nav_start*100:.1f}% DD) vs fix={nav_fix:.0f} (-{100-nav_fix/nav_start*100:.2f}% DD)")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

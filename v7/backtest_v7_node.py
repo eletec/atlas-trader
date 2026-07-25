@@ -145,17 +145,20 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         params={"_backtest": True},
     )
 
-    # 4) Boucle de backtest avec NAV tracking (Round 4, 22/07/2026)
+    # 4) Boucle de backtest avec NAV tracking (Round 5, 25/07/2026)
+    # BUGFIX: unrealized_pnl_pct from node is already ×100 (percent), backtest must ÷100
     trades: list[dict] = []
     total_funding = 0.0
     total_fees = 0.0
-    nav_history: list[tuple] = []  # (timestamp, nav_value)
-    prev_nav = capital  # start at capital
+    nav_history: list[tuple] = []  # (timestamp, trading_nav, total_nav)
+    no_trade_reason = ""  # diagnostic for assets that never trade
+    max_funding_seen = 0.0  # for diagnosing why no trade
 
     for ts, row in combined.iterrows():
         fr = float(row["funding_rate"])
         spot_price = float(row["spot_price"])
         perp_price = float(row["perp_price"])
+        max_funding_seen = max(max_funding_seen, fr)
         
         # Ajuster le prix perp pour les contrats à multiplicateur (1000PEPE, etc.)
         base = symbol.split("/")[0]
@@ -173,8 +176,15 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         signal = result.get("signal", "flat")
         size_usd = result.get("size_usd", 0)
         total_funding = max(total_funding, result.get("total_funding_received", 0) or 0)
-        unrealized_pct = result.get("unrealized_pnl_pct", 0) or 0
+        # BUGFIX (25/07/2026): unrealized_pnl_pct is already ×100 from node → divide by 100
+        unrealized_pnl_pct_raw = result.get("unrealized_pnl_pct", 0) or 0
+        unrealized_pct = unrealized_pnl_pct_raw / 100.0  # convert % → decimal
         position_open = result.get("position_open", False)
+        reason = result.get("reason", "")
+
+        # Track reason for non-trading assets
+        if not position_open and signal == "flat" and reason and not no_trade_reason:
+            no_trade_reason = reason[:120]
 
         # Frais: 4 jambes × 12bps = 48bps round-trip (GPT audit, 25/07/2026)
         #   Open:  long spot (12bps) + short perp (12bps) = 24bps
@@ -192,36 +202,48 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
                 trades[-1]["close_fee"] = cost_this_step
                 trades[-1]["close_ts"] = ts
 
-        # ── NAV computation ──
-        # NAV = capital + funding_collected + staking - fees + unrealized_carry_pnl
+        # ── NAV computation (Round 5, 25/07/2026) ──
+        # Trading NAV = capital + funding - fees + unrealized (NO staking)
+        # Total NAV = trading NAV + staking (staking is separate, not trading alpha)
         staking_now = node.state.staking_earned
         unrealized_usd = unrealized_pct * (node.state.entry_capital if position_open else 0) if position_open else 0
-        nav = capital + total_funding + staking_now - total_fees + unrealized_usd
-        nav_history.append((ts, nav))
-        prev_nav = nav
+        trading_nav = capital + total_funding - total_fees + unrealized_usd
+        total_nav = trading_nav + staking_now
+        nav_history.append((ts, trading_nav, total_nav))
 
-    # 5) Métriques (Round 4: NAV-based Sharpe + Max DD)
+    # 5) Métriques (Round 5, 25/07/2026 — GPT audit: staking separated, unrealized % fix)
     staking = node.state.staking_earned
-    total_pnl = total_funding + staking - total_fees
+    trading_pnl = total_funding - total_fees  # P&L from actual trading activity (ex-staking, ex-unrealized)
+    total_pnl = trading_pnl + staking  # includes staking for reference, but trading_pnl is the real metric
+    
+    # No-trade diagnostic
+    if len(trades) == 0 and not no_trade_reason:
+        periods_per_year = 365 * 24 / 8
+        max_annual = max_funding_seen * periods_per_year
+        no_trade_reason = f"max funding={max_funding_seen*100:.4f}% ({max_annual*100:.1f}%/an) < hurdle=5%"
 
-    # NAV returns
-    if len(nav_history) > 2 and len(trades) > 0:
-        nav_df = pd.DataFrame(nav_history, columns=["ts", "nav"]).set_index("ts")
-        nav_df["return"] = nav_df["nav"].pct_change().fillna(0)
-        # Sharpe annualisé (×√365 pour daily, ×√1095 pour 8h)
+    # NAV returns (use trading NAV for Sharpe/MaxDD — staking-free)
+    if len(nav_history) > 2:
+        nav_df = pd.DataFrame(nav_history, columns=["ts", "trading_nav", "total_nav"]).set_index("ts")
+        nav_df["trading_return"] = nav_df["trading_nav"].pct_change().fillna(0)
         periods_per_day = 3  # funding 8h
-        nav_returns = nav_df["return"].dropna()
+        nav_returns = nav_df["trading_return"].dropna()
         if len(nav_returns) > 10 and nav_returns.std() > 0:
             sharpe = float(nav_returns.mean() / nav_returns.std() * np.sqrt(365 * periods_per_day))
         else:
             sharpe = 0.0
-        # Max drawdown
-        nav_df["peak"] = nav_df["nav"].cummax()
-        nav_df["dd"] = (nav_df["nav"] - nav_df["peak"]) / nav_df["peak"] * 100
+        # Max drawdown on trading NAV
+        nav_df["peak"] = nav_df["trading_nav"].cummax()
+        nav_df["dd"] = (nav_df["trading_nav"] - nav_df["peak"]) / nav_df["peak"] * 100
         max_dd = float(nav_df["dd"].min())
+        # Capital utilisation: % of time position was open
+        position_mask = nav_df.index.isin([t.get("open_ts") for t in trades])
+        # Approximate: count periods with unrealized != 0 or funding received
+        capital_utilisation = len(nav_returns[nav_returns.abs() > 1e-10]) / max(len(nav_returns), 1) * 100
     else:
         sharpe = 0.0
         max_dd = 0.0
+        capital_utilisation = 0.0
 
     # ── Per-trade breakdown (GPT audit, 25/07/2026) ──
     trade_breakdown = []
@@ -239,15 +261,20 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
 
     return {
         "symbol": symbol,
-        "pnl": round(total_pnl, 2),
-        "pnl_pct": round(total_pnl / capital * 100, 2),
+        "pnl": round(trading_pnl, 2),           # trading P&L ONLY (funding - fees, ex-staking)
+        "pnl_pct": round(trading_pnl / capital * 100, 2),
+        "total_pnl": round(total_pnl, 2),        # trading + staking (for reference)
+        "total_pnl_pct": round(total_pnl / capital * 100, 2),
         "funding": round(total_funding, 4),
         "staking": round(staking, 2),
         "fees": round(total_fees, 2),
+        "trading_pnl": round(trading_pnl, 2),    # explicit alias
         "trades": len(trades),
         "sharpe": round(sharpe, 2),
         "max_dd_pct": round(max_dd, 2),
         "days": days,
+        "capital_utilisation_pct": round(capital_utilisation, 1),
+        "no_trade_reason": no_trade_reason if len(trades) == 0 else "",
         "params": params_override or {},  # pour le grid search
         "trade_breakdown": trade_breakdown,  # per-trade P&L audit
     }
@@ -262,10 +289,11 @@ def main():
 
     symbols = ALL_SYMBOLS if args.symbol == "ALL" else (SYMBOLS if args.symbol == "ACTIVE" else [args.symbol])
 
-    print("=" * 80)
+    print("=" * 90)
     print("ATLAS V7 — Backtest (FundingCarryNode + prix spot/perp réels)")
-    print(f"Symbols: {len(symbols)} actifs | Days: {args.days} | Capital: ${args.capital:,.0f}/asset | Staking: 5%/an sur idle")
-    print("=" * 80)
+    print(f"Symbols: {len(symbols)} actifs | Days: {args.days} | Capital: ${args.capital:,.0f}/asset")
+    print(f"Frais: 48bps RT (4 jambes) | Hurdle: 5% | Staking: 5%/an sur idle (séparé du P&L trading)")
+    print("=" * 90)
 
     results = []
     t0 = time.time()
@@ -274,9 +302,13 @@ def main():
         r = backtest_asset(sym, args.days, args.capital)
         results.append(r)
         if "error" not in r:
-            print(f"  {sym:<12} PnL=${r['pnl']:>8,.2f} ({r['pnl_pct']:>5.1f}%)  "
-                  f"Sharpe={r['sharpe']:>6.2f}  MaxDD={r['max_dd_pct']:>5.1f}%  Trades={r['trades']:>3d}  "
-                  f"Funding=${r['funding']:,.2f}  Staking=${r['staking']:,.2f}  Fees=${r['fees']:,.2f}")
+            tag = ""
+            if r.get("no_trade_reason"):
+                tag = f"  ⚠️ {r['no_trade_reason'][:80]}"
+            print(f"  {sym:<12} Trade=${r['trading_pnl']:>7,.2f} ({r['pnl_pct']:>5.1f}%)  "
+                  f"Sharpe={r['sharpe']:>6.2f}  MaxDD={r['max_dd_pct']:>5.1f}%  "
+                  f"Trades={r['trades']:>2d}  Util={r['capital_utilisation_pct']:>4.1f}%  "
+                  f"Fees=${r['fees']:>5.2f}{tag}")
         else:
             print(f"  {sym:<12} ERROR: {r['error']}")
 
@@ -301,17 +333,28 @@ def main():
 
     valid = [r for r in results if "error" not in r and r.get("trades", 0) > 0]
     staking_only = [r for r in results if "error" not in r and r.get("trades", 0) == 0]
-    total_pnl = sum(r["pnl"] for r in results if "error" not in r)
+    total_trading_pnl = sum(r["trading_pnl"] for r in results if "error" not in r)
+    total_staking = sum(r["staking"] for r in results if "error" not in r)
+    total_pnl_all = total_trading_pnl + total_staking
     total_cap = args.capital * len([r for r in results if "error" not in r])
     if valid:
         avg_sharpe = np.mean([r["sharpe"] for r in valid])
+        avg_util = np.mean([r["capital_utilisation_pct"] for r in valid])
     else:
         avg_sharpe = 0.0
-    print("\n" + "=" * 80)
-    print(f"Portfolio: {len(symbols)} actifs | {len(valid)} tradés, {len(staking_only)} staking seul | "
-          f"PnL=${total_pnl:,.2f} ({total_pnl/total_cap*100:.1f}%)")
-    print(f"Sharpe moyen={avg_sharpe:.2f} (actifs tradés) | Durée={elapsed:.0f}s | Capital total=${total_cap:,.0f}")
-    print("=" * 80)
+        avg_util = 0.0
+    print("\n" + "=" * 90)
+    print(f"Portfolio: {len(symbols)} actifs | {len(valid)} tradés, {len(staking_only)} sans trade")
+    print(f"Trading P&L (ex-staking): ${total_trading_pnl:,.2f} ({total_trading_pnl/total_cap*100:.2f}%)")
+    print(f"Staking P&L (idle):       ${total_staking:,.2f} ({total_staking/total_cap*100:.2f}%)")
+    print(f"Total P&L:                ${total_pnl_all:,.2f} ({total_pnl_all/total_cap*100:.2f}%)")
+    print(f"Sharpe moyen (tradés): {avg_sharpe:.2f} | Capital utilisation: {avg_util:.1f}%")
+    print(f"Durée: {elapsed:.0f}s | Capital total: ${total_cap:,.0f}")
+    if staking_only:
+        print(f"\n⚠️  {len(staking_only)} actifs sans trade (staking fictif uniquement):")
+        for r in staking_only:
+            print(f"    {r['symbol']:<12} → {r.get('no_trade_reason', '?')}")
+    print("=" * 90)
 
 
 if __name__ == "__main__":

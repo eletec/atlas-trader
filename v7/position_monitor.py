@@ -327,17 +327,23 @@ class PositionMonitor:
                     opened_at = datetime.fromisoformat(pd["ts_str"].replace("Z", "+00:00"))
                     days_held = (now - opened_at).total_seconds() / 86400
                     if is_carry:
-                        # Sortie économique par ZONES (3 audits : pas de seuil binaire à 30j)
-                        carry_econ = self._compute_carry_economics(pd, max_loss_pct)
-                        payback_days = carry_econ["payback_days"]
-                        if payback_days > 90:
-                            should_close = True
-                            reason = f"ECONOMIC STOP (ZONE CLOSE): payback={payback_days:.0f}j > 90j"
-                        elif payback_days > 60 and loss_pct < -1.0:
-                            should_close = True
-                            reason = f"ECONOMIC STOP (ZONE DERISK): payback={payback_days:.0f}j + loss={loss_pct:+.2f}%"
-                        elif payback_days > 30:
-                            logger.info("PositionMonitor: %s carry WATCH payback=%.0fj (zone 30-60j)",
+                        # Grace period: skip economic stop for positions < 1h old
+                        # (PositionMonitor needs time to fetch perp prices, 25/07/2026)
+                        if days_held < 0.04:  # ~1 hour
+                            pass  # too new — skip economic check
+                        else:
+                            carry_econ = self._compute_carry_economics(pd, max_loss_pct)
+                            payback_days = carry_econ["payback_days"]
+                            if carry_econ.get("data_degraded"):
+                                logger.warning("PositionMonitor: %s carry economics degraded — skipping economic stop", pd["symbol"])
+                            elif payback_days > 90:
+                                should_close = True
+                                reason = f"ECONOMIC STOP (ZONE CLOSE): payback={payback_days:.0f}j > 90j"
+                            elif payback_days > 60 and loss_pct < -1.0:
+                                should_close = True
+                                reason = f"ECONOMIC STOP (ZONE DERISK): payback={payback_days:.0f}j + loss={loss_pct:+.2f}%"
+                            elif payback_days > 30:
+                                logger.info("PositionMonitor: %s carry WATCH payback=%.0fj (zone 30-60j)",
                                        pd["symbol"], payback_days)
                         else:
                             logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)

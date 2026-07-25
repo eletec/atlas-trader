@@ -3653,7 +3653,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
     if v4_logs:
         st.markdown(
             '<p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#4f6ef7;">'
-            '⚡ Atlas — Exécution DAG</p>',
+            '📊 Atlas — Cycle Carry Live</p>',
             unsafe_allow_html=True,
         )
         theme = _get_theme()
@@ -3795,25 +3795,24 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
-        # ── DAG Engine ──────────────────────────────────────────────
-        (None, None,      t("section_dag")),
-        ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  t("tab_canvas")),
-        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", t("tab_monitoring")),
-        ('<i class="fas fa-receipt"></i>',         "v4_trades",  t("tab_trades")),
-        ('<i class="fas fa-sliders"></i>',         "v4_admin",   t("tab_config")),
-        ('<i class="fas fa-coins"></i>',            "carry_cfg",  t("tab_carry_cfg")),
+        # ── Carry Engine ──────────────────────────────────────────
+        (None, None,      "Carry V7"),
+        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Live Monitor"),
+        ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
+        ('<i class="fas fa-coins"></i>',            "carry_cfg",  "Carry Assets"),
+        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config"),
         # ── Infra & Monitoring ───────────────────────────────────────
-        (None, None,      t("section_infra_mon")),
-        ('<i class="fas fa-database"></i>',        "sources",    t("tab_sources")),
-        ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
-        ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging_v4")),
-        ('<i class="fas fa-history"></i>',         "historique", t("tab_historique")),
-        ('<i class="fas fa-brain"></i>',           "decisions",   t("tab_decisions")),
-        ('<i class="fas fa-lightbulb"></i>',       "reflections", t("tab_reflections")),
-        ('<i class="fas fa-user"></i>',            "users",      t("tab_users_v4")),
-        ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup_v4")),
-        ('<i class="fas fa-flask"></i>',           "backtest",   t("tab_backtest")),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset")),
+        (None, None,      "Infra & Monitoring"),
+        ('<i class="fas fa-database"></i>',        "sources",    "Data Sources"),
+        ('<i class="fas fa-robot"></i>',           "aimodel",    "AI Model"),
+        ('<i class="fas fa-list-check"></i>',      "logging",    "Logging"),
+        ('<i class="fas fa-history"></i>',         "historique", "History"),
+        ('<i class="fas fa-brain"></i>',           "decisions",   "Decisions"),
+        ('<i class="fas fa-lightbulb"></i>',       "reflections", "Reflections"),
+        ('<i class="fas fa-user"></i>',            "users",      "Users"),
+        ('<i class="fas fa-floppy-disk"></i>',     "backup",     "Backup"),
+        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",      "Reset"),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -3821,9 +3820,9 @@ def render_admin_panel():
         else {"key": s[1], "icon": s[0], "text": s[2]}
         for s in _ADMIN_SECTIONS
     ]
-    _atab = st.query_params.get("_atab", "v4_canvas")
+    _atab = st.query_params.get("_atab", "v4_monitor")
     if _atab not in _admin_keys:
-        _atab = "v4_canvas"
+        _atab = "v4_monitor"
     _inject_custom_sidenav(_admin_items, _atab, qparam="_atab", theme=_get_theme())
 
     if _atab == "quant":  # Quant V2 Pipeline
@@ -4861,24 +4860,25 @@ def render_admin_panel():
     elif _atab == "carry_cfg":
         _render_carry_config()
         return
-    elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
-        # ── Configuration ──
+    elif _atab in ("v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
         if _atab == "v4_admin":
             _render_v4_config()
             return
-        # ── Trades natif (depuis la DB) ──
         if _atab == "v4_trades":
             st.markdown("### 📋 " + t("trades_journal_title"))
-            st.caption("Mode : paper trading (testnet uniquement)")
+            st.caption("Mode : paper trading")
             _tr = _get_recent_trades(200)
             if _tr:
                 render_trades_list_sortable(_tr)
             else:
                 st.info(t("no_trades_recorded"))
             return
-
+        if _atab == "v4_monitor":
+            st.markdown("### 📊 Live Monitor — Funding Carry V7")
+            st.caption("Positions, prix, funding rates temps réel")
+            render_portfolio()
+            return
         _V4_URLS = {
-            "v4_canvas":  f"{_V4_FRONTEND}/canvas?v=7",
             "v4_monitor": f"{_V4_FRONTEND}/monitoring",
             "v4_trades":  f"{_V4_FRONTEND}/trades",
             "v4_arena":   f"{_V4_FRONTEND}/arena",

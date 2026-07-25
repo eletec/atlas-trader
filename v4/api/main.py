@@ -56,58 +56,32 @@ app.include_router(live_pnl_router, prefix="/v7", tags=["v7"])
 
 
 @app.on_event("startup")
-async def _auto_schedule_demo():
-    """Démarre automatiquement les DAGs au boot (persistés ou défaut)."""
-    from v4.api.dag_registry import DAGRegistry
-    from v4.api.dag_store import load_all, get_defaults, save_all
+async def _auto_schedule_carry():
+    """Démarre le cycle Funding Carry V7 au boot (DeepSeek/GPT audit, 25/07/2026).
     
-    registry = DAGRegistry.instance()
+    Remplace l'ancien système de 29 DAGs par un script unique.
+    Le PositionMonitor et les tickers prix restent actifs.
+    """
+    import threading
     logger = logging.getLogger("v4.api.main")
     
-    # 1) Charger les DAGs persistés
-    persisted = load_all()
-    persisted_ids = {d.dag_id for d in persisted}
+    # 1) Carry cycle — thread background toutes les 8h
+    def _carry_loop():
+        import time
+        from v7.run_carry_cycle import run_cycle
+        logger.info("V7 Carry cycle thread started (interval=8h)")
+        while True:
+            try:
+                run_cycle()
+            except Exception as exc:
+                logger.error("Carry cycle error: %s", exc)
+            time.sleep(28800)  # 8h
     
-    # 2) Déterminer les DAGs souhaités (depuis carry_assets.yaml)
-    desired_dags = get_defaults()  # V7_DAGS — lit get_active_assets()
-    desired_ids = {d.dag_id for d in desired_dags}
-    
-    # 3) Réconcilier : ajouter les nouveaux, retirer les anciens
-    dags_to_schedule: list = []
-    
-    for dag in desired_dags:
-        if dag.dag_id not in persisted_ids:
-            logger.info("New asset activated — adding DAG '%s'", dag.dag_id)
-        dags_to_schedule.append(dag)
-    
-    removed = persisted_ids - desired_ids
-    if removed:
-        logger.info("Assets deactivated — removing DAGs: %s", removed)
-    
-    # Sauver la nouvelle liste (écrase l'ancienne)
-    save_all(dags_to_schedule)
-    
-    # 4) Scheduler tous les DAGs souhaités
-    existing_ids = {e.dag_id for e in registry.status()}
-    for dag in dags_to_schedule:
-        if dag.dag_id not in existing_ids:
-            cycle = getattr(dag, "cycle_s", None) or 28800
-            registry.schedule(dag, cycle_s=cycle)
-            logger.info("DAG '%s' scheduled (cycle=%ds)", dag.dag_id, cycle)
-    
-    # Arrêter les DAGs qui ne sont plus dans la config
-    for sid in existing_ids:
-        if sid not in desired_ids:
-            registry.stop(sid)
-            logger.info("DAG '%s' stopped (asset deactivated)", sid)
-    
-    # 2) V5 DAGs directionnels — désactivés (monitoring uniquement si besoin)
-    # Note: V5 est remplacé par V7. Décommenter ci-dessous pour réactiver le monitoring.
-    # try:
-    #     from v5.api.demo_dag import DEMO_DAG, DEMO_ETH, DEMO_SOL, DEMO_BNB, DEMO_XRP, DEMO_ADA, DEMO_DOGE
-    #     for dag in (...) 
+    t = threading.Thread(target=_carry_loop, daemon=True, name="carry-cycle")
+    t.start()
+    logger.info("V7 Carry cycle scheduled (28800s)")
 
-    # Tickers prix (Binance WS) pour les actifs actifs
+    # 2) Tickers prix (Binance WS) pour les actifs actifs
     try:
         from v4.api.routes.prices import ensure_ticker
         from v7.core.asset_config import get_active_assets
@@ -116,20 +90,17 @@ async def _auto_schedule_demo():
             active = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
         for sym in active:
             ensure_ticker(sym)
-        logging.getLogger("v4.api.main").info("Price tickers started (%d assets)", len(active))
+        logger.info("Price tickers started (%d assets)", len(active))
     except Exception as exc:
-        logging.getLogger("v4.api.main").warning(f"Price tickers failed to start: {exc}")
+        logger.warning(f"Price tickers failed to start: {exc}")
 
-    # 3) V7 Funding Carry Scheduler — DÉSACTIVÉ (remplacé par les DAGs V7 #1)
-    # Le scheduler était redondant avec les DAGs et créait des doublons.
-
-    # 4) Position Monitor — surveillance continue des SL/TP/time-stop
+    # 3) Position Monitor — surveillance continue des SL/TP/time-stop
     try:
         from v7.position_monitor import start_monitor
         start_monitor()
-        logging.getLogger("v4.api.main").info("PositionMonitor started")
+        logger.info("PositionMonitor started")
     except Exception as exc:
-        logging.getLogger("v4.api.main").warning(f"PositionMonitor failed to start: {exc}")
+        logger.warning(f"PositionMonitor failed to start: {exc}")
 
 
 @app.get("/health")

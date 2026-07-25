@@ -80,11 +80,11 @@ def remove(dag_id: str) -> bool:
 
 
 def get_defaults() -> list[DAGSpec]:
-    """DAGs V7 par défaut — lit les actifs actifs depuis carry_assets.yaml (dynamique)."""
-    from v7.core.asset_config import get_active_assets, reload_config
-    reload_config()  # toujours recharger pour avoir la derniere config
-    symbols = get_active_assets()
-    if not symbols:
-        symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-    from v7.api.v7_demo_dag import _make_v7_dag
-    return [_make_v7_dag(f"v7_{sym.split('/')[0].lower()}", sym) for sym in symbols]
+    """DAGs par défaut — DÉSACTIVÉ (remplacé par run_carry_cycle.py, 25/07/2026).
+    
+    DeepSeek/GPT audit: l'infrastructure DAG est surdimensionnée pour le funding carry.
+    Un script unique cron 8h remplace les 29 DAGs. Voir v7/run_carry_cycle.py.
+    
+    Retourne une liste vide — les DAGs ne sont plus créés automatiquement.
+    """
+    return []

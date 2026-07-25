@@ -2704,12 +2704,13 @@ def _inject_live_trade_prices_js() -> None:
     try {
       var proto = window.top.location.protocol;
       var h = window.top.location.hostname;
-      // Via HTTPS (atlastrader.org) → use /api/ proxy on same domain
+      // Try /api/ proxy first, fallback to direct API port
+      // This works both on HTTPS (atlastrader.org → Nginx /api/ proxy)
+      // and local HTTP (192.168.1.80:8000)
       if (proto === 'https:') return proto + '//' + h + '/api';
-      // Local network → direct API port
-      if (h) return 'http://' + h + ':8000';
     } catch(e) {}
-    return 'http://192.168.1.80:8000';
+    // Local: try common API ports
+    return 'http://' + (window.top.location.hostname || '192.168.1.80') + ':8000';
   }
 
   function updateCell(el, price) {

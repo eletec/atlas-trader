@@ -400,7 +400,12 @@ var SYMBOLS={symbols_js};
 var POSDATA={pos_data_js};
 var LAST={{}}, FIRST={{}};
 function apiUrl(){{
-  try{{var h=window.top.location.hostname;if(h)return'http://'+h+':8000';}}catch(e){{}}
+  try{{
+    var p=window.top.location.protocol;
+    var h=window.top.location.hostname;
+    if(p==='https:')return p+'//'+h+'/api';
+    if(h)return'http://'+h+':8000';
+  }}catch(e){{}}
   return'http://192.168.1.80:8000';
 }}
 function fmt(p){{

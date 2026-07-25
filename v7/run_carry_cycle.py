@@ -85,6 +85,18 @@ def run_cycle(
 
     if assets is None:
         assets = ASSETS
+    
+    # ── Anti-concurrency lock ──
+    import fcntl, os as _os
+    lock_path = "/tmp/carry_cycle.lock"
+    lock_fd = _os.open(lock_path, _os.O_CREAT | _os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        logger.warning("Another carry cycle is already running — skipping")
+        _os.close(lock_fd)
+        return {"n_scanned": 0, "n_open": 0, "n_close": 0, "n_flat": 0,
+                "n_errors": 1, "errors": ["Concurrent cycle detected — skipped"], "signals": {}}
 
     summary = {"n_scanned": 0, "n_open": 0, "n_close": 0, "n_flat": 0,
                "n_errors": 0, "errors": [], "signals": {}}
@@ -210,7 +222,14 @@ def run_cycle(
                 elapsed, summary["n_scanned"], summary["n_open"],
                 summary["n_close"], summary["n_flat"], summary["n_errors"])
     logger.info("=" * 60)
-
+    
+    # Release lock
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        _os.close(lock_fd)
+    except Exception:
+        pass
+    
     return summary
 
 

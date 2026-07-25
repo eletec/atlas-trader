@@ -2750,13 +2750,15 @@ def _inject_live_trade_prices_js() -> None:
     });
     parentDoc.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {
       var action = el.getAttribute('data-atlas-action');
-      if (action !== 'CARRY') return;  // only carry trades use real P&L
+      if (action !== 'CARRY') return;
       var sym = el.getAttribute('data-atlas-symbol');
       var t = tradeMap[sym];
       if (!t) return;
       var realPnl = t.real_pnl;
       var realPct = t.real_pnl_pct;
       var size = parseFloat(el.getAttribute('data-atlas-size')) || 0;
+      // Only update if there's meaningful P&L (> $0.001), otherwise keep server estimate
+      if (Math.abs(realPnl) < 0.001 && Math.abs(realPct) < 0.01) return;
       var color = realPnl >= 0 ? '#2ecc71' : '#e74c3c';
       el.style.color = color;
       el.style.opacity = '1';

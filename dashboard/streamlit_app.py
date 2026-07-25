@@ -4876,7 +4876,8 @@ def render_admin_panel():
         if _atab == "v4_monitor":
             st.markdown("### 📊 Live Monitor — Funding Carry V7")
             st.caption("Positions, prix, funding rates temps réel")
-            render_portfolio()
+            _pf = _get_portfolio()
+            render_portfolio(_pf)
             return
         _V4_URLS = {
             "v4_monitor": f"{_V4_FRONTEND}/monitoring",

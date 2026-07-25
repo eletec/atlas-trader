@@ -1,82 +1,76 @@
-﻿# Atlas Trader — Risk Premium Harvesting
+﻿# Atlas Trader V7 — Funding Carry Strategy
 
-> **Funding Rate Carry** : delta-neutral strategy (short perp + long spot) capturing the funding rate premium.
-> **Status** : 🟢 Paper trading live on GX10 (192.168.1.80) — 26 assets, 8h DAG cycles · **http://atlastrader.org**
-> **Last update** : 24 July 2026 — kill-switch fixed, dual LLM config, exposure card, i18n EN logs
+> **Market-neutral funding rate harvesting** : short perpetual + long spot, delta-neutral.
+> **Status** : 🟢 Paper trading live on GX10 · **https://atlastrader.org**
+> **Last update** : 25 July 2026 — GPT/DeepSeek audit, walk-forward 3Y validated, DAGs simplified
 
 ---
 
 ## Strategy
 
-The strategy is **market-neutral** : short perpetual futures + long spot. Price movements cancel out. The only P&L comes from:
+The strategy captures the **funding rate premium** on crypto perpetual futures:
 
-1. **Funding rate** — received every 8h when funding > 0 (longs pay shorts)
-2. **Basis change** — (perp − spot) spread variation (typically < 0.01%/day)
+1. **Short perpetual** + **Long spot** on the same asset = delta-neutral
+2. Every 8h, longs pay shorts when funding > 0 → we collect
+3. No directional prediction. No ML. Pure risk premium.
 
-No directional prediction. No ML. Pure risk premium harvesting.
-
-### Key Parameters (V7.3 — 24 July 2026)
+### Key Parameters
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Capital per asset | $2,000 | Configurable per asset in `carry_assets.yaml` |
-| Economic hurdle | **5%** (optimized) | SOFR only — grid search: 25/26 assets prefer 5% over 7% |
-| Sizing | Risk budgeting | `score = net_return / stress_loss`, capped at 25% |
-| Stress loss | Per-asset (optimizer) | Derived from 30d volatility |
-| Entry filters | Funding range + percentile + basis check | |
-| Exit | Economic zones | HEALTHY < 14j / REVIEW 14-30j / DERISK 30-60j / CLOSE > 60j |
-| Safety cap | Per-asset (optimizer) | Proportional to open interest |
-| Global Allocator | Dynamic exposure, max N positions | Cross-asset exposure control from config |
-| Kill-switch | 4 tiers recalibrated | **FIXED 24/07**: Tier 3 sign bug (0% < +20% always true → fixed to -20%) |
+| Universe | 42 Spot∩Perp pairs | Binance Spot + USDⓈ-M intersection |
+| Active assets | 29 | Filtered by liquidity, backtest |
+| Capital per asset | $2,000 | Safety > optimizer (never < $500) |
+| Economic hurdle | 5% annual | Cost of capital (SOFR + venue risk) |
 | Fees | 48 bps round-trip | 4 legs × 12 bps |
-| LLM (DAG analysis) | Dual config | Deep model (BO) + Fast model (DAG, configurable) |
+| Exit zones | 14/30/60 days | HEALTHY → REVIEW → DERISK → CLOSE |
+| Kill-switch | 4 tiers | Portfolio DD, exposure, consecutive losses |
+| Cycle | 8h | Single script → `v7/run_carry_cycle.py` |
 
-### 🔧 Bug Fixes — 24 July 2026
+### Walk-Forward Validation (2023–2026, GPT/DeepSeek audit)
+
+```
+✅ 100% OOS windows positive (10/10)
+✅ Median OOS return: +0.032%/quarter (~0.13%/year)
+✅ BULL regime: median +0.089%/quarter
+✅ RANGE regime: median +0.038%/quarter
+⚠️ BEAR: untested (no bear market 2023-2026)
+⚠️ Current funding regime too low for meaningful returns
+```
+
+### Bug Fixes (25 July 2026)
 
 | Bug | Impact | Fix |
 |-----|--------|-----|
-| Kill-switch PORTFOLIO_DD always triggers | All positions closed after 40s | `total_pnl_pct < -(max_portfolio_dd_pct * 100)` |
-| Economic hurdle 7% blocks assets | NEAR $7 < $50 min → skip | Default 7% → 5% (grid search validated) |
-| `_deep_merge` erases keys with empty strings | API key lost from settings.yaml | Skip empty/None values in merge |
-| Score 0/100 in dashboard | Carry score never persisted | Store in `context_json`, extract in `_get_recent_trades()` |
-| Duplicate ZEC openings | Race condition DB check | Added DB safety check before `position_open = True` |
-| LLMNode `str.format()` crash | Duplicate `inputs` kwarg | Pop `inputs` from format dict before passing |
-| French logs in PositionMonitor | Mixed FR/EN logs | All logs → English |
-
-### V7.3 Backtest — 1 year (July 2025–2026), real spot/perp prices
-
-26 active assets, $2,000/asset, economic hurdle 5%:
-
-| Metric | Value |
-|--------|-------|
-| Traded assets | 26/26 |
-| Portfolio PnL | +$153 (0.3%) |
-| Sharpe (traded) | 0.35 |
-| Duration | 91s for 26 assets |
-
-> ⚠️ Funding rates in 2025–2026 were historically low. 3-year backtest (2023–2026) shows 20–26 trades/asset with stronger PnL. Strategy conserves capital in low-rate regimes via staking (5%/yr idle).
+| Fees 24bps instead of 48bps | 50% fee undercharge in backtest | 4 legs × 12bps |
+| Unrealized P&L ×100 | MaxDD -71.5% on exotic assets | % ÷ 100 conversion |
+| Staking inflated PnL | 89% of "PnL" was fictional staking | Separated trading/staking |
+| Hurdle optimized by grid search | Data mining reintroduced | Hurdle fixed as cost of capital |
+| Kill-switch sign bug | All positions closed every 60s | Missing minus sign |
 
 ---
 
 ## Architecture
 
 ```
-Docker Compose :
-  atlas-v4-api       — FastAPI (port 8000) : DAG execution + PositionMonitor
-  atlas-v4-dashboard — Streamlit (port 8502) : BO + FO unified · http://atlastrader.org
-  atlas-v4-frontend  — Next.js (port 3000) : DAG canvas editor
+Docker Compose V4:
+  atlas-v4-api       — FastAPI :8000 → carry cycle + PositionMonitor
+  atlas-v4-dashboard — Streamlit :8502 → FO/BO unified UI
   atlas-v4-ollama    — Local LLM (DeepSeek fallback)
+  Nginx + Let's Encrypt → https://atlastrader.org
 
-DAG per active asset (8h cycle) :
-  AssetDef → FundingCarryNode → PaperTrader + RecordDecision + LLMNode (use_fast=True)
-
-Dynamic DAG management :
-  carry_assets.yaml → scanner (CCXT) → optimizer → POST /dag/reload → live sync
-
-Dual LLM config :
-  settings.yaml → llm (deep model, BO reasoning) + llm.fast_* (fast model, DAG analysis)
-  Supports different providers with separate API keys
+Cycle (8h): run_carry_cycle.py → 29 assets → FundingCarryNode → persist_trade
+Frontend:  React/Next.js removed — replaced by Streamlit dashboard
 ```
+
+### Simplified (25 July 2026)
+
+After the GPT/DeepSeek audit, the DAG infrastructure was replaced:
+- **29 DAGs** → single `run_carry_cycle.py` script (background thread)
+- **React Flow canvas** → removed (Streamlit BO tabs)
+- **LLM out of critical path** — zero impact on trading decisions
+
+---
 
 ## Quick Start
 
@@ -88,62 +82,57 @@ git checkout v7-dev
 # Start services
 docker compose -f docker-compose.v4.yml up -d --build
 
-# Scan Binance for eligible Spot∩Perp pairs
-docker exec atlas-v4-api python /app/src/v7/core/carry_scanner.py --save
+# Run one carry cycle (manual)
+docker exec atlas-v4-api python -B /app/src/v7/run_carry_cycle.py
 
-# Compute optimized parameters (requires backtest first)
-docker exec atlas-v4-api python /app/src/v7/core/carry_scanner.py --save --optimize
+# Scan Binance for eligible pairs
+docker exec atlas-v4-api python -B /app/src/v7/core/carry_scanner.py --save
 
-# Run backtest (V7.3 rules, real spot/perp prices)
-docker exec atlas-v4-api python -B /app/src/v7/backtest_v7_node.py --symbol ACTIVE --days 365
+# 1-year backtest (real spot/perp prices)
+docker exec atlas-v4-api python -B /app/src/v7/backtest_v7_node.py --symbol ALL --days 365
 
-# Grid search best parameters (36 combos × 2 passes per asset)
-docker exec atlas-v4-api python -B /app/src/v7/core/grid_search.py --symbol ACTIVE --days 365
+# 3-year walk-forward backtest
+docker exec atlas-v4-api python -B /app/src/v7/backtest_walkforward.py --symbols ALL --days 1300
+
+# Cross-exchange funding scanner (Binance vs Bybit)
+docker exec atlas-v4-api python -B /app/src/v7/cross_exchange_scanner.py
+
+# Unit tests
+docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accounting.py -v
 ```
+
+---
 
 ## Key Files
 
 | Path | Purpose |
 |------|---------|
-| `v7/nodes/funding_carry_node.py` | Core strategy — economic hurdle, risk budgeting, exit zones |
-| `v7/position_monitor.py` | Risk monitor (60s) — kill-switch 4-tiers, Margin Monitor |
-| `v7/core/global_allocator.py` | Cross-asset allocation — exposure cap, position limits |
-| `v7/core/asset_config.py` | Dynamic config loader — reads `carry_assets.yaml` |
-| `v7/core/carry_scanner.py` | CCXT scanner — Spot∩Perp intersection, volume/OI filters |
-| `v7/core/grid_search.py` | 2-pass grid search — coarse + fine param optimization |
-| `v7/backtest_v7_node.py` | Backtest engine (real spot/perp prices, config-driven) |
-| `v4/api/routes/dag.py` | DAG CRUD + kill-switch reset + `/dag/reload` endpoint |
-| `v4/api/main.py` | Startup reconciliation — DAGs synced with `carry_assets.yaml` |
-| `v4/nodes/config_loader.py` | Settings loader — `/app/data/` priority, secrets merge (skip empty) |
-| `v4/nodes/ai/llm_node.py` | LLM node — dual config (deep/fast), secrets.yaml API key resolution |
-| `config/carry_assets.yaml` | Single source of truth — 43 assets, per-asset params |
-| `dashboard/streamlit_app.py` | Streamlit dashboard — i18n, carry_cfg editor, scanner UI |
-| `dashboard/multi_asset.py` | Live price cards + asset icons + sidebar navigation |
-| `utils/i18n.py` | Backend translations (~300 keys × 8 languages) |
-| `images/assets/` | 42 official crypto logo SVGs |
+| `v7/nodes/funding_carry_node.py` | Core strategy — hurdle, risk budgeting, exit zones |
+| `v7/run_carry_cycle.py` | Single-script carry cycle (replaces 29 DAGs) |
+| `v7/position_monitor.py` | Risk monitor (60s) — kill-switch 4 tiers |
+| `v7/backtest_v7_node.py` | Backtest engine (real prices, config-driven) |
+| `v7/backtest_walkforward.py` | Walk-forward 3Y (causal universe, regime segmentation) |
+| `v7/cross_exchange_scanner.py` | Binance vs Bybit funding rate comparison |
+| `v7/core/carry_scanner.py` | CCXT scanner — Spot∩Perp intersection |
+| `v7/core/grid_search.py` | 2-pass grid search (hurdle removed — now fixed) |
+| `v7/core/global_allocator.py` | Cross-asset allocation — exposure cap |
+| `v7/core/asset_config.py` | Dynamic config loader — `carry_assets.yaml` |
+| `v7/tests/test_carry_accounting.py` | 5 unit tests — P&L accounting, breakeven, % bugs |
+| `config/carry_assets.yaml` | Single source of truth — 42 assets, per-asset params |
+| `dashboard/streamlit_app.py` | Streamlit dashboard — BO/FO unified |
+| `dashboard/multi_asset.py` | Live price cards, global overview, JS poller |
+
+---
 
 ## Backoffice — Key Features
 
-**🎯 Carry Assets Tab** — full lifecycle management:
-1. **🔄 Scan Binance** — CCXT detects all Spot∩Perp pairs (43 candidates)
-2. **📊 Optimize** — fetches volatility, funding history, OI per asset; reads backtest results; flags viability
-3. **📊 Apply optimized** — copies `_optimized_*` params to live config (respects 🔒 locked assets)
-4. **🚀 Apply & Reload DAGs** — syncs API DAGs with config without restart
-5. **📂 Expand/Collapse all** + **📷 Logo uploads** — SVG fallback from `images/assets/`
-
-**💸 Portfolio Exposure Card** — total $ in open carry positions with % of capital
-
-**🤖 Dual AI Model Config** — separate deep (reasoning) and fast (DAG analysis) models with independent API keys
-
-**🗑️ Reset** — one-click DAG stop + trade history clear + DAG restart
-
-## Operations (OPS.md)
-
-Full runbook at [`OPS.md`](OPS.md):
-- Startup, monitoring, emergency stop
-- Backtest commands
-- Kill-switch management
-- Maintenance (DB reset, disk space)
+- **📡 Live Prices** — real-time price cards with % change and position status
+- **🌐 Global View** — per-asset scores, funding rates, net returns vs hurdle
+- **💼 Portfolio** — capital, exposure, open trades, P&L
+- **🎯 Carry Assets** — scan, optimize, apply, reload config
+- **📊 Live Monitor** — cycle status, open positions, recent decisions
+- **📋 Trades** — sortable trade journal
+- **🤖 AI Config** — dual LLM (DeepSeek, Ollama)
 
 ## Contributing
 

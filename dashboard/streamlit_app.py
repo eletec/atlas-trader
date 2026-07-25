@@ -4874,12 +4874,70 @@ def render_admin_panel():
                 st.info(t("no_trades_recorded"))
             return
         if _atab == "v4_monitor":
-            from dashboard.multi_asset import render_global_overview, render_global_live_prices
+            st.markdown("### 📊 Live Monitor — Funding Carry V7")
+            
+            # ── Cycle status ──
+            col1, col2, col3 = st.columns(3)
+            last_cycle = _get_last_cycle()
+            if last_cycle:
+                with col1:
+                    st.metric("Last Cycle", last_cycle.get("timestamp", "—")[:19])
+                with col2:
+                    st.metric("Next Cycle", "~8h (auto)")
+                with col3:
+                    st.metric("Status", "✅ Running" if True else "⏸️")
+            
+            # ── Open carry positions ──
+            st.markdown("#### 🟢 Open Carry Positions")
+            try:
+                from storage.paper_trader import get_open_positions
+                open_pos = get_open_positions()
+                carry_pos = [p for p in open_pos if p.get("action") in ("carry", "short")]
+                if carry_pos:
+                    rows = []
+                    for p in carry_pos:
+                        rows.append({
+                            "Asset": p.get("symbol", "?"),
+                            "Size": f"${float(p.get('size_usd', 0)):,.0f}",
+                            "Entry": f"${float(p.get('entry_price', 0)):,.2f}",
+                            "Opened": str(p.get("timestamp", "—"))[:19],
+                            "Funding Total": f"${float(p.get('context_json', '{}').get('total_funding', 0) or 0):.4f}",
+                        })
+                    st.dataframe(rows, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No open carry positions — funding rates too low in current market")
+            except Exception as e:
+                st.warning(f"Position fetch: {e}")
+            
+            # ── Recent decisions ──
+            st.markdown("#### 🧠 Recent Decisions")
+            try:
+                decisions = _get_recent_decisions(10)
+                if decisions:
+                    for d in decisions:
+                        action = d.get("action", "?")
+                        sym = d.get("symbol", "?")
+                        ts = str(d.get("timestamp", "—"))[:19]
+                        reason = d.get("reason", d.get("context_json", ""))
+                        if isinstance(reason, dict):
+                            reason = reason.get("reason", "")
+                        emoji = {"carry": "🟢", "close_carry": "🔴", "flat": "➖"}.get(action, "❓")
+                        st.caption(f"{emoji} **{sym}** — {action} — {ts}")
+                        if reason:
+                            st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {str(reason)[:120]}")
+                else:
+                    st.info("No decisions yet — first cycle pending")
+            except Exception as e:
+                st.warning(f"Decisions fetch: {e}")
+            
+            # ── Quick portfolio summary ──
+            st.markdown("#### 💼 Portfolio Snapshot")
             _pf = _get_portfolio()
-            render_portfolio(_pf)
-            st.markdown("---")
-            render_global_overview()
-            render_global_live_prices()
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Capital", f"${_pf.get('capital', 0):,}")
+            c2.metric("Exposure", f"${_pf.get('exposure', 0):,.0f}")
+            c3.metric("Open Trades", _pf.get("n_trades", 0))
+            c4.metric("Total P&L", f"${_pf.get('total_pnl', 0):,.2f}")
             return
         _V4_URLS = {
             "v4_monitor": f"{_V4_FRONTEND}/monitoring",

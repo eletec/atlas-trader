@@ -251,12 +251,8 @@ def render_global_live_prices() -> None:
     prices = {}
     try:
         prices = _fetch_v4_prices()
-    except Exception as e:
-        st.error(f"Price fetch error: {e}")
-
-    if _load_error:
-        st.warning(f"⚠️ {_load_error} — using defaults")
-    st.caption(f"API: {_API_BASE} | Assets: {len(dag_assets)} | Prices: {len(prices)} symbols")
+    except Exception:
+        pass
 
     st.markdown(f"### 📡 {t('live_price_title')}")
 

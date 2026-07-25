@@ -138,23 +138,24 @@ def run_cycle(
 
             if signal == "open_carry":
                 summary["n_open"] += 1
-                log_msg = f"signal=open_carry | size=${result.get('size_usd', 0):.0f} | {reason}"
+                size = result.get("size_usd", 0)
+                log_msg = f"[{sym}] OPEN CARRY | size=${size:.0f} @ ${spot_price:.4f} | {reason}"
                 logger.info("  ✅ %-12s OPEN  | %s", sym, log_msg)
                 _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
             elif signal == "close_carry":
                 summary["n_close"] += 1
-                log_msg = f"signal=close_carry | {reason}"
+                log_msg = f"[{sym}] CLOSE CARRY | {reason}"
                 logger.info("  🔴 %-12s CLOSE | %s", sym, log_msg)
+                _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
+            elif result.get("position_open"):
+                # Position active — receiving funding
+                log_msg = f"[{sym}] HOLD | funding received | {reason}"
                 _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
             else:
                 summary["n_flat"] += 1
-                if result.get("position_open"):
-                    log_msg = f"signal=flat | position active | {reason}"
-                else:
-                    log_msg = f"signal=flat | {reason}"
+                log_msg = f"[{sym}] FLAT | {reason}"
                 logger.debug("  ➖ %-12s flat  | %s", sym, reason)
-                _log_to_db("DEBUG" if "position_open" not in str(result) else "INFO",
-                          dag_id, f"{pfx}_carry", log_msg)
+                _log_to_db("DEBUG", dag_id, f"{pfx}_carry", log_msg)
 
             # ── Enregistrer la décision dans le PaperTrader ──
             if not dry_run and signal in ("open_carry", "close_carry"):

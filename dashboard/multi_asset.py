@@ -233,18 +233,30 @@ def render_global_live_prices() -> None:
     """Grille de prix live — polling AJAX toutes les 3s, pas de refresh page."""
     import streamlit as st
     import json as _json
+    import traceback as _tb
 
     # V7 (DeepSeek/GPT audit, 25/07/2026): utiliser carry_assets.yaml, plus de DAGs
+    dag_assets = []
+    _load_error = ""
     try:
         from v7.core.asset_config import get_active_assets
         dag_assets = get_active_assets()
-    except Exception:
+    except Exception as e:
+        _load_error = f"get_active_assets() failed: {e}"
         dag_assets = []
     
     if not dag_assets:
         dag_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
+    
+    prices = {}
+    try:
+        prices = _fetch_v4_prices()
+    except Exception as e:
+        st.error(f"Price fetch error: {e}")
 
-    prices = _fetch_v4_prices()
+    if _load_error:
+        st.warning(f"⚠️ {_load_error} — using defaults")
+    st.caption(f"API: {_API_BASE} | Assets: {len(dag_assets)} | Prices: {len(prices)} symbols")
 
     st.markdown(f"### 📡 {t('live_price_title')}")
 

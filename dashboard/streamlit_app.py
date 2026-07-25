@@ -2578,14 +2578,22 @@ def render_trades_list_sortable(trades: list[dict]):
         is_open = pnl_val is None
         _tid = trade.get("id", f"t{i}")
         _ast = trade.get("asset", "")
-        if is_open and entry_price > 0 and current_price > 0 and size_usd > 0:
-            if action in ("SELL", "SHORT", "CARRY"):
-                pnl_pct = (entry_price - current_price) / entry_price * 100
+        if is_open and entry_price > 0 and size_usd > 0:
+            if action == "CARRY":
+                # Carry P&L = funding (≈rate × size × days) + basis (near 0)
+                # Show estimated daily funding instead of misleading $0 spot P&L
+                est_funding = size_usd * 0.0001 * 3  # ~0.01% × 3/day
+                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#f39c12;font-size:11px;">⏳ carry ~${est_funding:.3f}/j</span>'
+            elif current_price > 0:
+                if action in ("SELL", "SHORT"):
+                    pnl_pct = (entry_price - current_price) / entry_price * 100
+                else:
+                    pnl_pct = (current_price - entry_price) / entry_price * 100
+                unrealized = size_usd * pnl_pct / 100
+                prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
+                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
             else:
-                pnl_pct = (current_price - entry_price) / entry_price * 100
-            unrealized = size_usd * pnl_pct / 100
-            prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
-            progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
         elif is_open:
             progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
 
@@ -2628,8 +2636,12 @@ def render_trades_list_sortable(trades: list[dict]):
             size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
             current_price = live_prices.get(trade.get("asset", ""), 0)
             act = trade.get("action", "")
-            if entry_price > 0 and current_price > 0 and size_usd > 0:
-                if act in ("SELL", "SHORT", "CARRY"):
+            if act == "CARRY":
+                # Carry P&L = estimated funding (spot P&L is ~0 for delta-neutral)
+                est_funding = size_usd * 0.0001 * 3  # ~0.01% × 3/day
+                _sum_unrealized += est_funding
+            elif entry_price > 0 and current_price > 0 and size_usd > 0:
+                if act in ("SELL", "SHORT"):
                     pnl_pct = (entry_price - current_price) / entry_price
                 else:
                     pnl_pct = (current_price - entry_price) / entry_price

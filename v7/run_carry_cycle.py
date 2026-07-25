@@ -161,11 +161,40 @@ def run_cycle(
                 decision = result.get("decision", {})
                 if decision.get("action") in ("carry", "close_carry"):
                     try:
-                        from storage.paper_trader import record_decision
-                        record_decision(decision)
-                        logger.debug("  💾 %s decision saved", sym)
+                        from storage.paper_trader import persist_trade
+                        if signal == "open_carry":
+                            persist_trade(
+                                symbol=sym,
+                                action="carry",
+                                entry_price=decision.get("entry_price", spot_price),
+                                stop_loss=decision.get("stop_loss", 0),
+                                take_profit=decision.get("take_profit", 0),
+                                size_usd=decision.get("size_usd", 0),
+                                dag_id=dag_id,
+                                context=decision,
+                            )
+                            logger.info("  💾 %s OPEN saved to DB", sym)
+                        elif signal == "close_carry":
+                            # Close existing position
+                            from storage.paper_trader import get_open_positions
+                            import sqlite3, os as _os
+                            open_pos = get_open_positions(symbol=sym)
+                            carry_pos = [p for p in open_pos if p.get("action") in ("carry", "short")]
+                            if carry_pos:
+                                db_path = _os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
+                                if db_path.startswith("sqlite:///"):
+                                    db_path = db_path[10:]
+                                conn = sqlite3.connect(db_path)
+                                for p in carry_pos:
+                                    conn.execute(
+                                        "UPDATE v4_trades SET status='closed', closed_at=? WHERE trade_id=?",
+                                        (datetime.now().isoformat(), p.get("trade_id")),
+                                    )
+                                conn.commit()
+                                conn.close()
+                                logger.info("  💾 %s CLOSE saved to DB (%d positions)", sym, len(carry_pos))
                     except ImportError:
-                        logger.debug("  ⚠️ PaperTrader not available, decision not saved")
+                        logger.debug("  ⚠️ PaperTrader not available")
                     except Exception as e:
                         logger.error("  ❌ %s save failed: %s", sym, e)
 

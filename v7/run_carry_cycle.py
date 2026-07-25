@@ -49,6 +49,28 @@ except Exception:
     logger.warning("Could not load asset config, using defaults: %s", ASSETS)
 
 
+def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
+    """Écrit un log dans la table dag_logs pour compatibilité dashboard."""
+    try:
+        import sqlite3, os
+        db_path = os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
+        if db_path.startswith("sqlite:///"):
+            db_path = db_path[10:]
+        elif "///" in db_path:
+            db_path = db_path.split("///")[-1]
+        else:
+            return
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO dag_logs (ts, level, dag_id, node_id, message) VALUES (?,?,?,?,?)",
+            (datetime.now().isoformat(), level, dag_id, node_id, message),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # silencieux — le log DB est optionnel
+
+
 def run_cycle(
     assets: list[str] | None = None,
     capital_per_asset: float = 2_000,
@@ -75,6 +97,8 @@ def run_cycle(
     logger.info("=" * 60)
 
     for sym in assets:
+        pfx = sym.split("/")[0].lower()[:3]
+        dag_id = f"v7_{sym.split('/')[0].lower()}"
         try:
             node = FundingCarryNode(
                 node_id=f"carry_{sym.split('/')[0].lower()}",
@@ -114,17 +138,23 @@ def run_cycle(
 
             if signal == "open_carry":
                 summary["n_open"] += 1
-                logger.info("  ✅ %-12s OPEN  | size=$%.0f | %s",
-                           sym, result.get("size_usd", 0), reason)
+                log_msg = f"signal=open_carry | size=${result.get('size_usd', 0):.0f} | {reason}"
+                logger.info("  ✅ %-12s OPEN  | %s", sym, log_msg)
+                _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
             elif signal == "close_carry":
                 summary["n_close"] += 1
-                logger.info("  🔴 %-12s CLOSE | %s", sym, reason)
+                log_msg = f"signal=close_carry | {reason}"
+                logger.info("  🔴 %-12s CLOSE | %s", sym, log_msg)
+                _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
             else:
                 summary["n_flat"] += 1
-                if "position_open" in str(result) and result.get("position_open"):
-                    pass  # déjà en position, rien à faire
+                if result.get("position_open"):
+                    log_msg = f"signal=flat | position active | {reason}"
                 else:
-                    logger.debug("  ➖ %-12s flat  | %s", sym, reason)
+                    log_msg = f"signal=flat | {reason}"
+                logger.debug("  ➖ %-12s flat  | %s", sym, reason)
+                _log_to_db("DEBUG" if "position_open" not in str(result) else "INFO",
+                          dag_id, f"{pfx}_carry", log_msg)
 
             # ── Enregistrer la décision dans le PaperTrader ──
             if not dry_run and signal in ("open_carry", "close_carry"):

@@ -119,6 +119,9 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
             continue
         if spot_base.upper() in EXCLUDED_BASES:
             continue
+        # Exclude non-ASCII tokens (Chinese characters, etc.)
+        if not spot_base.isascii():
+            continue
 
         contract_size = market.get("contractSize", 1.0) or 1.0
         candidates.append({

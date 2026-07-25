@@ -2693,25 +2693,24 @@ def _inject_live_trade_prices_js() -> None:
     dans un iframe srcdoc (même origine) et accède au DOM parent.
     """
     import streamlit.components.v1 as _cv1
-    _cv1.html("""<!DOCTYPE html>
+    # Compute API base URL: if accessed via HTTPS, use /api/ proxy; else direct port
+    _js_api_base = "''"  # will be set by JS below
+    _cv1.html(f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head><body>
 <script>
-(function() {
+(function() {{
   if (window._atlasLiveTradePoller) return;
   window._atlasLiveTradePoller = true;
 
-  function apiUrl() {
-    try {
-      var proto = window.top.location.protocol;
+  function apiUrl() {{
+    try {{
+      var p = window.top.location.protocol;
       var h = window.top.location.hostname;
-      // Try /api/ proxy first, fallback to direct API port
-      // This works both on HTTPS (atlastrader.org → Nginx /api/ proxy)
-      // and local HTTP (192.168.1.80:8000)
-      if (proto === 'https:') return proto + '//' + h + '/api';
-    } catch(e) {}
-    // Local: try common API ports
-    return 'http://' + (window.top.location.hostname || '192.168.1.80') + ':8000';
-  }
+      if (p === 'https:') return p + '//' + h + '/api';
+      return 'http://' + h + ':8000';
+    }} catch(e) {{}}
+    return 'http://192.168.1.80:8000';
+  }}
 
   function updateCell(el, price) {
     var entry = parseFloat(el.getAttribute('data-atlas-entry'));

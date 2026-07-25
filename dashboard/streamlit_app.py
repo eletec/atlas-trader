@@ -2466,7 +2466,6 @@ def render_trades_list(trades: list[dict]):
     st.markdown(html, unsafe_allow_html=True)
 
 
-@st.fragment
 def render_trades_list_sortable(trades: list[dict]):
     """Historique global des trades — thème sombre/clair automatique."""
     st.markdown(

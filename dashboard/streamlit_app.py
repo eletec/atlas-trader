@@ -4874,10 +4874,12 @@ def render_admin_panel():
                 st.info(t("no_trades_recorded"))
             return
         if _atab == "v4_monitor":
-            st.markdown("### 📊 Live Monitor — Funding Carry V7")
-            st.caption("Positions, prix, funding rates temps réel")
+            from dashboard.multi_asset import render_global_overview, render_global_live_prices
             _pf = _get_portfolio()
             render_portfolio(_pf)
+            st.markdown("---")
+            render_global_overview()
+            render_global_live_prices()
             return
         _V4_URLS = {
             "v4_monitor": f"{_V4_FRONTEND}/monitoring",

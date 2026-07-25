@@ -176,16 +176,21 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         unrealized_pct = result.get("unrealized_pnl_pct", 0) or 0
         position_open = result.get("position_open", False)
 
-        # Frais simulés (12bps/leg × 4 legs = 48bps round-trip, Round 4)
+        # Frais: 4 jambes × 12bps = 48bps round-trip (GPT audit, 25/07/2026)
+        #   Open:  long spot (12bps) + short perp (12bps) = 24bps
+        #   Close: sell spot (12bps) + buy back perp (12bps) = 24bps
         cost_this_step = 0.0
         if signal == "open_carry" and size_usd > 0:
-            cost_this_step = size_usd * 0.0012  # 12bps par jambe
+            cost_this_step = size_usd * 0.0024  # 24bps = 2 jambes (spot + perp)
             total_fees += cost_this_step
-            trades.append({"open_ts": ts, "size": size_usd, "fee": cost_this_step})
+            trades.append({"open_ts": ts, "size": size_usd, "open_fee": cost_this_step, "close_fee": 0.0})
 
         if signal == "close_carry":
-            cost_this_step = node.state.entry_capital * 0.0012
+            cost_this_step = node.state.entry_capital * 0.0024  # 24bps = 2 jambes
             total_fees += cost_this_step
+            if trades and trades[-1].get("close_fee") == 0.0:
+                trades[-1]["close_fee"] = cost_this_step
+                trades[-1]["close_ts"] = ts
 
         # ── NAV computation ──
         # NAV = capital + funding_collected + staking - fees + unrealized_carry_pnl
@@ -218,6 +223,20 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         sharpe = 0.0
         max_dd = 0.0
 
+    # ── Per-trade breakdown (GPT audit, 25/07/2026) ──
+    trade_breakdown = []
+    for t in trades:
+        open_fee = t.get("open_fee", 0)
+        close_fee = t.get("close_fee", 0)
+        trade_breakdown.append({
+            "open_ts": str(t.get("open_ts", "")),
+            "close_ts": str(t.get("close_ts", "")),
+            "size_usd": round(t.get("size", 0), 2),
+            "open_fee": round(open_fee, 4),
+            "close_fee": round(close_fee, 4),
+            "total_fee": round(open_fee + close_fee, 4),
+        })
+
     return {
         "symbol": symbol,
         "pnl": round(total_pnl, 2),
@@ -230,6 +249,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         "max_dd_pct": round(max_dd, 2),
         "days": days,
         "params": params_override or {},  # pour le grid search
+        "trade_breakdown": trade_breakdown,  # per-trade P&L audit
     }
 
 

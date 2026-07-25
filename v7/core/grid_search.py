@@ -28,25 +28,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("grid_search")
 
 # Grille de paramètres — Pass 1 (coarse) + Pass 2 (fine autour du meilleur)
+# NOTE (GPT audit, 25/07/2026): economic_hurdle n'est PAS optimisé — c'est un calcul
+# de coût du capital (SOFR + primes), pas un paramètre de trading. Le grid search
+# optimise uniquement les paramètres qui relèvent de la stratégie.
 COARSE_GRID = {
     "min_funding":    [0.00001, 0.00005, 0.0001],   # 0.001%, 0.005%, 0.01%
-    "max_hold_days":  [7, 14, 30],
+    "max_hold_days":  [14, 30, 60],                  # aligné avec les zones (HEALTHY/REVIEW/DERISK/CLOSE)
     "fraction":       [0.30, 0.50],
-    "economic_hurdle":[0.05, 0.07],                 # 5% (SOFR seul), 7% (standard)
+    # economic_hurdle n'est plus dans la grille — fixé à 0.05 (coût du capital)
 }
 
 def refine_grid(best_params: dict) -> dict[str, list]:
     """Genere une grille fine autour des meilleurs parametres."""
     mf = best_params.get("min_funding", 0.00005)
-    hold = best_params.get("max_hold_days", 14)
+    hold = best_params.get("max_hold_days", 30)
     frac = best_params.get("fraction", 0.50)
-    hurdle = best_params.get("economic_hurdle", 0.05)
     
     return {
         "min_funding":    sorted(set([max(0.000005, mf * 0.5), mf, min(0.0005, mf * 2)])),
-        "max_hold_days":  sorted(set([max(3, hold - 4), hold, min(60, hold + 7)])),
+        "max_hold_days":  sorted(set([max(7, hold - 10), hold, min(90, hold + 15)])),
         "fraction":       sorted(set([max(0.10, round(frac - 0.15, 2)), frac, min(1.0, round(frac + 0.15, 2))])),
-        "economic_hurdle": sorted(set([max(0.03, hurdle - 0.02), hurdle, min(0.10, hurdle + 0.02)])),
+        # economic_hurdle retiré — n'est pas un paramètre à optimiser
     }
 
 # Métrique à optimiser : "sharpe", "pnl", "sortino", "calmar"

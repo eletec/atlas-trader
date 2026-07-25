@@ -4533,39 +4533,25 @@ def render_admin_panel():
     elif _atab == "reset":  # Purge des données
         st.markdown(
             f'<h4><i class="fas fa-trash-alt" style="margin-right:7px;color:#e74c3c;"></i>'
-            f' {t("reset_page_title")}</h4>',
+            f' Reset Paper Trading</h4>',
             unsafe_allow_html=True,
         )
-        st.warning(t("reset_warning"))
+        st.warning("This will delete all trade history and open positions. The carry cycle will continue normally.")
 
-        # ── Reset V4 (DAGs + trades) ──────────────────────────────────────
-        st.markdown(f"#### {t('admin_reset_section')}")
-        st.caption(t("admin_reset_desc"))
+        st.markdown(f"#### 🗑️ Reset All Data")
+        st.caption("Deletes all trades from the database and clears the dashboard cache.")
 
         confirm = st.checkbox(
-            t("admin_reset_confirm"),
+            "I understand — delete all trade history",
             key="reset_v4_confirm",
         )
         if st.button(
-            t("admin_reset_btn"),
+            "🗑️ Reset Everything",
             type="primary",
             use_container_width=True,
             disabled=not confirm,
         ):
-            # 1) Arrêter les DAGs
-            import urllib.request as _ur4, json as _j4
-            try:
-                dags = _j4.loads(_ur4.urlopen(f"{_API_BASE}/dag/status").read())
-                for d in dags:
-                    try:
-                        _ur4.urlopen(_ur4.Request(f"{_API_BASE}/dag/{d['dag_id']}", method="DELETE"))
-                    except Exception:
-                        pass
-                st.success(f"✅ {len(dags)} DAG(s) arrêté(s).")
-            except Exception as e:
-                st.warning(f"API V4 injoignable : {e}")
-
-            # 2) Effacer l'historique des trades
+            # 1) Effacer l'historique des trades
             try:
                 from storage.database import get_connection
                 from storage.paper_trader import _ensure_table
@@ -4573,23 +4559,23 @@ def render_admin_panel():
                     _ensure_table(conn)
                     conn.execute("DELETE FROM v4_trades")
                     conn.commit()
-                st.success("✅ Historique des trades effacé.")
+                st.success("✅ Trade history deleted.")
             except Exception as e:
                 st.error(f"DB error: {e}")
 
-            # 3) Redémarrer les DAGs démo
+            # 2) Effacer les logs DAG (carry cycle logs)
             try:
-                resp = _j4.loads(_ur4.urlopen(
-                    _ur4.Request(f"{_API_BASE}/dag/restart-demo", method="POST")
-                ).read())
-                st.success(f"✅ {resp['count']} DAG(s) redémarré(s) — cycle 300s.")
-            except Exception as e:
-                st.warning(f"⚠️ Redémarrage DAGs échoué : {e}")
+                from storage.database import get_connection
+                with get_connection() as conn:
+                    conn.execute("DELETE FROM dag_logs")
+                    conn.commit()
+                st.success("✅ Cycle logs cleared.")
+            except Exception:
+                pass
 
-            # 4) Vider le cache Streamlit pour que les trades disparaissent
+            # 3) Vider le cache Streamlit
             st.cache_data.clear()
-            st.session_state["_carry_msg"] = "✅ Reset complet. Les nouvelles positions apparaîtront au prochain cycle."
-            st.balloons()
+            st.success("✅ Dashboard cache cleared. New data will appear on next cycle.")
             time.sleep(1)
             st.rerun()
 

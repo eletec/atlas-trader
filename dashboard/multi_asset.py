@@ -137,122 +137,62 @@ def _fetch_v4_dags() -> list[dict]:
 
 def render_global_overview() -> None:
     """
-    Tableau consolidé multi-actifs — données V4 live.
-    Affiche l'état de chaque DAG actif : signal, tendance, dernier trade, statut.
+    Tableau consolidé multi-actifs — V7 Funding Carry.
+    Affiche l'état de chaque actif carry : position, funding, statut.
     """
     import streamlit as st
 
-    dags = _fetch_v4_dags()
-    if not dags:
-        # Fallback V3 silencieux — ne rien afficher plutôt que des données obsolètes
+    # V7: utiliser carry_assets.yaml + paper_trader DB (plus de DAGs)
+    try:
+        from v7.core.asset_config import get_active_assets
+        assets = get_active_assets()
+    except Exception:
+        assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
+    
+    if not assets:
         return
+    
+    # Fetch open positions
+    open_positions = {}
+    try:
+        from storage.paper_trader import get_open_positions
+        all_open = get_open_positions()
+        for pos in all_open:
+            sym = pos.get("symbol", "")
+            if sym:
+                open_positions[sym] = pos
+    except Exception:
+        pass
 
     theme = st.query_params.get("theme", "dark")
 
     html_rows = ""
-    for d in dags:
-        dag_id = d.get("dag_id", "?")
-        asset = d.get("asset", "?")
-        running = d.get("running", False)
-        last_ts = d.get("last_run_at")
-        results = d.get("last_results", {})
-
-        ts_str = ""
-        if last_ts:
-            from datetime import datetime as _dt
-            try:
-                ts_str = _dt.fromtimestamp(last_ts).strftime("%H:%M:%S")
-            except Exception:
-                ts_str = "—"
-        else:
-            ts_str = "—"
-
+    for asset in assets:
+        pos = open_positions.get(asset, {})
+        has_position = bool(pos)
+        size_usd = float(pos.get("size_usd", 0) or 0)
+        entry_price = float(pos.get("entry_price", 0) or 0)
+        
+        status_str = "🟢 OPEN" if has_position else "⚫ flat"
+        size_str = f"${size_usd:,.0f}" if size_usd > 0 else "—"
+        entry_str = f"${entry_price:,.2f}" if entry_price > 0 else "—"
         icon = _asset_icon(asset) if asset else "◈"
-        pfx = asset.split("/")[0].lower()[:3] if asset else "btc"
-        is_v7 = dag_id.startswith("v7_")
-
-        if is_v7:
-            # ── V7: Funding Carry ──
-            carry_node = results.get(f"{pfx}_carry", {})
-            carry_out = carry_node.get("outputs", {}) if isinstance(carry_node, dict) else {}
-            carry_signal = carry_out.get("signal", "flat")
-            funding_rate = carry_out.get("funding_rate", 0)
-            annual_pct = carry_out.get("annual_funding_pct", 0)
-            size_usd = carry_out.get("size_usd", 0)
-            position_open = carry_out.get("position_open", False)
-
-            # ── LLM AI Analyst (affiché dans la section "🧠 Dernières analyses IA", pas dans ce tableau) ──
-            # Le cache LLM est consulté uniquement par la section dédiée.
-
-            score = int(50 + annual_pct * 3) if annual_pct > 0 else 50
-            score = min(95, max(5, score))  # 5-95 au lieu de 0-100
-
-            # Trade info : distinguer nouvelle ouverture vs position active
-            total_received = carry_out.get("total_funding_received", 0)
-            n_payments = carry_out.get("n_payments", 0)
-            if carry_signal == "open_carry":
-                trade_str = f"🟢 CARRY ${size_usd:,.0f}"
-            elif position_open and total_received > 0:
-                trade_str = f"💰 +${total_received:.4f} ({n_payments}×)"
-            elif position_open:
-                trade_str = "🟢 CARRY actif"
-            elif funding_rate > 0:
-                trade_str = f"funding {funding_rate*100:.4f}%"
-            else:
-                trade_str = f"funding {funding_rate*100:.4f}%"
-
-            trend = f"{annual_pct:+.1f}%/an" if annual_pct != 0 else "—"
-            signal_display = "💸 carry" if carry_signal.startswith("open") else ("📥 collecte" if position_open else f"💸 {carry_signal}")
+        ts_str = pos.get("timestamp", "—")[:19] if pos.get("timestamp") else "—"
+        
+        # V7: Funding Carry only
+        if has_position:
+            signal_display = "💸 carry"
+            trade_str = f"🟢 CARRY ${size_usd:,.0f}"
+            score = 70
+            trend = f"entry @ ${entry_price:,.2f}"
         else:
-            # ── V5/V6 Legacy ──
-            signal_node = results.get(f"{pfx}_signal", {}) or results.get("signal", {})
-            trend_node = results.get(f"{pfx}_trend", {})
-            risk_node = results.get(f"{pfx}_risk", {})
-            short_risk = results.get(f"{pfx}_short_risk", {})
-            paper_node = results.get(f"{pfx}_paper", {})
+            signal_display = "flat"
+            trade_str = "—"
+            score = 50
+            trend = "—"
 
-            signal_out = signal_node.get("outputs", {}) if isinstance(signal_node, dict) else {}
-            trend_out = trend_node.get("outputs", {}) if isinstance(trend_node, dict) else {}
-            risk_out = risk_node.get("outputs", {}) if isinstance(risk_node, dict) else {}
-            short_out = short_risk.get("outputs", {}) if isinstance(short_risk, dict) else {}
-            paper_out = paper_node.get("outputs", {}) if isinstance(paper_node, dict) else {}
-
-            signal = signal_out.get("signal", "—")
-            prob_up = signal_out.get("prob_up")
-            trend = trend_out.get("trend", "—")
-            risk_decision = risk_out.get("decision", {})
-            short_decision = short_out.get("decision", {})
-            trade_result = paper_out.get("trade_result", {})
-
-            if isinstance(risk_decision, str):
-                risk_decision = {}
-            if isinstance(short_decision, str):
-                short_decision = {}
-            if isinstance(trade_result, str):
-                trade_result = {}
-
-            # Score = prob_up × 100 ou 50 si flat
-            if signal == "long":
-                score = int((prob_up or 0.75) * 100)
-            elif signal == "short":
-                score = int(((1 - (prob_up or 0.5)) * 100))
-            else:
-                score = 50
-            signal_display = signal
-
-            # Trade info
-            trade_action = risk_decision.get("action") or short_decision.get("action")
-            trade_price = risk_decision.get("entry_price") or short_decision.get("entry_price")
-            if trade_action and trade_action != "flat" and trade_price:
-                trade_str = f'{trade_action.upper()} @ ${trade_price:,.0f}'
-            elif trade_action == "flat" or not trade_action:
-                trade_str = "—"
-            else:
-                trade_str = str(trade_action or "—")
-
-        # Statut du DAG
-        status_icon = "🟢" if running else "⚫"
-        status_text = "actif" if running else "arrêté"
+        status_icon = "🟢" if has_position else "⚫"
+        status_text = "CARRY" if has_position else "idle"
 
         html_rows += (
             f"<tr>"
@@ -261,7 +201,7 @@ def render_global_overview() -> None:
             f"<td style='padding:6px 10px;'>{_score_bar(score, theme)}</td>"
             f"<td style='padding:6px 10px;font-size:12px;opacity:.7;'>{ts_str}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{trade_str}</td>"
-            f"<td style='padding:6px 10px;font-size:12px;'>{trend if trend else '—'}</td>"
+            f"<td style='padding:6px 10px;font-size:12px;'>{trend}</td>"
             f"<td style='padding:6px 10px;font-size:12px;'>{status_icon} {status_text}</td>"
             f"</tr>"
         )
@@ -306,16 +246,31 @@ def render_global_live_prices() -> None:
     import streamlit as st
     import json as _json
 
-    dags = _fetch_v4_dags()
-    if not dags:
-        return
-    dag_assets = list({d.get("asset", "") for d in dags if d.get("asset")})
+    # V7 (DeepSeek/GPT audit, 25/07/2026): utiliser carry_assets.yaml, plus de DAGs
+    try:
+        from v7.core.asset_config import get_active_assets
+        dag_assets = get_active_assets()
+    except Exception:
+        dag_assets = []
+    
     if not dag_assets:
-        dag_assets = ["BTC/USDT"]
+        dag_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"]
 
     prices = _fetch_v4_prices()
 
     st.markdown(f"### 📡 {t('live_price_title')}")
+
+    # Fetch open carry positions from paper_trader DB (V7: no DAGs)
+    open_positions = {}
+    try:
+        from storage.paper_trader import get_open_positions
+        all_open = get_open_positions()
+        for pos in all_open:
+            sym = pos.get("symbol", "")
+            if sym and pos.get("action") in ("carry", "short"):
+                open_positions[sym] = pos
+    except Exception:
+        pass
 
     # Construire les cartes HTML avec data-attrs pour le JS
     cards = ""
@@ -327,59 +282,25 @@ def render_global_live_prices() -> None:
         price_str = _fmt_price(price)
         init_price = price or 0
 
-        dag = next((d for d in dags if d.get("asset") == asset), None)
-        trend_label = sig_label = pos_html = "—"
-        if dag:
-            pfx = asset.split("/")[0].lower()[:3]
-            results = dag.get("last_results", {})
-            # ── V7 carry info (Funding Carry DAG) ──
-            carry_node = results.get(f"{pfx}_carry", {})
-            carry_out = carry_node.get("outputs", {}) if isinstance(carry_node, dict) else {}
-            if carry_out:
-                carry_signal = carry_out.get("signal", "flat")
-                annual_pct = carry_out.get("annual_funding_pct", 0)
-                funding_rate = carry_out.get("funding_rate", 0)
-                position_open = carry_out.get("position_open", False)
-                size_usd = carry_out.get("decision", {}).get("size_usd", 0) or 0
-                # Funding info line (replaces trend|signal)
-                if carry_signal == "open_carry":
-                    sig_label = f"💸 CARRY {annual_pct:+.1f}%/an"
-                elif carry_signal == "flat" and funding_rate > 0:
-                    sig_label = f"flat {annual_pct:+.1f}%/an"
-                else:
-                    sig_label = carry_signal
-                # Position info
-                if position_open and size_usd > 0:
-                    pos_data[asset] = {"action": "carry", "entry": price or 0, "size": size_usd}
-                    pos_html = f'<span style="color:#f39c12">CARRY ${size_usd:,.0f}</span>'
-                trend_label = f"funding {funding_rate*100:.4f}%" if funding_rate else "—"
+        # V7: position info from paper_trader DB (no DAGs)
+        pos = open_positions.get(asset)
+        if pos:
+            size_usd = float(pos.get("size_usd", 0) or 0)
+            entry_price = float(pos.get("entry_price", 0) or 0)
+            if size_usd > 0:
+                pos_data[asset] = {"action": "carry", "entry": entry_price or (price or 0), "size": size_usd}
+                pos_html = f'<span style="color:#f39c12">CARRY ${size_usd:,.0f}</span>'
             else:
-                # Fallback V3/V5
-                tn = results.get(f"{pfx}_trend", {})
-                trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
-                sn = results.get(f"{pfx}_signal", {})
-                signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
-                prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
-                trend_label = trend.upper() if trend else "—"
-                sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
-                # Position ouverte ?
-                pm = results.get(f"{pfx}_posmgr", {})
-                open_pos = pm.get("outputs", {}).get("open_positions", []) if isinstance(pm, dict) else []
-                if isinstance(open_pos, list) and open_pos:
-                    p0 = open_pos[0] if isinstance(open_pos[0], dict) else {}
-                    p_action = p0.get("action", "")
-                    p_entry = p0.get("entry_price", 0)
-                    p_size = p0.get("size_usd", 0)
-                    pos_data[asset] = {"action": p_action, "entry": p_entry, "size": p_size}
-                    if p_entry and price:
-                        if p_action == "short":
-                            pnl_pct = (p_entry - price) / p_entry * 100
-                        else:
-                            pnl_pct = (price - p_entry) / p_entry * 100
-                        pnl_col = "#2ecc71" if pnl_pct >= 0 else "#e74c3c"
-                        pos_html = f'<span style="color:{pnl_col}">{p_action.upper()} {pnl_pct:+.1f}%</span>'
-                    else:
-                        pos_html = p_action.upper()
+                pos_html = "—"
+            # Get funding from price data if available
+            funding_rate = pdata.get("funding_rate", 0)
+            trend_label = f"funding {funding_rate*100:.4f}%" if funding_rate else "—"
+            sig_label = "CARRY ACTIVE"
+        else:
+            pos_html = "—"
+            funding_rate = pdata.get("funding_rate", 0)
+            trend_label = f"funding {funding_rate*100:.4f}%" if funding_rate else "—"
+            sig_label = "flat"
 
         uid = asset.replace("/", "_")
         cards += (

@@ -332,33 +332,54 @@ def render_global_live_prices() -> None:
         if dag:
             pfx = asset.split("/")[0].lower()[:3]
             results = dag.get("last_results", {})
-            tn = results.get(f"{pfx}_trend", {})
-            trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
-            sn = results.get(f"{pfx}_signal", {})
-            signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
-            prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
-            trend_label = trend.upper() if trend else "—"
-            sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
-
-            # Position ouverte ?
-            pm = results.get(f"{pfx}_posmgr", {})
-            open_pos = pm.get("outputs", {}).get("open_positions", []) if isinstance(pm, dict) else []
-            if isinstance(open_pos, list) and open_pos:
-                p0 = open_pos[0] if isinstance(open_pos[0], dict) else {}
-                p_action = p0.get("action", "")
-                p_entry = p0.get("entry_price", 0)
-                p_size = p0.get("size_usd", 0)
-                pos_data[asset] = {"action": p_action, "entry": p_entry, "size": p_size}
-                # PnL latent initial
-                if p_entry and price:
-                    if p_action == "short":
-                        pnl_pct = (p_entry - price) / p_entry * 100
-                    else:
-                        pnl_pct = (price - p_entry) / p_entry * 100
-                    pnl_col = "#2ecc71" if pnl_pct >= 0 else "#e74c3c"
-                    pos_html = f'<span style="color:{pnl_col}">{p_action.upper()} {pnl_pct:+.1f}%</span>'
+            # ── V7 carry info (Funding Carry DAG) ──
+            carry_node = results.get(f"{pfx}_carry", {})
+            carry_out = carry_node.get("outputs", {}) if isinstance(carry_node, dict) else {}
+            if carry_out:
+                carry_signal = carry_out.get("signal", "flat")
+                annual_pct = carry_out.get("annual_funding_pct", 0)
+                funding_rate = carry_out.get("funding_rate", 0)
+                position_open = carry_out.get("position_open", False)
+                size_usd = carry_out.get("decision", {}).get("size_usd", 0) or 0
+                # Funding info line (replaces trend|signal)
+                if carry_signal == "open_carry":
+                    sig_label = f"💸 CARRY {annual_pct:+.1f}%/an"
+                elif carry_signal == "flat" and funding_rate > 0:
+                    sig_label = f"flat {annual_pct:+.1f}%/an"
                 else:
-                    pos_html = p_action.upper()
+                    sig_label = carry_signal
+                # Position info
+                if position_open and size_usd > 0:
+                    pos_data[asset] = {"action": "carry", "entry": price or 0, "size": size_usd}
+                    pos_html = f'<span style="color:#f39c12">CARRY ${size_usd:,.0f}</span>'
+                trend_label = f"funding {funding_rate*100:.4f}%" if funding_rate else "—"
+            else:
+                # Fallback V3/V5
+                tn = results.get(f"{pfx}_trend", {})
+                trend = tn.get("outputs", {}).get("trend", "") if isinstance(tn, dict) else ""
+                sn = results.get(f"{pfx}_signal", {})
+                signal = sn.get("outputs", {}).get("signal", "") if isinstance(sn, dict) else ""
+                prob = sn.get("outputs", {}).get("prob_up") if isinstance(sn, dict) else None
+                trend_label = trend.upper() if trend else "—"
+                sig_label = f"{signal} {prob*100:.0f}%" if signal and prob is not None else "—"
+                # Position ouverte ?
+                pm = results.get(f"{pfx}_posmgr", {})
+                open_pos = pm.get("outputs", {}).get("open_positions", []) if isinstance(pm, dict) else []
+                if isinstance(open_pos, list) and open_pos:
+                    p0 = open_pos[0] if isinstance(open_pos[0], dict) else {}
+                    p_action = p0.get("action", "")
+                    p_entry = p0.get("entry_price", 0)
+                    p_size = p0.get("size_usd", 0)
+                    pos_data[asset] = {"action": p_action, "entry": p_entry, "size": p_size}
+                    if p_entry and price:
+                        if p_action == "short":
+                            pnl_pct = (p_entry - price) / p_entry * 100
+                        else:
+                            pnl_pct = (price - p_entry) / p_entry * 100
+                        pnl_col = "#2ecc71" if pnl_pct >= 0 else "#e74c3c"
+                        pos_html = f'<span style="color:{pnl_col}">{p_action.upper()} {pnl_pct:+.1f}%</span>'
+                    else:
+                        pos_html = p_action.upper()
 
         uid = asset.replace("/", "_")
         cards += (

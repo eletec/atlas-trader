@@ -345,8 +345,8 @@ class PositionMonitor:
                             elif payback_days > 30:
                                 logger.info("PositionMonitor: %s carry WATCH payback=%.0fj (zone 30-60j)",
                                        pd["symbol"], payback_days)
-                        else:
-                            logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)
+                            else:
+                                logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)
                     else:
                         # Time-stop classique pour non-carry
                         if days_held > max_hold_days:

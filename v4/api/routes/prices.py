@@ -84,46 +84,45 @@ class PriceStore:
 _ws_tasks: dict[str, asyncio.Task] = {}
 
 
-async def _watch_ticker(symbol: str) -> None:
-    """Tâche asyncio qui maintient un ticker Binance pour `symbol`.
+async def _run_ticker(symbol: str) -> None:
+    """Lance REST polling + WS en parallèle. REST = baseline fiable (3s). WS = bonus réactif.
 
-    Stratégie (26/07/2026) : REST polling en primaire (3s interval).
-    Le WebSocket ccxt.pro plante quand 24 tickers sont lancés simultanément
-    (timeout sur dapi.binance.com). Le REST est fiable et suffit pour un
-    dashboard qui poll déjà toutes les 3 secondes.
+    Stratégie (26/07/2026) : lancer REST immédiatement, tenter WS en parallèle.
+    Si WS fonctionne → tant mieux (prix plus rapides). Si WS échoue → REST déjà actif.
     """
-    # Essayer d'abord le WebSocket (plus réactif si dispo)
-    ws_failed = False
+    # Démarrer REST immédiatement (fiable, fonctionne même avec 24 actifs)
+    rest_task = asyncio.create_task(_poll_ticker_rest(symbol, interval_s=3.0))
+
+    # Tenter le WebSocket en parallèle (plus réactif si dispo)
     try:
         import ccxt.pro as ccxtpro
         exchange = ccxtpro.binance({"newUpdates": True})
-        logger.info("Binance WS ticker started for %s", symbol)
-        # Tenter le WS pendant ~30s max, puis basculer en REST si ça échoue
-        ws_attempts = 0
-        while ws_attempts < 3:
+        logger.info("WS ticker started for %s", symbol)
+        while True:
             try:
-                ticker = await asyncio.wait_for(exchange.watch_ticker(symbol), timeout=15)
+                ticker = await asyncio.wait_for(exchange.watch_ticker(symbol), timeout=10)
                 price = ticker.get("last") or ticker.get("close")
                 if price:
                     PriceStore.instance().update(symbol, float(price))
-                ws_attempts = 0  # reset counter on success
             except asyncio.TimeoutError:
-                ws_attempts += 1
-                logger.warning("WS timeout (%s) — attempt %d/3", symbol, ws_attempts)
-                await asyncio.sleep(2)
+                logger.debug("WS timeout (%s) — REST covers, retrying WS", symbol)
+                await asyncio.sleep(5)
             except Exception as exc:
-                ws_attempts += 1
-                logger.warning("WS ticker error (%s): %s — attempt %d/3", symbol, exc, ws_attempts)
-                await asyncio.sleep(3)
-        await exchange.close()
-        logger.info("WS ticker for %s: switching to REST fallback", symbol)
+                logger.debug("WS error (%s): %s — REST covers, retrying WS", symbol, str(exc)[:100])
+                await asyncio.sleep(10)
     except ImportError:
-        logger.info("ccxt.pro not available for %s — using REST", symbol)
+        logger.debug("ccxt.pro not available for %s — REST-only mode", symbol)
+        # REST déjà actif, rien à faire — attendre indéfiniment
+        await asyncio.Event().wait()
     except Exception as exc:
-        logger.warning("WS setup failed for %s: %s — using REST", symbol, exc)
-
-    # REST polling — fiable, fonctionne même avec 24 actifs
-    await _poll_ticker_rest(symbol, interval_s=3.0)
+        logger.warning("WS setup failed for %s: %s — REST-only mode", symbol, str(exc)[:100])
+        await asyncio.Event().wait()
+    finally:
+        rest_task.cancel()
+        try:
+            await rest_task
+        except asyncio.CancelledError:
+            pass
 
 
 async def _poll_ticker_rest(symbol: str, interval_s: float = 3.0) -> None:
@@ -145,10 +144,10 @@ async def _poll_ticker_rest(symbol: str, interval_s: float = 3.0) -> None:
 
 
 def ensure_ticker(symbol: str) -> None:
-    """Lance le ticker WS pour `symbol` s'il n'est pas déjà actif."""
+    """Lance le ticker (REST + WS) pour `symbol` s'il n'est pas déjà actif."""
     if symbol not in _ws_tasks or _ws_tasks[symbol].done():
         loop = asyncio.get_event_loop()
-        _ws_tasks[symbol] = loop.create_task(_watch_ticker(symbol))
+        _ws_tasks[symbol] = loop.create_task(_run_ticker(symbol))
 
 
 # ------------------------------------------------------------------

@@ -61,6 +61,7 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
         else:
             return
         conn = sqlite3.connect(db_path)
+        # dag_logs — pour le dashboard V7 (multi_asset.py)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS dag_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +75,11 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
         conn.execute(
             "INSERT INTO dag_logs (ts, level, dag_id, node_id, message) VALUES (?,?,?,?,?)",
             (datetime.now().isoformat(), level, dag_id, node_id, message),
+        )
+        # logs — pour le visualiseur de logs dashboard (streamlit_app.py)
+        conn.execute(
+            "INSERT INTO logs (timestamp, level, module, message) VALUES (?,?,?,?)",
+            (datetime.now().isoformat(), level, f"carry.{dag_id or node_id or 'cycle'}", message),
         )
         conn.commit()
         conn.close()

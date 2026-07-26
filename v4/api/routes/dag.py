@@ -277,7 +277,7 @@ async def dag_logs(n: int = 50):
 
 @router.get("/decisions")
 async def decisions_history(symbol: str = "", dag_id: str = "", n: int = 100):
-    """Retourne l'historique des décisions, filtrable par actif et DAG."""
+    """Retourne l'historique des décisions (V7: lit dag_logs, plus de DAGs)."""
     try:
         import sqlite3, json as _jd
         db_path = "/app/data/v4.db"
@@ -286,29 +286,23 @@ async def decisions_history(symbol: str = "", dag_id: str = "", n: int = 100):
             conditions = []
             params = []
             if symbol:
-                conditions.append("symbol = ?")
-                params.append(symbol)
+                # Chercher le symbole dans le message (ex: "[BTC/USDT]")
+                conditions.append("message LIKE ?")
+                params.append(f"%[{symbol}]%")
             if dag_id:
                 conditions.append("dag_id = ?")
                 params.append(dag_id)
             where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
             rows = conn.execute(
-                f"SELECT id, ts, symbol, dag_id, trade_id, data FROM shadow_decisions {where} ORDER BY id DESC LIMIT ?",
+                f"SELECT id, ts, level, dag_id, node_id, message FROM dag_logs {where} ORDER BY id DESC LIMIT ?",
                 (*params, n),
             ).fetchall()
         results = []
         for r in rows:
             d = dict(r)
-            try:
-                d["data"] = _jd.loads(d["data"]) if isinstance(d["data"], str) else d["data"]
-            except Exception:
-                pass
-            # Convertir ts unix → ISO
-            try:
-                from datetime import datetime
-                d["ts_iso"] = datetime.fromtimestamp(d["ts"]).isoformat()
-            except Exception:
-                d["ts_iso"] = str(d["ts"])
+            d["ts_iso"] = d.get("ts", "")[:19]
+            d["symbol"] = dag_id or ""
+            d["data"] = {"message": d.get("message", ""), "level": d.get("level", "")}
             results.append(d)
         return {"count": len(results), "decisions": results}
     except Exception as exc:

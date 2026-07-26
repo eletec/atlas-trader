@@ -757,10 +757,37 @@ def _init_session():
 
 @st.cache_data(ttl=20)
 def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
-    """Cache 20s — évite les requêtes SQLite redondantes lors de chaque rerun auto."""
+    """Cache 20s — décisions V7 depuis dag_logs (fallback sur table decisions V1)."""
     try:
-        from storage.database import get_recent_decisions
-        return get_recent_decisions(n, asset=asset)
+        from storage.database import get_connection
+        with get_connection() as conn:
+            if asset:
+                rows = conn.execute(
+                    "SELECT ts, level, dag_id, node_id, message FROM dag_logs "
+                    "WHERE message LIKE ? ORDER BY ts DESC LIMIT ?",
+                    (f"%[{asset}]%", n),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT ts, level, dag_id, node_id, message FROM dag_logs "
+                    "ORDER BY ts DESC LIMIT ?", (n,)
+                ).fetchall()
+            if rows:
+                import re as _re
+                results = []
+                for r in rows:
+                    msg = r["message"] or ""
+                    sym_match = _re.search(r'\[([A-Z]+)/USDT\]', msg)
+                    results.append({
+                        "symbol": sym_match.group(1) + "/USDT" if sym_match else (asset or "?"),
+                        "action": "carry" if "HOLD" in msg else ("flat" if "FLAT" in msg else "?"),
+                        "timestamp": r["ts"],
+                        "reason": msg,
+                    })
+                return results
+            # Fallback : ancienne table decisions (V1)
+            from storage.database import get_recent_decisions as _legacy
+            return _legacy(n, asset=asset)
     except Exception:
         return []
 
@@ -4818,12 +4845,21 @@ def render_admin_panel():
                 if carry_pos:
                     rows = []
                     for p in carry_pos:
+                        # context_json peut être une string JSON ou un dict
+                        ctx = p.get("context_json", {})
+                        if isinstance(ctx, str):
+                            try:
+                                import json as _j
+                                ctx = _j.loads(ctx) if ctx else {}
+                            except Exception:
+                                ctx = {}
+                        total_funding = float(ctx.get("total_funding", 0) or 0) if isinstance(ctx, dict) else 0
                         rows.append({
                             "Asset": p.get("symbol", "?"),
                             "Size": f"${float(p.get('size_usd', 0)):,.0f}",
                             "Entry": f"${float(p.get('entry_price', 0)):,.2f}",
                             "Opened": str(p.get("timestamp", "—"))[:19],
-                            "Funding Total": f"${float(p.get('context_json', '{}').get('total_funding', 0) or 0):.4f}",
+                            "Funding Total": f"${total_funding:.4f}",
                         })
                     st.dataframe(rows, use_container_width=True, hide_index=True)
                 else:

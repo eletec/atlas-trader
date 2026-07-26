@@ -400,7 +400,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
             fraction = 0.50
 
         new_assets[sym] = {
-            "enabled": i < 15 and spot_vol > 0 and perp_vol > 0,  # top 15 avec liquidité
+            "enabled": i < 15,  # top 15 actifs par défaut
             "capital": capital,
             "fraction": fraction,
             "safety_cap": int(capital * 0.10),

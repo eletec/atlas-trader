@@ -4798,8 +4798,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "✅ Tabellen `v2_equity`, `v2_state` en `v2_decisions` geleegd.",
         "zh": "✅ 表 `v2_equity`、`v2_state` 和 `v2_decisions` 已清空。",
     },
-    "reset_full_caption": {
-        "fr": "Après le reset complet, le daemon repart avec le capital initial défini dans `settings.yaml` (`paper_capital_usd`).",
+    "reset_full_post_caption": {
         "en": "After the full reset, the daemon restarts with the initial capital defined in `settings.yaml` (`paper_capital_usd`).",
         "de": "Nach dem vollständigen Reset startet der Daemon mit dem in `settings.yaml` (`paper_capital_usd`) definierten Startkapital.",
         "es": "Tras el reset completo, el daemon reinicia con el capital inicial definido en `settings.yaml` (`paper_capital_usd`).",

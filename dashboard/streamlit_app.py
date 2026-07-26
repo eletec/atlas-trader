@@ -3836,7 +3836,6 @@ def render_admin_panel():
         ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config"),
         # ── Infra & Monitoring ───────────────────────────────────────
         (None, None,      "Infra & Monitoring"),
-        ('<i class="fas fa-database"></i>',        "sources",    "Data Sources"),
         ('<i class="fas fa-robot"></i>',           "aimodel",    "AI Model"),
         ('<i class="fas fa-list-check"></i>',      "logging",    "Logging"),
         ('<i class="fas fa-history"></i>',         "historique", "History"),
@@ -3921,53 +3920,6 @@ def render_admin_panel():
                 help="Active le filtre HMM (hmmlearn requis — désactiver en local si absent).",
             )
         settings["quant"] = q
-
-        # ── Sources de données (TwelveData) ──────────────────────────────────
-        st.markdown("---")
-        st.markdown(f"#### {t('quant_section_sources')}")
-        _dp_opts = ["auto", "twelve_data", "yahoo"]
-        _dp_cur = q.get("data_provider", settings.get("data", {}).get("provider", "auto"))
-        if _dp_cur not in _dp_opts:
-            _dp_cur = "auto"
-        _dp_new = st.selectbox(
-            t("quant_data_provider"),
-            _dp_opts,
-            index=_dp_opts.index(_dp_cur),
-            help="**auto** : essaie Twelve Data (si clé présente) puis Yahoo/Binance. "
-                 "**twelve_data** : force Twelve Data pour les actifs forex/commodités. "
-                 "**yahoo** : force Yahoo Finance.",
-        )
-        settings["quant"]["data_provider"] = _dp_new
-        settings.setdefault("data", {})["provider"] = _dp_new
-
-        # Lecture de la clé TwelveData (secrets.yaml — quant/ deleted in V7 cleanup)
-        try:
-            from pathlib import Path as _QTPath
-            import yaml as _QTYaml
-            _qt_secrets = _QTPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
-            _qt_cfg = _QTYaml.safe_load(_qt_secrets.read_text(encoding="utf-8")) or {} if _qt_secrets.exists() else {}
-            _td_key_live = _qt_cfg.get("data", {}).get("twelve_data_key", "")
-        except Exception:
-            _td_key_live = ""
-        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else (t("quant_td_key_empty") if not _td_key_live else _td_key_live)
-        st.caption(f"{t('quant_td_key_active')} : `{_td_key_display}`")
-        _td_key_input = st.text_input(
-            t("quant_td_key_new"),
-            value="",
-            type="password",
-            help="Key saved to **config/secrets.yaml** (gitignored). Leave blank to keep current.",
-        )
-        if _td_key_input.strip():
-            from pathlib import Path as _SPPath
-            import yaml as _syaml
-            _secrets_path = _SPPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
-            try:
-                _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
-                _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
-                _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
-                st.success(t("quant_td_key_saved"))
-            except Exception as _se:
-                st.error(f"{t('quant_secrets_write_error')} : {_se}")
 
         # ── État live du modèle ───────────────────────────────────────────────
         st.markdown("---")
@@ -4199,55 +4151,6 @@ def render_admin_panel():
         _llm["fast_model"]    = _new_fast_model
 
         settings["llm"] = _llm
-
-    elif _atab == "sources":
-        st.markdown(
-            f'<h4><i class="fas fa-database" style="margin-right:7px;color:#7986cb;"></i>'
-            f'{t("data_sources_title")}</h4>',
-            unsafe_allow_html=True,
-        )
-        st.info(t("data_provider_config"))
-        _dp_opts = ["auto", "twelve_data", "yahoo"]
-        _dp_cur = settings.get("data", {}).get("provider", "auto")
-        if _dp_cur not in _dp_opts:
-            _dp_cur = "auto"
-        _dp_new = st.selectbox(
-            t("data_provider_label"),
-            _dp_opts,
-            index=_dp_opts.index(_dp_cur),
-            help="**auto** : Twelve Data (if key) then Yahoo/Binance. **twelve_data** : force. **yahoo** : Yahoo Finance.",
-        )
-        settings.setdefault("data", {})["provider"] = _dp_new
-
-        # Read TwelveData key from secrets.yaml (quant/ was deleted in V7 cleanup)
-        try:
-            from pathlib import Path as _TDPath
-            import yaml as _TDYaml
-            _td_secrets = _TDPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
-            _td_cfg = _TDYaml.safe_load(_td_secrets.read_text(encoding="utf-8")) or {} if _td_secrets.exists() else {}
-            _td_key_live = _td_cfg.get("data", {}).get("twelve_data_key", "")
-        except Exception:
-            _td_key_live = ""
-        _td_empty = t("td_key_empty") if _td_key_live else ""
-        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else (_td_empty if not _td_key_live else _td_key_live)
-        st.caption(f"{t('td_key_active')} : `{_td_key_display}`")
-        _td_key_input = st.text_input(
-            t("td_key_new"),
-            value="",
-            type="password",
-            help="Key saved to **config/secrets.yaml** (gitignored).",
-        )
-        if _td_key_input.strip():
-            from pathlib import Path as _SPPath
-            import yaml as _syaml
-            _secrets_path = _SPPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
-            try:
-                _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
-                _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
-                _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
-                st.success(t("td_key_saved"))
-            except Exception as _se:
-                st.error(f"{t('secrets_write_error')} : {_se}")
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)
@@ -5102,95 +5005,6 @@ def _inject_session_persistence_js(has_valid_session: bool) -> None:
 # PAGE PRINCIPALE
 # ===========================================================
 
-@st.cache_data(ttl=15)
-def _get_v4_dags() -> list[dict]:
-    """Récupère l'état des DAGs V4 depuis l'API (cache 15s)."""
-    try:
-        import urllib.request, json
-        # _API_BASE pour atteindre le host depuis un container
-        req = urllib.request.Request(f"{_API_BASE}/dag/status")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read())
-    except Exception:
-        return []
-
-
-def _render_v4_status(asset_filter: str | None = None):
-    """Section V4 dans le dashboard front office. Filtrable par actif."""
-    dags = _get_v4_dags()
-    if not dags:
-        return
-
-    # Filtrer par actif si demandé (via nav asset ou paramètre explicite)
-    if asset_filter is None:
-        asset_filter = st.query_params.get("_asset", "")
-    if asset_filter and asset_filter != "Global":
-        asset_filter_clean = asset_filter.replace("_", "/")
-        dags = [d for d in dags if d.get("asset") == asset_filter_clean]
-    if not dags:
-        return
-
-    st.markdown("---")
-    st.markdown(
-        '<h3 style="margin:0 0 10px;font-size:18px;">'
-        '<i class="fas fa-diagram-project" style="margin-right:8px;color:#4f6ef7;"></i>'
-        'V4 — Moteur DAG</h3>',
-        unsafe_allow_html=True,
-    )
-
-    theme = _get_theme()
-    if theme == "light":
-        tbl_bg, tbl_fg, head_bg, border = "#ffffff", "#212529", "#f1f3f5", "#dee2e6"
-        row_alt, sep = "#f8f9fa", "#e9ecef"
-    else:
-        tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
-        row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
-
-    cols = ["DAG ID", "Actif", "Statut", "Cycle (s)", "Dernier run", "✓", "✗"]
-    header = "".join(
-        f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
-        f'background:{head_bg};border-bottom:2px solid {border};">{c}</th>'
-        for c in cols
-    )
-
-    rows_html = ""
-    for i, d in enumerate(dags):
-        bg = row_alt if i % 2 else tbl_bg
-        done = sum(1 for r in d.get("last_results", {}).values() if r.get("status") == "done")
-        errs = sum(1 for r in d.get("last_results", {}).values() if r.get("status") == "error")
-        last_ts = ""
-        if d.get("last_run_at"):
-            from datetime import datetime as _v4dt
-            try:
-                last_ts = _v4dt.fromtimestamp(d["last_run_at"]).strftime("%H:%M:%S")
-            except Exception:
-                last_ts = "—"
-        else:
-            last_ts = "—"
-
-        rows_html += (
-            f'<tr style="background:{bg};">'
-            f'<td style="padding:5px 10px;font-size:12px;font-family:monospace;">{d["dag_id"]}</td>'
-            f'<td style="padding:5px 10px;font-size:12px;">{d.get("asset", "—")}</td>'
-            f'<td style="padding:5px 10px;font-size:12px;">'
-            f'<span style="color:{"#22c55e" if d.get("running") else "#888"}">'
-            f'{"● actif" if d.get("running") else "○ arrêté"}</span></td>'
-            f'<td style="padding:5px 10px;font-size:12px;">{d.get("cycle_s") or "—"}</td>'
-            f'<td style="padding:5px 10px;font-size:12px;">{last_ts}</td>'
-            f'<td style="padding:5px 10px;font-size:12px;color:#22c55e;">{done} ✓</td>'
-            f'<td style="padding:5px 10px;font-size:12px;color:#ef4444;">{errs} ✗</td>'
-            f'</tr>'
-        )
-
-    st.markdown(
-        f'<div style="overflow:auto;border:1px solid {border};border-radius:8px;'
-        f'background:{tbl_bg};max-height:300px;">'
-        f'<table style="border-collapse:collapse;width:100%;min-width:600px;">'
-        f'<thead><tr>{header}</tr></thead>'
-        f'<tbody>{rows_html}</tbody>'
-        f'</table></div>',
-        unsafe_allow_html=True,
-    )
 
 
 def main():
@@ -5286,9 +5100,6 @@ def main():
                 render_live_logs(key="global")
 
             render_asset_tabs(_render_for_asset, global_fn=_render_global, pre_global_fn=_render_portfolio_first)
-
-            # ── V4 — État des DAGs (si l'API est accessible) ─────────────────
-            _render_v4_status()
 
             # ── Live price poller (met à jour les colonnes Progression sans reload) ──
             _inject_live_trade_prices_js()

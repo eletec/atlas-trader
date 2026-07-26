@@ -246,6 +246,10 @@ class RecordDecision(Node):
         decision = inputs.get("decision", {})
         trade_result = inputs.get("trade_result", {})
         table    = self.params.get("table", "shadow_decisions")
+        # Sécurité : valider le nom de table (whitelist alphanum + underscore)
+        import re as _re
+        if not _re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table):
+            raise ValueError(f"Invalid table name: {table!r}")
         db_path  = self.params.get("db_path", "/app/data/v4.db")
         symbol   = self.params.get("symbol", decision.get("symbol", ""))
         dag_id   = self.params.get("dag_id", "")

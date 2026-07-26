@@ -32,7 +32,7 @@ app = FastAPI(
     description="API de trading algorithmique — moteur DAG + plugins IA",
 )
 
-# CORS : permet le frontend Next.js et le dashboard Streamlit, en local et via IP
+# CORS : permet le dashboard Streamlit en local/dev
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -43,8 +43,8 @@ app.add_middleware(
         "http://192.168.1.80:8502",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],  # restreint : pas de PUT/PATCH/OPTIONS inutiles
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 app.include_router(dag_router, prefix="/dag", tags=["dag"])

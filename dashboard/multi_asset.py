@@ -735,65 +735,6 @@ def render_marches_admin_tab() -> None:
         st.error(f"Import config échoué : {exc}")
         return
 
-    # ── Section : Sources de données ───────────────────────────────────────────
-    with st.expander("🔑 " + t("data_sources_title"), expanded=False):
-        st.caption(t("data_provider_config"))
-
-        try:
-            from pathlib import Path as _MAPath
-            import yaml as _MAYaml
-            _ma_secrets = _MAPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
-            _ma_cfg = _MAYaml.safe_load(_ma_secrets.read_text(encoding="utf-8")) or {} if _ma_secrets.exists() else {}
-            current_key = _ma_cfg.get("data", {}).get("twelve_data_key", "")
-        except Exception:
-            current_key = ""
-
-        try:
-            from utils.config import load_settings
-            _s = load_settings()
-            current_provider = _s.get("data", {}).get("provider", "auto")
-        except Exception:
-            current_provider = "auto"
-
-        provider_opts = ["auto", "twelve_data", "yahoo"]
-        provider = st.selectbox(
-            t("data_provider_label"),
-            options=provider_opts,
-            index=provider_opts.index(current_provider) if current_provider in provider_opts else 0,
-            key="data_provider_select",
-            help=t("ma_provider_help"),
-        )
-        api_key_input = st.text_input(
-            t("ma_td_api_key_label"),
-            value=current_key,
-            type="password",
-            key="twelve_data_api_key",
-            help=t("ma_td_api_key_help"),
-        )
-
-        if st.button(t("cfg_save_data_sources"), key="btn_save_data_sources"):
-            try:
-                from pathlib import Path
-                import yaml as _yaml
-
-                # Sauvegarder la clé dans secrets.yaml (gitignored)
-                secrets_path = Path(__file__).resolve().parent.parent / "config" / "secrets.yaml"
-                secrets_content = {"data": {"twelve_data_key": api_key_input.strip()}}
-                with secrets_path.open("w", encoding="utf-8") as fh:
-                    _yaml.dump(secrets_content, fh, allow_unicode=True, default_flow_style=False)
-
-                # Sauvegarder le provider dans settings.yaml
-                from utils.config import load_settings, save_settings
-                settings = load_settings()
-                settings.setdefault("data", {})["provider"] = provider
-                save_settings(settings)
-
-                st.success(t("ma_td_saved"))
-            except Exception as exc:
-                st.error(f"{t('cfg_save_data_sources')} — {exc}")
-
-    st.markdown("---")
-
     # ── Section : Paramètres quant globaux (Q3/Q13/Q14/Q17) ───────────────────
     with st.expander(t("cfg_section_quant"), expanded=False):
         st.caption(t("cfg_section_quant_caption"))

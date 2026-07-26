@@ -876,6 +876,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 
 @st.cache_data(ttl=30)
+@st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
     """Portefeuille consolidé — positions ouvertes + PnL cumulé depuis la DB."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
@@ -905,14 +906,6 @@ def _get_portfolio(asset: str | None = None) -> dict:
     except Exception:
         pass
 
-    # V3 fallback
-    try:
-        from execution.paper_trader import PaperTrader
-        v3 = PaperTrader().get_portfolio(asset=asset)
-        portfolio["n_trades"] += v3.get("n_trades", 0)
-    except Exception:
-        pass
-
     return portfolio
 
 
@@ -925,6 +918,7 @@ def _get_pnl_history() -> list[dict]:
         return []
 
 
+@st.cache_data(ttl=30)
 def _get_last_cycle() -> dict | None:
     decisions = _get_recent_decisions(1)
     return decisions[0] if decisions else None

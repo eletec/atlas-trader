@@ -61,6 +61,16 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
         else:
             return
         conn = sqlite3.connect(db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS dag_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                level TEXT DEFAULT 'INFO',
+                dag_id TEXT,
+                node_id TEXT,
+                message TEXT
+            )
+        """)
         conn.execute(
             "INSERT INTO dag_logs (ts, level, dag_id, node_id, message) VALUES (?,?,?,?,?)",
             (datetime.now().isoformat(), level, dag_id, node_id, message),

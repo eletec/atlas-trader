@@ -459,6 +459,10 @@ class PositionMonitor:
                 logger.warning("PositionMonitor: entry_perp missing for %s → carry economics UNKNOWN", symbol)
                 return result
 
+            # Calculer le basis (spot - perp) / spot
+            basis_entry = (entry_spot - entry_perp) / entry_spot if entry_spot > 0 else 0
+            basis_now = (current_spot - current_perp) / current_spot if current_spot > 0 else 0
+
             # Basis P&L (Round 4 fix, 22/07/2026)
             # Position: LONG spot + SHORT perp → gains when basis CONTRACTS
             # basis_entry > basis_now → gain (basis decreased)
@@ -482,6 +486,7 @@ class PositionMonitor:
                 result["payback_days"] = 999  # funding nul ou négatif → impossible à rembourser
 
         except Exception as e:
+            result["data_degraded"] = True
             logger.debug("PositionMonitor: carry_economics failed for %s: %s", pd.get("symbol", "?"), e)
 
         return result

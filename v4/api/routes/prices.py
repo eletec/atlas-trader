@@ -125,22 +125,49 @@ async def _run_ticker(symbol: str) -> None:
             pass
 
 
+# ------------------------------------------------------------------
+# Shared REST exchange — une seule instance pour tous les pollers
+# ------------------------------------------------------------------
+_rest_exchange = None
+_rest_exchange_lock = asyncio.Lock()
+
+async def _get_rest_exchange():
+    """Retourne une instance ccxt binance() partagée (thread-safe)."""
+    global _rest_exchange
+    if _rest_exchange is None:
+        async with _rest_exchange_lock:
+            if _rest_exchange is None:
+                import ccxt
+                _rest_exchange = ccxt.binance({"enableRateLimit": True})
+    return _rest_exchange
+
+
 async def _poll_ticker_rest(symbol: str, interval_s: float = 3.0) -> None:
-    """REST polling — fiable pour prix temps réel dashboard."""
-    import ccxt
-    exchange = ccxt.binance()
+    """REST polling non-bloquant — utilise run_in_executor pour ne pas bloquer l'event loop."""
+    exchange = await _get_rest_exchange()
+    loop = asyncio.get_running_loop()
     logger.info("REST poller started for %s (interval=%ss)", symbol, interval_s)
+    consecutive_failures = 0
     while True:
         try:
-            ticker = exchange.fetch_ticker(symbol)
+            # ⚠️ fetch_ticker est SYNCHRONE → run_in_executor pour ne pas bloquer asyncio
+            ticker = await loop.run_in_executor(None, exchange.fetch_ticker, symbol)
             price = ticker.get("last") or ticker.get("close")
             if price:
                 PriceStore.instance().update(symbol, float(price))
+                consecutive_failures = 0
             else:
                 logger.warning("REST poll for %s: no price in ticker", symbol)
+                consecutive_failures += 1
         except Exception as exc:
-            logger.warning("REST poll error (%s): %s", symbol, str(exc)[:200])
-        await asyncio.sleep(interval_s)
+            consecutive_failures += 1
+            if consecutive_failures == 1 or consecutive_failures % 20 == 0:
+                logger.warning("REST poll error (%s): %s", symbol, str(exc)[:200])
+        # Backoff exponentiel si échecs répétés (asset inexistant = pas la peine d'insister)
+        if consecutive_failures > 5:
+            await asyncio.sleep(min(interval_s * 10, 60))
+        else:
+            await asyncio.sleep(interval_s)
 
 
 def ensure_ticker(symbol: str) -> None:

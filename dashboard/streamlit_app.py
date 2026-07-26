@@ -3691,79 +3691,99 @@ def render_live_logs(key: str = "global", asset: str | None = None):
                      help="Efface les logs V4 (buffer circulaire automatique)",
                      use_container_width=True):
             st.info("Les logs V4 sont en mémoire (buffer 200 lignes). Ils se renouvellent automatiquement.", icon="ℹ️")
-    try:
-        from storage.database import get_connection
-        with get_connection() as conn:
-            if asset:
-                # Filtrer sur le symbole (ex: "BTC/USDT") et sa forme sans slash ("BTCUSDT")
-                _slug = asset.replace("/", "")
-                _pat1, _pat2 = f"%{asset}%", f"%{_slug}%"
-                total_rows = conn.execute(
-                    "SELECT COUNT(*) FROM logs WHERE message LIKE ? OR message LIKE ?",
-                    (_pat1, _pat2),
-                ).fetchone()[0]
-                all_rows = conn.execute(
-                    "SELECT timestamp, level, module, message FROM logs "
-                    "WHERE message LIKE ? OR message LIKE ? "
-                    "ORDER BY timestamp DESC",
-                    (_pat1, _pat2),
-                ).fetchall()
-            else:
-                total_rows = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
-                all_rows = conn.execute(
-                    "SELECT timestamp, level, module, message FROM logs "
-                    "ORDER BY timestamp DESC"
-                ).fetchall()
-    except Exception:
-        if not v4_logs:
-            st.info(t("logs_unavailable"))
-        return
-
-    if not all_rows:
-        st.info(t("no_logs"))
-        return
-
-    total_pages = max(1, (total_rows + _LOGS_PAGE_SIZE - 1) // _LOGS_PAGE_SIZE)
-
-    # ── Barre de navigation ──────────────────────────────────────────────────
-    col_info, col_nav = st.columns([3, 2])
-    with col_info:
-        st.caption(t("logs_lines_pages").format(n=total_rows, p=total_pages, ps="s" if total_pages > 1 else ""))
-    with col_nav:
-        page = st.number_input(
-            "Page", min_value=1, max_value=total_pages,
-            value=1, step=1, key=f"logs_page_{key}",
-            label_visibility="collapsed",
-        )
-
-    # ── Tranche de la page courante ──────────────────────────────────────────
-    start = (page - 1) * _LOGS_PAGE_SIZE
-    page_rows = all_rows[start : start + _LOGS_PAGE_SIZE]
-
-    log_lines = []
-    for row in page_rows:
-        level_color = {
-            "DEBUG": "#6c757d", "INFO": "#0dcaf0",
-            "WARNING": "#ffc107", "ERROR": "#dc3545",
-        }.get(row[1], "#fff")
+    # DB-backed logs — uniquement si V4 logs sont vides (pas de doublon)
+    if not v4_logs:
         try:
-            _ts = _fmt_utc_local(datetime.fromisoformat(str(row[0])))
+            from storage.database import get_connection
+            with get_connection() as conn:
+                if asset:
+                    _slug = asset.replace("/", "")
+                    _pat1, _pat2 = f"%{asset}%", f"%{_slug}%"
+                    # V7: dag_logs en priorité, fallback sur logs
+                    total_rows = conn.execute(
+                        "SELECT COUNT(*) FROM dag_logs WHERE message LIKE ? OR message LIKE ?",
+                        (_pat1, _pat2),
+                    ).fetchone()[0]
+                    if total_rows == 0:
+                        total_rows = conn.execute(
+                            "SELECT COUNT(*) FROM logs WHERE message LIKE ? OR message LIKE ?",
+                            (_pat1, _pat2),
+                        ).fetchone()[0]
+                        all_rows = conn.execute(
+                            "SELECT timestamp, level, module, message FROM logs "
+                            "WHERE message LIKE ? OR message LIKE ? "
+                            "ORDER BY timestamp DESC",
+                            (_pat1, _pat2),
+                        ).fetchall()
+                    else:
+                        all_rows = conn.execute(
+                            "SELECT ts, level, dag_id, message FROM dag_logs "
+                            "WHERE message LIKE ? OR message LIKE ? "
+                            "ORDER BY ts DESC",
+                            (_pat1, _pat2),
+                        ).fetchall()
+                else:
+                    total_rows = conn.execute("SELECT COUNT(*) FROM dag_logs").fetchone()[0]
+                    if total_rows == 0:
+                        total_rows = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+                        all_rows = conn.execute(
+                            "SELECT timestamp, level, module, message FROM logs "
+                            "ORDER BY timestamp DESC"
+                        ).fetchall()
+                    else:
+                        all_rows = conn.execute(
+                            "SELECT ts, level, dag_id, message FROM dag_logs "
+                            "ORDER BY ts DESC"
+                        ).fetchall()
         except Exception:
-            _ts = html.escape(str(row[0]))
-        _mod = html.escape(str(row[2]))
-        _msg = html.escape(str(row[3]))
-        log_lines.append(
-            f'<span style="color:#6c757d">{_ts}</span> '
-            f'<span style="color:{level_color}">[{row[1]}]</span> '
-            f'<span style="color:#adb5bd">[{_mod}]</span> {_msg}'
-        )
+            st.info(t("logs_unavailable"))
+            return
 
-    st.markdown(
-        f'<div style="border:1px solid rgba(128,128,128,0.2);padding:12px;border-radius:8px;'
-        f'font-family:monospace;font-size:11px;max-height:400px;'
-        f'overflow-y:auto;">{"<br>".join(log_lines)}</div>',
-        unsafe_allow_html=True,
-    )
+        if not all_rows:
+            st.info(t("no_logs"))
+            return
+
+        total_pages = max(1, (total_rows + _LOGS_PAGE_SIZE - 1) // _LOGS_PAGE_SIZE)
+
+        # ── Barre de navigation ──────────────────────────────────────────────────
+        col_info, col_nav = st.columns([3, 2])
+        with col_info:
+            st.caption(t("logs_lines_pages").format(n=total_rows, p=total_pages, ps="s" if total_pages > 1 else ""))
+        with col_nav:
+            page = st.number_input(
+                "Page", min_value=1, max_value=total_pages,
+                value=1, step=1, key=f"logs_page_{key}",
+                label_visibility="collapsed",
+            )
+
+        # ── Tranche de la page courante ──────────────────────────────────────────
+        start = (page - 1) * _LOGS_PAGE_SIZE
+        page_rows = all_rows[start : start + _LOGS_PAGE_SIZE]
+
+        log_lines = []
+        for row in page_rows:
+            level_color = {
+                "DEBUG": "#6c757d", "INFO": "#0dcaf0",
+                "WARNING": "#ffc107", "ERROR": "#dc3545",
+            }.get(row[1], "#fff")
+            try:
+                _ts = _fmt_utc_local(datetime.fromisoformat(str(row[0])))
+            except Exception:
+                _ts = html.escape(str(row[0]))
+            _mod = html.escape(str(row[2]))
+            _msg = html.escape(str(row[3]))
+            log_lines.append(
+                f'<span style="color:#6c757d">{_ts}</span> '
+                f'<span style="color:{level_color}">[{row[1]}]</span> '
+                f'<span style="color:#adb5bd">[{_mod}]</span> {_msg}'
+            )
+
+        st.markdown(
+            f'<div style="border:1px solid rgba(128,128,128,0.2);padding:12px;border-radius:8px;'
+            f'font-family:monospace;font-size:11px;max-height:400px;'
+            f'overflow-y:auto;">{"<br>".join(log_lines)}</div>',
+            unsafe_allow_html=True,
+        )
 
 
 def render_force_run_button():

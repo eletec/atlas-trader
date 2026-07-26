@@ -76,11 +76,6 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
             "INSERT INTO dag_logs (ts, level, dag_id, node_id, message) VALUES (?,?,?,?,?)",
             (datetime.now().isoformat(), level, dag_id, node_id, message),
         )
-        # logs — pour le visualiseur de logs dashboard (streamlit_app.py)
-        conn.execute(
-            "INSERT INTO logs (timestamp, level, module, message) VALUES (?,?,?,?)",
-            (datetime.now().isoformat(), level, f"carry.{dag_id or node_id or 'cycle'}", message),
-        )
         conn.commit()
         conn.close()
     except Exception:

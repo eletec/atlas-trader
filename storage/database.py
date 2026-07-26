@@ -210,6 +210,19 @@ DDL_STATEMENTS = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_v2_equity_ts ON v2_equity(ts DESC)",
+    # ── V7 Carry cycle logs (compatibilité dashboard) ─────────────────────────
+    """
+    CREATE TABLE IF NOT EXISTS dag_logs (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts       TEXT    NOT NULL,
+        level    TEXT    DEFAULT 'INFO',
+        dag_id   TEXT,
+        node_id  TEXT,
+        message  TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_dag_logs_ts ON dag_logs(ts DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_dag_logs_dag ON dag_logs(dag_id)",
 ]
 
 

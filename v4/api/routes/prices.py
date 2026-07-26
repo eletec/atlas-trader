@@ -85,41 +85,62 @@ _ws_tasks: dict[str, asyncio.Task] = {}
 
 
 async def _watch_ticker(symbol: str) -> None:
-    """Tâche asyncio qui maintient un ticker Binance WebSocket pour `symbol`."""
+    """Tâche asyncio qui maintient un ticker Binance pour `symbol`.
+
+    Stratégie (26/07/2026) : REST polling en primaire (3s interval).
+    Le WebSocket ccxt.pro plante quand 24 tickers sont lancés simultanément
+    (timeout sur dapi.binance.com). Le REST est fiable et suffit pour un
+    dashboard qui poll déjà toutes les 3 secondes.
+    """
+    # Essayer d'abord le WebSocket (plus réactif si dispo)
+    ws_failed = False
     try:
         import ccxt.pro as ccxtpro
         exchange = ccxtpro.binance({"newUpdates": True})
         logger.info("Binance WS ticker started for %s", symbol)
-        while True:
+        # Tenter le WS pendant ~30s max, puis basculer en REST si ça échoue
+        ws_attempts = 0
+        while ws_attempts < 3:
             try:
-                ticker = await exchange.watch_ticker(symbol)
+                ticker = await asyncio.wait_for(exchange.watch_ticker(symbol), timeout=15)
                 price = ticker.get("last") or ticker.get("close")
                 if price:
                     PriceStore.instance().update(symbol, float(price))
+                ws_attempts = 0  # reset counter on success
+            except asyncio.TimeoutError:
+                ws_attempts += 1
+                logger.warning("WS timeout (%s) — attempt %d/3", symbol, ws_attempts)
+                await asyncio.sleep(2)
             except Exception as exc:
-                logger.warning("WS ticker error (%s): %s — retry in 5s", symbol, exc)
-                await asyncio.sleep(5)
+                ws_attempts += 1
+                logger.warning("WS ticker error (%s): %s — attempt %d/3", symbol, exc, ws_attempts)
+                await asyncio.sleep(3)
+        await exchange.close()
+        logger.info("WS ticker for %s: switching to REST fallback", symbol)
     except ImportError:
-        # ccxt.pro non disponible — fallback REST polling
-        logger.warning("ccxt.pro non disponible — fallback REST polling pour %s", symbol)
-        await _poll_ticker_rest(symbol)
-    finally:
-        try:
-            await exchange.close()
-        except Exception:
-            pass
+        logger.info("ccxt.pro not available for %s — using REST", symbol)
+    except Exception as exc:
+        logger.warning("WS setup failed for %s: %s — using REST", symbol, exc)
+
+    # REST polling — fiable, fonctionne même avec 24 actifs
+    await _poll_ticker_rest(symbol, interval_s=3.0)
 
 
-async def _poll_ticker_rest(symbol: str, interval_s: float = 5.0) -> None:
-    """Fallback REST si ccxt.pro indisponible."""
+async def _poll_ticker_rest(symbol: str, interval_s: float = 3.0) -> None:
+    """REST polling — fiable pour prix temps réel dashboard."""
     import ccxt
     exchange = ccxt.binance()
+    logger.info("REST poller started for %s (interval=%ss)", symbol, interval_s)
     while True:
         try:
             ticker = exchange.fetch_ticker(symbol)
-            PriceStore.instance().update(symbol, float(ticker["last"]))
+            price = ticker.get("last") or ticker.get("close")
+            if price:
+                PriceStore.instance().update(symbol, float(price))
+            else:
+                logger.warning("REST poll for %s: no price in ticker", symbol)
         except Exception as exc:
-            logger.warning("REST poll error (%s): %s", symbol, exc)
+            logger.warning("REST poll error (%s): %s", symbol, str(exc)[:200])
         await asyncio.sleep(interval_s)
 
 

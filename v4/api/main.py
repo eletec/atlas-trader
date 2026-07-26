@@ -65,6 +65,14 @@ async def _auto_schedule_carry():
     import threading
     logger = logging.getLogger("v4.api.main")
     
+    # 0) Initialiser la DB (tables logs, dag_logs, etc.) avant tout accès dashboard
+    try:
+        from storage.database import init_db
+        init_db()
+        logger.info("Database initialized")
+    except Exception as exc:
+        logger.warning("DB init failed (non-bloquant): %s", exc)
+    
     # 1) Carry cycle — thread background toutes les 8h
     def _carry_loop():
         import time
@@ -81,15 +89,17 @@ async def _auto_schedule_carry():
     t.start()
     logger.info("V7 Carry cycle scheduled (28800s)")
 
-    # 2) Tickers prix (Binance WS) pour les actifs actifs
+    # 2) Tickers prix (REST polling avec fallback WS) — staggered start
     try:
         from v4.api.routes.prices import ensure_ticker
         from v7.core.asset_config import get_active_assets
         active = get_active_assets()
         if not active:
             active = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-        for sym in active:
+        for i, sym in enumerate(active):
             ensure_ticker(sym)
+            if i < len(active) - 1:
+                await asyncio.sleep(0.3)  # stagger pour éviter rate-limit Binance
         logger.info("Price tickers started (%d assets)", len(active))
     except Exception as exc:
         logger.warning(f"Price tickers failed to start: {exc}")

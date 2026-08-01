@@ -171,9 +171,37 @@ def run_cycle(
                 logger.info("  🔴 %-12s CLOSE | %s", sym, log_msg)
                 _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
             elif result.get("position_open"):
-                # Position active — receiving funding
+                # Position active — receiving funding → mettre à jour le context_json dans la DB
                 log_msg = f"[{sym}] HOLD | funding received | {reason}"
                 _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
+                try:
+                    import sqlite3, json as _json, os as _os2
+                    db_path = _os2.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
+                    if db_path.startswith("sqlite:///"):
+                        db_path = db_path[10:]
+                    conn = sqlite3.connect(db_path)
+                    # Lire et mettre à jour le context_json avec les dernières valeurs
+                    rows = conn.execute(
+                        "SELECT trade_id, context_json FROM v4_trades WHERE symbol=? AND status='open' AND action='carry'",
+                        (sym,),
+                    ).fetchall()
+                    for row in rows:
+                        ctx = {}
+                        try:
+                            ctx = _json.loads(row[1]) if row[1] else {}
+                        except Exception:
+                            pass
+                        ctx["total_funding_received"] = result.get("total_funding_received", 0)
+                        ctx["n_payments"] = result.get("n_payments", 0)
+                        ctx["annual_funding_pct"] = result.get("annual_funding_pct", 0)
+                        conn.execute(
+                            "UPDATE v4_trades SET context_json=? WHERE trade_id=?",
+                            (_json.dumps(ctx), row[0]),
+                        )
+                    conn.commit()
+                    conn.close()
+                except Exception:
+                    pass  # best-effort
             else:
                 summary["n_flat"] += 1
                 log_msg = f"[{sym}] FLAT | {reason}"

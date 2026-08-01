@@ -844,14 +844,18 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
         for t in v4_trades:
-            # Extraire le score depuis context_json (carry) ou fallback 0
+            # Extraire le contexte carry (funding, score, etc.)
             _score = 0
+            _total_funding = 0.0
+            _n_payments = 0
             _ctx_raw = t.get("context_json")
             if _ctx_raw:
                 try:
                     import json as _json
                     _ctx = _json.loads(_ctx_raw) if isinstance(_ctx_raw, str) else _ctx_raw
                     _score = int(_ctx.get("score", 0))
+                    _total_funding = float(_ctx.get("total_funding_received", 0) or 0)
+                    _n_payments = int(_ctx.get("n_payments", 0) or 0)
                 except Exception:
                     pass
             trades.append({
@@ -867,6 +871,8 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 "status": t.get("status", "open"),
                 "source": "v4",
                 "score": _score,
+                "total_funding_received": _total_funding,
+                "n_payments": _n_payments,
             })
     except Exception:
         pass
@@ -2600,10 +2606,19 @@ def render_trades_list_sortable(trades: list[dict]):
         _ast = trade.get("asset", "")
         if is_open and entry_price > 0 and size_usd > 0:
             if action == "CARRY":
-                # Carry P&L = funding (≈rate × size × days) + basis (near 0)
-                # Show estimated daily funding instead of misleading $0 spot P&L
-                est_funding = size_usd * 0.0001 * 3  # ~0.01% × 3/day
-                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#f39c12;font-size:11px;">⏳ carry ~${est_funding:.3f}/j</span>'
+                # Progression réelle : funding collecté + jours détenus
+                total_funding = float(trade.get("total_funding_received", 0) or 0)
+                n_payments = int(trade.get("n_payments", 0) or 0)
+                try:
+                    from datetime import datetime as _dt, timezone as _tz
+                    opened = _dt.fromisoformat(str(trade.get("timestamp", ""))[:19].replace("Z", "+00:00"))
+                    days_held = max(0, (_dt.now(_tz.utc) - opened).total_seconds() / 86400)
+                except Exception:
+                    days_held = 0
+                if total_funding > 0:
+                    progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}j)</span>'
+                else:
+                    progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}j held · wait funding</span>'
             elif current_price > 0:
                 if action in ("SELL", "SHORT"):
                     pnl_pct = (entry_price - current_price) / entry_price * 100

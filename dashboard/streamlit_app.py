@@ -2611,8 +2611,14 @@ def render_trades_list_sortable(trades: list[dict]):
                 n_payments = int(trade.get("n_payments", 0) or 0)
                 try:
                     from datetime import datetime as _dt, timezone as _tz
-                    opened = _dt.fromisoformat(str(trade.get("timestamp", ""))[:19].replace("Z", "+00:00"))
-                    days_held = max(0, (_dt.now(_tz.utc) - opened).total_seconds() / 86400)
+                    _ts_str = str(trade.get("timestamp", ""))
+                    # Nettoyer le timestamp : remplacer espace par T, tronquer à 19 chars (YYYY-MM-DDTHH:MM:SS)
+                    _ts_str = _ts_str.replace(" ", "T")[:19]
+                    if _ts_str:
+                        opened = _dt.fromisoformat(_ts_str)
+                        days_held = max(0, (_dt.now(_tz.utc) - opened.replace(tzinfo=_tz.utc)).total_seconds() / 86400)
+                    else:
+                        days_held = 0
                 except Exception:
                     days_held = 0
                 if total_funding > 0:

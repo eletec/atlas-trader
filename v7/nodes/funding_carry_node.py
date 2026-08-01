@@ -139,6 +139,9 @@ class FundingCarryNode:
                 if ctx_raw:
                     try:
                         ctx = _json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
+                        # Restaurer le funding accumulé (persisté par run_carry_cycle.py HOLD)
+                        self.state.total_funding_received = float(ctx.get("total_funding_received", 0) or 0)
+                        self.state.n_payments = int(ctx.get("n_payments", 0) or 0)
                         # Le context_json contient le decision dict complet
                         # entry_price = spot, on cherche le perp dans carry_* ou on l'estime
                         if ctx.get("carry_signal") == "open_carry":

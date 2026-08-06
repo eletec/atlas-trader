@@ -130,8 +130,6 @@ def ensure_ticker(symbol: str) -> None:
     _active_symbols.add(symbol)
     if _poller_task is None or _poller_task.done():
         _poller_task = asyncio.get_event_loop().create_task(_poll_all_rest())
-        loop = asyncio.get_event_loop()
-        _ws_tasks[symbol] = loop.create_task(_run_ticker(symbol))
 
 
 # ------------------------------------------------------------------

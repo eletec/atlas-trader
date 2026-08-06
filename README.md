@@ -1,10 +1,24 @@
 ﻿# Atlas Trader V7 — Funding Carry Strategy
 
 > **Market-neutral funding rate harvesting** : short perpetual + long spot, delta-neutral.
-> **Status** : 🟢 Paper trading live on GX10 · **https://atlastrader.org**
-> **Last update** : 25 July 2026 — GPT/DeepSeek audit, walk-forward 3Y validated, DAGs simplified
+> **Status** : 🟢 Paper trading live on Infomaniak · **https://atlastrader.org**
+> **Last update** : 6 August 2026 — Memory optimization (3.4GB→566MB), consolidated poller, swap added
 
 ---
+
+## Architecture
+
+```
+Infomaniak VPS (8 GB RAM, 2 GB swap)
+├── Docker Compose V4
+│   ├── atlas-v4-api       — FastAPI :8000 (carry cycle 8h + PositionMonitor 60s + prix)
+│   └── atlas-v4-dashboard — Streamlit :8502 (FO + BO)
+├── Nginx + Let's Encrypt → atlastrader.org
+└── SQLite /app/data/v4.db (WAL mode)
+```
+
+**Single script** `v7/run_carry_cycle.py` replaces the old 29-DAG system.
+**Consolidated price poller** : 1 task for all 23 assets (was 48 tasks → 3.4GB).
 
 ## Strategy
 
@@ -18,14 +32,15 @@ The strategy captures the **funding rate premium** on crypto perpetual futures:
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Universe | 42 Spot∩Perp pairs | Binance Spot + USDⓈ-M intersection |
-| Active assets | 29 | Filtered by liquidity, backtest |
+| Universe | 37 Spot∩Perp pairs | Binance Spot + USDⓈ-M intersection |
+| Active assets | 23 | Filtered by liquidity, backtest |
 | Capital per asset | $2,000 | Safety > optimizer (never < $500) |
 | Economic hurdle | 5% annual | Cost of capital (SOFR + venue risk) |
 | Fees | 48 bps round-trip | 4 legs × 12 bps |
 | Exit zones | 14/30/60 days | HEALTHY → REVIEW → DERISK → CLOSE |
 | Kill-switch | 4 tiers | Portfolio DD, exposure, consecutive losses |
 | Cycle | 8h | Single script → `v7/run_carry_cycle.py` |
+| Price refresh | 3s per asset | 1 consolidated REST poller (shared ccxt instance) |
 
 ### Walk-Forward Validation (2023–2026, GPT/DeepSeek audit)
 

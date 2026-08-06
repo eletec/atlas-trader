@@ -78,61 +78,18 @@ class PriceStore:
 
 
 # ------------------------------------------------------------------
-# Ticker WS Binance via ccxt.pro
+# Consolidated price poller — 1 task pour tous les actifs (pas 48)
 # ------------------------------------------------------------------
 
 _ws_tasks: dict[str, asyncio.Task] = {}
+_poller_task: asyncio.Task | None = None
+_active_symbols: set[str] = set()
 
-
-async def _run_ticker(symbol: str) -> None:
-    """Lance REST polling + WS en parallèle. REST = baseline fiable (3s). WS = bonus réactif.
-
-    Stratégie (26/07/2026) : lancer REST immédiatement, tenter WS en parallèle.
-    Si WS fonctionne → tant mieux (prix plus rapides). Si WS échoue → REST déjà actif.
-    """
-    # Démarrer REST immédiatement (fiable, fonctionne même avec 24 actifs)
-    rest_task = asyncio.create_task(_poll_ticker_rest(symbol, interval_s=3.0))
-
-    # Tenter le WebSocket en parallèle (plus réactif si dispo)
-    try:
-        import ccxt.pro as ccxtpro
-        exchange = ccxtpro.binance({"newUpdates": True})
-        logger.info("WS ticker started for %s", symbol)
-        while True:
-            try:
-                ticker = await asyncio.wait_for(exchange.watch_ticker(symbol), timeout=10)
-                price = ticker.get("last") or ticker.get("close")
-                if price:
-                    PriceStore.instance().update(symbol, float(price))
-            except asyncio.TimeoutError:
-                logger.debug("WS timeout (%s) — REST covers, retrying WS", symbol)
-                await asyncio.sleep(5)
-            except Exception as exc:
-                logger.debug("WS error (%s): %s — REST covers, retrying WS", symbol, str(exc)[:100])
-                await asyncio.sleep(10)
-    except ImportError:
-        logger.debug("ccxt.pro not available for %s — REST-only mode", symbol)
-        # REST déjà actif, rien à faire — attendre indéfiniment
-        await asyncio.Event().wait()
-    except Exception as exc:
-        logger.warning("WS setup failed for %s: %s — REST-only mode", symbol, str(exc)[:100])
-        await asyncio.Event().wait()
-    finally:
-        rest_task.cancel()
-        try:
-            await rest_task
-        except asyncio.CancelledError:
-            pass
-
-
-# ------------------------------------------------------------------
-# Shared REST exchange — une seule instance pour tous les pollers
-# ------------------------------------------------------------------
+# Shared REST exchange — une seule instance
 _rest_exchange = None
 _rest_exchange_lock = asyncio.Lock()
 
 async def _get_rest_exchange():
-    """Retourne une instance ccxt binance() partagée (thread-safe)."""
     global _rest_exchange
     if _rest_exchange is None:
         async with _rest_exchange_lock:
@@ -142,37 +99,37 @@ async def _get_rest_exchange():
     return _rest_exchange
 
 
-async def _poll_ticker_rest(symbol: str, interval_s: float = 3.0) -> None:
-    """REST polling non-bloquant — utilise run_in_executor pour ne pas bloquer l'event loop."""
+async def _poll_all_rest() -> None:
+    """Polling REST consolidé : itère tous les actifs en boucle (économie mémoire ×24)."""
     exchange = await _get_rest_exchange()
     loop = asyncio.get_running_loop()
-    logger.info("REST poller started for %s (interval=%ss)", symbol, interval_s)
-    consecutive_failures = 0
+    logger.info("Consolidated REST poller started (%d symbols)", len(_active_symbols))
+    failures: dict[str, int] = {}
     while True:
-        try:
-            # ⚠️ fetch_ticker est SYNCHRONE → run_in_executor pour ne pas bloquer asyncio
-            ticker = await loop.run_in_executor(None, exchange.fetch_ticker, symbol)
-            price = ticker.get("last") or ticker.get("close")
-            if price:
-                PriceStore.instance().update(symbol, float(price))
-                consecutive_failures = 0
-            else:
-                logger.warning("REST poll for %s: no price in ticker", symbol)
-                consecutive_failures += 1
-        except Exception as exc:
-            consecutive_failures += 1
-            if consecutive_failures == 1 or consecutive_failures % 20 == 0:
-                logger.warning("REST poll error (%s): %s", symbol, str(exc)[:200])
-        # Backoff exponentiel si échecs répétés (asset inexistant = pas la peine d'insister)
-        if consecutive_failures > 5:
-            await asyncio.sleep(min(interval_s * 10, 60))
-        else:
-            await asyncio.sleep(interval_s)
+        symbols = sorted(_active_symbols)  # snapshot
+        if not symbols:
+            await asyncio.sleep(5)
+            continue
+        for symbol in symbols:
+            try:
+                ticker = await loop.run_in_executor(None, exchange.fetch_ticker, symbol)
+                price = ticker.get("last") or ticker.get("close")
+                if price:
+                    PriceStore.instance().update(symbol, float(price))
+                    failures[symbol] = 0
+            except Exception:
+                failures[symbol] = failures.get(symbol, 0) + 1
+            await asyncio.sleep(0.1)  # 100ms entre chaque symbole (pas de rate-limit)
+        # Pause entre les cycles : 3s / nombre d'actifs ≈ 3s de fraîcheur
+        await asyncio.sleep(3.0)
 
 
 def ensure_ticker(symbol: str) -> None:
-    """Lance le ticker (REST + WS) pour `symbol` s'il n'est pas déjà actif."""
-    if symbol not in _ws_tasks or _ws_tasks[symbol].done():
+    """Ajoute un symbole au poller consolidé (plus de tâche par actif)."""
+    global _poller_task
+    _active_symbols.add(symbol)
+    if _poller_task is None or _poller_task.done():
+        _poller_task = asyncio.get_event_loop().create_task(_poll_all_rest())
         loop = asyncio.get_event_loop()
         _ws_tasks[symbol] = loop.create_task(_run_ticker(symbol))
 

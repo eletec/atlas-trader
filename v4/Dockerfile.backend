@@ -17,6 +17,9 @@ COPY . /app/src
 
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
+# Utiliser malloc système (glibc) au lieu de pymalloc — évite la fragmentation
+# pymalloc garde les arènes allouées (128-256 MB chacune) même vides
+ENV PYTHONMALLOC=malloc
 
 EXPOSE 8000
 

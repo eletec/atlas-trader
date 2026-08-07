@@ -757,37 +757,10 @@ def _init_session():
 
 @st.cache_data(ttl=20)
 def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
-    """Cache 20s — décisions V7 depuis dag_logs (fallback sur table decisions V1)."""
+    """Cache 20s — évite les requêtes SQLite redondantes lors de chaque rerun auto."""
     try:
-        from storage.database import get_connection
-        with get_connection() as conn:
-            if asset:
-                rows = conn.execute(
-                    "SELECT ts, level, dag_id, node_id, message FROM dag_logs "
-                    "WHERE message LIKE ? ORDER BY ts DESC LIMIT ?",
-                    (f"%[{asset}]%", n),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT ts, level, dag_id, node_id, message FROM dag_logs "
-                    "ORDER BY ts DESC LIMIT ?", (n,)
-                ).fetchall()
-            if rows:
-                import re as _re
-                results = []
-                for r in rows:
-                    msg = r["message"] or ""
-                    sym_match = _re.search(r'\[([A-Z]+)/USDT\]', msg)
-                    results.append({
-                        "symbol": sym_match.group(1) + "/USDT" if sym_match else (asset or "?"),
-                        "action": "carry" if "HOLD" in msg else ("flat" if "FLAT" in msg else "?"),
-                        "timestamp": r["ts"],
-                        "reason": msg,
-                    })
-                return results
-            # Fallback : ancienne table decisions (V1)
-            from storage.database import get_recent_decisions as _legacy
-            return _legacy(n, asset=asset)
+        from storage.database import get_recent_decisions
+        return get_recent_decisions(n, asset=asset)
     except Exception:
         return []
 
@@ -844,25 +817,11 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
         for t in v4_trades:
-            # Extraire le contexte carry (funding, score, etc.)
-            _score = 0
-            _total_funding = 0.0
-            _n_payments = 0
-            _ctx_raw = t.get("context_json")
-            if _ctx_raw:
-                try:
-                    import json as _json
-                    _ctx = _json.loads(_ctx_raw) if isinstance(_ctx_raw, str) else _ctx_raw
-                    _score = int(_ctx.get("score", 0))
-                    _total_funding = float(_ctx.get("total_funding_received", 0) or 0)
-                    _n_payments = int(_ctx.get("n_payments", 0) or 0)
-                except Exception:
-                    pass
             trades.append({
                 "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",
                 "timestamp": t.get("timestamp", ""),
                 "asset": t.get("symbol", ""),
-                "action": "CARRY" if t.get("action") in ("carry", "short") else ("BUY" if t.get("action") == "long" else "SELL"),
+                "action": "BUY" if t.get("action") == "long" else "SELL",
                 "entry_price": t.get("entry_price"),
                 "sl_price": t.get("stop_loss", 0),
                 "tp_price": t.get("take_profit", 0),
@@ -870,9 +829,6 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 "result_24h": t.get("pnl_usd") if t.get("status") == "closed" else None,
                 "status": t.get("status", "open"),
                 "source": "v4",
-                "score": _score,
-                "total_funding_received": _total_funding,
-                "n_payments": _n_payments,
             })
     except Exception:
         pass
@@ -882,12 +838,11 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 
 @st.cache_data(ttl=30)
-@st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
     """Portefeuille consolidé — positions ouvertes + PnL cumulé depuis la DB."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
-                 "live_mode": False, "exposure": 0, "exposure_pct": 0}
+                 "live_mode": False}
 
     # V4 : positions ouvertes + PnL cumulé depuis la DB
     try:
@@ -895,20 +850,24 @@ def _get_portfolio(asset: str | None = None) -> dict:
         all_trades = get_v4_trades(n=500, symbol=asset)
         total_pnl = 0.0
         n_open = 0
-        total_exposure = 0.0
         for t in all_trades:
             if t.get("status") == "open":
                 n_open += 1
-                total_exposure += float(t.get("size_usd", 0) or 0)
             pnl = t.get("pnl_usd")
             if pnl is not None:
                 total_pnl += float(pnl)
         portfolio["n_trades"] = n_open
-        portfolio["exposure"] = round(total_exposure, 2)
         portfolio["total_pnl"] = round(total_pnl, 2)
         if portfolio["capital"] > 0:
             portfolio["total_pnl_pct"] = round(total_pnl / portfolio["capital"] * 100, 2)
-            portfolio["exposure_pct"] = round(total_exposure / portfolio["capital"] * 100, 2)
+    except Exception:
+        pass
+
+    # V3 fallback
+    try:
+        from execution.paper_trader import PaperTrader
+        v3 = PaperTrader().get_portfolio(asset=asset)
+        portfolio["n_trades"] += v3.get("n_trades", 0)
     except Exception:
         pass
 
@@ -924,7 +883,6 @@ def _get_pnl_history() -> list[dict]:
         return []
 
 
-@st.cache_data(ttl=30)
 def _get_last_cycle() -> dict | None:
     decisions = _get_recent_decisions(1)
     return decisions[0] if decisions else None
@@ -933,7 +891,14 @@ def _get_last_cycle() -> dict | None:
 def _get_settings() -> dict:
     try:
         from utils.config import load_settings
-        return load_settings()
+        import os
+        from pathlib import Path
+        settings_file = os.environ.get("SETTINGS_FILE")
+        if settings_file:
+            _cfg_path = Path(settings_file)
+        else:
+            _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
+        return load_settings(_cfg_path)
     except Exception as _e:
         import logging
         logging.getLogger("zeitgeist.dashboard").error(f"load_settings failed: {_e}")
@@ -944,7 +909,15 @@ def _get_settings() -> dict:
 def _save_settings(settings: dict) -> bool:
     try:
         from utils.config import save_settings
-        save_settings(settings)
+        import os
+        from pathlib import Path
+        # Respecte SETTINGS_FILE si défini (ex: settings.gx10.yaml sur GX10)
+        settings_file = os.environ.get("SETTINGS_FILE")
+        if settings_file:
+            _cfg_path = Path(settings_file)
+        else:
+            _cfg_path = Path(__file__).parent.parent / "config" / "settings.yaml"
+        save_settings(settings, _cfg_path)
         return True
     except Exception as _exc:
         import logging
@@ -1002,8 +975,8 @@ def _force_run_background(asset: str, log_q) -> None:
 
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
     _logger.info(f"=== DASHBOARD FORCE-RUN V2 — {asset} @ {start_ts} ===")
-    _log(f"🚀 <b>Starting cycle</b> — {asset} ({start_ts})")
-    _log(f"⏳ <b>OHLCV → Features → Regime → Signal → Strategy → Risk...</b>")
+    _log(f"🚀 <b>Démarrage cycle V2</b> — {asset} ({start_ts})")
+    _log(f"⏳ <b>OHLCV → Features → Régime → Signal → Stratégie → Risk...</b>")
 
     t_total = _time.time()
     try:
@@ -1023,8 +996,8 @@ def _force_run_background(asset: str, log_q) -> None:
         errs = sum(1 for r in results.values() if r.get("status") == "error")
         dag_id = result.get("dag_id", "?")
 
-        _log(f"✅ <b>DAG executed</b> — {dag_id} ({total_s:.1f}s)")
-        _log(f"📊 Nodes: <b>{done} OK</b>, {errs} error(s) out of {len(results)}")
+        _log(f"✅ <b>DAG V4 exécuté</b> — {dag_id} ({total_s:.1f}s)")
+        _log(f"📊 Nœuds: <b>{done} OK</b>, {errs} erreur(s) sur {len(results)}")
 
         # Afficher les sorties des nœuds clés
         for nid, nr in results.items():
@@ -1041,7 +1014,7 @@ def _force_run_background(asset: str, log_q) -> None:
             for nid, nr in results.items():
                 if nr.get("status") == "error":
                     _log(f"  ⚠️ <b>{nid}</b>: {nr.get('error', '?')}")
-            msg = f"DAG complete ({errs} error(s)) — {dag_id} | {total_s:.1f}s"
+            msg = f"DAG terminé ({errs} erreur(s)) — {dag_id} | {total_s:.1f}s"
             log_q.put(("__done__", (False, msg)))
         else:
             msg = f"DAG OK — {dag_id} | {total_s:.1f}s"
@@ -1049,9 +1022,9 @@ def _force_run_background(asset: str, log_q) -> None:
 
     except Exception as exc:
         total_s = _time.time() - t_total
-        _logger.exception(f"Force-run failed: {exc}")
-        _log(f"❌ <b>Cycle error</b> — {exc} ({total_s:.1f}s)")
-        log_q.put(("__done__", (True, f"Error: {exc}")))
+        _logger.exception(f"Force-run V2 échoué: {exc}")
+        _log(f"❌ <b>Erreur cycle V2</b> — {exc} ({total_s:.1f}s)")
+        log_q.put(("__done__", (True, f"Erreur: {exc}")))
 
 
 @st.dialog("⚡ Force Run", width="small")
@@ -1423,7 +1396,7 @@ def render_climate_metrics(last_cycle: dict | None):
     if ts:
         try:
             diff = int((datetime.utcnow() - datetime.fromisoformat(ts)).total_seconds() / 60)
-            time_ago = f"{diff} min" if diff < 60 else f"{diff // 60} h"
+            time_ago = f"V2 {diff} min" if diff < 60 else f"V2 {diff // 60} h"
         except Exception:
             pass
 
@@ -1821,9 +1794,6 @@ def render_portfolio(portfolio: dict):
         _html_card("fas fa-arrow-trend-up", t("pnl_label"),
                    f'<span style="color:{pnl_col}">${pnl:+,.2f}</span>',
                    delta=f"{pnl_pct:+.2f}%", d_pos=pnl_pos, **kw) +
-        _html_card("fas fa-chart-pie", "💸 Exposure",
-                   f'${portfolio.get("exposure", 0):,.0f}',
-                   delta=f"{portfolio.get('exposure_pct', 0):.1f}% du capital", d_pos=None, **kw) +
         _html_card("fas fa-right-left", t("trades_label"),
                    str(portfolio.get("n_trades", 0)), **kw)
     )
@@ -2493,6 +2463,7 @@ def render_trades_list(trades: list[dict]):
     st.markdown(html, unsafe_allow_html=True)
 
 
+@st.fragment
 def render_trades_list_sortable(trades: list[dict]):
     """Historique global des trades — thème sombre/clair automatique."""
     st.markdown(
@@ -2604,37 +2575,14 @@ def render_trades_list_sortable(trades: list[dict]):
         is_open = pnl_val is None
         _tid = trade.get("id", f"t{i}")
         _ast = trade.get("asset", "")
-        if is_open and entry_price > 0 and size_usd > 0:
-            if action == "CARRY":
-                # Progression réelle : funding collecté + jours détenus
-                total_funding = float(trade.get("total_funding_received", 0) or 0)
-                n_payments = int(trade.get("n_payments", 0) or 0)
-                try:
-                    from datetime import datetime as _dt, timezone as _tz
-                    _ts_str = str(trade.get("timestamp", ""))
-                    # Nettoyer le timestamp : remplacer espace par T, tronquer à 19 chars (YYYY-MM-DDTHH:MM:SS)
-                    _ts_str = _ts_str.replace(" ", "T")[:19]
-                    if _ts_str:
-                        opened = _dt.fromisoformat(_ts_str)
-                        days_held = max(0, (_dt.now(_tz.utc) - opened.replace(tzinfo=_tz.utc)).total_seconds() / 86400)
-                    else:
-                        days_held = 0
-                except Exception:
-                    days_held = 0
-                if total_funding > 0:
-                    progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}j)</span>'
-                else:
-                    progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}j held · wait funding</span>'
-            elif current_price > 0:
-                if action in ("SELL", "SHORT"):
-                    pnl_pct = (entry_price - current_price) / entry_price * 100
-                else:
-                    pnl_pct = (current_price - entry_price) / entry_price * 100
-                unrealized = size_usd * pnl_pct / 100
-                prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
-                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
+        if is_open and entry_price > 0 and current_price > 0 and size_usd > 0:
+            if action in ("SELL", "SHORT", "CARRY"):
+                pnl_pct = (entry_price - current_price) / entry_price * 100
             else:
-                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
+                pnl_pct = (current_price - entry_price) / entry_price * 100
+            unrealized = size_usd * pnl_pct / 100
+            prog_color = "#2ecc71" if unrealized >= 0 else "#e74c3c"
+            progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
         elif is_open:
             progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
 
@@ -2677,12 +2625,8 @@ def render_trades_list_sortable(trades: list[dict]):
             size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
             current_price = live_prices.get(trade.get("asset", ""), 0)
             act = trade.get("action", "")
-            if act == "CARRY":
-                # Carry P&L = estimated funding (spot P&L is ~0 for delta-neutral)
-                est_funding = size_usd * 0.0001 * 3  # ~0.01% × 3/day
-                _sum_unrealized += est_funding
-            elif entry_price > 0 and current_price > 0 and size_usd > 0:
-                if act in ("SELL", "SHORT"):
+            if entry_price > 0 and current_price > 0 and size_usd > 0:
+                if act in ("SELL", "SHORT", "CARRY"):
                     pnl_pct = (entry_price - current_price) / entry_price
                 else:
                     pnl_pct = (current_price - entry_price) / entry_price
@@ -2702,7 +2646,7 @@ def render_trades_list_sortable(trades: list[dict]):
         # Col 1-3: TOTAL label
         f'<td style="padding:8px 12px;font-size:13px;font-weight:700;color:{tbl_fg};'
         f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};" colspan="3">'
-        f'{t("trades_summary_line").format(n=len(trades), closed=_n_closed, open=_n_open)}</td>'
+        f'TOTAL · {len(trades)} trades ({_n_closed} fermés, {_n_open} ouverts)</td>'
         # Col 4: Signal (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
@@ -2755,10 +2699,8 @@ def _inject_live_trade_prices_js() -> None:
 
   function apiUrl() {
     try {
-      var p = window.top.location.protocol;
       var h = window.top.location.hostname;
-      if (p === 'https:') return p + '//' + h + '/api';
-      return 'http://' + h + ':8000';
+      if (h) return 'http://' + h + ':8000';
     } catch(e) {}
     return 'http://192.168.1.80:8000';
   }
@@ -2769,7 +2711,7 @@ def _inject_live_trade_prices_js() -> None:
     var action = el.getAttribute('data-atlas-action');
     if (!entry || !size || !price) return;
     var pnlPct;
-    if (action === 'SHORT' || action === 'SELL') {
+    if (action === 'SHORT' || action === 'SELL' || action === 'CARRY') {
       pnlPct = (entry - price) / entry * 100;
     } else {
       pnlPct = (price - entry) / entry * 100;
@@ -2781,58 +2723,19 @@ def _inject_live_trade_prices_js() -> None:
     el.textContent = (unrealized >= 0 ? '+' : '') + unrealized.toFixed(2) + '$ (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)';
   }
 
-  // Mise à jour du P&L réel carry (basis + funding) via /v7/carry-pnl
-  function updateCarryCells(carryData) {
-    if (!carryData || !carryData.trades) return;
-    var parentDoc = window.top.document;
-    var totalRealPnl = 0, totalSize = 0;
-    var tradeMap = {};
-    carryData.trades.forEach(function(t) {
-      tradeMap[t.symbol] = t;
-    });
-    parentDoc.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {
-      var action = el.getAttribute('data-atlas-action');
-      if (action !== 'CARRY') return;
-      var sym = el.getAttribute('data-atlas-symbol');
-      var t = tradeMap[sym];
-      if (!t) return;
-      var realPnl = t.real_pnl;
-      var realPct = t.real_pnl_pct;
-      var size = parseFloat(el.getAttribute('data-atlas-size')) || 0;
-      // Only update if there's meaningful P&L (> $0.001), otherwise keep server estimate
-      if (Math.abs(realPnl) < 0.001 && Math.abs(realPct) < 0.01) return;
-      var color = realPnl >= 0 ? '#2ecc71' : '#e74c3c';
-      el.style.color = color;
-      el.style.opacity = '1';
-      el.textContent = (realPnl >= 0 ? '+' : '') + realPnl.toFixed(2) + '$ (' + (realPct >= 0 ? '+' : '') + realPct.toFixed(2) + '%) ⚡';
-      totalRealPnl += realPnl;
-      totalSize += size;
-    });
-    // Update summary with real carry P&L
-    var sumEl = parentDoc.getElementById('atlas-summary-prog');
-    if (sumEl && totalSize > 0) {
-      var sumPct = totalRealPnl / totalSize * 100;
-      var sumColor = totalRealPnl >= 0 ? '#2ecc71' : '#e74c3c';
-      sumEl.style.color = sumColor;
-      sumEl.textContent = (totalRealPnl >= 0 ? '+$' : '-$') + Math.abs(totalRealPnl).toFixed(2)
-        + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%) ⚡ carry';
-    }
-  }
-
   function updateAll(prices) {
     var totalUnreal = 0, totalSize = 0;
     var parentDoc = window.top.document;
     parentDoc.querySelectorAll('[data-atlas-open="1"]').forEach(function(el) {
-      var action = el.getAttribute('data-atlas-action');
-      if (action === 'CARRY') return;  // handled by updateCarryCells
       var sym = el.getAttribute('data-atlas-symbol');
       var priceData = prices[sym];
       if (priceData && priceData.price) {
         updateCell(el, priceData.price);
         var entry = parseFloat(el.getAttribute('data-atlas-entry'));
         var size = parseFloat(el.getAttribute('data-atlas-size'));
+        var action = el.getAttribute('data-atlas-action');
         if (entry && size) {
-          var pct = (action === 'SHORT' || action === 'SELL')
+          var pct = (action === 'SHORT' || action === 'SELL' || action === 'CARRY')
             ? (entry - priceData.price) / entry
             : (priceData.price - entry) / entry;
           totalUnreal += size * pct;
@@ -2840,46 +2743,26 @@ def _inject_live_trade_prices_js() -> None:
         }
       }
     });
-    // Update summary for non-carry trades (carry summary handled by updateCarryCells)
-    // Only update if there are non-carry trades with size
-    if (totalSize > 0 && !carryDataActive()) {
-      var sumEl = parentDoc.getElementById('atlas-summary-prog');
-      if (sumEl) {
-        var sumPct = totalUnreal / totalSize * 100;
-        var sumColor = totalUnreal >= 0 ? '#2ecc71' : '#e74c3c';
-        sumEl.style.color = sumColor;
-        sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2)
-          + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
-      }
+    // Update summary footer
+    var sumEl = parentDoc.getElementById('atlas-summary-prog');
+    if (sumEl && totalSize > 0) {
+      var sumPct = totalUnreal / totalSize * 100;
+      var sumColor = totalUnreal >= 0 ? '#2ecc71' : '#e74c3c';
+      sumEl.style.color = sumColor;
+      sumEl.textContent = (totalUnreal >= 0 ? '+$' : '-$') + Math.abs(totalUnreal).toFixed(2)
+        + ' (' + (sumPct >= 0 ? '+' : '') + sumPct.toFixed(2) + '%)';
     }
   }
 
-  function carryDataActive() {
-    // Check if any carry trades exist
-    var parentDoc = window.top.document;
-    var els = parentDoc.querySelectorAll('[data-atlas-open="1"][data-atlas-action="CARRY"]');
-    return els.length > 0;
-  }
-
-  function pollSpot() {
+  function poll() {
     fetch(apiUrl() + '/prices/snapshot')
       .then(function(r) { return r.json(); })
       .then(function(data) { updateAll(data); })
       .catch(function() {});
   }
 
-  function pollCarry() {
-    if (!carryDataActive()) return;
-    fetch(apiUrl() + '/v7/carry-pnl')
-      .then(function(r) { return r.json(); })
-      .then(function(data) { updateCarryCells(data); })
-      .catch(function() {});
-  }
-
-  setInterval(pollSpot, 3000);
-  setInterval(pollCarry, 5000);  // slightly slower, requires CCXT fetch
-  pollSpot();
-  setTimeout(pollCarry, 1000);
+  setInterval(poll, 3000);
+  poll();
 })();
 </script>
 </body></html>""", height=0)
@@ -2928,7 +2811,7 @@ def render_last_decision(last_cycle: dict | None):
         f"background:rgba(255,255,255,0.03);'>"
         f"<strong style='color:{action_color};font-size:20px;'>{action}</strong>"
         + (f" &nbsp;<span style='font-size:11px;opacity:0.5;'>🕐 {ts_label}</span>" if ts_label else "")
-        + "<br><span style='font-size:11px;opacity:0.55;'>Pipeline quantitatif</span>"
+        + "<br><span style='font-size:11px;opacity:0.55;'>Pipeline V2 quantitatif pur</span>"
         + f"<br><br><b>Raison :</b> <code style='font-size:12px;'>{explanation}</code>"
         + (f"<br><b>Régime :</b> {regime_str} &nbsp;·&nbsp; <b>P(↑) :</b> {prob_up:.3f}" if prob_up is not None else "")
         + (f"<br><b>Prix clôture :</b> <b>${close_price:,.2f}</b>" if close_price else "")
@@ -3100,334 +2983,38 @@ def render_agent_scores_chart(asset: str):
                     key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
 
 
-def _apply_optimized_params(cfg: dict) -> int:
-    """Copie les _optimized_* vers les params réels (actifs non verrouillés)."""
-    assets = cfg.get("assets", {})
-    count = 0
-    for sym, p in assets.items():
-        if p.get("locked", False):
-            continue
-        changed = False
-        for opt_key, real_key in [("_optimized_capital", "capital"),
-                                   ("_optimized_stress_loss_pct", "stress_loss_pct"),
-                                   ("_optimized_safety_cap", "safety_cap"),
-                                   ("_optimized_max_hold_days", "max_hold_days")]:
-            # Note: min_funding N'EST PAS appliqué — trop sensible, le défaut 0.005% est meilleur
-            if opt_key in p:
-                cfg["assets"][sym][real_key] = p[opt_key]
-                changed = True
-        if changed:
-            count += 1
-    if count > 0:
-        from v7.core.asset_config import save_config, reload_config
-        save_config(cfg)
-        reload_config()
-    return count
-
-
-def _reload_dags():
-    """Appelle POST /dag/reload et affiche le résultat."""
-    import urllib.request, json
-    try:
-        req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read())
-        added = result.get("added", [])
-        removed = result.get("removed", [])
-        running = result.get("running", 0)
-        if isinstance(running, list):
-            running = len(running)
-        msg = f"✅ {running} DAGs actifs"
-        if added:
-            msg += f" — +{len(added)} ajoutés"
-        if removed:
-            msg += f" — -{len(removed)} retirés"
-        st.success(msg)
-    except Exception as exc:
-        st.error(f"DAG reload failed — {exc}")
-
-
-def _carry_logo_md(sym: str, params: dict) -> str:
-    """Retourne un logo Markdown pour la barre d'expander (compatible label Streamlit).
-    
-    Fallback : upload local > SVG git > initiales texte.
-    """
-    from pathlib import Path as _P
-    import base64 as _b64
-    ticker = sym.split("/")[0]
-    size = 18
-
-    # 1) Logo uploadé
-    logo_file = params.get("icon_url", "")
-    if logo_file:
-        logo_path = _P("/app/data/logos") / logo_file
-        if logo_path.exists():
-            ext = logo_path.suffix.lower()
-            mime = "image/svg+xml" if ext == ".svg" else "image/png"
-            data = _b64.b64encode(logo_path.read_bytes()).decode()
-            return f"![icon](data:{mime};base64,{data})"
-
-    # 2) Logo git-tracked
-    for ext in (".svg", ".png", ".webp", ".jpg"):
-        git_path = _P("/app/src/images/assets") / f"{ticker}{ext}"
-        if git_path.exists():
-            mime = "image/svg+xml" if ext == ".svg" else "image/png"
-            data = _b64.b64encode(git_path.read_bytes()).decode()
-            return f"![icon](data:{mime};base64,{data})"
-
-    # 3) Fallback texte (initiales entre crochets)
-    initial = ticker[:2].upper() if len(ticker) > 1 else ticker[0].upper()
-    return f"[{initial}]"
-
-
-def _render_carry_config():
-    """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
-    st.markdown(f"### {t('tab_carry_cfg')}")
-    st.caption(t("carry_cfg_subtitle"))
-
-    # Afficher un message persistent (évite qu'il disparaisse au rerun)
-    msg = st.session_state.pop("_carry_msg", None)
-    if msg:
-        st.success(msg)
-
-    try:
-        from v7.core.asset_config import load_config, save_config, get_all_assets, reload_config
-    except ImportError:
-        st.warning("asset_config module not available. Please deploy the latest version.")
-        return
-
-    cfg = load_config()
-    assets = cfg.get("assets", {})
-    global_cfg = cfg.get("global", {})
-
-    # ── Scanner meta info ──
-    scanner_meta = cfg.get("_scanner_meta", {})
-    if scanner_meta:
-        st.caption(t("carry_scan_last").format(
-            n=scanner_meta.get('total_eligible', '?'),
-            t=scanner_meta.get('total_spot_pairs', '?')))
-    else:
-        st.caption(t("carry_optimize_prerequisite"))
-
-    # ── 4 boutons sur une ligne ──
-    col_b1, col_b2, col_b3, col_b4 = st.columns(4)
-    with col_b1:
-        if st.button(t("carry_scan_btn"), help=t("carry_scan_help"), use_container_width=True):
-            with st.spinner(t("carry_scanning")):
-                try:
-                    from v7.core.carry_scanner import scan_carry_universe
-                    from v7.core.asset_config import reload_config
-                    scan_carry_universe(save=True)
-                    reload_config()
-                    st.session_state["_carry_msg"] = t("carry_scan_ok")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"{t('carry_scan_error')} — {exc}")
-    with col_b2:
-        if st.button(t("carry_optimize_btn"), help=t("carry_optimize_help"), use_container_width=True):
-            with st.spinner("Calcul des paramètres optimisés..."):
-                try:
-                    from v7.core.carry_scanner import scan_carry_universe
-                    from v7.core.asset_config import reload_config
-                    scan_carry_universe(save=True, optimize=True)
-                    reload_config()
-                    st.session_state["_carry_msg"] = "📊 Paramètres optimisés calculés (voir champs _optimized_*)"
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Optimization failed — {exc}")
-    with col_b3:
-        if st.button("📊 Appliquer optimisés", type="secondary", use_container_width=True,
-                     help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
-            count = _apply_optimized_params(cfg)
-            st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
-            st.rerun()
-    with col_b4:
-        if st.button("🚀 Apply & Reload DAGs", type="primary", use_container_width=True):
-            _reload_dags()
-
-    # ── Warning: actifs non viables ──
-    non_viable = [sym for sym, p in assets.items() 
-                  if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
-    if non_viable:
-        st.warning(f"⚠️ {len(non_viable)} non-viable assets detected (backtest: 0 trades, extreme MaxDD, or negative Sharpe)")
-        if st.button(t("carry_disable_btn").format(n=len(non_viable)), type="secondary"):
-            for sym in non_viable:
-                if sym in cfg.get("assets", {}):
-                    cfg["assets"][sym]["enabled"] = False
-            save_config(cfg)
-            reload_config()
-            st.session_state["_carry_msg"] = t("carry_disabled_ok").format(n=len(non_viable))
-            st.rerun()
-    
-    # ── Global settings ──
-    with st.expander(t("carry_global_params"), expanded=False):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            new_total = st.number_input(t("carry_total_capital"), value=float(global_cfg.get("total_capital", 14000)), step=1000.0)
-        with col2:
-            new_max_exp = st.slider(t("carry_max_exposure"), 10, 80, int(global_cfg.get("max_total_exposure_pct", 0.40) * 100)) / 100
-        with col3:
-            new_max_pos = st.number_input(t("carry_max_positions"), 1, 13, int(global_cfg.get("max_simultaneous_positions", 4)))
-        
-        col4, col5 = st.columns(2)
-        with col4:
-            new_rt_cost = st.number_input(t("carry_roundtrip_cost"), 10, 100, int(global_cfg.get("round_trip_cost_bps", 48)))
-        with col5:
-            new_hold = st.number_input(t("carry_hold_days"), 14, 180, int(global_cfg.get("estimated_hold_days", 60)))
-
-        if st.button(t("carry_save_global_btn"), key="save_global"):
-            cfg["global"] = {
-                "total_capital": new_total,
-                "max_total_exposure_pct": new_max_exp,
-                "max_simultaneous_positions": int(new_max_pos),
-                "round_trip_cost_bps": int(new_rt_cost),
-                "estimated_hold_days": int(new_hold),
-            }
-            save_config(cfg)
-            st.success(t("carry_save_global_ok"))
-            st.rerun()
-
-    st.markdown("---")
-
-    # ── Per-asset table ──
-    st.markdown(f"#### {t('carry_configured_assets')}")
-
-    all_symbols = get_all_assets()
-
-    if not all_symbols:
-        st.warning(t("carry_no_assets"))
-        return
-
-    # Collapse/Expand all (à droite)
-    col_spacer, col_exp2, col_exp1 = st.columns([6, 1, 1])
-    with col_exp1:
-        if st.button(t("carry_expand_all"), key="expand_all"):
-            st.session_state["_carry_expand"] = True
-            st.rerun()
-    with col_exp2:
-        if st.button(t("carry_collapse_all"), key="collapse_all"):
-            st.session_state["_carry_expand"] = False
-            st.rerun()
-    expand_default = st.session_state.get("_carry_expand", None)
-
-    for sym in all_symbols:
-        params = assets.get(sym, {})
-        enabled = params.get("enabled", False)
-        icon = "🟢" if enabled else "⚫"
-        # Logo Markdown pour la barre d'expander (HTML ne marche pas dans les labels)
-        logo_md = _carry_logo_md(sym, params)
-        ticker = sym.split("/")[0]
-        # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
-        expanded = expand_default if expand_default is not None else enabled
-
-        with st.expander(f"{icon} {logo_md} {sym}", expanded=expanded):
-            col1, col2, col3 = st.columns([1, 1, 1])
-
-            with col1:
-                new_enabled = st.checkbox(t("carry_enabled"), value=enabled, key=f"en_{sym}")
-                new_locked = st.checkbox(t("carry_locked"), value=params.get("locked", False), key=f"lock_{sym}",
-                                         help=t("carry_locked_help"))
-                new_capital = st.number_input(t("carry_capital"), value=float(params.get("capital", 2000)), step=500.0, key=f"cap_{sym}")
-                new_fraction = st.slider(t("carry_fraction"), 0.10, 1.0, float(params.get("fraction", 0.50)), 0.05, key=f"frac_{sym}")
-
-            with col2:
-                new_cap = st.number_input(t("carry_safety_cap"), value=int(params.get("safety_cap", 200)), step=50, key=f"scap_{sym}")
-                new_stress = st.slider(t("carry_stress_loss"), 1.0, 20.0, float(params.get("stress_loss_pct", 0.10)) * 100, 1.0, key=f"stress_{sym}") / 100
-                new_leverage = st.selectbox(t("carry_leverage"), [1.0, 1.5, 2.0, 3.0], index=[1.0, 1.5, 2.0, 3.0].index(float(params.get("leverage", 1.0))) if float(params.get("leverage", 1.0)) in [1.0, 1.5, 2.0, 3.0] else 0, key=f"lev_{sym}")
-
-            with col3:
-                new_min_fund = st.number_input(t("carry_min_funding"), 0.00001, 0.01, float(params.get("min_funding", 0.00005)), format="%.5f", key=f"minf_{sym}")
-                new_max_hold = st.number_input(t("carry_max_hold"), 7, 90, int(params.get("max_hold_days", 14)), key=f"mhold_{sym}")
-                new_exit_h = st.number_input(t("carry_exit_hours"), 24, 240, int(params.get("exit_after_hours", 72)), step=24, key=f"exit_{sym}")
-                # Logo preview (3-level fallback: upload > git SVG > colored circle)
-                try:
-                    from dashboard.multi_asset import _asset_icon as _get_icon
-                    logo_html = _get_icon(sym)
-                    st.markdown(f"**{t('carry_logo')}:** {logo_html}", unsafe_allow_html=True)
-                except Exception:
-                    logo_html = ""
-                new_logo_file = st.file_uploader(t("carry_logo"), type=["png","svg","jpg","webp"], key=f"logo_{sym}",
-                                                help=t("carry_logo_help"), label_visibility="collapsed")
-
-            # Détecter les changements (logo file traité séparément)
-            logo_changed = new_logo_file is not None
-            if (new_enabled != enabled or new_locked != params.get("locked", False) or
-                new_capital != params.get("capital", 2000) or
-                new_fraction != params.get("fraction", 0.50) or new_cap != params.get("safety_cap", 200) or
-                new_stress != params.get("stress_loss_pct", 0.10) or
-                new_leverage != params.get("leverage", 1.0) or
-                new_min_fund != params.get("min_funding", 0.00005) or
-                new_max_hold != params.get("max_hold_days", 14) or
-                new_exit_h != params.get("exit_after_hours", 72) or
-                logo_changed):
-                if st.button(f"{t('carry_save_asset_btn')} {sym}", key=f"save_{sym}"):
-                    # Sauvegarder le logo
-                    logo_filename = params.get("icon_url", "")
-                    if logo_changed and new_logo_file is not None:
-                        logos_dir = Path("/app/data/logos")
-                        logos_dir.mkdir(parents=True, exist_ok=True)
-                        ext = new_logo_file.name.rsplit(".", 1)[-1] if "." in new_logo_file.name else "png"
-                        logo_filename = f"{sym.replace('/', '_').lower()}.{ext}"
-                        with open(logos_dir / logo_filename, "wb") as f:
-                            f.write(new_logo_file.getbuffer())
-                    
-                    cfg["assets"][sym] = {
-                        "enabled": new_enabled,
-                        "locked": new_locked,
-                        "capital": new_capital,
-                        "fraction": new_fraction,
-                        "safety_cap": int(new_cap),
-                        "stress_loss_pct": new_stress,
-                        "max_hold_days": int(new_max_hold),
-                        "min_funding": new_min_fund,
-                        "max_funding": float(params.get("max_funding", 0.003)),
-                        "exit_after_hours": int(new_exit_h),
-                        "leverage": new_leverage,
-                        "icon_url": logo_filename,
-                    }
-                    save_config(cfg)
-                    st.success(t("carry_save_asset_ok").format(sym=sym))
-                    st.rerun()
-
-    # ── Résumé ──
-    st.markdown("---")
-    active_count = sum(1 for s in all_symbols if assets.get(s, {}).get("enabled", False))
-    st.metric(t("carry_active_count"), f"{active_count}/{len(all_symbols)}")
-    st.caption(t("carry_dag_hint"))
-
-
 def _render_v4_config():
-    """Configuration Funding Carry."""
+    """V7 — Configuration Funding Carry."""
     import yaml
     from pathlib import Path
 
-    st.markdown(f"### ⚙️ {t('config_title')}")
-    st.caption(t("config_strategy_desc"))
+    st.markdown("### ⚙️ Configuration V7 — Funding Carry")
+    st.caption("Stratégie : Short Perp + Long Spot · Collecte de la prime de funding")
 
-    # ── Carry Params ──
-    st.markdown(f"#### 💸 {t('config_carry_section')}")
+    # ── V7 Carry Params ──
+    st.markdown("#### 💸 Funding Carry")
     col1, col2 = st.columns(2)
     with col1:
-        capital_per_asset = st.number_input(t("config_capital_label"), value=2000, min_value=100, step=500)
-        fraction = st.slider(t("config_fraction_label"), value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
-        cycle_hours = st.slider(t("config_cycle_label"), value=8, min_value=1, max_value=48, step=1, help=t("config_cycle_help"))
+        capital_per_asset = st.number_input("Capital par actif (USD)", value=2000, min_value=100, step=500)
+        fraction = st.slider("Fraction du capital en carry", value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
+        cycle_hours = st.slider("Cycle DAG (heures)", value=8, min_value=1, max_value=48, step=1, help="Fréquence de vérification du funding")
     with col2:
-        min_funding = st.number_input(t("config_min_funding_label"), value=0.001, min_value=0.0001, max_value=10.0, step=0.001)
-        exit_hours = st.slider(t("config_exit_label"), value=168, min_value=24, max_value=720, step=24)
+        min_funding = st.number_input("Funding minimum (% par 8h)", value=0.001, min_value=0.0001, max_value=10.0, step=0.001, help="0.001% = presque tout funding positif")
+        exit_hours = st.slider("Sortie si funding négatif > (heures)", value=168, min_value=24, max_value=720, step=24)
 
-    st.info(t("config_return_estimate"))
+    st.info(f"💰 Rendement estimé : 5-15%/an selon funding · Max drawdown : 0.5-1%")
 
     # ── Risk ──
-    st.markdown(f"#### {t('config_risk_section')}")
-    st.caption(t("config_risk_caption"))
-    max_dd = st.slider(t("config_max_dd_label"), value=5.0, min_value=1.0, max_value=20.0, step=0.5, format="%.1f%%")
-    max_positions = st.slider(t("config_max_pos_label"), value=3, min_value=1, max_value=5, step=1)
+    st.markdown("#### 🛡️ Risk Global")
+    st.caption("Circuit breaker et limites")
+    max_dd = st.slider("Max drawdown global avant blocage", value=5.0, min_value=1.0, max_value=20.0, step=0.5, format="%.1f%%")
+    max_positions = st.slider("Max positions simultanées par actif", value=3, min_value=1, max_value=5, step=1)
 
-    if st.button(t("config_save_btn"), type="primary"):
-        st.success(t("config_saved"))
+    if st.button("💾 Sauvegarder", type="primary"):
+        st.success("✅ Config sauvegardée (redémarrage requis)")
 
     st.markdown("---")
-    st.caption(t("config_restart_note"))
+    st.caption("⚠️ Les modifications prennent effet au prochain cycle DAG (8h).")
 
 
 def _render_ai_analysis(asset: str, expanded: bool = False):
@@ -3491,54 +3078,43 @@ def _active_assets_v4() -> list[str]:
 
 
 def _render_backtest_v4():
-    """Panneau de backtest — Funding Carry + Directionnel."""
+    """Panneau de backtest V7 — Funding Carry + V6 legacy."""
     st.markdown("### 🧪 Backtest")
     
-    bt_mode = st.radio("Mode", ["💰 Funding Carry", "📈 Directionnel"], index=0, horizontal=True)
+    bt_mode = st.radio("Mode", ["💰 V7 Funding Carry", "📈 V6 Directionnel (legacy)"], index=0, horizontal=True)
     
     if bt_mode.startswith("💰"):
-        # ── Funding Carry Backtest ──
+        # ── V7 Funding Carry Backtest ──
         st.caption("Backtest de la collecte de funding · Short Perp + Long Spot · Market-neutral")
         
-        # Charger les actifs depuis carry_assets.yaml
-        try:
-            from v7.core.asset_config import get_active_assets
-            _bt_assets = get_active_assets()
-            if not _bt_assets:
-                _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-        except Exception:
-            _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-        
-        symbol = st.selectbox(t("col_asset"), _bt_assets)
-        days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
+        symbol = st.selectbox("Actif", ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"])
+        days = st.slider("Jours d'historique", 30, 1095, 365, 30)
         
         col1, col2 = st.columns(2)
         with col1:
-            capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000,
-                                      help="Capital alloué à cet actif pour le backtest")
+            fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.80, 0.05)
+            min_funding = st.number_input("Funding min (%/8h)", 0.0001, 0.1, 0.001, format="%.4f")
         with col2:
-            fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.50, 0.05,
-                                 help="Part du capital immobilisée dans le carry")
+            exit_hours = st.slider("Sortie si funding négatif > (h)", 24, 720, 168, 24)
+            capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000)
         
-        if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
-            with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j (règles V7.2)..."):
+        if st.button("🚀 Lancer Backtest V7", type="primary", use_container_width=True):
+            with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j..."):
                 try:
                     import subprocess, sys
                     cmd = [
-                        sys.executable, "v7/backtest_v7_node.py",
+                        sys.executable, "v7/backtest_v7.py",
                         "--symbol", symbol,
                         "--days", str(days),
                         "--capital", str(capital),
+                        "--fraction", str(fraction),
+                        "--min-funding", str(min_funding / 100),  # % → décimal
+                        "--exit-hours", str(exit_hours),
                     ]
                     result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
-                    output = result.stdout
+                    st.code(result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout)
                     if result.stderr:
-                        output += "\n\n[stderr]\n" + result.stderr[-500:]
-                    st.code(output[-4000:] if len(output) > 4000 else output)
-                    # Extraire les métriques clés si présentes
-                    for line in output.split("\n"):
-                        if any(kw in line for kw in ["Sharpe", "PnL Total", "Win Rate", "Max DD", "Trades:"]):
-                            st.text(line.strip())
+                        st.caption(result.stderr[-500:])
                 except Exception as e:
                     st.error(str(e))
         return
@@ -3559,10 +3135,10 @@ def _render_backtest_v4():
         exit_atr = st.slider("Exit ATR", 1.0, 6.0, 3.0, 0.5)
 
     gate_mode = st.selectbox("Mode Gate", ["meta", "meta_regime", "fusion", "veto"], index=0,
-                              help="meta = MetaGate | meta_regime = avec adaptation régime | fusion/veto = legacy")
+                              help="meta = MetaGate V5 | meta_regime = V6 avec adaptation régime | fusion/veto = V4 legacy")
     
     # V6: options avancées
-    with st.expander("⚙️ Options avancées"):
+    with st.expander("⚙️ Options V6 avancées"):
         use_regime_adapt = st.checkbox("Activer RegimeAdapter (TREND/RANGE/CHOP)", value=(gate_mode == "meta_regime"),
                                         help="Adapte le seuil et sizing selon le régime détecté")
         use_triple_barrier = st.checkbox("Labels Triple-Barrier (au lieu de binaire T+48)", value=False,
@@ -3588,7 +3164,7 @@ def _render_backtest_v4():
     bt_col1, bt_col2 = st.columns(2)
     with bt_col1:
         if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
-            with st.spinner(f"Backtest {symbol} sur {days}j..."):
+            with st.spinner(f"Backtest V6 {symbol} sur {days}j..."):
                 try:
                     from dashboard.backtest_v4 import run_backtest_v4
                     actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
@@ -3634,7 +3210,7 @@ def _render_backtest_v4():
     with bt_col2:
         if st.button("🔬 Walk-Forward 365j", type="secondary", use_container_width=True,
                      help="Validation robuste : 6 fenêtres glissantes Train 180j / Test 30j"):
-            with st.spinner(f"Walk-Forward {symbol} sur 365j..."):
+            with st.spinner(f"Walk-Forward V6 {symbol} sur 365j..."):
                 try:
                     from tools.walkforward_v6 import walkforward
                     actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
@@ -3667,21 +3243,21 @@ def _render_backtest_v4():
                     st.success(f"Meilleure: SL={best['sl_mult']} TP={best['tp_mult']} Exit={best['exit_strat']} → Sharpe={best['sharpe']}")
                     st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
             except Exception as e:
-                st.error(f"Optimization error: {e}")
+                st.error(f"Erreur optimisation: {e}")
 
-    if st.button("🔮 Optimisation complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
-                 help="Lance l'optimiseur MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
+    if st.button("🔮 Optimisation V5 complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
+                 help="Lance l'optimiseur V5 MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
         import urllib.request, json as _json2
         try:
             req = urllib.request.Request(f"{_API_BASE}/optimize/v5?days={days}", method="POST")
             with urllib.request.urlopen(req, timeout=10) as resp:
                 result = _json2.loads(resp.read())
             if result.get("ok"):
-                st.success(f"✅ Optimisation lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
+                st.success(f"✅ Optimisation V5 lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
             else:
-                st.error(f"API error: {result.get('error','?')}")
+                st.error(f"Erreur API: {result.get('error','?')}")
         except Exception as _e2:
-            st.error(f"Launch error: {_e2}")
+            st.error(f"Erreur lancement: {_e2}")
 
 
 def render_live_logs(key: str = "global", asset: str | None = None):
@@ -3708,7 +3284,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
     if v4_logs:
         st.markdown(
             '<p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#4f6ef7;">'
-            '📊 Atlas — Cycle Carry Live</p>',
+            '⚡ Atlas — Exécution DAG</p>',
             unsafe_allow_html=True,
         )
         theme = _get_theme()
@@ -3733,99 +3309,79 @@ def render_live_logs(key: str = "global", asset: str | None = None):
                      help="Efface les logs V4 (buffer circulaire automatique)",
                      use_container_width=True):
             st.info("Les logs V4 sont en mémoire (buffer 200 lignes). Ils se renouvellent automatiquement.", icon="ℹ️")
-    # DB-backed logs — uniquement si V4 logs sont vides (pas de doublon)
-    if not v4_logs:
-        try:
-            from storage.database import get_connection
-            with get_connection() as conn:
-                if asset:
-                    _slug = asset.replace("/", "")
-                    _pat1, _pat2 = f"%{asset}%", f"%{_slug}%"
-                    # V7: dag_logs en priorité, fallback sur logs
-                    total_rows = conn.execute(
-                        "SELECT COUNT(*) FROM dag_logs WHERE message LIKE ? OR message LIKE ?",
-                        (_pat1, _pat2),
-                    ).fetchone()[0]
-                    if total_rows == 0:
-                        total_rows = conn.execute(
-                            "SELECT COUNT(*) FROM logs WHERE message LIKE ? OR message LIKE ?",
-                            (_pat1, _pat2),
-                        ).fetchone()[0]
-                        all_rows = conn.execute(
-                            "SELECT timestamp, level, module, message FROM logs "
-                            "WHERE message LIKE ? OR message LIKE ? "
-                            "ORDER BY timestamp DESC",
-                            (_pat1, _pat2),
-                        ).fetchall()
-                    else:
-                        all_rows = conn.execute(
-                            "SELECT ts, level, dag_id, message FROM dag_logs "
-                            "WHERE message LIKE ? OR message LIKE ? "
-                            "ORDER BY ts DESC",
-                            (_pat1, _pat2),
-                        ).fetchall()
-                else:
-                    total_rows = conn.execute("SELECT COUNT(*) FROM dag_logs").fetchone()[0]
-                    if total_rows == 0:
-                        total_rows = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
-                        all_rows = conn.execute(
-                            "SELECT timestamp, level, module, message FROM logs "
-                            "ORDER BY timestamp DESC"
-                        ).fetchall()
-                    else:
-                        all_rows = conn.execute(
-                            "SELECT ts, level, dag_id, message FROM dag_logs "
-                            "ORDER BY ts DESC"
-                        ).fetchall()
-        except Exception:
+    try:
+        from storage.database import get_connection
+        with get_connection() as conn:
+            if asset:
+                # Filtrer sur le symbole (ex: "BTC/USDT") et sa forme sans slash ("BTCUSDT")
+                _slug = asset.replace("/", "")
+                _pat1, _pat2 = f"%{asset}%", f"%{_slug}%"
+                total_rows = conn.execute(
+                    "SELECT COUNT(*) FROM logs WHERE message LIKE ? OR message LIKE ?",
+                    (_pat1, _pat2),
+                ).fetchone()[0]
+                all_rows = conn.execute(
+                    "SELECT timestamp, level, module, message FROM logs "
+                    "WHERE message LIKE ? OR message LIKE ? "
+                    "ORDER BY timestamp DESC",
+                    (_pat1, _pat2),
+                ).fetchall()
+            else:
+                total_rows = conn.execute("SELECT COUNT(*) FROM logs").fetchone()[0]
+                all_rows = conn.execute(
+                    "SELECT timestamp, level, module, message FROM logs "
+                    "ORDER BY timestamp DESC"
+                ).fetchall()
+    except Exception:
+        if not v4_logs:
             st.info(t("logs_unavailable"))
-            return
+        return
 
-        if not all_rows:
-            st.info(t("no_logs"))
-            return
+    if not all_rows:
+        st.info(t("no_logs"))
+        return
 
-        total_pages = max(1, (total_rows + _LOGS_PAGE_SIZE - 1) // _LOGS_PAGE_SIZE)
+    total_pages = max(1, (total_rows + _LOGS_PAGE_SIZE - 1) // _LOGS_PAGE_SIZE)
 
-        # ── Barre de navigation ──────────────────────────────────────────────────
-        col_info, col_nav = st.columns([3, 2])
-        with col_info:
-            st.caption(t("logs_lines_pages").format(n=total_rows, p=total_pages, ps="s" if total_pages > 1 else ""))
-        with col_nav:
-            page = st.number_input(
-                "Page", min_value=1, max_value=total_pages,
-                value=1, step=1, key=f"logs_page_{key}",
-                label_visibility="collapsed",
-            )
-
-        # ── Tranche de la page courante ──────────────────────────────────────────
-        start = (page - 1) * _LOGS_PAGE_SIZE
-        page_rows = all_rows[start : start + _LOGS_PAGE_SIZE]
-
-        log_lines = []
-        for row in page_rows:
-            level_color = {
-                "DEBUG": "#6c757d", "INFO": "#0dcaf0",
-                "WARNING": "#ffc107", "ERROR": "#dc3545",
-            }.get(row[1], "#fff")
-            try:
-                _ts = _fmt_utc_local(datetime.fromisoformat(str(row[0])))
-            except Exception:
-                _ts = html.escape(str(row[0]))
-            _mod = html.escape(str(row[2]))
-            _msg = html.escape(str(row[3]))
-            log_lines.append(
-                f'<span style="color:#6c757d">{_ts}</span> '
-                f'<span style="color:{level_color}">[{row[1]}]</span> '
-                f'<span style="color:#adb5bd">[{_mod}]</span> {_msg}'
-            )
-
-        st.markdown(
-            f'<div style="border:1px solid rgba(128,128,128,0.2);padding:12px;border-radius:8px;'
-            f'font-family:monospace;font-size:11px;max-height:400px;'
-            f'overflow-y:auto;">{"<br>".join(log_lines)}</div>',
-            unsafe_allow_html=True,
+    # ── Barre de navigation ──────────────────────────────────────────────────
+    col_info, col_nav = st.columns([3, 2])
+    with col_info:
+        st.caption(t("logs_lines_pages").format(n=total_rows, p=total_pages, ps="s" if total_pages > 1 else ""))
+    with col_nav:
+        page = st.number_input(
+            "Page", min_value=1, max_value=total_pages,
+            value=1, step=1, key=f"logs_page_{key}",
+            label_visibility="collapsed",
         )
+
+    # ── Tranche de la page courante ──────────────────────────────────────────
+    start = (page - 1) * _LOGS_PAGE_SIZE
+    page_rows = all_rows[start : start + _LOGS_PAGE_SIZE]
+
+    log_lines = []
+    for row in page_rows:
+        level_color = {
+            "DEBUG": "#6c757d", "INFO": "#0dcaf0",
+            "WARNING": "#ffc107", "ERROR": "#dc3545",
+        }.get(row[1], "#fff")
+        try:
+            _ts = _fmt_utc_local(datetime.fromisoformat(str(row[0])))
+        except Exception:
+            _ts = html.escape(str(row[0]))
+        _mod = html.escape(str(row[2]))
+        _msg = html.escape(str(row[3]))
+        log_lines.append(
+            f'<span style="color:#6c757d">{_ts}</span> '
+            f'<span style="color:{level_color}">[{row[1]}]</span> '
+            f'<span style="color:#adb5bd">[{_mod}]</span> {_msg}'
+        )
+
+    st.markdown(
+        f'<div style="border:1px solid rgba(128,128,128,0.2);padding:12px;border-radius:8px;'
+        f'font-family:monospace;font-size:11px;max-height:400px;'
+        f'overflow-y:auto;">{"<br>".join(log_lines)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_force_run_button():
@@ -3870,23 +3426,25 @@ def render_admin_panel():
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
-        # ── Carry Engine ──────────────────────────────────────────
-        (None, None,      "Carry V7"),
-        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Live Monitor"),
+        # ── Moteur DAG ──────────────────────────────────────────────
+        (None, None,      "Moteur DAG"),
+        ('<i class="fas fa-diagram-project"></i>', "v4_canvas",  "Canvas DAG"),
+        ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Monitoring"),
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
-        ('<i class="fas fa-coins"></i>',            "carry_cfg",  "Carry Assets"),
-        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config"),
-        # ── Infra & Monitoring ───────────────────────────────────────
+        # Arena désactivée — sera réactivée quand la stratégie aura fait ses preuves
+        # ('<i class="fas fa-trophy"></i>',          "v4_arena",   "Arena"),
+        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Configuration"),
+        # ── Infra & Monitoring ───────────────────────────────────────────
         (None, None,      "Infra & Monitoring"),
-        ('<i class="fas fa-robot"></i>',           "aimodel",    "AI Model"),
-        ('<i class="fas fa-list-check"></i>',      "logging",    "Logging"),
-        ('<i class="fas fa-history"></i>',         "historique", "History"),
-        ('<i class="fas fa-brain"></i>',           "decisions",   "Decisions"),
-        ('<i class="fas fa-lightbulb"></i>',       "reflections", "Reflections"),
-        ('<i class="fas fa-user"></i>',            "users",      "Users"),
-        ('<i class="fas fa-floppy-disk"></i>',     "backup",     "Backup"),
+        ('<i class="fas fa-database"></i>',        "sources",    "Sources de données"),
+        ('<i class="fas fa-robot"></i>',           "aimodel",    t("tab_ai_model")),
+        ('<i class="fas fa-trash-alt"></i>',       "reset",      t("tab_reset_v2")),
         ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
-        ('<i class="fas fa-trash-alt"></i>',       "reset",      "Reset"),
+        ('<i class="fas fa-list-check"></i>',      "logging",    t("tab_logging")),
+        ('<i class="fas fa-history"></i>',         "historique",  "Historique"),
+        ('<i class="fas fa-lightbulb"></i>',      "reflections", "🧠 Réflexions IA"),
+        ('<i class="fas fa-user"></i>',            "users",      t("tab_users")),
+        ('<i class="fas fa-floppy-disk"></i>',     "backup",     t("tab_backup")),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
     _admin_items = [
@@ -3894,9 +3452,9 @@ def render_admin_panel():
         else {"key": s[1], "icon": s[0], "text": s[2]}
         for s in _ADMIN_SECTIONS
     ]
-    _atab = st.query_params.get("_atab", "v4_monitor")
+    _atab = st.query_params.get("_atab", "v4_canvas")
     if _atab not in _admin_keys:
-        _atab = "v4_monitor"
+        _atab = "v4_canvas"
     _inject_custom_sidenav(_admin_items, _atab, qparam="_atab", theme=_get_theme())
 
     if _atab == "quant":  # Quant V2 Pipeline
@@ -3923,7 +3481,7 @@ def render_admin_panel():
             q["history_days"] = st.slider(
                 t("quant_history_days"), 30, 365,
                 int(q.get("history_days", 90)), 10,
-                help=t("days_history_help"),
+                help="Nombre de jours d'historique chargés au refit.",
             )
             q["train_fraction"] = st.slider(
                 t("quant_train_fraction"), 0.55, 0.85,
@@ -3962,6 +3520,51 @@ def render_admin_panel():
                 help="Active le filtre HMM (hmmlearn requis — désactiver en local si absent).",
             )
         settings["quant"] = q
+
+        # ── Sources de données (TwelveData) ──────────────────────────────────
+        st.markdown("---")
+        st.markdown(f"#### {t('quant_section_sources')}")
+        _dp_opts = ["auto", "twelve_data", "yahoo"]
+        _dp_cur = q.get("data_provider", settings.get("data", {}).get("provider", "auto"))
+        if _dp_cur not in _dp_opts:
+            _dp_cur = "auto"
+        _dp_new = st.selectbox(
+            t("quant_data_provider"),
+            _dp_opts,
+            index=_dp_opts.index(_dp_cur),
+            help="**auto** : essaie Twelve Data (si clé présente) puis Yahoo/Binance. "
+                 "**twelve_data** : force Twelve Data pour les actifs forex/commodités. "
+                 "**yahoo** : force Yahoo Finance.",
+        )
+        settings["quant"]["data_provider"] = _dp_new
+        settings.setdefault("data", {})["provider"] = _dp_new
+
+        # Lecture de la clé TwelveData (secrets.yaml en priorité)
+        try:
+            from quant.config import get_twelve_data_key as _get_td_key
+            _td_key_live = _get_td_key()
+        except Exception:
+            _td_key_live = ""
+        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else ("(vide)" if not _td_key_live else _td_key_live)
+        st.caption(f"Clé TwelveData active : `{_td_key_display}`")
+        _td_key_input = st.text_input(
+            t("quant_td_key_new"),
+            value="",
+            type="password",
+            help="La clé sera écrite dans **config/secrets.yaml** (gitignored). "
+                 "Laissez vide pour conserver la clé actuelle.",
+        )
+        if _td_key_input.strip():
+            from pathlib import Path as _SPPath
+            import yaml as _syaml
+            _secrets_path = _SPPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+            try:
+                _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
+                _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
+                _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
+                st.success(t("quant_td_key_saved"))
+            except Exception as _se:
+                st.error(f"Erreur écriture secrets.yaml : {_se}")
 
         # ── État live du modèle ───────────────────────────────────────────────
         st.markdown("---")
@@ -4121,78 +3724,56 @@ def render_admin_panel():
         _llm["model"]    = _new_model
         if _key_name and _new_key:
             _llm[_key_name] = _new_key
-
-        # ── Modèle rapide (DAGs, tâches légères) ──
-        st.markdown("---")
-        st.markdown("#### ⚡ Modèle rapide (analyses DAGs, résumés)")
-        st.caption("Utilisé par les nœuds LLM des cycles DAG. Doit être rapide et économique.")
-
-        _fast_provider = _llm.get("fast_provider", _new_provider)
-        if _fast_provider not in _providers:
-            _providers_fast = [_fast_provider] + _providers
-        else:
-            _providers_fast = _providers
-        _fast_model_opts = _provider_models.get(_fast_provider, [_llm.get("fast_model", "deepseek-chat")])
-        _cur_fast_model = _llm.get("fast_model", _fast_model_opts[0] if _fast_model_opts else "deepseek-chat")
-        if _cur_fast_model not in _fast_model_opts:
-            _fast_model_opts = [_cur_fast_model] + _fast_model_opts
-
-        _fc1, _fc2 = st.columns(2)
-        with _fc1:
-            _new_fast_provider = st.selectbox(
-                "Provider", _providers_fast,
-                index=_providers_fast.index(_fast_provider),
-                key="ai_fast_provider_sel",
-            )
-        with _fc2:
-            _new_fast_model = st.selectbox(
-                "Modèle", _fast_model_opts,
-                index=_fast_model_opts.index(_cur_fast_model) if _cur_fast_model in _fast_model_opts else 0,
-                key="ai_fast_model_sel",
-            )
-
-        # Clé API pour le modèle rapide (si provider différent du principal)
-        _fast_key_name = _key_field.get(_new_fast_provider)
-        if _fast_key_name:
-            if _new_fast_provider == _new_provider:
-                st.caption(f"ℹ️ Même provider que le modèle principal — clé `{_fast_key_name}` partagée.")
-            else:
-                _existing_fast_key = _llm.get("fast_api_key", "") or _llm.get(_fast_key_name, "")
-                _new_fast_key = st.text_input(
-                    f"Clé API ({_new_fast_provider})",
-                    value="",
-                    placeholder="Laisser vide pour conserver la clé actuelle",
-                    type="password",
-                    key="ai_fast_key_input",
-                )
-                if _existing_fast_key:
-                    _masked_fast = _existing_fast_key[:3] + "*" * (len(_existing_fast_key) - 7) + _existing_fast_key[-4:]
-                    st.caption(f"🔑 Clé actuelle : `{_masked_fast}`")
-                if not _new_fast_key:
-                    _new_fast_key = _existing_fast_key
-                if _new_fast_key:
-                    _llm["fast_api_key"] = _new_fast_key
-        else:
-            st.caption(f"ℹ️ {_new_fast_provider} — pas de clé API requise (local).")
-
-        _fc3, _fc4 = st.columns(2)
-        with _fc3:
-            _llm["fast_temperature"] = st.slider(
-                "Temperature", 0.0, 1.0,
-                float(_llm.get("fast_temperature", 0.3)), 0.05,
-                key="ai_fast_temp_sl",
-            )
-        with _fc4:
-            _llm["fast_max_tokens"] = st.number_input(
-                "Max tokens", 64, 4096,
-                int(_llm.get("fast_max_tokens", 256)), 64,
-                key="ai_fast_maxtok_ni",
-            )
-
-        _llm["fast_provider"] = _new_fast_provider
-        _llm["fast_model"]    = _new_fast_model
-
         settings["llm"] = _llm
+
+    elif _atab == "sources":  # Sources de données (TwelveData / Yahoo)
+        st.markdown(
+            '<h4><i class="fas fa-database" style="margin-right:7px;color:#7986cb;"></i>'
+            'Sources de données</h4>',
+            unsafe_allow_html=True,
+        )
+        st.info("Configuration du fournisseur de données et des clés API. Partagé entre V3 et V4.")
+        _dp_opts = ["auto", "twelve_data", "yahoo"]
+        _dp_cur = settings.get("data", {}).get("provider", "auto")
+        if _dp_cur not in _dp_opts:
+            _dp_cur = "auto"
+        _dp_new = st.selectbox(
+            "Fournisseur de données",
+            _dp_opts,
+            index=_dp_opts.index(_dp_cur),
+            help="**auto** : essaie Twelve Data (si clé présente) puis Yahoo/Binance. "
+                 "**twelve_data** : force Twelve Data pour les actifs forex/commodités. "
+                 "**yahoo** : force Yahoo Finance.",
+        )
+        settings.setdefault("data", {})["provider"] = _dp_new
+        # Also update quant settings for backward compat
+        settings.setdefault("quant", {})["data_provider"] = _dp_new
+
+        # Lecture de la clé TwelveData (secrets.yaml en priorité)
+        try:
+            from quant.config import get_twelve_data_key as _get_td_key
+            _td_key_live = _get_td_key()
+        except Exception:
+            _td_key_live = ""
+        _td_key_display = ("*" * 8 + _td_key_live[-4:]) if len(_td_key_live) > 4 else ("(vide)" if not _td_key_live else _td_key_live)
+        st.caption(f"Clé TwelveData active : `{_td_key_display}`")
+        _td_key_input = st.text_input(
+            "Nouvelle clé TwelveData (laissez vide pour ne pas changer)",
+            value="",
+            type="password",
+            help="La clé sera écrite dans **config/secrets.yaml** (gitignored).",
+        )
+        if _td_key_input.strip():
+            from pathlib import Path as _SPPath
+            import yaml as _syaml
+            _secrets_path = _SPPath(__file__).resolve().parent.parent / "config" / "secrets.yaml"
+            try:
+                _sec = _syaml.safe_load(_secrets_path.read_text(encoding="utf-8")) or {} if _secrets_path.exists() else {}
+                _sec.setdefault("data", {})["twelve_data_key"] = _td_key_input.strip()
+                _secrets_path.write_text(_syaml.dump(_sec, allow_unicode=True), encoding="utf-8")
+                st.success("✅ Clé TwelveData sauvegardée.")
+            except Exception as _se:
+                st.error(f"Erreur écriture secrets.yaml : {_se}")
 
     elif _atab == "flux":  # Flux Manager
         st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)
@@ -4389,44 +3970,45 @@ def render_admin_panel():
                     except Exception as _savexc:
                         st.error(f"{t('pa_save_error')} {_savexc}")
 
-    elif _atab == "reflections":  # 🧠 Réflexions IA (V7 ReflectionNode)
-        st.markdown(f'<h4><i class="fas fa-lightbulb" style="margin-right:7px;color:#ffb74d;"></i>{t("reflections_title")}</h4>', unsafe_allow_html=True)
-        st.caption(t("reflections_caption"))
+    elif _atab == "reflections":  # 🧠 Réflexions IA (V6 ReflectionEngine)
+        st.markdown('<h4><i class="fas fa-lightbulb" style="margin-right:7px;color:#ffb74d;"></i>🧠 Réflexions IA — Analyse des trades perdants</h4>', unsafe_allow_html=True)
+        st.caption("L'IA analyse les trades perdants et suggère des ajustements de paramètres.")
         
         try:
             import json
-            from pathlib import Path as _RPath
             refl_path = "/app/data/v6_reflections.json"
-            if _RPath(refl_path).exists():
+            if Path(refl_path).exists():
                 with open(refl_path) as f:
                     reflections = json.load(f)
-                st.success(t("reflections_available").format(n=len(reflections)))
+                st.success(f"{len(reflections)} analyse(s) disponible(s)")
                 for ref in reversed(reflections[-10:]):
                     ts = ref.get("timestamp", "?")[:16]
                     n = ref.get("n_trades_analyzed", 0)
                     symbols = ref.get("symbols", [])
-                    with st.expander(f"📅 {ts} — {t('reflections_trades_analyzed').format(n=n)} ({', '.join(symbols)})"):
-                        analysis = ref.get("analysis", t("reflections_no_analysis"))
+                    with st.expander(f"📅 {ts} — {n} trades analysés ({', '.join(symbols)})"):
+                        analysis = ref.get("analysis", "Pas d'analyse")
                         st.markdown(analysis[:3000])
                         suggestions = ref.get("suggestions", [])
                         if suggestions:
-                            st.markdown(f"**{t('reflections_suggestions_label')}**")
+                            st.markdown("**🔧 Ajustements suggérés :**")
                             for s in suggestions:
                                 st.info(f"`{s.get('param','?')}` : {s.get('current','?')} → **{s.get('suggested','?')}** — {s.get('reason','?')}")
             else:
-                st.info(t("reflections_empty"))
+                st.info("Aucune réflexion IA disponible. Les analyses apparaîtront automatiquement après quelques trades perdants.")
+                
+                if st.button("🔍 Lancer une analyse maintenant", type="secondary"):
+                    try:
+                        from v6.core.reflection_engine import ReflectionEngine
+                        engine = ReflectionEngine()
+                        result = engine.analyze()
+                        if result:
+                            st.success(f"Analyse lancée sur {result.get('n_trades',0)} trades")
+                        else:
+                            st.warning("Pas assez de trades perdants (<5) pour une analyse.")
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
         except Exception as e:
-            st.warning(f"{t('reflections_error')}: {e}")
-
-        # ── Latest AI Analysis (per-asset LLM results) ──
-        st.markdown("---")
-        st.markdown(f"#### 🧠 {t('latest_ai_title')}")
-        assets = _active_assets_v4() or ["BTC/USDT"]
-        if assets:
-            for asset in assets:
-                _render_ai_analysis(asset, expanded=False)
-        else:
-            st.caption(t('no_transactions'))
+            st.warning(f"Réflexions IA indisponibles: {e}")
 
     elif _atab == "backup":  # Sauvegarde / Restauration
         st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)
@@ -4511,25 +4093,39 @@ def render_admin_panel():
     elif _atab == "reset":  # Purge des données
         st.markdown(
             f'<h4><i class="fas fa-trash-alt" style="margin-right:7px;color:#e74c3c;"></i>'
-            f' Reset Paper Trading</h4>',
+            f' {t("reset_page_title")}</h4>',
             unsafe_allow_html=True,
         )
-        st.warning("This will delete all trade history and open positions. The carry cycle will continue normally.")
+        st.warning(t("reset_warning"))
 
-        st.markdown(f"#### 🗑️ Reset All Data")
-        st.caption("Deletes all trades from the database and clears the dashboard cache.")
+        # ── Reset V4 (DAGs + trades) ──────────────────────────────────────
+        st.markdown(f"#### Remise à zéro")
+        st.caption("Arrête tous les DAGs, efface l'historique des trades. Les DAGs redémarreront automatiquement.")
 
         confirm = st.checkbox(
-            "I understand — delete all trade history",
+            "✅ Je comprends que **tous les trades** (ouverts et fermés) seront **irréversiblement supprimés**.",
             key="reset_v4_confirm",
         )
         if st.button(
-            "🗑️ Reset Everything",
+            "🗑️ Reset complet V4",
             type="primary",
             use_container_width=True,
             disabled=not confirm,
         ):
-            # 1) Effacer l'historique des trades
+            # 1) Arrêter les DAGs
+            import urllib.request as _ur4, json as _j4
+            try:
+                dags = _j4.loads(_ur4.urlopen(f"{_API_BASE}/dag/status").read())
+                for d in dags:
+                    try:
+                        _ur4.urlopen(_ur4.Request(f"{_API_BASE}/dag/{d['dag_id']}", method="DELETE"))
+                    except Exception:
+                        pass
+                st.success(f"✅ {len(dags)} DAG(s) arrêté(s).")
+            except Exception as e:
+                st.warning(f"API V4 injoignable : {e}")
+
+            # 2) Effacer l'historique des trades
             try:
                 from storage.database import get_connection
                 from storage.paper_trader import _ensure_table
@@ -4537,30 +4133,25 @@ def render_admin_panel():
                     _ensure_table(conn)
                     conn.execute("DELETE FROM v4_trades")
                     conn.commit()
-                st.success("✅ Trade history deleted.")
+                st.success("✅ Historique des trades effacé.")
             except Exception as e:
-                st.error(f"DB error: {e}")
+                st.error(f"Erreur DB : {e}")
 
-            # 2) Effacer les logs DAG (carry cycle logs)
+            # 3) Redémarrer les DAGs démo
             try:
-                from storage.database import get_connection
-                with get_connection() as conn:
-                    conn.execute("DELETE FROM dag_logs")
-                    conn.commit()
-                st.success("✅ Cycle logs cleared.")
-            except Exception:
-                pass
+                resp = _j4.loads(_ur4.urlopen(
+                    _ur4.Request(f"{_API_BASE}/dag/restart-demo", method="POST")
+                ).read())
+                st.success(f"✅ {resp['count']} DAG(s) redémarré(s) — cycle 300s.")
+            except Exception as e:
+                st.warning(f"⚠️ Redémarrage DAGs échoué : {e}")
 
-            # 3) Vider le cache Streamlit
-            st.cache_data.clear()
-            st.success("✅ Dashboard cache cleared. New data will appear on next cycle.")
-            time.sleep(1)
-            st.rerun()
+            st.balloons()
 
-    elif _atab == "historique":  # Transaction history
+    elif _atab == "historique":  # Historique des transactions
         st.markdown(
-            f'<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'
-            f'{t("history_title")}</h4>',
+            '<h4><i class="fas fa-history" style="margin-right:7px;color:#9c27b0;"></i>'
+            ' Historique des Transactions</h4>',
             unsafe_allow_html=True,
         )
         try:
@@ -4579,7 +4170,7 @@ def render_admin_panel():
             # Récupérer les trades
             all_trades = get_v4_trades(n=2000)
             if not all_trades:
-                st.info(t("no_transactions"))
+                st.info("📊 Aucune transaction V4 enregistrée. Les trades apparaîtront ici automatiquement.")
                 return
 
             # Filtrer
@@ -4593,7 +4184,7 @@ def render_admin_panel():
                 filtered = [tr for tr in filtered if tr.get("status") == _st]
 
             if not filtered:
-                st.info(t("no_trades"))
+                st.info("Aucune transaction avec ces filtres.")
                 return
 
             # Stats
@@ -4638,7 +4229,7 @@ def render_admin_panel():
                 tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
                 row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
 
-            cols = [t("col_date"), t("col_asset"), t("col_action"), t("col_entry"), t("col_size_usd"), t("col_sl"), t("col_tp"), t("col_pnl"), t("col_progression"), t("col_status"), t("col_dag")]
+            cols = ["Date", "Actif", "Action", "Entrée", "SL", "TP", "Taille", "P&L", "Progression", "Statut", "DAG"]
             header = "".join(
                 f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
                 f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};opacity:.65;'
@@ -4682,7 +4273,7 @@ def render_admin_panel():
                     f'${size_usd:,.0f}' if size_usd else "—",
                     f'<span style="color:{pnl_color};font-weight:600;">{pnl_str}</span>',
                     progress_str,
-                    f"✅ {t('closed_status')}" if tr.get("status") == "closed" else f"⏳ {t('open_status')}",
+                    "✅ fermé" if tr.get("status") == "closed" else "⏳ ouvert",
                     tr.get("dag_id", "—"),
                 ]
                 td_style = f'padding:5px 10px;font-size:12px;color:{tbl_fg};white-space:nowrap;border-bottom:1px solid {sep};'
@@ -4703,28 +4294,6 @@ def render_admin_panel():
             _h_df = _hpd.DataFrame(filtered)
             _h_csv = _h_df.to_csv(index=False).encode("utf-8")
             st.download_button("⬇️ Exporter CSV", _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
-
-            # ── Bouton fermeture manuelle de toutes les positions ──────────
-            st.markdown("---")
-            st.markdown(f"#### ⚠️ {t('emergency_close_title')}")
-            st.caption(t("emergency_close_caption"))
-            _n_open_hist = sum(1 for tr in filtered if tr.get("status") == "open")
-            if _n_open_hist > 0:
-                if st.button(f"🔴 {t('emergency_close_btn')} {_n_open_hist} position(s) ouverte(s)", type="secondary", use_container_width=True):
-                    try:
-                        import urllib.request as _ur_close, json as _j_close
-                        _resp = _ur_close.urlopen(_ur_close.Request(
-                            f"{_API_BASE}/dag/close-all", method="POST"), timeout=30)
-                        _result = _j_close.loads(_resp.read())
-                        st.success(f"✅ {_result['closed']} position(s) fermée(s), {_result['failed']} échec(s)")
-                        if _result.get("details"):
-                            for d in _result["details"]:
-                                st.caption(f"• {d['symbol']} @ ${d['close_price']:,.2f} → P&L ${d['pnl']:+,.2f}")
-                        st.rerun()
-                    except Exception as _ce:
-                        st.error(f"API error: {_ce}")
-            else:
-                st.info(t("no_open_positions"))
 
             # Réflexions (leçons apprises)
             try:
@@ -4752,66 +4321,8 @@ def render_admin_panel():
         except Exception as _he:
             st.error(f"Erreur lecture historique V4 : {_he}")
 
-    elif _atab == "decisions":  # 🧠 Historique des décisions IA
-        st.markdown(
-            '<h4><i class="fas fa-brain" style="margin-right:7px;color:#9c27b0;"></i>'
-            ' Historique des Décisions</h4>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Chaque décision du DAG (cycle 8h) — filtrable par actif.")
-
-        _dcol1, _dcol2 = st.columns([1, 1])
-        with _dcol1:
-            _dsymbol = st.selectbox("Actif", ["Tous", "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"], key="dec_symbol")
-        with _dcol2:
-            _dlimit = st.slider("Nombre", 10, 500, 50, 10, key="dec_limit")
-
-        try:
-            _dparams = {"n": _dlimit}
-            if _dsymbol != "Tous":
-                _dparams["symbol"] = _dsymbol
-            _durl = f"{_API_BASE}/dag/decisions?" + "&".join(f"{k}={v}" for k, v in _dparams.items())
-            import urllib.request as _urdec, json as _jdec
-            _dresp = _jdec.loads(_urdec.urlopen(_durl, timeout=10).read())
-
-            if _dresp.get("error"):
-                st.warning(_dresp["error"])
-            elif not _dresp.get("decisions"):
-                st.info(t("decisions_empty"))
-            else:
-                decisions = _dresp["decisions"]
-                st.markdown(f"**{t('decisions_count').format(n=len(decisions))}**")
-
-                for d in decisions:
-                    data = d.get("data", {})
-                    signal = data.get("signal") or data.get("action") or "?"
-                    reason = data.get("reason", "")[:200]
-                    ts = d.get("ts_iso", "")[:19]
-                    sym = d.get("symbol", "?")
-                    dag = d.get("dag_id", "?")
-                    trade_link = d.get("trade_id", "")
-
-                    # Couleur selon signal
-                    sig_color = "#2ecc71" if signal in ("open_carry", "carry", "long") else (
-                        "#e74c3c" if signal in ("close_carry", "short") else "#ffb74d")
-                    
-                    with st.expander(
-                        f"{ts} — {sym} — {signal} — {reason[:80]}{'...' if len(reason) > 80 else ''}"
-                    ):
-                        c1, c2 = st.columns([3, 1])
-                        with c1:
-                            st.json(data)
-                        with c2:
-                            st.metric("Signal", signal)
-                            st.caption(f"DAG: `{dag}`")
-                            if trade_link:
-                                st.caption(f"Trade: `{trade_link}`")
-                            st.caption(f"TS: {ts}")
-        except Exception as _de:
-            st.error(f"Erreur chargement décisions : {_de}")
-
-    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset, Historique et Décisions)
-    if _atab not in ("backup", "flux", "peractif", "reset", "historique", "decisions"):
+    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset et Historique)
+    if _atab not in ("backup", "flux", "peractif", "reset", "historique"):
         st.markdown("---")
     if _atab == "backup":
         pass  # pas de bouton save_settings pour l'onglet backup
@@ -4819,100 +4330,24 @@ def render_admin_panel():
         pass  # le panneau reset gère ses propres boutons
     elif _atab == "historique":
         pass  # le panneau historique gère son propre affichage
-    elif _atab == "decisions":
-        pass  # le panneau décisions gère son propre affichage
-    elif _atab == "carry_cfg":
-        _render_carry_config()
-        return
-    elif _atab in ("v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
+    elif _atab in ("v4_canvas", "v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
+        # ── Configuration ──
         if _atab == "v4_admin":
             _render_v4_config()
             return
+        # ── Trades natif (depuis la DB) ──
         if _atab == "v4_trades":
-            st.markdown("### 📋 " + t("trades_journal_title"))
-            st.caption("Mode : paper trading")
+            st.markdown("### 📋 Journal des trades")
+            st.caption("Mode : paper trading (testnet uniquement)")
             _tr = _get_recent_trades(200)
             if _tr:
                 render_trades_list_sortable(_tr)
             else:
-                st.info(t("no_trades_recorded"))
+                st.info("Aucun trade enregistré.")
             return
-        if _atab == "v4_monitor":
-            st.markdown("### 📊 Live Monitor — Funding Carry V7")
-            
-            # ── Cycle status ──
-            col1, col2, col3 = st.columns(3)
-            last_cycle = _get_last_cycle()
-            if last_cycle:
-                with col1:
-                    st.metric("Last Cycle", last_cycle.get("timestamp", "—")[:19])
-                with col2:
-                    st.metric("Next Cycle", "~8h (auto)")
-                with col3:
-                    st.metric("Status", "✅ Running" if True else "⏸️")
-            
-            # ── Open carry positions ──
-            st.markdown("#### 🟢 Open Carry Positions")
-            try:
-                from storage.paper_trader import get_open_positions
-                open_pos = get_open_positions()
-                carry_pos = [p for p in open_pos if p.get("action") in ("carry", "short")]
-                if carry_pos:
-                    rows = []
-                    for p in carry_pos:
-                        # context_json peut être une string JSON ou un dict
-                        ctx = p.get("context_json", {})
-                        if isinstance(ctx, str):
-                            try:
-                                import json as _j
-                                ctx = _j.loads(ctx) if ctx else {}
-                            except Exception:
-                                ctx = {}
-                        total_funding = float(ctx.get("total_funding", 0) or 0) if isinstance(ctx, dict) else 0
-                        rows.append({
-                            "Asset": p.get("symbol", "?"),
-                            "Size": f"${float(p.get('size_usd', 0)):,.0f}",
-                            "Entry": f"${float(p.get('entry_price', 0)):,.2f}",
-                            "Opened": str(p.get("timestamp", "—"))[:19],
-                            "Funding Total": f"${total_funding:.4f}",
-                        })
-                    st.dataframe(rows, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No open carry positions — funding rates too low in current market")
-            except Exception as e:
-                st.warning(f"Position fetch: {e}")
-            
-            # ── Recent decisions ──
-            st.markdown("#### 🧠 Recent Decisions")
-            try:
-                decisions = _get_recent_decisions(10)
-                if decisions:
-                    for d in decisions:
-                        action = d.get("action", "?")
-                        sym = d.get("symbol", "?")
-                        ts = str(d.get("timestamp", "—"))[:19]
-                        reason = d.get("reason", d.get("context_json", ""))
-                        if isinstance(reason, dict):
-                            reason = reason.get("reason", "")
-                        emoji = {"carry": "🟢", "close_carry": "🔴", "flat": "➖"}.get(action, "❓")
-                        st.caption(f"{emoji} **{sym}** — {action} — {ts}")
-                        if reason:
-                            st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {str(reason)[:120]}")
-                else:
-                    st.info("No decisions yet — first cycle pending")
-            except Exception as e:
-                st.warning(f"Decisions fetch: {e}")
-            
-            # ── Quick portfolio summary ──
-            st.markdown("#### 💼 Portfolio Snapshot")
-            _pf = _get_portfolio()
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Capital", f"${_pf.get('capital', 0):,}")
-            c2.metric("Exposure", f"${_pf.get('exposure', 0):,.0f}")
-            c3.metric("Open Trades", _pf.get("n_trades", 0))
-            c4.metric("Total P&L", f"${_pf.get('total_pnl', 0):,.2f}")
-            return
+
         _V4_URLS = {
+            "v4_canvas":  f"{_V4_FRONTEND}/canvas?v=7",
             "v4_monitor": f"{_V4_FRONTEND}/monitoring",
             "v4_trades":  f"{_V4_FRONTEND}/trades",
             "v4_arena":   f"{_V4_FRONTEND}/arena",
@@ -4953,7 +4388,7 @@ def render_admin_panel():
 </script>""", height=0)
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
-            st.success(t('config_saved'))
+            st.success(f"✅ {t('config_saved')}")
         else:
             _err = st.session_state.pop("_save_error", "inconnue")
             st.error(f"❌ {t('config_error')} — {_err}")
@@ -5056,6 +4491,95 @@ def _inject_session_persistence_js(has_valid_session: bool) -> None:
 # PAGE PRINCIPALE
 # ===========================================================
 
+@st.cache_data(ttl=15)
+def _get_v4_dags() -> list[dict]:
+    """Récupère l'état des DAGs V4 depuis l'API (cache 15s)."""
+    try:
+        import urllib.request, json
+        # _API_BASE pour atteindre le host depuis un container
+        req = urllib.request.Request(f"{_API_BASE}/dag/status")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return []
+
+
+def _render_v4_status(asset_filter: str | None = None):
+    """Section V4 dans le dashboard front office. Filtrable par actif."""
+    dags = _get_v4_dags()
+    if not dags:
+        return
+
+    # Filtrer par actif si demandé (via nav asset ou paramètre explicite)
+    if asset_filter is None:
+        asset_filter = st.query_params.get("_asset", "")
+    if asset_filter and asset_filter != "Global":
+        asset_filter_clean = asset_filter.replace("_", "/")
+        dags = [d for d in dags if d.get("asset") == asset_filter_clean]
+    if not dags:
+        return
+
+    st.markdown("---")
+    st.markdown(
+        '<h3 style="margin:0 0 10px;font-size:18px;">'
+        '<i class="fas fa-diagram-project" style="margin-right:8px;color:#4f6ef7;"></i>'
+        'V4 — Moteur DAG</h3>',
+        unsafe_allow_html=True,
+    )
+
+    theme = _get_theme()
+    if theme == "light":
+        tbl_bg, tbl_fg, head_bg, border = "#ffffff", "#212529", "#f1f3f5", "#dee2e6"
+        row_alt, sep = "#f8f9fa", "#e9ecef"
+    else:
+        tbl_bg, tbl_fg, head_bg, border = "#161b22", "#e6edf3", "#0d1117", "rgba(255,255,255,0.08)"
+        row_alt, sep = "#1b2129", "rgba(255,255,255,0.05)"
+
+    cols = ["DAG ID", "Actif", "Statut", "Cycle (s)", "Dernier run", "✓", "✗"]
+    header = "".join(
+        f'<th style="padding:6px 10px;font-size:11px;font-weight:600;'
+        f'background:{head_bg};border-bottom:2px solid {border};">{c}</th>'
+        for c in cols
+    )
+
+    rows_html = ""
+    for i, d in enumerate(dags):
+        bg = row_alt if i % 2 else tbl_bg
+        done = sum(1 for r in d.get("last_results", {}).values() if r.get("status") == "done")
+        errs = sum(1 for r in d.get("last_results", {}).values() if r.get("status") == "error")
+        last_ts = ""
+        if d.get("last_run_at"):
+            from datetime import datetime as _v4dt
+            try:
+                last_ts = _v4dt.fromtimestamp(d["last_run_at"]).strftime("%H:%M:%S")
+            except Exception:
+                last_ts = "—"
+        else:
+            last_ts = "—"
+
+        rows_html += (
+            f'<tr style="background:{bg};">'
+            f'<td style="padding:5px 10px;font-size:12px;font-family:monospace;">{d["dag_id"]}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;">{d.get("asset", "—")}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;">'
+            f'<span style="color:{"#22c55e" if d.get("running") else "#888"}">'
+            f'{"● actif" if d.get("running") else "○ arrêté"}</span></td>'
+            f'<td style="padding:5px 10px;font-size:12px;">{d.get("cycle_s") or "—"}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;">{last_ts}</td>'
+            f'<td style="padding:5px 10px;font-size:12px;color:#22c55e;">{done} ✓</td>'
+            f'<td style="padding:5px 10px;font-size:12px;color:#ef4444;">{errs} ✗</td>'
+            f'</tr>'
+        )
+
+    st.markdown(
+        f'<div style="overflow:auto;border:1px solid {border};border-radius:8px;'
+        f'background:{tbl_bg};max-height:300px;">'
+        f'<table style="border-collapse:collapse;width:100%;min-width:600px;">'
+        f'<thead><tr>{header}</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        f'</table></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def main():
@@ -5143,7 +4667,11 @@ def main():
                 render_portfolio(portfolio)
 
             def _render_global():
-                """Vue consolidée : PnL tous actifs."""
+                """Vue consolidée : PnL tous actifs + analyses IA."""
+                st.markdown("### 🧠 Dernières analyses IA")
+                assets = _active_assets_v4() or ["BTC/USDT"]
+                for asset in assets:
+                    _render_ai_analysis(asset, expanded=False)
                 st.markdown("---")
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)
@@ -5151,6 +4679,9 @@ def main():
                 render_live_logs(key="global")
 
             render_asset_tabs(_render_for_asset, global_fn=_render_global, pre_global_fn=_render_portfolio_first)
+
+            # ── V4 — État des DAGs (si l'API est accessible) ─────────────────
+            _render_v4_status()
 
             # ── Live price poller (met à jour les colonnes Progression sans reload) ──
             _inject_live_trade_prices_js()

@@ -2884,7 +2884,7 @@ def _inject_live_trade_prices_js() -> None:
   }
 
   setInterval(pollSpot, 3000);
-  setInterval(pollCarry, 5000);  // slightly slower, requires CCXT fetch
+  setInterval(pollCarry, 30000);  // carry P&L évolue lentement (funding 8h, basis) + endpoint ccxt lourd
   pollSpot();
   setTimeout(pollCarry, 1000);
 })();

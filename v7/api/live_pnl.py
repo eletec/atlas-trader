@@ -17,22 +17,37 @@ DB_PATH = "/app/data/v4.db"
 
 
 def get_live_prices() -> dict[str, float]:
-    """Fetch live prices from V7 API."""
+    """Prix live — lecture directe du PriceStore en mémoire (même process).
+
+    Évite le round-trip HTTP localhost:8000 qui timeout quand l'event loop
+    est occupée par les cycles DAG (ccxt synchrone, 23 actifs).
+    """
     try:
-        req = urllib.request.Request(f"{API_BASE}/prices/snapshot")
-        # Timeout généreux : l'event loop de l'API peut être occupée par les
-        # cycles DAG (ccxt synchrone) — les réponses peuvent dépasser 10s.
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-        prices = {}
-        for sym, d in data.items():
-            if isinstance(d, dict) and "price" in d:
-                # Normalize: BTCUSDT → BTC/USDT, BTC/USDT → BTC/USDT
-                norm = sym if "/" in sym else f"{sym[:-4]}/{sym[-4:]}" if sym.endswith("USDT") else sym
-                prices[norm] = float(d["price"])
+        from v4.api.routes.prices import PriceStore
+        prices: dict[str, float] = {}
+        for rec in PriceStore.instance().snapshot():
+            sym = rec.get("symbol", "")
+            # Normalize: BTCUSDT → BTC/USDT, BTC/USDT → BTC/USDT
+            norm = sym if "/" in sym else f"{sym[:-4]}/{sym[-4:]}" if sym.endswith("USDT") else sym
+            try:
+                prices[norm] = float(rec.get("price", 0))
+            except (TypeError, ValueError):
+                pass
         return prices
     except Exception:
-        return {}
+        # Fallback HTTP (si PriceStore indisponible)
+        try:
+            req = urllib.request.Request(f"{API_BASE}/prices/snapshot")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+            prices = {}
+            for sym, d in data.items():
+                if isinstance(d, dict) and "price" in d:
+                    norm = sym if "/" in sym else f"{sym[:-4]}/{sym[-4:]}" if sym.endswith("USDT") else sym
+                    prices[norm] = float(d["price"])
+            return prices
+        except Exception:
+            return {}
 
 
 def get_live_pnl():

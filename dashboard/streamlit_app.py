@@ -2537,7 +2537,7 @@ def render_trades_list_sortable(trades: list[dict]):
         pass
 
     import json as _json_tr
-    cols = [col_date, col_asset, col_action, "Signal", col_entry, col_size, "SL", "TP", col_pnl, "Progression", col_score]
+    cols = [col_date, col_asset, col_action, "Signal", col_entry, col_size, "SL", "TP", col_pnl, "Funding", "Progression", col_score]
     header_cells = "".join(
         f'<th style="padding:9px 12px;font-size:12px;font-weight:600;'
         f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
@@ -2596,7 +2596,9 @@ def render_trades_list_sortable(trades: list[dict]):
         else:
             pnl_str = f'<span style="color:#e74c3c;font-weight:600;">${pnl_val:+,.2f}</span>'
 
-        # Progression (P&L latent pour trades ouverts)
+        # Funding (CARRY ouvert — collecte réelle, statique)
+        funding_str = "—"
+        # Progression (P&L latent — live via JS)
         progress_str = "—"
         entry_price = trade.get("entry_price", 0) or 0
         size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
@@ -2604,16 +2606,14 @@ def render_trades_list_sortable(trades: list[dict]):
         is_open = pnl_val is None
         _tid = trade.get("id", f"t{i}")
         _ast = trade.get("asset", "")
-        if is_open and entry_price > 0 and size_usd > 0:
+        if is_open:
+            total_funding = float(trade.get("total_funding_received", 0) or 0)
+            n_payments = int(trade.get("n_payments", 0) or 0)
             if action == "CARRY":
-                # Progression réelle : funding collecté + jours détenus
-                total_funding = float(trade.get("total_funding_received", 0) or 0)
-                n_payments = int(trade.get("n_payments", 0) or 0)
+                # Days held
                 try:
                     from datetime import datetime as _dt, timezone as _tz
-                    _ts_str = str(trade.get("timestamp", ""))
-                    # Nettoyer le timestamp : remplacer espace par T, tronquer à 19 chars (YYYY-MM-DDTHH:MM:SS)
-                    _ts_str = _ts_str.replace(" ", "T")[:19]
+                    _ts_str = str(trade.get("timestamp", "")).replace(" ", "T")[:19]
                     if _ts_str:
                         opened = _dt.fromisoformat(_ts_str)
                         days_held = max(0, (_dt.now(_tz.utc) - opened.replace(tzinfo=_tz.utc)).total_seconds() / 86400)
@@ -2622,10 +2622,12 @@ def render_trades_list_sortable(trades: list[dict]):
                 except Exception:
                     days_held = 0
                 if total_funding > 0:
-                    progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}j)</span>'
+                    funding_str = f'<span style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}j)</span>'
                 else:
-                    progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}j held · wait funding</span>'
-            elif current_price > 0:
+                    funding_str = f'<span style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}j · wait funding</span>'
+                # P&L latent réel (basis + funding) rempli par le JS via /v7/carry-pnl
+                progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
+            elif entry_price > 0 and current_price > 0 and size_usd > 0:
                 if action in ("SELL", "SHORT"):
                     pnl_pct = (entry_price - current_price) / entry_price * 100
                 else:
@@ -2635,8 +2637,6 @@ def render_trades_list_sortable(trades: list[dict]):
                 progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="color:{prog_color};">{unrealized:+,.2f}$ ({pnl_pct:+.2f}%)</span>'
             else:
                 progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
-        elif is_open:
-            progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
 
         cells = [
             trade.get("timestamp", "")[:16].replace("T", " "),
@@ -2649,6 +2649,7 @@ def render_trades_list_sortable(trades: list[dict]):
             f'${trade.get("sl_price", 0):,.2f}' if trade.get("sl_price") else "—",
             f'${trade.get("tp_price", 0):,.2f}' if trade.get("tp_price") else "—",
             pnl_str,
+            funding_str,
             progress_str,
             f'{trade.get("score", 0):.0f}/100',
         ]
@@ -2660,8 +2661,10 @@ def render_trades_list_sortable(trades: list[dict]):
     # ── Ligne de synthèse ─────────────────────────────────────────────────
     _sum_realized = 0.0
     _sum_unrealized = 0.0
+    _sum_funding = 0.0
     _n_closed = 0
     _n_open = 0
+    _has_carry = False
     for trade in trades:
         # P&L fermé
         try:
@@ -2677,10 +2680,13 @@ def render_trades_list_sortable(trades: list[dict]):
             size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
             current_price = live_prices.get(trade.get("asset", ""), 0)
             act = trade.get("action", "")
+            tfund = float(trade.get("total_funding_received", 0) or 0)
             if act == "CARRY":
-                # Carry P&L = estimated funding (spot P&L is ~0 for delta-neutral)
-                est_funding = size_usd * 0.0001 * 3  # ~0.01% × 3/day
-                _sum_unrealized += est_funding
+                # Funding réel collecté (statique) + P&L latent ≈ funding (proxy serveur,
+                # remplacé par le JS via /v7/carry-pnl avec basis+funding réel)
+                _has_carry = True
+                _sum_funding += tfund
+                _sum_unrealized += tfund
             elif entry_price > 0 and current_price > 0 and size_usd > 0:
                 if act in ("SELL", "SHORT"):
                     pnl_pct = (entry_price - current_price) / entry_price
@@ -2718,10 +2724,13 @@ def render_trades_list_sortable(trades: list[dict]):
         # Col 9: P&L (realized if any)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};">{"${:+,.2f}".format(_sum_realized) if _n_closed > 0 else "—"}</td>'
-        # Col 10: Progression (TOTAL latent $ + %)
+        # Col 10: Funding total (statique)
+        f'<td id="atlas-summary-funding" style="padding:8px 12px;font-size:13px;font-weight:600;color:#2ecc71;'
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">{"💰 ${:.4f}".format(_sum_funding) if _sum_funding > 0 else "—"}</td>'
+        # Col 11: Progression (TOTAL latent $ + %)
         f'<td id="atlas-summary-prog" style="padding:8px 12px;font-size:13px;font-weight:700;color:{_sum_color};'
-        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_total_pnl:+,.2f} ({_total_unreal_pct:+.2f}%)</td>'
-        # Col 11: Score (empty)
+        f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">${_sum_unrealized:+,.2f} ({_total_unreal_pct:+.2f}%)</td>'
+        # Col 12: Score (empty)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};"></td>'
     )
@@ -2730,7 +2739,7 @@ def render_trades_list_sortable(trades: list[dict]):
     html = f"""
 <div style="overflow-y:auto;max-height:520px;border:1px solid {border};
             border-radius:10px;background:{tbl_bg};margin-bottom:24px;">
-  <table style="border-collapse:collapse;width:100%;min-width:900px;">
+  <table style="border-collapse:collapse;width:100%;min-width:1100px;">
     <thead><tr>{header_cells}</tr></thead>
     <tbody>{rows_html}</tbody>
   </table>
@@ -2799,8 +2808,6 @@ def _inject_live_trade_prices_js() -> None:
       var realPnl = t.real_pnl;
       var realPct = t.real_pnl_pct;
       var size = parseFloat(el.getAttribute('data-atlas-size')) || 0;
-      // Only update if there's meaningful P&L (> $0.001), otherwise keep server estimate
-      if (Math.abs(realPnl) < 0.001 && Math.abs(realPct) < 0.01) return;
       var color = realPnl >= 0 ? '#2ecc71' : '#e74c3c';
       el.style.color = color;
       el.style.opacity = '1';

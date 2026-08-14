@@ -20,7 +20,9 @@ def get_live_prices() -> dict[str, float]:
     """Fetch live prices from V7 API."""
     try:
         req = urllib.request.Request(f"{API_BASE}/prices/snapshot")
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        # Timeout généreux : l'event loop de l'API peut être occupée par les
+        # cycles DAG (ccxt synchrone) — les réponses peuvent dépasser 10s.
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
         prices = {}
         for sym, d in data.items():

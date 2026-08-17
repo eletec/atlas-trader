@@ -3108,20 +3108,27 @@ def render_agent_scores_chart(asset: str):
 
 
 def _apply_optimized_params(cfg: dict) -> int:
-    """Copie les _optimized_* vers les params réels (actifs non verrouillés)."""
+    """Copie les _optimized_* vers les params réels (actifs non verrouillés).
+
+    NOTE : `capital` N'EST PAS copié — l'optimiseur l'écrasait à $500,
+    écrasant le capital cible de $2,000/actif. Le safety_cap garde un
+    plancher de $100.
+    """
     assets = cfg.get("assets", {})
     count = 0
     for sym, p in assets.items():
         if p.get("locked", False):
             continue
         changed = False
-        for opt_key, real_key in [("_optimized_capital", "capital"),
-                                   ("_optimized_stress_loss_pct", "stress_loss_pct"),
+        for opt_key, real_key in [("_optimized_stress_loss_pct", "stress_loss_pct"),
                                    ("_optimized_safety_cap", "safety_cap"),
                                    ("_optimized_max_hold_days", "max_hold_days")]:
             # Note: min_funding N'EST PAS appliqué — trop sensible, le défaut 0.005% est meilleur
             if opt_key in p:
-                cfg["assets"][sym][real_key] = p[opt_key]
+                val = p[opt_key]
+                if real_key == "safety_cap":
+                    val = max(100, int(val))
+                cfg["assets"][sym][real_key] = val
                 changed = True
         if changed:
             count += 1

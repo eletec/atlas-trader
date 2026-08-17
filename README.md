@@ -66,9 +66,9 @@ UI: Streamlit dashboard (FO/BO unifié)
 
 ### Simplified (25 July 2026)
 
-After the GPT/DeepSeek audit, the execution architecture was replaced:
-- **29 DAGs** → single `run_carry_cycle.py` script (background thread)
-- **React/Next.js frontend** → removed (Streamlit BO tabs)
+After the GPT/DeepSeek audit, the execution architecture was simplified:
+- **Single script** `run_carry_cycle.py` — one background thread, 8h cycle
+- **Streamlit dashboard** — unified FO/BO UI
 - **LLM out of critical path** — zero impact on trading decisions
 
 > ⚠️ Le runbook serveur n'est pas versionné (secrets/IPs) — voir l'instance de production.

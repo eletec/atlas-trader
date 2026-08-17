@@ -64,13 +64,6 @@ Cycle (8h): run_carry_cycle.py → 23 assets → FundingCarryNode → persist_tr
 UI: Streamlit dashboard (FO/BO unifié)
 ```
 
-### Simplified (25 July 2026)
-
-After the GPT/DeepSeek audit, the execution architecture was simplified:
-- **Single script** `run_carry_cycle.py` — one background thread, 8h cycle
-- **Streamlit dashboard** — unified FO/BO UI
-- **LLM out of critical path** — zero impact on trading decisions
-
 > ⚠️ Le runbook serveur n'est pas versionné (secrets/IPs) — voir l'instance de production.
 
 ---

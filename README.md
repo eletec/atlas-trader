@@ -2,25 +2,9 @@
 
 > **Market-neutral funding rate harvesting** : short perpetual + long spot, delta-neutral.
 > **Status** : 🟢 Paper trading live on Infomaniak · **https://atlastrader.org**
-> **Last update** : 6 August 2026 — Memory optimization (3.4GB→566MB), consolidated poller, swap added
+> **Last update** : 17 August 2026 — repo cleanup (dead DAG modules removed), live P&L columns
 
 ---
-
-## Architecture
-
-```
-Infomaniak VPS (8 GB RAM, 2 GB swap)
-├── Docker Compose V4
-│   ├── atlas-v4-api       — FastAPI :8000 (carry cycle 8h + PositionMonitor 60s + prix)
-│   └── atlas-v4-dashboard — Streamlit :8502 (FO + BO)
-├── Nginx + Let's Encrypt → atlastrader.org
-└── SQLite /app/data/v4.db (WAL mode)
-```
-
-**Single script** `v7/run_carry_cycle.py` — cycle carry unique (8h).
-**Consolidated price poller** : 1 task for all 23 assets (was 48 tasks → 3.4GB).
-
-> ⚠️ **OPS.md** (runbook serveur) n'est pas versionné — voir l'instance de production.
 
 ## Strategy
 
@@ -70,10 +54,11 @@ The strategy captures the **funding rate premium** on crypto perpetual futures:
 ## Architecture
 
 ```
-Docker Compose V4:
-  atlas-v4-api       — FastAPI :8000 → carry cycle + PositionMonitor
-  atlas-v4-dashboard — Streamlit :8502 → FO/BO unified UI
-  Nginx + Let's Encrypt → https://atlastrader.org
+Infomaniak VPS (8 GB RAM, 2 GB swap)
+├── atlas-v4-api       — FastAPI :8000 → carry cycle + PositionMonitor + prix
+├── atlas-v4-dashboard — Streamlit :8502 → FO/BO unified UI
+├── Nginx + Let's Encrypt → https://atlastrader.org
+└── SQLite /app/data/v4.db (WAL mode)
 
 Cycle (8h): run_carry_cycle.py → 23 assets → FundingCarryNode → persist_trade
 UI: Streamlit dashboard (FO/BO unifié)
@@ -85,6 +70,8 @@ After the GPT/DeepSeek audit, the execution architecture was replaced:
 - **29 DAGs** → single `run_carry_cycle.py` script (background thread)
 - **React/Next.js frontend** → removed (Streamlit BO tabs)
 - **LLM out of critical path** — zero impact on trading decisions
+
+> ⚠️ Le runbook serveur n'est pas versionné (secrets/IPs) — voir l'instance de production.
 
 ---
 
@@ -145,9 +132,14 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 - **📡 Live Prices** — real-time price cards with % change and position status
 - **🌐 Global View** — per-asset scores, funding rates, net returns vs hurdle
 - **💼 Portfolio** — capital, exposure, open trades, P&L
-- **🎯 Carry Assets** — scan, optimize, apply, reload config
+- **📋 Trades** — sortable trade journal with live Funding + Progression columns
+- **🎯 Carry Assets Tab** — full lifecycle management:
+  1. **🔄 Scan Binance** — CCXT detects all Spot∩Perp pairs
+  2. **📊 Optimize** — volatility, funding history, OI, backtest results, viability flags
+  3. **📊 Apply optimized** — copies `_optimized_*` params to live config (respects 🔒 locked assets)
+  4. **🚀 Apply & Reload** — hot-reload du config carry sans redémarrage
+  5. **📂 Expand/Collapse all** + **📷 Logo uploads** — SVG fallback from `images/assets/`
 - **📊 Live Monitor** — cycle status, open positions, recent decisions
-- **📋 Trades** — sortable trade journal
 - **🤖 AI Config** — dual LLM (DeepSeek, Ollama)
 
 ## Contributing

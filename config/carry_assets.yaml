@@ -163,8 +163,8 @@ assets:
 # ── Global settings ──
 global:
   total_capital: 14000            # somme des capitaux des actifs activés
-  max_total_exposure_pct: 0.40   # 40% max en carry
-  max_simultaneous_positions: 4
+  max_total_exposure_pct: 0.60   # 60% max en carry
+  max_simultaneous_positions: 6
   round_trip_cost_bps: 48        # 40 fees + 8 slippage
   estimated_hold_days: 60        # pour l'annualisation des coûts
   staking_annual: 0.05           # 5%/an sur idle USDT

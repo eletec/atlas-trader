@@ -409,11 +409,14 @@ class PositionMonitor:
 
     @staticmethod
     def _fetch_perp(symbol: str) -> float:
-        """Fetch le prix du perpetual via CCXT Binance."""
+        """Fetch le prix du perpetual via CCXT Binance (gère les contrats ×1000)."""
         try:
             import ccxt
             exchange = ccxt.binance({"enableRateLimit": True})
-            symbol_perp = f"{symbol}:USDT" if ":" not in symbol else symbol
+            MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB", "BONK": "1000BONK",
+                              "FLOKI": "1000FLOKI", "LUNC": "1000LUNC"}
+            base = symbol.split("/")[0]
+            symbol_perp = f"{MULTIPLIER_MAP.get(base, base)}/USDT:USDT"
             ticker = exchange.fetch_ticker(symbol_perp)
             return float(ticker.get("last", 0))
         except Exception as exc:

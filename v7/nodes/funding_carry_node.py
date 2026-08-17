@@ -245,13 +245,22 @@ class FundingCarryNode:
             "okx": ccxt.okx, "kraken": ccxt.kraken,
         }
         return ex_map.get(self.exchange_name, ccxt.binance)({"enableRateLimit": True})
-    
+
+    @staticmethod
+    def _perp_symbol(symbol: str) -> str:
+        """Convertit un symbole spot en symbole perp USDⓈ-M (gère les contrats ×1000)."""
+        base = symbol.split("/")[0]
+        MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB", "BONK": "1000BONK",
+                          "FLOKI": "1000FLOKI", "LUNC": "1000LUNC"}
+        base_perp = MULTIPLIER_MAP.get(base, base)
+        return f"{base_perp}/USDT:USDT"
+
     def fetch_current_funding(self) -> float:
         """Fetch le funding rate actuel."""
         try:
             import ccxt
             exchange = self._get_exchange()
-            symbol_perp = f"{self.symbol}:USDT"
+            symbol_perp = self._perp_symbol(self.symbol)
             rates = exchange.fetch_funding_rates([symbol_perp])
             if rates and symbol_perp in rates:
                 return float(rates[symbol_perp]["fundingRate"])
@@ -261,7 +270,7 @@ class FundingCarryNode:
         # Fallback: Binance public API
         try:
             import requests
-            symbol_clean = self.symbol.replace("/", "")
+            symbol_clean = self._perp_symbol(self.symbol).replace("/", "").replace(":USDT", "")
             resp = requests.get(
                 "https://fapi.binance.com/fapi/v1/premiumIndex",
                 params={"symbol": symbol_clean},
@@ -298,7 +307,7 @@ class FundingCarryNode:
         for attempt in range(3):
             try:
                 exchange = self._get_exchange()
-                symbol_perp = f"{self.symbol}:USDT" if ":" not in self.symbol else self.symbol
+                symbol_perp = self._perp_symbol(self.symbol)
                 ticker = exchange.fetch_ticker(symbol_perp)
                 price = float(ticker.get("last", 0))
                 if price > 0:

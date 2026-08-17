@@ -129,7 +129,12 @@ def get_carry_pnl():
             if sym and sym not in symbols_seen:
                 symbols_seen.add(sym)
                 try:
-                    sym_perp = f"{sym}:USDT" if ":" not in sym else sym
+                    # Gérer les contrats ×1000 (SHIB→1000SHIB, PEPE→1000PEPE...)
+                    MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB",
+                                      "BONK": "1000BONK", "FLOKI": "1000FLOKI",
+                                      "LUNC": "1000LUNC"}
+                    base = sym.split("/")[0]
+                    sym_perp = f"{MULTIPLIER_MAP.get(base, base)}/USDT:USDT"
                     ticker = exchange.fetch_ticker(sym_perp)
                     perp_prices[sym] = float(ticker.get("last", 0))
                 except Exception:

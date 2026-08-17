@@ -206,9 +206,21 @@ def render_global_overview() -> None:
         funding = st_info.get("funding_rate")
         cycle_signal = st_info.get("signal", "flat")
         
-        # Dynamic score based on net return vs hurdle (5%)
+        # Score : vrai score stratégie (risk budget, stocké dans context_json)
+        # pour les positions ouvertes ; heuristique net_return/funding sinon.
         if has_position:
-            score = 75
+            score = None
+            _ctx_raw = pos.get("context_json")
+            if _ctx_raw:
+                try:
+                    import json as _jsc
+                    _ctx = _jsc.loads(_ctx_raw) if isinstance(_ctx_raw, str) else _ctx_raw
+                    if isinstance(_ctx, dict) and _ctx.get("score") is not None:
+                        score = int(_ctx.get("score", 0))
+                except Exception:
+                    pass
+            if score is None:
+                score = 75  # fallback si context absent
             signal_display = "💸 carry"
             trade_str = f"🟢 CARRY ${size_usd:,.0f}"
             trend = f"entry @ ${entry_price:,.2f}"

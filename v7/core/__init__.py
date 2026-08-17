@@ -1,13 +1,8 @@
 """
 v7/core/__init__.py — V7 Core Modules.
 
-MetaAllocator + RegimeEngine V7 + (future: EventEngine, PortfolioOptimizer).
+Asset config, carry scanner, global allocator, grid search.
 """
 
-from v7.core.meta_allocator import MetaAllocator, StrategyScore, Allocation, MetaAllocation
-from v7.core.regime_engine import RegimeEngineV7, RegimeDistribution
+__all__: list[str] = []
 
-__all__ = [
-    "MetaAllocator", "StrategyScore", "Allocation", "MetaAllocation",
-    "RegimeEngineV7", "RegimeDistribution",
-]

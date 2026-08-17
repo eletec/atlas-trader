@@ -1,6 +1,6 @@
 # Contributing to Atlas Trader
 
-Thanks for your interest! Atlas Trader is a crypto funding-rate carry strategy with a DAG execution engine.
+Thanks for your interest! Atlas Trader is a crypto funding-rate carry strategy: short perpetual + long spot, delta-neutral, collecting the funding rate premium.
 
 ## Quick Start
 
@@ -15,7 +15,6 @@ docker compose -f docker-compose.v4.yml up -d --build
 
 - **API**: FastAPI on port 8000 — `v4/api/`
 - **Dashboard**: Streamlit on port 8502 — `dashboard/streamlit_app.py`
-- **Frontend**: Next.js on port 3000 — `v4/frontend/`
 - **Strategy**: Funding carry nodes — `v7/`
 
 ## Pull Requests

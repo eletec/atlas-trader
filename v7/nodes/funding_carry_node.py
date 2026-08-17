@@ -1,12 +1,10 @@
 """
-v7/nodes/funding_carry_node.py — DAG Node: Funding Carry V7.
+v7/nodes/funding_carry_node.py — Nœud Funding Carry V7.
 
-Nœud compatible avec le framework DAG V4/V5/V6.
-Fetch le funding rate, exécute FundingCarryEngine, produit un signal.
+Fetch le funding rate, évalue le hurdle économique, produit un signal.
+Appelé par v7/run_carry_cycle.py (cycle carry unique, 8h).
 
-Intégration:
-    Depuis demo_dag.py → ajouter FundingCarryNode dans le pipeline
-    Output: signal carry (open/close/flat) + expected_return + size
+Output: signal carry (open/close/flat) + expected_return + size
 """
 
 from __future__ import annotations

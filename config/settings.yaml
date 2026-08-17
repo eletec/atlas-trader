@@ -18,7 +18,7 @@ project:
 # ═══════════════════════════════════════════════════════════════
 # V4 — Configuration Globale
 # Tous les paramètres sont surchargeables par symbole dans
-# la section "assets". Priorité : paramètre du nœud DAG >
+# la section "assets". Priorité : paramètre par actif >
 # settings symbole > settings global > défaut code.
 # ═══════════════════════════════════════════════════════════════
 
@@ -516,7 +516,7 @@ llm:
   max_tokens_per_cycle: 15000
   cache_responses: true
   cache_ttl_seconds: 3600
-  # Modèle rapide pour tâches légères (DAG carry analysis, résumés, etc.)
+  # Modèle rapide pour tâches légères (analyse carry, résumés, etc.)
   fast_provider: deepseek
   fast_model: deepseek-chat
   fast_temperature: 0.3

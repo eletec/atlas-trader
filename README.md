@@ -17,8 +17,10 @@ Infomaniak VPS (8 GB RAM, 2 GB swap)
 └── SQLite /app/data/v4.db (WAL mode)
 ```
 
-**Single script** `v7/run_carry_cycle.py` replaces the old 29-DAG system.
+**Single script** `v7/run_carry_cycle.py` — cycle carry unique (8h).
 **Consolidated price poller** : 1 task for all 23 assets (was 48 tasks → 3.4GB).
+
+> ⚠️ **OPS.md** (runbook serveur) n'est pas versionné — voir l'instance de production.
 
 ## Strategy
 
@@ -71,18 +73,17 @@ The strategy captures the **funding rate premium** on crypto perpetual futures:
 Docker Compose V4:
   atlas-v4-api       — FastAPI :8000 → carry cycle + PositionMonitor
   atlas-v4-dashboard — Streamlit :8502 → FO/BO unified UI
-  atlas-v4-ollama    — Local LLM (DeepSeek fallback)
   Nginx + Let's Encrypt → https://atlastrader.org
 
-Cycle (8h): run_carry_cycle.py → 29 assets → FundingCarryNode → persist_trade
-Frontend:  React/Next.js removed — replaced by Streamlit dashboard
+Cycle (8h): run_carry_cycle.py → 23 assets → FundingCarryNode → persist_trade
+UI: Streamlit dashboard (FO/BO unifié)
 ```
 
 ### Simplified (25 July 2026)
 
-After the GPT/DeepSeek audit, the DAG infrastructure was replaced:
+After the GPT/DeepSeek audit, the execution architecture was replaced:
 - **29 DAGs** → single `run_carry_cycle.py` script (background thread)
-- **React Flow canvas** → removed (Streamlit BO tabs)
+- **React/Next.js frontend** → removed (Streamlit BO tabs)
 - **LLM out of critical path** — zero impact on trading decisions
 
 ---
@@ -123,7 +124,7 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 | Path | Purpose |
 |------|---------|
 | `v7/nodes/funding_carry_node.py` | Core strategy — hurdle, risk budgeting, exit zones |
-| `v7/run_carry_cycle.py` | Single-script carry cycle (replaces 29 DAGs) |
+| `v7/run_carry_cycle.py` | Single-script carry cycle |
 | `v7/position_monitor.py` | Risk monitor (60s) — kill-switch 4 tiers |
 | `v7/backtest_v7_node.py` | Backtest engine (real prices, config-driven) |
 | `v7/backtest_walkforward.py` | Walk-forward 3Y (causal universe, regime segmentation) |

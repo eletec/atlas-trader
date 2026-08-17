@@ -1,6 +1,6 @@
 # Atlas Trader — Configuration des actifs Funding Carry
 # Chaque actif peut être activé/désactivé et paramétré individuellement.
-# Les DAGs sont créés uniquement pour les actifs activés (enabled: true).
+# Seuls les actifs activés (enabled: true) sont tradés par le cycle carry.
 
 assets:
   BTC/USDT:

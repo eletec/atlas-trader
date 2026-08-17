@@ -58,6 +58,10 @@ logo_block.txt
 
 # Fichiers de travail temporaires
 fix_css.py
+
+# Docs opérationnelles / prompts d'audit — ne pas publier
+OPS.md
+AUDIT_V7_PROMPT.md
 fix_tabs.py
 gen_logo.py
 patch_icons.py

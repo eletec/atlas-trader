@@ -254,7 +254,10 @@ class PositionMonitor:
             )
             for pd in pos_data:
                 try:
-                    if pd["action"] in ("short", "carry"):
+                    if pd["action"] == "carry":
+                        # P&L carry réel (basis+funding) — pas le spot directionnel
+                        pnl = pd["unrealized"]
+                    elif pd["action"] in ("short",):
                         pnl = (pd["entry_price"] - pd["current_price"]) / pd["entry_price"] * pd["size_usd"]
                     else:
                         pnl = (pd["current_price"] - pd["entry_price"]) / pd["entry_price"] * pd["size_usd"]
@@ -369,7 +372,10 @@ class PositionMonitor:
 
             # 3e) Exécuter la clôture
             if should_close:
-                if pd["action"] in ("short", "carry"):
+                if pd["action"] == "carry":
+                    # P&L carry réel (basis+funding) — delta-neutre, pas le spot directionnel
+                    pnl = pd["unrealized"]
+                elif pd["action"] in ("short",):
                     pnl = (pd["entry_price"] - close_price) / pd["entry_price"] * pd["size_usd"]
                 else:
                     pnl = (close_price - pd["entry_price"]) / pd["entry_price"] * pd["size_usd"]

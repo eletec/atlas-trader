@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import numpy as np
@@ -63,6 +63,7 @@ class FundingCarryNode:
         kelly_fraction: float = 0.35,  # fractional Kelly 35% (Grok)
         max_hold_days: int = 14,        # time-stop : sortie forcée après N jours
         stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
+        cooldown_hours: int = 24,       # anti-churn : pas de réouverture avant N h après clôture
         exchange_name: str = "binance",  # binance | bybit | okx | kraken
         fee_bps: float = 10.0,       # frais spot Binance standard (0.1% = 10bps)
         slippage_bps: float = 2.0,
@@ -93,6 +94,7 @@ class FundingCarryNode:
         self.kelly_fraction = kelly_fraction
         self.max_hold_days = max_hold_days
         self.stop_loss_pct = stop_loss_pct
+        self.cooldown_hours = int(params.get("cooldown_hours", cooldown_hours)) if params else cooldown_hours
         self.exchange_name = exchange_name
         self.fee_bps = fee_bps
         self.slippage_bps = slippage_bps
@@ -319,6 +321,29 @@ class FundingCarryNode:
                 _time.sleep(1.0 * (attempt + 1))
         logger.warning("[%s] fetch_perp_price FAILED after 3 attempts: %s", self.node_id, last_err)
         return 0.0
+
+    def _last_close_age_hours(self) -> float | None:
+        """Heures depuis la dernière clôture de ce symbole (None si jamais fermé).
+
+        Anti-churn : empêche de rouvrir un actif dont le funding vient de
+        basculer (ex: SHIB/PEPE) et qui coûterait des frais de round-trip
+        à répétition.
+        """
+        try:
+            from storage.database import get_connection
+            with get_connection() as conn:
+                row = conn.execute(
+                    "SELECT closed_at FROM v4_trades "
+                    "WHERE symbol=? AND status='closed' "
+                    "ORDER BY closed_at DESC LIMIT 1",
+                    (self.symbol,),
+                ).fetchone()
+            if not row or not row[0]:
+                return None
+            closed_at = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+            return (datetime.now(timezone.utc) - closed_at).total_seconds() / 3600
+        except Exception:
+            return None
     
     # ── Decision logic ──
 
@@ -397,8 +422,13 @@ class FundingCarryNode:
             self.state.staking_earned += staking_8h
             
             # ── Opportunité d'ouverture ──
+            # Cooldown anti-churn : ne pas rouvrir un actif fermé récemment
+            _close_age_h = self._last_close_age_hours()
+            if _close_age_h is not None and _close_age_h < self.cooldown_hours:
+                reason = f"cooldown {self.cooldown_hours}h après clôture ({_close_age_h:.1f}h)"
+                confidence = 0.1
             # Filtre 1 : funding instantané dans la plage
-            if funding_rate >= self.min_funding and funding_rate <= self.max_funding:
+            elif funding_rate >= self.min_funding and funding_rate <= self.max_funding:
                 # Filtre 2 : funding MA 7j positif (évite les spikes isolés)
                 if funding_ma_7d <= 0:
                     reason = f"funding MA 7j={funding_ma_7d*100:.4f}% ≤ 0 → attente"

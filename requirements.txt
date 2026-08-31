@@ -1,13 +1,6 @@
 # Atlas Trader — Dépendances Python
 # Installer avec : pip install -r requirements.txt
 
-# ---- Orchestration agents ----
-langgraph>=0.2.0
-langchain>=0.3.0
-langchain-anthropic>=0.3.0
-langchain-openai>=0.3.0
-langchain-community>=0.3.0
-
 # ---- LLM Providers ----
 anthropic>=0.40.0
 openai>=1.50.0
@@ -28,15 +21,9 @@ qrcode[pil]>=7.4.0       # génération du QR code TOTP
 # ---- Market Data ----
 ccxt>=4.3.0
 yfinance>=0.2.40         # forex & commodités (XAU, XAG, WTI, EUR/USD, GBP/USD)
-websocket-client>=1.8.0  # WebSocket prix temps réel (SL/TP tick-by-tick)
-
-# ---- Quant / ML (V2 pipeline) ----
-huggingface_hub>=0.22.0
 
 # ---- Web Crawling ----
 requests>=2.32.0
-ddgs>=0.1.0                 # crawling gratuit sans clé API (ex duckduckgo-search)
-beautifulsoup4>=4.12.0
 
 # ---- News ----
 feedparser>=6.0.11      # RSS

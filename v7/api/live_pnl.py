@@ -7,13 +7,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import urllib.request
 
 logger = logging.getLogger("v7.api.live_pnl")
 
-API_BASE = "http://localhost:8000"
-DB_PATH = "/app/data/v4.db"
+API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
+_DB_URL = os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
+DB_PATH = _DB_URL[10:] if _DB_URL.startswith("sqlite:///") else _DB_URL
 
 
 def get_live_prices() -> dict[str, float]:
@@ -53,7 +55,7 @@ def get_live_prices() -> dict[str, float]:
 def get_live_pnl():
     """Retourne le P&L latent total et par actif."""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT symbol, action, entry_price, size_usd FROM v4_trades WHERE status='open'"
@@ -104,7 +106,7 @@ def get_carry_pnl():
     """
     try:
         import sqlite3
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT trade_id, symbol, action, entry_price, size_usd, context_json "
@@ -212,16 +214,16 @@ try:
     router = APIRouter()
 
     @router.get("/live-pnl")
-    async def live_pnl_endpoint():
+    def live_pnl_endpoint():
         return get_live_pnl()
 
     @router.get("/carry-pnl")
-    async def carry_pnl_endpoint():
+    def carry_pnl_endpoint():
         """P&L réel du carry (two-leg : basis + funding)."""
         return get_carry_pnl()
 
     @router.get("/live-pnl-widget", response_class=HTMLResponse)
-    async def live_pnl_widget():
+    def live_pnl_widget():
         """Widget HTML auto-rafraîchi — intégré en iframe dans le dashboard."""
         data = get_live_pnl()
         total = data.get("total_pnl", 0)

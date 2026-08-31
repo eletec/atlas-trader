@@ -60,7 +60,7 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
             db_path = db_path.split("///")[-1]
         else:
             return
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=10)
         # dag_logs — pour le dashboard V7 (multi_asset.py)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS dag_logs (
@@ -179,7 +179,7 @@ def run_cycle(
                     db_path = _os2.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
                     if db_path.startswith("sqlite:///"):
                         db_path = db_path[10:]
-                    conn = sqlite3.connect(db_path)
+                    conn = sqlite3.connect(db_path, timeout=10)
                     # Lire et mettre à jour le context_json avec les dernières valeurs
                     rows = conn.execute(
                         "SELECT trade_id, context_json FROM v4_trades WHERE symbol=? AND status='open' AND action='carry'",
@@ -236,7 +236,7 @@ def run_cycle(
                                 db_path = _os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
                                 if db_path.startswith("sqlite:///"):
                                     db_path = db_path[10:]
-                                conn = sqlite3.connect(db_path)
+                                conn = sqlite3.connect(db_path, timeout=10)
                                 for p in carry_pos:
                                     conn.execute(
                                         "UPDATE v4_trades SET status='closed', closed_at=? WHERE trade_id=?",

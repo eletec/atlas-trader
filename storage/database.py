@@ -238,7 +238,7 @@ def init_db(db_path: str | Path | None = None) -> None:
         _DB_PATH = resolved
 
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(_DB_PATH) as conn:
+    with sqlite3.connect(_DB_PATH, timeout=10) as conn:
         # P2: WAL mode — lectures concurrentes pendant une écriture
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -290,7 +290,7 @@ def _migrate_v2(conn) -> None:
 def get_connection():
     """Gestionnaire de contexte pour la connexion SQLite thread-safe."""
     with _lock:
-        conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+        conn = sqlite3.connect(_DB_PATH, timeout=10, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
             yield conn

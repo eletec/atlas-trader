@@ -59,7 +59,7 @@ _SESSION_LOCK = threading.Lock()
 def _init_session_db() -> None:
     """Crée la table sessions si absente."""
     _SESSION_DB.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(str(_SESSION_DB)) as conn:
+    with sqlite3.connect(str(_SESSION_DB), timeout=10) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY,
@@ -76,7 +76,7 @@ def _store_session(username: str, roles: list[str], expiry_days: int) -> str:
     exp = time.time() + expiry_days * 86400
     _init_session_db()
     with _SESSION_LOCK:
-        with sqlite3.connect(str(_SESSION_DB)) as conn:
+        with sqlite3.connect(str(_SESSION_DB), timeout=10) as conn:
             conn.execute("DELETE FROM sessions WHERE exp < ?", (time.time(),))
             conn.execute(
                 "INSERT OR REPLACE INTO sessions (session_id, username, roles, exp) VALUES (?,?,?,?)",
@@ -91,7 +91,7 @@ def _get_stored_session(session_id: str) -> dict | None:
         return None
     try:
         _init_session_db()
-        with sqlite3.connect(str(_SESSION_DB)) as conn:
+        with sqlite3.connect(str(_SESSION_DB), timeout=10) as conn:
             row = conn.execute(
                 "SELECT username, roles, exp FROM sessions WHERE session_id = ?",
                 (session_id,),
@@ -109,7 +109,7 @@ def _delete_session(session_id: str) -> None:
         return
     try:
         _init_session_db()
-        with sqlite3.connect(str(_SESSION_DB)) as conn:
+        with sqlite3.connect(str(_SESSION_DB), timeout=10) as conn:
             conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
     except Exception:
         pass

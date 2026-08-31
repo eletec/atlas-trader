@@ -161,7 +161,7 @@ def render_global_overview() -> None:
         db_path = os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
         if db_path.startswith("sqlite:///"):
             db_path = db_path[10:]
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=10)
         # Get latest log per dag_id
         rows = conn.execute(
             "SELECT dag_id, message FROM dag_logs WHERE dag_id LIKE 'v7_%' "

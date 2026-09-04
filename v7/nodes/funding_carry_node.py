@@ -257,6 +257,14 @@ class FundingCarryNode:
         base_perp = MULTIPLIER_MAP.get(base, base)
         return f"{base_perp}/USDT:USDT"
 
+    @staticmethod
+    def _perp_multiplier(symbol: str) -> float:
+        """Multiplicateur du contrat perp USDⓈ-M : 1000 pour les contrats ×1000
+        (le prix du contrat vaut ×1000 le prix spot du token), 1 sinon.
+        Indispensable pour que la basis (perp − spot)/spot soit correcte."""
+        base = symbol.split("/")[0]
+        return 1000.0 if base in {"PEPE", "SHIB", "BONK", "FLOKI", "LUNC"} else 1.0
+
     def fetch_current_funding(self) -> float:
         """Fetch le funding rate actuel."""
         try:
@@ -303,7 +311,7 @@ class FundingCarryNode:
         return 0.0
     
     def fetch_perp_price(self) -> float:
-        """Fetch le prix du perpetual avec retry."""
+        """Fetch le prix du perpetual (normalisé au prix par token) avec retry."""
         import time as _time
         last_err = ""
         for attempt in range(3):
@@ -313,7 +321,7 @@ class FundingCarryNode:
                 ticker = exchange.fetch_ticker(symbol_perp)
                 price = float(ticker.get("last", 0))
                 if price > 0:
-                    return price
+                    return price / self._perp_multiplier(self.symbol)
                 last_err = f"price=0 from ticker"
             except Exception as e:
                 last_err = str(e)[:120]
@@ -484,7 +492,7 @@ class FundingCarryNode:
                             net_return = net_expected_return - economic_hurdle
                             score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                             raw_size = self.capital * self.fraction * min(score, 0.25)
-                            
+
                             # ── Safety caps (depuis config ou fallback) ──
                             try:
                                 _cfg = get_asset_params(self.symbol)
@@ -499,7 +507,7 @@ class FundingCarryNode:
                                 coin = self.symbol.split("/")[0].upper()
                                 max_size = safety_caps.get(coin, 200)
                             min_size = 50
-                            
+
                             size_usd = min(raw_size, max_size)
                             if size_usd < min_size:
                                 reason = f"taille ${size_usd:.0f} < min ${min_size} → skip"
@@ -514,29 +522,16 @@ class FundingCarryNode:
                                     confidence = 0.3
                                 else:
                                     # ── DB safety check (anti-duplicate, 24/07/2026) ──
-                                    try:
-                                        from storage.paper_trader import get_open_positions
-                                        _db_open = get_open_positions(symbol=self.symbol)
-                                        _db_carry = [p for p in _db_open if p.get("action") in ("carry", "short")]
-                                        if _db_carry:
-                                            # Sync in-memory state with DB reality
-                                            self.state.position_open = True
-                                            reason = f"DB safety: position déjà ouverte (id={_db_carry[0].get('trade_id','?')})"
-                                            confidence = 0.1
-                                            logger.warning("[%s] %s", self.node_id, reason)
-                                        else:
-                                            self.state.position_open = True
-                                            self.state.entry_capital = size_usd
-                                            self.state.entry_spot = spot_price
-                                            self.state.entry_perp = perp_price if perp_price > 0 else spot_price
-                                            self.state.entry_time = datetime.now().isoformat()
-                                            self.state.negative_since = None
-                                            signal = "open_carry"
-                                            confidence = min(0.90, 0.50 + score * 2)
-                                            reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                                      f"→ net={net_expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
-                                                      f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
-                                    except ImportError:
+                                    from storage.paper_trader import get_open_positions
+                                    _db_open = get_open_positions(symbol=self.symbol)
+                                    _db_carry = [p for p in _db_open if p.get("action") in ("carry", "short")]
+                                    if _db_carry:
+                                        # Sync in-memory state with DB reality
+                                        self.state.position_open = True
+                                        reason = f"DB safety: position déjà ouverte (id={_db_carry[0].get('trade_id','?')})"
+                                        confidence = 0.1
+                                        logger.warning("[%s] %s", self.node_id, reason)
+                                    else:
                                         self.state.position_open = True
                                         self.state.entry_capital = size_usd
                                         self.state.entry_spot = spot_price

@@ -270,6 +270,32 @@ class TestCarryAccounting:
         print(f"\n  Unrealized P&L % bug: node=-0.71% → bug=$-{abs(bug_unrealized_usd):.0f} → fix=$-{abs(fix_unrealized_usd):.2f}")
         print(f"  NAV impact: bug={nav_bug:.0f} (-{100-nav_bug/nav_start*100:.1f}% DD) vs fix={nav_fix:.0f} (-{100-nav_fix/nav_start*100:.2f}% DD)")
 
+    def test_x1000_contract_perp_normalization(self):
+        """
+        Régression (04/09/2026) : les contrats ×1000 (SHIB/PEPE/BONK/FLOKI/LUNC)
+        ont un prix perp 1000× supérieur au prix spot du token. Sans normalisation
+        (perp/1000), la basis (perp−spot)/spot vaut ≈ −999 au lieu de ~0, ce qui
+        amplifie toute variation de basis par 1000× (bug du −$18.45 sur SHIB).
+        """
+        from v7.nodes.funding_carry_node import FundingCarryNode
+
+        # Multiplicateur : 1000 pour les ×1000, 1 sinon
+        for sym in ("SHIB/USDT", "PEPE/USDT", "BONK/USDT", "FLOKI/USDT", "LUNC/USDT"):
+            assert FundingCarryNode._perp_multiplier(sym) == 1000.0, f"{sym} doit être ×1000"
+        for sym in ("BTC/USDT", "ETH/USDT", "DOGE/USDT", "SOL/USDT", "AVAX/USDT"):
+            assert FundingCarryNode._perp_multiplier(sym) == 1.0, f"{sym} doit être ×1"
+
+        # Basis correcte vs buggée pour SHIB
+        spot = 5.41e-06
+        perp_raw = 0.00541                       # prix du contrat 1000SHIB
+        perp_norm = perp_raw / 1000.0            # prix par token
+        basis_wrong = (perp_raw - spot) / spot   # ≈ 999 (bug)
+        basis_right = (perp_norm - spot) / spot  # ≈ 0
+        assert basis_wrong > 900, "Sans normalisation la basis explose (~999)"
+        assert abs(basis_right) < 0.01, "Basis normalisée doit être ~0"
+
+        print(f"\n  ×1000: basis brute={basis_wrong:.1f} → normalisée={basis_right:.6f}")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

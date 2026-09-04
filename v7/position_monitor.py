@@ -415,7 +415,8 @@ class PositionMonitor:
 
     @staticmethod
     def _fetch_perp(symbol: str) -> float:
-        """Fetch le prix du perpetual via CCXT Binance (gère les contrats ×1000)."""
+        """Fetch le prix du perpetual via CCXT Binance (gère les contrats ×1000).
+        Retourne le prix normalisé au token (÷1000 pour les contrats 1000X)."""
         try:
             import ccxt
             exchange = ccxt.binance({"enableRateLimit": True})
@@ -424,7 +425,9 @@ class PositionMonitor:
             base = symbol.split("/")[0]
             symbol_perp = f"{MULTIPLIER_MAP.get(base, base)}/USDT:USDT"
             ticker = exchange.fetch_ticker(symbol_perp)
-            return float(ticker.get("last", 0))
+            raw = float(ticker.get("last", 0))
+            # Contrat ×1000 : le prix du contrat vaut ×1000 le prix spot du token
+            return raw / 1000.0 if base in MULTIPLIER_MAP else raw
         except Exception as exc:
             logger.debug("PositionMonitor: fetch perp %s failed: %s", symbol, exc)
             return 0.0

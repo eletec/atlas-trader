@@ -138,7 +138,9 @@ def get_carry_pnl():
                     base = sym.split("/")[0]
                     sym_perp = f"{MULTIPLIER_MAP.get(base, base)}/USDT:USDT"
                     ticker = exchange.fetch_ticker(sym_perp)
-                    perp_prices[sym] = float(ticker.get("last", 0))
+                    raw = float(ticker.get("last", 0))
+                    # Contrat ×1000 : normaliser au prix par token
+                    perp_prices[sym] = raw / 1000.0 if base in MULTIPLIER_MAP else raw
                 except Exception:
                     perp_prices[sym] = spot_prices.get(sym, 0)
     except ImportError:

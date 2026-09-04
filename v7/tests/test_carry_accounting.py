@@ -296,6 +296,31 @@ class TestCarryAccounting:
 
         print(f"\n  ×1000: basis brute={basis_wrong:.1f} → normalisée={basis_right:.6f}")
 
+    def test_entry_break_even_vs_max_hold(self):
+        """
+        Régression (04/09/2026) : le coût de round-trip (48bps) doit être amorti
+        par le funding sur la durée de hold max. Avec max_hold_days=14, le funding
+        minimum pour couvrir les frais est 48bps × 365/14 = 12.5%/an. Le min_funding
+        configuré (0.005%/8h = 5.48%/an) est INSUFFISANT → laisser entrer = perte garantie.
+        """
+        round_trip_cost = 0.0048  # 48bps
+        hold_days = 14
+        min_viable_annual = round_trip_cost * 365 / hold_days  # 12.51%
+        assert min_viable_annual > 0.12, f"Seuil viable = {min_viable_annual:.2%}/an"
+
+        # min_funding configuré = 0.005%/8h → annualisé (3 périodes/jour)
+        min_funding = 0.00005
+        annual_at_min_funding = min_funding * (365 * 3)  # 5.475%
+        assert annual_at_min_funding < min_viable_annual, \
+            f"min_funding {annual_at_min_funding:.2%}/an < seuil viable {min_viable_annual:.2%}/an"
+
+        # Avec max_hold_days=60 (ancien hardcode), le seuil retombe à 2.92% → trop permissif
+        old_cost = round_trip_cost * 365 / 60
+        assert old_cost < min_viable_annual, "Le hardcode 60j sous-estimait le coût"
+
+        print(f"\n  Break-even: hold={hold_days}j → funding ≥ {min_viable_annual:.2%}/an")
+        print(f"  min_funding actuel = {annual_at_min_funding:.2%}/an → sous le seuil (non rentable)")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

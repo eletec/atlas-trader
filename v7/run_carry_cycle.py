@@ -123,16 +123,19 @@ def run_cycle(
         pfx = sym.split("/")[0].lower()[:3]
         dag_id = f"v7_{sym.split('/')[0].lower()}"
         try:
+            # ── Paramètres par actif depuis carry_assets.yaml (fallback si absent) ──
+            from v7.core.asset_config import get_asset_params
+            _cfg = get_asset_params(sym)
             node = FundingCarryNode(
                 node_id=f"carry_{sym.split('/')[0].lower()}",
                 symbol=sym,
-                capital=capital_per_asset,
-                fraction=0.50,
-                min_funding=0.00005,
-                max_funding=0.003,
-                exit_after_hours=72,
-                max_hold_days=60,
-                stop_loss_pct=-0.05,
+                capital=float(_cfg.get("capital", capital_per_asset)),
+                fraction=float(_cfg.get("fraction", 0.50)),
+                min_funding=float(_cfg.get("min_funding", 0.00005)),
+                max_funding=float(_cfg.get("max_funding", 0.003)),
+                exit_after_hours=int(_cfg.get("exit_after_hours", 72)),
+                max_hold_days=int(_cfg.get("max_hold_days", 14)),
+                stop_loss_pct=float(_cfg.get("stop_loss_pct", -0.05)),
                 params={},  # pas de _backtest → mode live
             )
 

@@ -460,9 +460,11 @@ class FundingCarryNode:
                     
                     # ── Coûts annualisés (déduits du rendement, pas du hurdle) ──
                     round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage)
-                    # Utiliser la durée de détention réelle estimée (zone CLOSE = 60j)
-                    estimated_hold = 60
-                    annualized_cost = round_trip_cost * 365 / estimated_hold  # ~2.9%/an
+                    # Le coût annualisé dépend du time-stop réel : un hold court
+                    # rend les frais prohibitifs (48bps amortis sur peu de jours).
+                    # Ex: max_hold_days=14 → 12.5%/an de frais ; 60j → 2.9%/an.
+                    estimated_hold = max(self.max_hold_days, 1)
+                    annualized_cost = round_trip_cost * 365 / estimated_hold
                     net_expected_return = expected_return - annualized_cost
                     
                     # ── Percentile filter (relatif, séparé du hurdle éco) ──

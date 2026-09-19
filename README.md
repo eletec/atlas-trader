@@ -1,8 +1,8 @@
 ﻿# Atlas Trader V7 — Funding Carry Strategy
 
 > **Market-neutral funding rate harvesting** : short perpetual + long spot, delta-neutral.
-> **Status** : 🟢 Paper trading live on Infomaniak · **https://atlastrader.org**
-> **Last update** : 17 August 2026 — repo cleanup (dead DAG modules removed), live P&L columns
+> **Status** : 🟢 Paper trading live · **https://atlastrader.org**
+> **Last update** : 19 September 2026 — ×1000 contract fix, churn cooldown, conviction universe
 
 ---
 
@@ -19,11 +19,13 @@ The strategy captures the **funding rate premium** on crypto perpetual futures:
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
 | Universe | 37 Spot∩Perp pairs | Binance Spot + USDⓈ-M intersection |
-| Active assets | 23 | Filtered by liquidity, backtest |
+| Active assets | 6 majors | BTC, ETH, SOL, BNB, XRP, AVAX — liquidity + funding quality |
+| Min funding to enter | 0.02%/8h (~22%/yr) | Must clear fee amortization + hurdle |
+| Max hold | 30 days | Fee amortization horizon (48 bps ÷ 30d) |
 | Capital per asset | $2,000 | Safety > optimizer (never < $500) |
 | Economic hurdle | 5% annual | Cost of capital (SOFR + venue risk) |
 | Fees | 48 bps round-trip | 4 legs × 12 bps |
-| Exit zones | 14/30/60 days | HEALTHY → REVIEW → DERISK → CLOSE |
+| Exit zones | 30/60 days | DERISK (forward funding < costs) → CLOSE |
 | Kill-switch | 4 tiers | Portfolio DD, exposure, consecutive losses |
 | Cycle | 8h | Single script → `v7/run_carry_cycle.py` |
 | Price refresh | 3s per asset | 1 consolidated REST poller (shared ccxt instance) |
@@ -49,18 +51,26 @@ The strategy captures the **funding rate premium** on crypto perpetual futures:
 | Hurdle optimized by grid search | Data mining reintroduced | Hurdle fixed as cost of capital |
 | Kill-switch sign bug | All positions closed every 60s | Missing minus sign |
 
+### Bug Fixes (September 2026)
+
+| Bug | Impact | Fix |
+|-----|--------|-----|
+| ×1000 contract basis | Perp price of 1000SHIB compared against 1 SHIB spot → basis off by 1000× → false −$18.45 loss, kill-switch fired | Normalize perp price (÷1000) for SHIB/PEPE/BONK/FLOKI/LUNC |
+| Fee amortization hardcoded at 60 days | Round-trip cost underestimated 4× vs real 7–27 day holds | Amortize on the asset's actual `max_hold_days` |
+| Alt churn | 3 SHIB round-trips in 16h = −$1.44 in fees alone | 24h cooldown after close + universe reduced to majors |
+
 ---
 
 ## Architecture
 
 ```
-Infomaniak VPS (8 GB RAM, 2 GB swap)
-├── atlas-v4-api       — FastAPI :8000 → carry cycle + PositionMonitor + prix
+Linux VPS (Docker Compose)
+├── atlas-v4-api       — FastAPI :8000 → carry cycle + PositionMonitor + prices
 ├── atlas-v4-dashboard — Streamlit :8502 → FO/BO unified UI
 ├── Nginx + Let's Encrypt → https://atlastrader.org
 └── SQLite /app/data/v4.db (WAL mode)
 
-Cycle (8h): run_carry_cycle.py → 23 assets → FundingCarryNode → persist_trade
+Cycle (8h): run_carry_cycle.py → enabled assets → FundingCarryNode → persist_trade
 UI: Streamlit dashboard (FO/BO unifié)
 ```
 
@@ -73,7 +83,6 @@ UI: Streamlit dashboard (FO/BO unifié)
 ```bash
 git clone https://github.com/eletec/atlas-trader.git
 cd atlas-trader
-git checkout v7-dev
 
 # Start services
 docker compose -f docker-compose.v4.yml up -d --build
@@ -113,8 +122,8 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 | `v7/core/grid_search.py` | 2-pass grid search (hurdle removed — now fixed) |
 | `v7/core/global_allocator.py` | Cross-asset allocation — exposure cap |
 | `v7/core/asset_config.py` | Dynamic config loader — `carry_assets.yaml` |
-| `v7/tests/test_carry_accounting.py` | 5 unit tests — P&L accounting, breakeven, % bugs |
-| `config/carry_assets.yaml` | Single source of truth — 42 assets, per-asset params |
+| `v7/tests/test_carry_accounting.py` | 7 unit tests — P&L accounting, breakeven, ×1000 normalization |
+| `config/carry_assets.yaml` | Single source of truth — per-asset params (`enabled` flag) |
 | `dashboard/streamlit_app.py` | Streamlit dashboard — BO/FO unified |
 | `dashboard/multi_asset.py` | Live price cards, global overview, JS poller |
 
@@ -145,5 +154,5 @@ MIT — see [`LICENSE`](LICENSE)
 
 ---
 
-**Built by Jako · July 2026**
+**Built by Jako · 2026**
 

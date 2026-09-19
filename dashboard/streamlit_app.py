@@ -2558,54 +2558,6 @@ def _render_carry_config():
     st.caption(t("carry_dag_hint"))
 
 
-def _render_ai_analysis(asset: str, expanded: bool = False):
-    """Affiche la dernière analyse IA pour un actif (DAG + cache async)."""
-    try:
-        import urllib.request, json as _json
-        req = urllib.request.Request(f"{_API_BASE}/dag/status")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            dags = _json.loads(resp.read())
-        dag = next((d for d in dags if d.get("asset") == asset), None)
-        if not dag:
-            return
-        pfx = asset.split("/")[0].lower()[:3]
-        results = dag.get("last_results", {})
-        ai_node = results.get(f"{pfx}_llm", {})
-        if not isinstance(ai_node, dict):
-            ai_node = {}
-        ai_outputs = ai_node.get("outputs", {})
-        response = ai_outputs.get("response", "")
-        model = ai_outputs.get("model", "")
-        duration = ai_outputs.get("duration_ms", 0)
-        
-        # Si placeholder async, chercher le vrai résultat dans le cache LLM
-        if not response or "⏳" in str(response) or "LLM_ERROR" in str(response):
-            try:
-                req2 = urllib.request.Request(f"{_API_BASE}/dag/llm-results")
-                with urllib.request.urlopen(req2, timeout=3) as resp2:
-                    cache = _json.loads(resp2.read())
-                dag_id = dag.get("dag_id", "")
-                # Chercher avec le vrai dag_id, puis fallback unknown (ancien cache)
-                cache_key = f"llm_{dag_id}_{pfx}_llm"
-                cached = cache.get("results", {}).get(cache_key)
-                if not cached:
-                    cache_key_legacy = f"llm_unknown_{pfx}_llm"
-                    cached = cache.get("results", {}).get(cache_key_legacy)
-                if cached and isinstance(cached, dict) and "error" not in cached and "response" in cached:
-                    response = cached.get("response", "")
-                    model = cached.get("model", model)
-                    duration = cached.get("duration_ms", duration)
-            except Exception:
-                pass
-        
-        if response and not response.startswith("LLM_ERROR") and "⏳" not in str(response):
-            label = f"🧠 {asset} ({model}, {duration/1000:.1f}s)"
-            with st.expander(label, expanded=expanded):
-                st.markdown(response)
-    except Exception:
-        pass
-
-
 def _render_backtest_v4():
     """Panneau de backtest — Funding Carry (short perp + long spot, market-neutral)."""
     st.markdown("### 🧪 Backtest")
@@ -3463,7 +3415,6 @@ def main():
                 _tr = _get_recent_trades(200, asset=asset)
                 _pf = _get_portfolio(asset=asset)
                 render_portfolio(_pf)
-                _render_ai_analysis(asset)
                 render_trades_list_sortable(_tr)
                 render_pnl_chart(_tr, key=f"pnl_chart_{asset.replace('/', '_')}")
                 render_live_logs(key=asset.replace('/', '_'), asset=asset)

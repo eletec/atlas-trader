@@ -13,10 +13,21 @@ config/users.yaml
 # Clés API et secrets locaux (Twelve Data, etc.)
 config/secrets.yaml
 
-# Base de données locale
+# Bases de données locales (SQLite + journaux WAL)
 storage/*.db
 storage/*.db-shm
 storage/*.db-wal
+
+# Données runtime : dumps SQLite, résultats de backtest, configs générées.
+# Le runtime de production vit dans le volume Docker « v4_storage » (/app/data),
+# ces dossiers ne sont que des résidus de lancements locaux.
+data/
+v4_data/
+*.db
+*.db-shm
+*.db-wal
+backtest_results.json
+grid_search_results.yaml
 
 # Cache Python
 __pycache__/

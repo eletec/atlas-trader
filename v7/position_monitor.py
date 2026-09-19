@@ -5,7 +5,8 @@ Thread indépendant du cycle DAG. Toutes les 60 secondes :
   1. Récupère les positions ouvertes (tous symboles)
   2. Fetch les prix spot et perp actuels via CCXT (cache 30s)
   3. Vérifie SL/TP contre le prix courant (sauf carry)
-  4. Applique le time-stop (max_hold_days écoulé)
+  4. Applique le time-stop (max_hold_days écoulé — positions NON-carry ;
+     les positions carry utilisent les zones économiques 30/60/90j)
   5. Applique la perte max par position (max_loss_pct, unifié SL+time-stop)
   6. Kill-switch global : ferme tout si P&L total < -max_portfolio_dd_pct
   7. Ferme les positions qui ont atteint leur condition de sortie

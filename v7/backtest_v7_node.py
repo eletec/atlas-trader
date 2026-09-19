@@ -131,17 +131,23 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         return {"symbol": symbol, "error": "no merged data"}
 
     # 3) Initialiser le noeud (params override pour grid search)
+    # Paramètres lus depuis carry_assets.yaml pour refléter la stratégie live.
     ov = params_override or {}
+    try:
+        from v7.core.asset_config import get_asset_params
+        _cfg = get_asset_params(symbol)
+    except Exception:
+        _cfg = {}
     node = FundingCarryNode(
         node_id=f"bt_{symbol.split('/')[0].lower()}",
         symbol=symbol,
         capital=capital,
-        fraction=ov.get("fraction", 0.50),
-        min_funding=ov.get("min_funding", 0.00005),
-        max_funding=0.003,
-        exit_after_hours=72,
-        max_hold_days=ov.get("max_hold_days", 14),
-        stop_loss_pct=-0.05,
+        fraction=ov.get("fraction", float(_cfg.get("fraction", 0.50))),
+        min_funding=ov.get("min_funding", float(_cfg.get("min_funding", 0.0002))),
+        max_funding=float(_cfg.get("max_funding", 0.003)),
+        exit_after_hours=int(_cfg.get("exit_after_hours", 72)),
+        max_hold_days=ov.get("max_hold_days", int(_cfg.get("max_hold_days", 30))),
+        stop_loss_pct=float(_cfg.get("stop_loss_pct", -0.05)),
         params={"_backtest": True},
     )
 

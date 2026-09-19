@@ -1011,7 +1011,7 @@ def _render_asset_config_editor(
             )
 
         # ── Circuit-breaker ──────────────────────────────────────────────
-        st.caption("Circuit-breaker funding rate (crypto uniquement)")
+        st.caption(t("flt_circuit_breaker_caption"))
         cb1, cb2 = st.columns(2)
         with cb1:
             fw = st.number_input(

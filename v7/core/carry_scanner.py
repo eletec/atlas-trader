@@ -400,13 +400,13 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
             fraction = 0.50
 
         new_assets[sym] = {
-            "enabled": i < 15,  # top 15 actifs par défaut
+            "enabled": False,  # activation explicite requise (stratégie de conviction)
             "capital": capital,
             "fraction": fraction,
             "safety_cap": int(capital * 0.10),
             "stress_loss_pct": 0.10,
-            "max_hold_days": 14,
-            "min_funding": 0.00005,
+            "max_hold_days": 30,
+            "min_funding": 0.0002,
             "max_funding": 0.003,
             "exit_after_hours": 72,
             "leverage": 1.0,

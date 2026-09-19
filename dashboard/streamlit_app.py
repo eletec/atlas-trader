@@ -92,8 +92,6 @@ from utils.i18n import t, set_lang, get_lang, SUPPORTED_LANGS
 # ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
 import os as _os
 _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
-# ── Frontend URL (Next.js) — accessible depuis le navigateur ────────────────
-_V4_FRONTEND = _os.environ.get("V4_FRONTEND_URL", "http://localhost:3000")
 
 # ===========================================================
 # CONFIG PAGE
@@ -957,38 +955,9 @@ def _save_settings(settings: dict) -> bool:
 # COMPOSANTS UI USER
 # ===========================================================
 
-def _summarize_node_output(node_id: str, output: dict) -> str:
-    """Résumé compact d'une sortie de nœud pour le log."""
-    if node_id.startswith("PaperTrader") or node_id.startswith("paper_trader"):
-        action = output.get("action") or output.get("signal", "?")
-        price = output.get("price") or output.get("entry_price", 0)
-        return f"Trade: {action} @ ${price:,.2f}" if price else f"Trade: {action}"
-    if "signal" in node_id.lower() or node_id.startswith("Signal"):
-        sig = output.get("signal") or output.get("action", "?")
-        return f"Signal: {sig}"
-    if "trend" in node_id.lower() or node_id.startswith("Trend"):
-        trend = output.get("trend", "?")
-        return f"Tendance: {trend}"
-    if "risk" in node_id.lower() or node_id.startswith("Risk"):
-        pos = output.get("position_size") or output.get("size", 0)
-        return f"Position: {pos}"
-    if "regime" in node_id.lower() or node_id.startswith("Regime"):
-        regime = output.get("regime") or output.get("state", "?")
-        return f"Régime: {regime}"
-    if "llm" in node_id.lower() or node_id.startswith("LLM"):
-        model = output.get("model", "?")
-        dur = output.get("duration_ms", 0)
-        return f"LLM {model} ({dur}ms)"
-    # Résumé générique : première valeur scalaire
-    for k, v in output.items():
-        if isinstance(v, (int, float, str, bool)) and k not in ("timestamp", "ts"):
-            return f"{k}: {v}"
-    return ""
-
-
 def _force_run_background(asset: str, log_q) -> None:
     """
-    Exécute un DAG V4 depuis un thread background.
+    Déclenche un cycle Funding Carry immédiat via /carry/run (endpoint non bloquant).
     Poste des chaînes HTML dans log_q au fur et à mesure.
     Poste ("__done__", (is_error: bool, message: str)) en dernier.
     """
@@ -1001,51 +970,47 @@ def _force_run_background(asset: str, log_q) -> None:
         log_q.put(txt)
 
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
-    _logger.info(f"=== DASHBOARD FORCE-RUN V2 — {asset} @ {start_ts} ===")
-    _log(f"🚀 <b>Starting cycle</b> — {asset} ({start_ts})")
-    _log(f"⏳ <b>OHLCV → Features → Regime → Signal → Strategy → Risk...</b>")
+    _logger.info(f"=== DASHBOARD FORCE-RUN — {asset} @ {start_ts} ===")
+    _log(f"🚀 <b>Cycle Funding Carry lancé</b> ({start_ts})")
+    _log("⏳ Scan des actifs → funding → décisions → persistance…")
 
     t_total = _time.time()
     try:
         import urllib.request, json
         req = urllib.request.Request(
-            f"{_API_BASE}/dag/run",
-            data=json.dumps({"dag_id": "demo_v5", "asset": asset}).encode(),
+            f"{_API_BASE}/carry/run",
+            data=b"{}",
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
+        if not result.get("ok"):
+            raise RuntimeError(result.get("error", "lancement refusé"))
+
+        _log("✅ <b>Cycle démarré</b> — lecture des premiers logs…")
+
+        # Laisser le cycle démarrer, puis afficher les logues récents du carry
+        _time.sleep(8)
+        try:
+            with urllib.request.urlopen(f"{_API_BASE}/dag/logs?n=40", timeout=10) as resp:
+                rows = json.loads(resp.read())
+            shown = 0
+            for row in rows:
+                if row.get("level") == "DEBUG":
+                    continue
+                msg = str(row.get("message", ""))[:150]
+                _log(f"  • <b>{row.get('dag_id', '?')}</b> {msg}")
+                shown += 1
+                if shown >= 12:
+                    break
+            if shown == 0:
+                _log("  <i>(aucun log pour l'instant — le cycle démarre)</i>")
+        except Exception as _e:
+            _log(f"  <i>(logs indisponibles : {str(_e)[:80]})</i>")
+
         total_s = _time.time() - t_total
-
-        results = result.get("results", {})
-        done = sum(1 for r in results.values() if r.get("status") == "done")
-        errs = sum(1 for r in results.values() if r.get("status") == "error")
-        dag_id = result.get("dag_id", "?")
-
-        _log(f"✅ <b>DAG executed</b> — {dag_id} ({total_s:.1f}s)")
-        _log(f"📊 Nodes: <b>{done} OK</b>, {errs} error(s) out of {len(results)}")
-
-        # Afficher les sorties des nœuds clés
-        for nid, nr in results.items():
-            status = nr.get("status", "?")
-            icon = "✓" if status == "done" else "✗"
-            out = nr.get("output", {})
-            if out and status == "done":
-                # Résumé compact par nœud
-                summary = _summarize_node_output(nid, out)
-                if summary:
-                    _log(f"  {icon} <b>{nid}</b>: {summary}")
-
-        if errs:
-            for nid, nr in results.items():
-                if nr.get("status") == "error":
-                    _log(f"  ⚠️ <b>{nid}</b>: {nr.get('error', '?')}")
-            msg = f"DAG complete ({errs} error(s)) — {dag_id} | {total_s:.1f}s"
-            log_q.put(("__done__", (False, msg)))
-        else:
-            msg = f"DAG OK — {dag_id} | {total_s:.1f}s"
-            log_q.put(("__done__", (False, msg)))
+        log_q.put(("__done__", (False, f"Cycle lancé en arrière-plan ({total_s:.1f}s)")))
 
     except Exception as exc:
         total_s = _time.time() - t_total
@@ -1960,7 +1925,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                     })
                 st.dataframe(pd.DataFrame(rows_agt), hide_index=True, use_container_width=True)
         else:
-            st.caption("Données de formule non disponibles pour ce trade.")
+            st.caption(t("formula_data_unavailable"))
             if s_val is not None:
                 st.metric("Score", f"{float(s_val):.1f}/100")
 
@@ -2012,9 +1977,9 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                                 unsafe_allow_html=True,
                             )
                         else:
-                            st.caption("Pas de résumé disponible pour cet agent.")
+                            st.caption(t("agent_summary_unavailable"))
         else:
-            st.caption("Scores agents non disponibles.")
+            st.caption(t("agent_scores_unavailable"))
 
     # ── Tab Marché ──────────────────────────────────────────────────────────────
     with tab_mkt:
@@ -2039,7 +2004,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                 for i, (k, v) in enumerate(chunk):
                     cols[i].metric(k, f"{float(v):.4f}" if isinstance(v, float) else str(v))
         else:
-            st.caption("Indicateurs de marché non disponibles.")
+            st.caption(t("market_indicators_unavailable"))
 
     # ── Tab Décision ────────────────────────────────────────────────────────────
     with tab_dec:
@@ -2063,7 +2028,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         if dec.get("funding_blocked"): blockers.append("🚫 Funding rate")
         if dec.get("cooldown"):        blockers.append("⏸ Cooldown")
         if blockers:
-            st.warning("Bloqué : " + "  |  ".join(blockers))
+            st.warning(t("blocked_prefix") + "  |  ".join(blockers))
 
     # ── Tab IA ──────────────────────────────────────────────────────────────────
     with tab_ia:
@@ -2073,7 +2038,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                 unsafe_allow_html=True,
             )
         else:
-            st.caption("Pas d'explication IA pour ce trade.")
+            st.caption(t("ai_explanation_unavailable"))
 
         # ── Débat Bull/Bear (si disponible dans decision_context) ──────────────
         _synth_ctx = (ctx.get("agents") or {}).get("synthesis") or {}
@@ -2984,7 +2949,7 @@ def render_agent_scores_chart(asset: str):
         from storage.database import get_agent_scores_history
         import pandas as pd
     except ImportError:
-        st.caption("plotly non disponible")
+        st.caption(t("plotly_unavailable"))
         return
 
     WINDOWS = [24, 48, 168, 720]
@@ -3207,7 +3172,7 @@ def _render_carry_config():
     try:
         from v7.core.asset_config import load_config, save_config, get_all_assets, reload_config
     except ImportError:
-        st.warning("asset_config module not available. Please deploy the latest version.")
+        st.warning(t("asset_config_module_unavailable"))
         return
 
     cfg = load_config()
@@ -3505,201 +3470,55 @@ def _active_assets_v4() -> list[str]:
 
 
 def _render_backtest_v4():
-    """Panneau de backtest — Funding Carry + Directionnel."""
+    """Panneau de backtest — Funding Carry (short perp + long spot, market-neutral)."""
     st.markdown("### 🧪 Backtest")
+    # ── Funding Carry Backtest ──
+    st.caption(t("backtest_carry_caption"))
     
-    bt_mode = st.radio("Mode", ["💰 Funding Carry", "📈 Directionnel"], index=0, horizontal=True)
-    
-    if bt_mode.startswith("💰"):
-        # ── Funding Carry Backtest ──
-        st.caption("Backtest de la collecte de funding · Short Perp + Long Spot · Market-neutral")
-        
-        # Charger les actifs depuis carry_assets.yaml
-        try:
-            from v7.core.asset_config import get_active_assets
-            _bt_assets = get_active_assets()
-            if not _bt_assets:
-                _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-        except Exception:
+    # Charger les actifs depuis carry_assets.yaml
+    try:
+        from v7.core.asset_config import get_active_assets
+        _bt_assets = get_active_assets()
+        if not _bt_assets:
             _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
-        
-        symbol = st.selectbox(t("col_asset"), _bt_assets)
-        days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000,
-                                      help="Capital alloué à cet actif pour le backtest")
-        with col2:
-            fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.50, 0.05,
-                                 help="Part du capital immobilisée dans le carry")
-        
-        if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
-            with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j (règles V7.2)..."):
-                try:
-                    import subprocess, sys
-                    cmd = [
-                        sys.executable, "v7/backtest_v7_node.py",
-                        "--symbol", symbol,
-                        "--days", str(days),
-                        "--capital", str(capital),
-                    ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
-                    output = result.stdout
-                    if result.stderr:
-                        output += "\n\n[stderr]\n" + result.stderr[-500:]
-                    st.code(output[-4000:] if len(output) > 4000 else output)
-                    # Extraire les métriques clés si présentes
-                    for line in output.split("\n"):
-                        if any(kw in line for kw in ["Sharpe", "PnL Total", "Win Rate", "Max DD", "Trades:"]):
-                            st.text(line.strip())
-                except Exception as e:
-                    st.error(str(e))
-        return
+    except Exception:
+        _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
     
-    # ── V6 Legacy Backtest ──
-    st.caption("Teste la stratégie DAG directionnelle sur données historiques Binance.")
-    # ... (ancien code V6 inchangé)
-
-    col1, col2, col3 = st.columns(3)
+    symbol = st.selectbox(t("col_asset"), _bt_assets)
+    days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
+    
+    col1, col2 = st.columns(2)
     with col1:
-        risk_pct = st.slider("Risque/trade (%)", 0.1, 5.0, 1.0, 0.1)
-        sl_mult = st.slider("SL (×ATR)", 1.0, 6.0, 2.0, 0.5)
+        capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000,
+                                  help="Capital alloué à cet actif pour le backtest")
     with col2:
-        fraction = st.slider("Fraction max capital", 0.005, 0.20, 0.05, 0.005)
-        tp_mult = st.slider("TP (×ATR)", 1.0, 10.0, 4.0, 0.5)
-    with col3:
-        exit_strat = st.selectbox("Sortie", ["chandelier", "trailing"])
-        exit_atr = st.slider("Exit ATR", 1.0, 6.0, 3.0, 0.5)
-
-    gate_mode = st.selectbox("Mode Gate", ["meta", "meta_regime", "fusion", "veto"], index=0,
-                              help="meta = MetaGate | meta_regime = avec adaptation régime | fusion/veto = legacy")
+        fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.50, 0.05,
+                             help="Part du capital immobilisée dans le carry")
     
-    # V6: options avancées
-    with st.expander("⚙️ Options avancées"):
-        use_regime_adapt = st.checkbox("Activer RegimeAdapter (TREND/RANGE/CHOP)", value=(gate_mode == "meta_regime"),
-                                        help="Adapte le seuil et sizing selon le régime détecté")
-        use_triple_barrier = st.checkbox("Labels Triple-Barrier (au lieu de binaire T+48)", value=False,
-                                          help="Label = 1er touché : TP, SL, ou time-stop")
-        min_dist = st.slider("Breathing room (×ATR)", 0.0, 3.0, 1.0, 0.5)
-
-    # Seuil MetaGate
-    if gate_mode in ("meta", "meta_regime"):
-        meta_threshold = st.slider("Seuil MetaGate", 0.05, 0.50, 0.20, 0.05,
-                                    help="Score > +seuil → LONG, < -seuil → SHORT")
-        fusion_threshold = meta_threshold
-    elif gate_mode == "fusion":
-        fusion_threshold = st.slider("Seuil fusion (±)", 0.05, 0.50, 0.30, 0.05)
-    else:
-        fusion_threshold = 0.30
-
-    col_xgb1, col_xgb2 = st.columns(2)
-    with col_xgb1:
-        p_up_th = st.slider("XGBoost seuil LONG", 0.51, 0.65, 0.52, 0.01)
-    with col_xgb2:
-        p_dn_th = st.slider("XGBoost seuil SHORT", 0.35, 0.49, 0.48, 0.01)
-
-    bt_col1, bt_col2 = st.columns(2)
-    with bt_col1:
-        if st.button("🚀 Lancer le backtest", type="primary", use_container_width=True):
-            with st.spinner(f"Backtest {symbol} sur {days}j..."):
-                try:
-                    from dashboard.backtest_v4 import run_backtest_v4
-                    actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
-                    result = run_backtest_v4(
-                        symbol=symbol, days=days, capital=capital,
-                        risk_pct=risk_pct, sl_mult=sl_mult, tp_mult=tp_mult,
-                        fraction=fraction, exit_strategy=exit_strat,
-                        exit_atr_mult=exit_atr, min_atr_dist=min_dist,
-                        gate_mode=actual_gate, fusion_threshold=fusion_threshold,
-                        p_up_threshold=p_up_th, p_dn_threshold=p_dn_th,
-                        use_regime_adapter=use_regime_adapt,
-                        use_triple_barrier=use_triple_barrier,
-                    )
-                    st.success(f"{result.n_trades} trades | PnL=${result.total_pnl:.2f} | Sharpe={result.sharpe:.2f}")
-
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                    col_m1.metric("P&L Total", f"${result.total_pnl:,.2f}", f"{result.total_pnl_pct:+.1f}%")
-                    col_m2.metric("Win Rate", f"{result.win_rate:.0f}%")
-                    col_m3.metric("Max Drawdown", f"{result.max_drawdown_pct:.1f}%")
-                    col_m4.metric("Sharpe", f"{result.sharpe:.2f}")
-                    col_m5, col_m6 = st.columns(2)
-                    col_m5.metric("Gain moyen", f"${result.avg_win:,.2f}")
-                    col_m6.metric("Perte moyenne", f"${result.avg_loss:,.2f}")
-                    st.metric("Trades", result.n_trades)
-
-                    if result.trades:
-                        st.markdown("---")
-                        st.markdown("#### 📋 Trades")
-                        df_trades = pd.DataFrame([{
-                            "Date": t.timestamp[:19],
-                            "Action": t.action.upper(),
-                            "Entry": f"${t.entry_price:,.2f}",
-                            "Exit": f"${t.exit_price:,.2f}",
-                            "PnL": f"${t.pnl_usd:+.2f}",
-                            "PnL%": f"{t.pnl_pct:+.2f}%",
-                            "Raison": t.exit_reason,
-                            "Barres": t.bars_held,
-                        } for t in result.trades])
-                        st.dataframe(df_trades, use_container_width=True, hide_index=True)
-                except Exception as e:
-                    st.error(f"Erreur backtest: {e}")
-
-    with bt_col2:
-        if st.button("🔬 Walk-Forward 365j", type="secondary", use_container_width=True,
-                     help="Validation robuste : 6 fenêtres glissantes Train 180j / Test 30j"):
-            with st.spinner(f"Walk-Forward {symbol} sur 365j..."):
-                try:
-                    from tools.walkforward_v6 import walkforward
-                    actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
-                    wf = walkforward(symbol, total_days=365, gate_mode=actual_gate,
-                                     fusion_threshold=fusion_threshold,
-                                     p_up_threshold=p_up_th, p_dn_threshold=p_dn_th)
-                    if wf.windows > 0:
-                        st.success(f"{wf.windows} fenêtres | Sharpe μ={wf.sharpe_mean:.2f} σ={wf.sharpe_std:.2f} | {wf.profitable_windows}/{wf.windows} profitables")
-                        st.metric("Sharpe moyen OOS", f"{wf.sharpe_mean:.2f}")
-                        st.metric("Stabilité", f"{wf.stability_score:.1f}")
-                        st.metric("PnL Total OOS", f"${wf.pnl_total:.0f}")
-                        if wf.sharpe_oos:
-                            st.line_chart({f"F{i+1}": s for i, s in enumerate(wf.sharpe_oos)})
-                    else:
-                        st.warning("Pas assez de données pour le walk-forward.")
-                except ImportError:
-                    st.warning("Module V6 non disponible. `git checkout v6-dev`.")
-
-    # Bouton optimisation
-    if st.button("🔍 Optimiser (grid search)", type="secondary", use_container_width=True):
-        with st.spinner(f"Optimisation {symbol} sur {days}j..."):
+    if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
+        with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j (règles V7.2)..."):
             try:
-                from dashboard.backtest_v4 import optimize_params
-                actual_gate = "meta" if gate_mode in ("meta", "meta_regime") else gate_mode
-                results = optimize_params(symbol=symbol, days=days, capital=capital,
-                                          gate_mode=actual_gate, fusion_threshold=fusion_threshold,
-                                          p_up_threshold=p_up_th, p_dn_threshold=p_dn_th)
-                if results:
-                    best = results[0]
-                    st.success(f"Meilleure: SL={best['sl_mult']} TP={best['tp_mult']} Exit={best['exit_strat']} → Sharpe={best['sharpe']}")
-                    st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+                import subprocess, sys
+                cmd = [
+                    sys.executable, "v7/backtest_v7_node.py",
+                    "--symbol", symbol,
+                    "--days", str(days),
+                    "--capital", str(capital),
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
+                output = result.stdout
+                if result.stderr:
+                    output += "\n\n[stderr]\n" + result.stderr[-500:]
+                st.code(output[-4000:] if len(output) > 4000 else output)
+                # Extraire les métriques clés si présentes
+                for line in output.split("\n"):
+                    if any(kw in line for kw in ["Sharpe", "PnL Total", "Win Rate", "Max DD", "Trades:"]):
+                        st.text(line.strip())
             except Exception as e:
-                st.error(f"Optimization error: {e}")
-
-    if st.button("🔮 Optimisation complète (16 combos × 7 actifs)", type="secondary", use_container_width=True,
-                 help="Lance l'optimiseur MetaGate sur tous les actifs (BTC→DOGE) via l'API. ⚠️ 10-20 min."):
-        import urllib.request, json as _json2
-        try:
-            req = urllib.request.Request(f"{_API_BASE}/optimize/v5?days={days}", method="POST")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                result = _json2.loads(resp.read())
-            if result.get("ok"):
-                st.success(f"✅ Optimisation lancée ({result.get('task_id','?')}). `docker logs -f atlas-v4-api` pour suivre.")
-            else:
-                st.error(f"API error: {result.get('error','?')}")
-        except Exception as _e2:
-            st.error(f"Launch error: {_e2}")
-
+                st.error(str(e))
 
 def render_live_logs(key: str = "global", asset: str | None = None):
-    """Affiche les logs V3 SQLite + V4 DAG (pagination 100 lignes par page)."""
+    """Affiche les logs du cycle carry (pagination 100 lignes par page)."""
     col_title, col_del = st.columns([5, 1])
     with col_title:
         st.markdown(
@@ -3746,7 +3565,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
         if st.button("🗑️ Vider", key=f"btn_clear_logs_{key}",
                      help="Efface les logs V4 (buffer circulaire automatique)",
                      use_container_width=True):
-            st.info("Les logs V4 sont en mémoire (buffer 200 lignes). Ils se renouvellent automatiquement.", icon="ℹ️")
+            st.info(t("logs_memory_caption"), icon="ℹ️")
     # DB-backed logs — uniquement si V4 logs sont vides (pas de doublon)
     if not v4_logs:
         try:
@@ -4139,7 +3958,7 @@ def render_admin_panel():
         # ── Modèle rapide (DAGs, tâches légères) ──
         st.markdown("---")
         st.markdown("#### ⚡ Modèle rapide (analyses DAGs, résumés)")
-        st.caption("Utilisé par les nœuds LLM des cycles DAG. Doit être rapide et économique.")
+        st.caption(t("llm_model_caption"))
 
         _fast_provider = _llm.get("fast_provider", _new_provider)
         if _fast_provider not in _providers:
@@ -4528,10 +4347,10 @@ def render_admin_panel():
             f' Reset Paper Trading</h4>',
             unsafe_allow_html=True,
         )
-        st.warning("This will delete all trade history and open positions. The carry cycle will continue normally.")
+        st.warning(t("reset_warning_trades"))
 
         st.markdown(f"#### 🗑️ Reset All Data")
-        st.caption("Deletes all trades from the database and clears the dashboard cache.")
+        st.caption(t("reset_caption_trades"))
 
         confirm = st.checkbox(
             "I understand — delete all trade history",
@@ -4772,7 +4591,7 @@ def render_admin_panel():
             ' Historique des Décisions</h4>',
             unsafe_allow_html=True,
         )
-        st.caption("Chaque décision du DAG (cycle 8h) — filtrable par actif.")
+        st.caption(t("decisions_caption_cycle"))
 
         _dcol1, _dcol2 = st.columns([1, 1])
         with _dcol1:
@@ -4838,13 +4657,13 @@ def render_admin_panel():
     elif _atab == "carry_cfg":
         _render_carry_config()
         return
-    elif _atab in ("v4_monitor", "v4_trades", "v4_arena", "v4_admin"):
+    elif _atab in ("v4_monitor", "v4_trades", "v4_admin"):
         if _atab == "v4_admin":
             _render_v4_config()
             return
         if _atab == "v4_trades":
             st.markdown("### 📋 " + t("trades_journal_title"))
-            st.caption("Mode : paper trading")
+            st.caption(t("paper_trading_mode"))
             _tr = _get_recent_trades(200)
             if _tr:
                 render_trades_list_sortable(_tr)
@@ -4892,7 +4711,7 @@ def render_admin_panel():
                         })
                     st.dataframe(rows, use_container_width=True, hide_index=True)
                 else:
-                    st.info("No open carry positions — funding rates too low in current market")
+                    st.info(t("no_open_carry_positions"))
             except Exception as e:
                 st.warning(f"Position fetch: {e}")
             
@@ -4913,7 +4732,7 @@ def render_admin_panel():
                         if reason:
                             st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;↳ {str(reason)[:120]}")
                 else:
-                    st.info("No decisions yet — first cycle pending")
+                    st.info(t("no_decisions_yet"))
             except Exception as e:
                 st.warning(f"Decisions fetch: {e}")
             
@@ -4926,45 +4745,6 @@ def render_admin_panel():
             c3.metric("Open Trades", _pf.get("n_trades", 0))
             c4.metric("Total P&L", f"${_pf.get('total_pnl', 0):,.2f}")
             return
-        _V4_URLS = {
-            "v4_monitor": f"{_V4_FRONTEND}/monitoring",
-            "v4_trades":  f"{_V4_FRONTEND}/trades",
-            "v4_arena":   f"{_V4_FRONTEND}/arena",
-            "v4_admin":   f"{_V4_FRONTEND}/admin",
-        }
-        _v4_url = _V4_URLS[_atab]
-        # JS : wrapper fixed dans le document parent (Streamlit est dans une iframe)
-        import streamlit.components.v1 as _cv1
-        _cv1.html(f"""
-<script>
-(function() {{
-  var p = window.parent || window;
-  var d = p.document;
-  var HDR_H = 48;
-
-  // Supprimer les anciens wrappers V4 (cleanup)
-  d.querySelectorAll('[id$="_v4wrap"]').forEach(function(el) {{ el.remove(); }});
-
-  // Créer le wrapper
-  var wrap = d.createElement('div');
-  wrap.id = '{_atab}_v4wrap';
-  wrap.style.cssText = 'position:fixed;top:'+HDR_H+'px;left:0;right:0;bottom:0;z-index:5;background:#0f1117;';
-  var ifr = d.createElement('iframe');
-  ifr.src = '{_v4_url}';
-  ifr.style.cssText = 'width:100%;height:100%;border:none;';
-  ifr.allow = 'clipboard-read;clipboard-write';
-  ifr.allowFullscreen = true;
-  wrap.appendChild(ifr);
-  d.body.appendChild(wrap);
-
-  // Ajuster left selon la sidebar
-  var nav = d.getElementById('atlas-sidenav');
-  if (nav) {{
-    var c = nav.classList.contains('c');
-    wrap.style.left = c ? '44px' : '180px';
-  }}
-}})();
-</script>""", height=0)
     elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
         if _save_settings(settings):
             st.success(t('config_saved'))

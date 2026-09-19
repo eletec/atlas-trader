@@ -352,16 +352,22 @@ def run_walkforward(
                 continue
             
             # Run FundingCarryNode directly on sliced data (no re-fetch!)
+            # Paramètres lus depuis carry_assets.yaml pour refléter la stratégie live.
+            try:
+                from v7.core.asset_config import get_asset_params
+                _cfg = get_asset_params(sym)
+            except Exception:
+                _cfg = {}
             node = FundingCarryNode(
                 node_id=f"wf_{sym.split('/')[0].lower()}",
                 symbol=sym,
                 capital=capital,
-                fraction=0.50,
-                min_funding=0.00005,
-                max_funding=0.003,
-                exit_after_hours=72,
-                max_hold_days=60,
-                stop_loss_pct=-0.05,
+                fraction=float(_cfg.get("fraction", 0.50)),
+                min_funding=float(_cfg.get("min_funding", 0.0002)),
+                max_funding=float(_cfg.get("max_funding", 0.003)),
+                exit_after_hours=int(_cfg.get("exit_after_hours", 72)),
+                max_hold_days=int(_cfg.get("max_hold_days", 30)),
+                stop_loss_pct=float(_cfg.get("stop_loss_pct", -0.05)),
                 params={"_backtest": True},
             )
             

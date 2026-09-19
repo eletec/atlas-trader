@@ -32,8 +32,8 @@ logger = logging.getLogger("grid_search")
 # de coût du capital (SOFR + primes), pas un paramètre de trading. Le grid search
 # optimise uniquement les paramètres qui relèvent de la stratégie.
 COARSE_GRID = {
-    "min_funding":    [0.00001, 0.00005, 0.0001],   # 0.001%, 0.005%, 0.01%
-    "max_hold_days":  [14, 30, 60],                  # aligné avec les zones (HEALTHY/REVIEW/DERISK/CLOSE)
+    "min_funding":    [0.0001, 0.0002, 0.0003, 0.0005],  # 0.01% → 0.05%/8h (11% → 55%/an)
+    "max_hold_days":  [30, 45, 60],                   # aligné avec les zones (DERISK/CLOSE)
     "fraction":       [0.30, 0.50],
     # economic_hurdle n'est plus dans la grille — fixé à 0.05 (coût du capital)
 }
@@ -45,7 +45,7 @@ def refine_grid(best_params: dict) -> dict[str, list]:
     frac = best_params.get("fraction", 0.50)
     
     return {
-        "min_funding":    sorted(set([max(0.000005, mf * 0.5), mf, min(0.0005, mf * 2)])),
+        "min_funding":    sorted(set([max(0.00005, mf * 0.5), mf, min(0.001, mf * 2)])),
         "max_hold_days":  sorted(set([max(7, hold - 10), hold, min(90, hold + 15)])),
         "fraction":       sorted(set([max(0.10, round(frac - 0.15, 2)), frac, min(1.0, round(frac + 0.15, 2))])),
         # economic_hurdle retiré — n'est pas un paramètre à optimiser

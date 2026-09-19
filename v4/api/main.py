@@ -118,20 +118,23 @@ async def health() -> dict:
     return {"status": "ok", "version": "5.0.0"}
 
 
-@app.post("/optimize/v5")
-async def optimize_v5(days: int = 180):
-    """Lance l'optimiseur V5 MetaGate en arrière-plan."""
-    import subprocess, sys, uuid, threading
-    task_id = str(uuid.uuid4())[:8]
+@app.post("/carry/run")
+async def carry_run() -> dict:
+    """Déclenche un cycle Funding Carry immédiatement (non bloquant).
+
+    Le cycle tourne dans un thread daemon ; son avancement est visible via
+    `/dag/logs` (onglet Live Monitor du dashboard). L'anti-concurrence
+    (flock) empêche tout chevauchement avec le cycle périodique de 8h.
+    """
+    import threading
 
     def _run():
         try:
-            subprocess.run(
-                [sys.executable, "/app/src/tools/optimize_v5.py", "--days", str(days)],
-                capture_output=True, text=True, timeout=3600,
-            )
+            from v7.run_carry_cycle import run_cycle
+            summary = run_cycle()
+            logging.getLogger("v4.api.main").info("Manual carry cycle done: %s", summary)
         except Exception as e:
-            logging.getLogger("v4.api.main").warning("Optimize V5 failed: %s", e)
+            logging.getLogger("v4.api.main").error("Manual carry cycle failed: %s", e)
 
-    threading.Thread(target=_run, daemon=True, name=f"opt_v5_{task_id}").start()
-    return {"ok": True, "task_id": task_id, "message": "Optimisation V5 lancée"}
+    threading.Thread(target=_run, daemon=True, name="carry-run-manual").start()
+    return {"ok": True, "message": "Cycle carry lancé en arrière-plan"}

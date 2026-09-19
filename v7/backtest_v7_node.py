@@ -31,7 +31,7 @@ logger = logging.getLogger("backtest_v7_node")
 
 # ── Charger les actifs depuis la config ──
 try:
-    from v7.core.asset_config import get_active_assets, get_all_assets
+    from v7.core.asset_config import get_active_assets, get_all_assets, normalize_symbol
     SYMBOLS = get_active_assets()
     ALL_SYMBOLS = get_all_assets()
     if not SYMBOLS:
@@ -40,6 +40,10 @@ try:
 except Exception:
     SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
     ALL_SYMBOLS = SYMBOLS
+
+    def normalize_symbol(raw: str) -> str:  # fallback minimal
+        s = (raw or "").strip().upper()
+        return s if "/" in s else f"{s}/USDT"
 
 
 def _perp_symbol(symbol: str) -> str:
@@ -119,13 +123,18 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
     if not spot_df.empty and not perp_df.empty:
         combined = funding_df.join(spot_df.rename(columns={"spot_price": "spot_raw"}), how="left")
         combined = combined.join(perp_df.rename(columns={"perp_price": "perp_raw"}), how="left")
-        combined["spot_price"] = combined["spot_raw"].ffill().fillna(1000)
-        combined["perp_price"] = combined["perp_raw"].ffill().fillna(combined["spot_price"])
+        combined["spot_price"] = combined["spot_raw"].ffill().bfill()
+        combined["perp_price"] = combined["perp_raw"].ffill().bfill()
+        if combined["spot_price"].isna().any() or combined["perp_price"].isna().any():
+            return {"symbol": symbol, "error": "prix spot/perp non alignables sur le funding"}
     else:
-        # Fallback: prix fixes
-        combined = funding_df.copy()
-        combined["spot_price"] = 1000.0
-        combined["perp_price"] = 1000.0
+        # ANCIEN COMPORTEMENT (bug) : fallback silencieux à 1000 $ → le backtest
+        # ne modélisait plus aucun risque de prix et affichait un P&L fictif.
+        logger.error("Prix spot/perp indisponibles pour %s — backtest refusé", symbol)
+        return {
+            "symbol": symbol,
+            "error": "prix spot/perp indisponibles (fallback fictif supprimé)",
+        }
 
     if combined.empty:
         return {"symbol": symbol, "error": "no merged data"}
@@ -288,12 +297,18 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
 
 def main():
     parser = argparse.ArgumentParser(description="V7 Backtest — FundingCarryNode + données réelles")
-    parser.add_argument("--symbol", type=str, default="ALL")
+    parser.add_argument("--symbol", type=str, default="ALL",
+                        help="ALL, ACTIVE, BTC, BTC/USDT, ou BTC,ETH (séparés par virgule)")
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--capital", type=float, default=2000)
     args = parser.parse_args()
 
-    symbols = ALL_SYMBOLS if args.symbol == "ALL" else (SYMBOLS if args.symbol == "ACTIVE" else [args.symbol])
+    if args.symbol == "ALL":
+        symbols = ALL_SYMBOLS
+    elif args.symbol == "ACTIVE":
+        symbols = SYMBOLS
+    else:
+        symbols = [normalize_symbol(s) for s in args.symbol.split(",") if s.strip()]
 
     print("=" * 90)
     print("ATLAS V7 — Backtest (FundingCarryNode + prix spot/perp réels)")

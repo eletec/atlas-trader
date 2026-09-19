@@ -20,6 +20,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+# Les print() de diagnostic contiennent des caractères non-ASCII (→, ×, ·).
+# Sous Windows, la console est en cp1252 et pytest -s plante en UnicodeEncodeError
+# alors que les assertions passent. On force UTF-8 sur stdout/stderr.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:
+        pass
+
 FEE_PER_LEG = 0.0012       # 12 bps (10 fees + 2 slippage)
 FEES_4_LEGS = FEE_PER_LEG * 4  # 48 bps round-trip
 FEES_2_LEGS_OPEN = FEE_PER_LEG * 2   # 24 bps à l'ouverture
@@ -320,6 +329,58 @@ class TestCarryAccounting:
 
         print(f"\n  Break-even: hold={hold_days}j → funding ≥ {min_viable_annual:.2%}/an")
         print(f"  min_funding actuel = {annual_at_min_funding:.2%}/an → sous le seuil (non rentable)")
+
+    def test_normalize_symbol_variants(self):
+        """
+        Régression (19/09/2026) : les backtests acceptent des symboles saisis
+        librement en CLI. Sans normalisation, « --symbol BTC » faisait échouer le
+        fetch spot (« binance does not have market symbol BTC ») et le backtest
+        retombait SILENCIEUSEMENT sur des prix fixes de 1000 $ → P&L fictif.
+        """
+        from v7.core.asset_config import normalize_symbol
+
+        # Toutes ces saisies doivent converger vers « BTC/USDT »
+        for raw in ("BTC", "btc", " BTC ", "BTCUSDT", "btcusdt", "btc/usdt",
+                    "BTC/USDT", "BTC/USDT:USDT"):
+            assert normalize_symbol(raw) == "BTC/USDT", f"{raw!r} → {normalize_symbol(raw)!r}"
+
+        # Quote explicite non-USDT préservé (pas de réécriture silencieuse)
+        assert normalize_symbol("ETH/USDC") == "ETH/USDC"
+
+        # Contrats ×1000 : le BASE reste intact (le multiplicateur est géré ailleurs)
+        assert normalize_symbol("1000SHIB") == "1000SHIB/USDT"
+        assert normalize_symbol("1000SHIB/USDT:USDT") == "1000SHIB/USDT"
+        assert normalize_symbol("SHIB") == "SHIB/USDT"
+
+        # Cas dégénérés
+        assert normalize_symbol("") == ""
+        assert normalize_symbol("   ") == ""
+
+        print("\n  normalize_symbol: BTC/btc/BTCUSDT/BTC-USDT:USDT → BTC/USDT")
+
+    def test_backtests_use_live_config_thresholds(self):
+        """
+        Régression (19/09/2026) : les backtests doivent lire les seuils depuis
+        carry_assets.yaml (fraction, min_funding, max_hold_days) et non des
+        constantes en dur — sinon le backtest valide une autre stratégie que le live.
+        """
+        from v7.core.asset_config import get_active_assets, get_asset_params
+
+        actives = get_active_assets()
+        assert actives, "Aucun actif activé dans carry_assets.yaml"
+
+        for sym in actives:
+            p = get_asset_params(sym)
+            assert p.get("enabled") is True, f"{sym} listé actif mais enabled≠true"
+            assert 0 < float(p.get("fraction", 0)) <= 1, f"{sym}: fraction invalide"
+            assert float(p.get("min_funding", 0)) > 0, f"{sym}: min_funding invalide"
+            assert int(p.get("max_hold_days", 0)) > 0, f"{sym}: max_hold_days invalide"
+
+            # Les frais (48bps) doivent être amortis sur la durée de hold réelle
+            min_viable = 0.0048 * 365 / int(p["max_hold_days"])
+            assert min_viable < 1.0, f"{sym}: seuil de viabilité incohérent"
+
+        print(f"\n  {len(actives)} actifs cohérents avec la config live")
 
 
 if __name__ == "__main__":

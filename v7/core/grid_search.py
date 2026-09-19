@@ -22,7 +22,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from v7.core.asset_config import get_active_assets, get_all_assets
+from v7.core.asset_config import get_active_assets, get_all_assets, normalize_symbol
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("grid_search")
@@ -128,7 +128,8 @@ def grid_search_symbol(symbol: str, days: int, capital: float, passes: int = 2) 
 
 def main():
     parser = argparse.ArgumentParser(description="Grid search Funding Carry params")
-    parser.add_argument("--symbol", default="ALL", help="Symbole ou ALL/ACTIVE")
+    parser.add_argument("--symbol", default="ALL",
+                        help="Symbole (BTC, BTC/USDT, BTC,ETH) ou ALL/ACTIVE")
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--capital", type=float, default=2000)
     parser.add_argument("--passes", type=int, default=2, help="Nombre de passes (1=coarse, 2=coarse+fine)")
@@ -140,7 +141,7 @@ def main():
     elif args.symbol == "ACTIVE":
         symbols = get_active_assets()
     else:
-        symbols = [args.symbol]
+        symbols = [normalize_symbol(s) for s in args.symbol.split(",") if s.strip()]
 
     logger.info("Grid search: %d actifs, %d jours, $%.0f/asset", len(symbols), args.days, args.capital)
 

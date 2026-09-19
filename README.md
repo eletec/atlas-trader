@@ -95,6 +95,7 @@ docker exec atlas-v4-api python -B /app/src/v7/core/carry_scanner.py --save
 
 # 1-year backtest (real spot/perp prices)
 docker exec atlas-v4-api python -B /app/src/v7/backtest_v7_node.py --symbol ALL --days 365
+#   --symbol accepts: ALL | ACTIVE | BTC | BTC/USDT | BTC,ETH
 
 # 3-year walk-forward backtest
 docker exec atlas-v4-api python -B /app/src/v7/backtest_walkforward.py --symbols ALL --days 1300
@@ -122,7 +123,7 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 | `v7/core/grid_search.py` | 2-pass grid search (hurdle removed — now fixed) |
 | `v7/core/global_allocator.py` | Cross-asset allocation — exposure cap |
 | `v7/core/asset_config.py` | Dynamic config loader — `carry_assets.yaml` |
-| `v7/tests/test_carry_accounting.py` | 7 unit tests — P&L accounting, breakeven, ×1000 normalization |
+| `v7/tests/test_carry_accounting.py` | 9 unit tests — P&L accounting, breakeven, ×1000 normalization, symbol normalization |
 | `config/carry_assets.yaml` | Single source of truth — per-asset params (`enabled` flag) |
 | `dashboard/streamlit_app.py` | Streamlit dashboard — BO/FO unified |
 | `dashboard/multi_asset.py` | Live price cards, global overview, JS poller |

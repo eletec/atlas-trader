@@ -34,7 +34,7 @@ logger = logging.getLogger("walkforward")
 
 # ── Charger les actifs ──
 try:
-    from v7.core.asset_config import get_active_assets, get_all_assets
+    from v7.core.asset_config import get_active_assets, get_all_assets, normalize_symbol
     SYMBOLS = get_active_assets()
     ALL_SYMBOLS = get_all_assets()
     if not SYMBOLS:
@@ -43,6 +43,10 @@ try:
 except Exception:
     SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
     ALL_SYMBOLS = SYMBOLS
+
+    def normalize_symbol(raw: str) -> str:  # fallback minimal
+        s = (raw or "").strip().upper()
+        return s if "/" in s else f"{s}/USDT"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -281,6 +285,11 @@ def run_walkforward(
             if contract_mult > 1 and "perp_price" in df_perp.columns:
                 df_perp["perp_price"] = df_perp["perp_price"] / contract_mult
             price_data[sym] = {"spot": df_spot, "perp": df_perp}
+        else:
+            # Sans prix réels, le backtest retombait sur 1000 $ : P&L 100% fictif.
+            logger.error("%s: prix spot/perp indisponibles — actif exclu du backtest", sym)
+            funding_data.pop(sym, None)
+            continue
         
         logger.info("  %s: %d funding periods (%s → %s)",
                     sym, len(df_f),
@@ -378,8 +387,9 @@ def run_walkforward(
             for ts, row in test_data.iterrows():
                 fr = float(row["funding_rate"])
                 # Real spot/perp prices (DeepSeek audit, 25/07/2026: basis P&L must be modeled)
-                spot_price = 1000.0
-                perp_price = 1000.0
+                # Aucun prix par défaut : sans prix réel on ne simule pas (pas de P&L fictif).
+                spot_price = None
+                perp_price = None
                 sym_prices = price_data.get(sym, {})
                 if sym_prices:
                     df_s = sym_prices.get("spot")
@@ -394,7 +404,9 @@ def run_walkforward(
                         if not perp_slice.empty:
                             col = "perp_price" if "perp_price" in df_p.columns else df_p.columns[0]
                             perp_price = float(perp_slice.iloc[-1][col])
-                if perp_price <= 0:
+                if spot_price is None:
+                    continue
+                if perp_price is None or perp_price <= 0:
                     perp_price = spot_price
                 
                 result = node.run({
@@ -504,7 +516,8 @@ def run_walkforward(
 
 def main():
     parser = argparse.ArgumentParser(description="V7 Walk-Forward Backtest (GPT audit Priority #2)")
-    parser.add_argument("--symbols", type=str, default="ALL", help="ALL, ACTIVE, or comma-separated")
+    parser.add_argument("--symbols", type=str, default="ALL",
+                        help="ALL, ACTIVE, BTC, BTC/USDT, ou BTC,ETH (séparés par virgule)")
     parser.add_argument("--days", type=int, default=1300, help="Jours de données (défaut 1300 = ~3.5 ans)")
     parser.add_argument("--capital", type=float, default=2000)
     parser.add_argument("--train", type=int, default=12, help="Mois d'entraînement")
@@ -518,7 +531,7 @@ def main():
     elif args.symbols == "ACTIVE":
         symbols = SYMBOLS
     else:
-        symbols = [s.strip() for s in args.symbols.split(",")]
+        symbols = [normalize_symbol(s) for s in args.symbols.split(",") if s.strip()]
     
     print("=" * 80)
     print("ATLAS V7 — Walk-Forward Backtest (GPT Audit Priorité #2)")

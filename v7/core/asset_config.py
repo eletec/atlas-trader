@@ -5,14 +5,16 @@ Lit config/carry_assets.yaml et expose les actifs activés avec leurs paramètre
 Utilisé par la DAG factory, le backtest, et le dashboard.
 
 Chemins :
-- Runtime (writable) : /app/data/carry_assets.yaml  (volume v4_storage)
-- Git-tracked (read-only) : config/carry_assets.yaml
-- Bootstrap : si le runtime n'existe pas, copie depuis le git-tracked.
+- Container : /app/data/carry_assets.yaml  (runtime writable, volume v4_storage)
+- Hors container : config/carry_assets.yaml (dépôt, jamais de copie parasite)
+- Override : variable d'environnement V7_DATA_DIR
+- Bootstrap : en container, si le runtime n'existe pas, copie depuis le dépôt.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -21,22 +23,45 @@ import yaml
 
 logger = logging.getLogger("v7.core.asset_config")
 
-# Chemin runtime (writable, persistant) — prioritaire
-_RUNTIME_PATH = Path("/app/data/carry_assets.yaml")
+# Chemin runtime (writable, persistant) — utilisé DANS le container uniquement
+_APP_DATA = Path(os.environ.get("V7_DATA_DIR", "/app/data"))
+_RUNTIME_PATH = _APP_DATA / "carry_assets.yaml"
 # Chemin git-tracked (read-only dans le container)
 _GIT_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
+# Le dépôt est monté dans le container sur /app/src : marqueur fiable du container.
+# Hors container (ex. Windows), « /app/data » se résout en « C:\app\data » et un
+# fichier périmé à cet endroit écraserait silencieusement la config du dépôt —
+# les backtests locaux valideraient alors une autre stratégie que le live.
+_IN_CONTAINER = Path("/app/src").exists()
 _CACHE: dict | None = None
 
 
+def config_path() -> Path:
+    """Chemin de config actif : /app/data en container, dépôt sinon."""
+    if _IN_CONTAINER or "V7_DATA_DIR" in os.environ:
+        return _RUNTIME_PATH
+    return _GIT_PATH
+
+
 def _bootstrap_config() -> Path:
-    """Copie le fichier git-tracked vers /app/data/ au premier lancement."""
-    if _RUNTIME_PATH.exists():
-        return _RUNTIME_PATH
+    """Retourne le fichier de config à lire.
+
+    En container : /app/data/carry_assets.yaml (persisté par le volume), copié
+    depuis la version du dépôt au premier lancement.
+    Hors container : directement la version du dépôt (aucune copie parasite).
+    """
+    runtime = config_path()
+    if runtime != _RUNTIME_PATH:
+        if not runtime.exists():
+            logger.warning("No carry_assets.yaml found — using empty config")
+        return runtime
+    if runtime.exists():
+        return runtime
     if _GIT_PATH.exists():
-        _RUNTIME_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(_GIT_PATH, _RUNTIME_PATH)
-        logger.info("Bootstrapped carry_assets.yaml → /app/data/")
-        return _RUNTIME_PATH
+        runtime.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_GIT_PATH, runtime)
+        logger.info("Bootstrapped carry_assets.yaml → %s", runtime)
+        return runtime
     logger.warning("No carry_assets.yaml found — using empty config")
     return _GIT_PATH  # fallback (n'existe pas, mais load_config gère)
 
@@ -65,9 +90,9 @@ def reload_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
-    """Sauvegarde la configuration YAML dans /app/data/ (writable)."""
+    """Sauvegarde la configuration YAML (runtime en container, dépôt sinon)."""
     global _CACHE
-    path = _RUNTIME_PATH
+    path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -117,3 +142,29 @@ def update_asset_params(symbol: str, params: dict) -> None:
     if symbol in cfg.get("assets", {}):
         cfg["assets"][symbol].update(params)
         save_config(cfg)
+
+
+# ── Normalisation des symboles ────────────────────────────────────────────────
+# Les backtests acceptent des symboles saisis librement en CLI (BTC, btcusdt,
+# BTC/USDT, BTC/USDT:USDT). Sans normalisation, un symbole court fait échouer le
+# fetch spot et le backtest retombait silencieusement sur un P&L fictif.
+_QUOTES = ("USDT", "USDC", "BUSD", "FDUSD")
+
+
+def normalize_symbol(raw: str) -> str:
+    """Normalise un symbole utilisateur vers le format CCXT spot « BASE/USDT ».
+
+    Accepte : BTC, btc, BTCUSDT, BTC/USDT, BTC/USDT:USDT, SHIB, 1000SHIB.
+    """
+    s = (raw or "").strip().upper().replace(" ", "")
+    if not s:
+        return ""
+    if ":" in s:  # retire le suffixe perp « :USDT »
+        s = s.split(":", 1)[0]
+    if "/" in s:
+        base, _, quote = s.partition("/")
+        return f"{base}/{quote or 'USDT'}"
+    for quote in _QUOTES:  # retire un quote collé : « BTCUSDT » → « BTC/USDT »
+        if s.endswith(quote) and len(s) > len(quote):
+            return f"{s[:-len(quote)]}/{quote}"
+    return f"{s}/USDT"

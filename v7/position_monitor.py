@@ -1,7 +1,7 @@
 """
 v7/position_monitor.py — Surveillance continue des positions ouvertes.
 
-Thread indépendant du cycle DAG. Toutes les 60 secondes :
+Thread indépendant du cycle carry. Toutes les 60 secondes :
   1. Récupère les positions ouvertes (tous symboles)
   2. Fetch les prix spot et perp actuels via CCXT (cache 30s)
   3. Vérifie SL/TP contre le prix courant (sauf carry)
@@ -25,10 +25,10 @@ logger = logging.getLogger("v7.position_monitor")
 # ── Configuration ──────────────────────────────────────────────────────────
 CHECK_INTERVAL_S = 60
 PRICE_CACHE_TTL_S = 30
-MAX_HOLD_DAYS_DEFAULT = 10       # time-stop par défaut (non-carry)
+MAX_HOLD_DAYS_DEFAULT = 10       # time-stop par défaut si l'actif n'est pas configuré (non-carry)
 MAX_LOSS_PCT_DEFAULT = -0.05     # perte max par position (-5%)
 PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
-TOTAL_CAPITAL_DEFAULT = 14_000   # 7 actifs × $2,000
+TOTAL_CAPITAL_DEFAULT = 14_000   # fallback si carry_assets.yaml est illisible
 PAYBACK_DAYS_MAX_DEFAULT = 30    # sortie économique carry si payback > 30j
 
 
@@ -51,36 +51,38 @@ class PositionMonitor:
         """Tier 0: vrai si les nouvelles entrées doivent être bloquées."""
         return self._circuit_breaker
 
-    @classmethod
-    def instance(cls) -> "PositionMonitor":
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
     @staticmethod
     def _load_config() -> dict:
-        """Charge les paramètres de risk management depuis asset_profiles.yaml."""
+        """Paramètres de risk management.
+
+        Source unique de vérité : carry_assets.yaml via v7.core.asset_config.
+        (config/asset_profiles.yaml — reliquat V2 directionnel — a été supprimé :
+        il portait un max_hold_days différent de celui de la stratégie.)
+        """
+        glob: dict = {}
         try:
-            import yaml, os
-            path = os.path.join(os.path.dirname(__file__), "..", "config", "asset_profiles.yaml")
-            with open(path) as f:
-                cfg = yaml.safe_load(f) or {}
-            carry = cfg.get("v7_carry_defaults", {})
-            return {
-                "max_hold_days": int(carry.get("max_hold_days", MAX_HOLD_DAYS_DEFAULT)),
-                "max_loss_pct": float(carry.get("max_loss_pct", MAX_LOSS_PCT_DEFAULT)),
-                "max_portfolio_dd_pct": float(carry.get("max_portfolio_dd_pct", PORTFOLIO_DD_PCT_DEFAULT)),
-                "total_capital": int(carry.get("total_capital", TOTAL_CAPITAL_DEFAULT)),
-                "payback_days_max": int(carry.get("payback_days_max", PAYBACK_DAYS_MAX_DEFAULT)),
-            }
+            from v7.core.asset_config import get_global_params
+            glob = get_global_params()
+        except Exception as exc:
+            logger.warning("PositionMonitor: carry_assets.yaml indisponible (%s) — fallback", exc)
+        return {
+            "max_loss_pct": MAX_LOSS_PCT_DEFAULT,
+            "max_portfolio_dd_pct": PORTFOLIO_DD_PCT_DEFAULT,
+            "total_capital": int(glob.get("total_capital", TOTAL_CAPITAL_DEFAULT)),
+            "payback_days_max": PAYBACK_DAYS_MAX_DEFAULT,
+        }
+
+    @staticmethod
+    def _max_hold_days_for(symbol: str) -> int:
+        """Time-stop configuré pour l'actif (carry_assets.yaml), sinon défaut."""
+        try:
+            from v7.core.asset_config import get_asset_params
+            val = get_asset_params(symbol).get("max_hold_days")
+            if val:
+                return int(val)
         except Exception:
-            return {
-                "max_hold_days": MAX_HOLD_DAYS_DEFAULT,
-                "max_loss_pct": MAX_LOSS_PCT_DEFAULT,
-                "max_portfolio_dd_pct": PORTFOLIO_DD_PCT_DEFAULT,
-                "total_capital": TOTAL_CAPITAL_DEFAULT,
-                "payback_days_max": PAYBACK_DAYS_MAX_DEFAULT,
-            }
+            pass
+        return MAX_HOLD_DAYS_DEFAULT
 
     @classmethod
     def instance(cls) -> "PositionMonitor":
@@ -143,7 +145,6 @@ class PositionMonitor:
             return
 
         cfg = self._load_config()
-        max_hold_days = cfg["max_hold_days"]
         max_loss_pct = cfg["max_loss_pct"]       # ex: -0.05 = -5%
         max_portfolio_dd_pct = cfg["max_portfolio_dd_pct"]  # ex: -0.20 = -20%
         total_capital = cfg["total_capital"]
@@ -352,10 +353,11 @@ class PositionMonitor:
                             else:
                                 logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)
                     else:
-                        # Time-stop classique pour non-carry
-                        if days_held > max_hold_days:
+                        # Time-stop classique pour non-carry — seuil propre à l'actif
+                        _mhd = self._max_hold_days_for(pd["symbol"])
+                        if days_held > _mhd:
                             should_close = True
-                            reason = f"TIME-STOP: {days_held:.1f}j > {max_hold_days}j max (loss={loss_pct:+.2f}%)"
+                            reason = f"TIME-STOP: {days_held:.1f}j > {_mhd}j max (loss={loss_pct:+.2f}%)"
                 except (ValueError, OSError):
                     pass
 

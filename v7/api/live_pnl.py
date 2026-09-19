@@ -235,12 +235,12 @@ try:
             f'{t["symbol"]} {sign}{t["pnl_usd"]:.2f}$ ({sign}{t["pnl_pct"]:.2f}%)'
             for t in data.get("trades", [])
         )
-        return HTML(f"""<!DOCTYPE html>
+        return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta http-equiv="refresh" content="10">
 <style>body{{margin:0;padding:4px 12px;background:#0d1117;color:#e6edf3;
 font-family:monospace;font-size:12px;border-radius:6px;border:1px solid #30363d;
 white-space:nowrap;overflow:hidden;}}</style></head>
 <body>💰 P&L: <b style="color:{color}">{sign}{total:.2f}$</b> &nbsp;{trades_html}</body>
-</html>""")
+</html>"""
 except ImportError:
     router = None

@@ -4,7 +4,6 @@ Interface User (lecture seule) + Interface Admin (protégée par mot de passe).
 """
 from __future__ import annotations
 
-import hashlib
 import html
 import sys
 import threading
@@ -83,11 +82,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-try:
-    from dashboard.flux_manager import render_flux_manager_page
-except Exception:
-    from flux_manager import render_flux_manager_page
-from utils.i18n import t, set_lang, get_lang, SUPPORTED_LANGS
+from utils.i18n import t, set_lang
 
 # ── API URL (Docker = atlas-v4-api, local = host.docker.internal) ──────────
 import os as _os
@@ -928,27 +923,18 @@ def _get_last_cycle() -> dict | None:
     return decisions[0] if decisions else None
 
 
-def _get_settings() -> dict:
-    try:
-        from utils.config import load_settings
-        return load_settings()
-    except Exception as _e:
-        import logging
-        logging.getLogger("zeitgeist.dashboard").error(f"load_settings failed: {_e}")
-        st.session_state["_settings_error"] = str(_e)
-        return {}
+@st.cache_data(ttl=60)
+def _carry_asset_list() -> list[str]:
+    """Actifs configurés dans carry_assets.yaml — alimente les filtres du dashboard.
 
-
-def _save_settings(settings: dict) -> bool:
+    Liste dynamique : une liste codée en dur divergeait de la config réelle
+    (AVAX manquant, ADA/DOGE désactivés mais proposés).
+    """
     try:
-        from utils.config import save_settings
-        save_settings(settings)
-        return True
-    except Exception as _exc:
-        import logging
-        logging.getLogger("zeitgeist.dashboard").error(f"save_settings failed: {_exc}", exc_info=True)
-        st.session_state["_save_error"] = str(_exc)
-        return False
+        from v7.core.asset_config import get_all_assets
+        return get_all_assets() or []
+    except Exception:
+        return []
 
 
 # ===========================================================
@@ -1138,8 +1124,8 @@ def render_header():
     if _action == "force_run":
         st.query_params.pop("_action", None)
         if st.session_state.get("admin_authenticated"):
-            cfg   = _get_settings()
-            st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
+            # Le cycle carry couvre tous les actifs activés (carry_assets.yaml)
+            st.session_state["_force_run_asset"] = "ALL"
         # else: silently ignore — unauthenticated users cannot trigger a cycle
 
     if st.session_state.get("admin_authenticated") and st.session_state.get("_force_run_asset"):
@@ -1357,403 +1343,6 @@ def _html_card(fa: str, label: str, val_html: str,
         f'letter-spacing:.05em;margin-top:5px;">{label}</div>' +
         d_html + '</div>'
     )
-
-
-def render_climate_metrics(last_cycle: dict | None):
-    """Indicateurs de marché en cartes Bootstrap-like avec Font Awesome."""
-    import glob as _cm_glob, os as _cm_os, time as _cm_time
-    from utils.cycle_lock import is_locked as _is_cycle_locked
-
-    theme  = _get_theme()
-    score  = last_cycle.get("score",  50) if last_cycle else 50
-    action = last_cycle.get("action", "—") if last_cycle else "—"
-    ts     = last_cycle.get("timestamp", "") if last_cycle else ""
-    asset  = (last_cycle.get("asset", "") if last_cycle else "").replace("/", "_")
-
-    # Fallback V2 : si aucune donnée V1, lire v2_state pour action + timestamp
-    if action == "—":
-        try:
-            from storage.database import get_v2_state as _gv2s
-            _v2 = _gv2s()
-            if _v2:
-                _v2_raw = (_v2.get("action") or "flat").upper()
-                action = _v2_raw  # LONG / SHORT / FLAT
-                ts = _v2.get("updated_at", "")
-                if not asset:
-                    asset = (_v2.get("asset", "")).replace("/", "_")
-        except Exception:
-            pass
-
-    time_ago = "—"
-    if ts:
-        try:
-            diff = int((datetime.utcnow() - datetime.fromisoformat(ts)).total_seconds() / 60)
-            time_ago = f"{diff} min" if diff < 60 else f"{diff // 60} h"
-        except Exception:
-            pass
-
-    # Indicateur propre à l'asset :
-    #  - ⟳ en cours  : lock actif pour cet asset
-    #  - ✓ actif     : heartbeat de cet asset < 30 min (cycles récents)
-    #  - 🌙 hors session : heartbeat de cet asset > 30 min (forex fermé, etc.)
-    _asset_hb = f"/tmp/atlas_heartbeat_{asset}" if asset else None
-    _asset_slash = asset.replace("_", "/") if asset else None
-    if _is_cycle_locked(_asset_slash):
-        time_ago += f' <span style="color:#22c55e;font-size:11px;">{t("status_running")}</span>'
-    elif _asset_hb and _cm_os.path.exists(_asset_hb):
-        _hb_age = _cm_time.time() - _cm_os.path.getmtime(_asset_hb)
-        if _hb_age < 1800:
-            time_ago += f' <span style="color:#22c55e;font-size:11px;">{t("status_active")}</span>'
-        else:
-            # Calcul heure de reprise via MarketSession
-            _next_label = ""
-            _is_crypto = False
-            try:
-                from utils.session import MarketSession as _MarketSession, _get_profile as _sess_prof
-                _sess = _MarketSession(_asset_slash or "BTC/USDT")
-                _is_crypto = (_sess_prof(_asset_slash or "BTC/USDT") == "crypto")
-                _nxt = _sess.next_open()
-                _nxt_utc = _nxt.strftime("%H:%M UTC")
-                _wait_min = int((_nxt - __import__('datetime').datetime.now(
-                    __import__('datetime').timezone.utc)).total_seconds() / 60)
-                if _wait_min < 60:
-                    _next_label = t("status_resumes_in_min").format(n=_wait_min, time=_nxt_utc)
-                elif _wait_min < 1440:
-                    _next_label = t("status_resumes_at").format(time=_nxt_utc)
-                else:
-                    _nxt_day = _nxt.strftime("%a %H:%M UTC")
-                    _next_label = t("status_resumes_day").format(day=_nxt_day)
-            except Exception:
-                pass
-            # Pour crypto (24/7), "hors session" n'a pas de sens → "daemon inactif"
-            if _is_crypto:
-                _hb_age_h = int(_hb_age / 3600)
-                _hb_age_m = int((_hb_age % 3600) / 60)
-                _age_str = f"{_hb_age_h}h{_hb_age_m:02d}" if _hb_age_h else f"{_hb_age_m}min"
-                time_ago += (
-                    f' <span style="color:#f39c12;font-size:11px;">'
-                    f'⚠️ daemon inactif depuis {_age_str}</span>'
-                )
-            else:
-                time_ago += (
-                    f' <span style="color:#888;font-size:11px;">'
-                    f'{t("status_off_session")}{_next_label}</span>'
-                )
-
-    act_map = {
-        "BUY":   ("#2ecc71", "fas fa-arrow-trend-up"),
-        "SELL":  ("#e74c3c", "fas fa-arrow-trend-down"),
-        "HOLD":  ("#f39c12", "fas fa-hand"),
-        "LONG":  ("#2ecc71", "fas fa-arrow-trend-up"),
-        "SHORT": ("#e74c3c", "fas fa-arrow-trend-down"),
-        "FLAT":  ("#888888", "fas fa-minus"),
-    }
-    act_color, act_fa = act_map.get(action, ("#aaa", "fas fa-minus"))
-
-    above_ma50 = (last_cycle or {}).get("above_ma50", None)
-    ma_50      = (last_cycle or {}).get("ma_50", 0)
-    if above_ma50 is True:
-        ma50_val, ma50_col = t("ma50_bull"), "#2ecc71"
-        ma50_delta, ma50_d_pos = (f"MA50 ${ma_50:,.0f}" if ma_50 else None), True
-    elif above_ma50 is False:
-        ma50_val, ma50_col = t("ma50_bear"), "#e74c3c"
-        ma50_delta, ma50_d_pos = (
-            f"MA50 ${ma_50:,.0f} — {t('buy_blocked')}" if ma_50 else t("buy_blocked"),
-            False,
-        )
-    else:
-        ma50_val, ma50_col, ma50_delta, ma50_d_pos = "N/A", "#888", None, None
-
-    score_delta = f"{score - 50:+.0f} pts" if last_cycle else None
-    score_d_pos = bool(score > 50) if last_cycle else None
-    pct         = min(max(score, 0), 100)
-    bar_col     = "#2ecc71" if score >= 60 else "#f39c12" if score >= 40 else "#e74c3c"
-    score_bar   = (
-        f'<div style="height:3px;background:rgba(128,128,128,.2);border-radius:2px;margin-top:6px;">' +
-        f'<div style="height:3px;width:{pct}%;background:{bar_col};border-radius:2px;"></div></div>'
-    )
-
-    bg, bdr, txt, muted, ic = _card_colors(theme)
-    kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
-
-    grid = (
-        _html_card("fas fa-bullseye", t("score_label"),
-                   f'{score:.0f}<span style="font-size:14px;font-weight:400;opacity:.5;">/100</span>' + score_bar,
-                   delta=score_delta, d_pos=score_d_pos, **kw) +
-        _html_card(act_fa, t("last_decision_label"),
-                   f'<span style="color:{act_color}">{action}</span>',
-                   **kw) +
-        _html_card("fas fa-clock-rotate-left", t("last_cycle_label"), time_ago, **kw) +
-        _html_card("fas fa-chart-line", t("ma50_label"),
-                   f'<span style="color:{ma50_col}">{ma50_val}</span>',
-                   delta=ma50_delta, d_pos=ma50_d_pos, **kw)
-    )
-
-    st.markdown(
-        f'<h3 style="margin:0 0 10px;font-size:18px;">' +
-        f'<i class="fas fa-gauge-high" style="margin-right:8px;color:#7986cb;"></i>' +
-        f'{t("climate_title")}</h3>' +
-        f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));' +
-        f'gap:12px;margin-bottom:8px;">{grid}</div>',
-        unsafe_allow_html=True,
-    )
-
-
-def render_v2_quant_state(asset: str | None = None):
-    """
-    Bloc V2 Quant — régime, P(up), décision, position ouverte, courbe equity.
-    S'intègre dans le dashboard principal avec le même style de cartes.
-    Silencieux si la DB V2 n'a pas encore de données.
-    """
-    try:
-        from storage.database import get_v2_state, get_v2_equity_curve
-        import plotly.graph_objects as _go
-    except Exception:
-        return
-
-    state = get_v2_state()
-    if not state:
-        return  # Premier démarrage — rien à afficher encore
-
-    theme = _get_theme()
-    bg, bdr, txt, muted, ic = _card_colors(theme)
-    kw = dict(bg=bg, bdr=bdr, txt=txt, muted=muted, ic=ic)
-
-    # ── Titre section ──────────────────────────────────────────────────────────
-    st.markdown(
-        '<h3 style="margin:20px 0 10px;font-size:18px;">'
-        '<i class="fas fa-microchip" style="margin-right:8px;color:#7986cb;"></i>'
-        + t("v2_quant_title", lang=None) + '</h3>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Cartes : Régime / P(up) / Décision V2 / Capital V2 ───────────────────
-    regime_val = state.get("regime")
-    if regime_val is None:
-        regime_label = "N/A"
-        regime_color = "#888"
-    elif regime_val in (1, 1.0):
-        regime_label = "TRENDING"
-        regime_color = "#2ecc71"
-    elif regime_val == 0.5:
-        regime_label = "RANGING"
-        regime_color = "#f39c12"
-    else:
-        regime_label = "PANIC"
-        regime_color = "#e74c3c"
-
-    prob_up = state.get("prob_up")
-    if prob_up is not None:
-        prob_pct = f"{prob_up:.1%}"
-        if prob_up > 0.55:
-            prob_color = "#2ecc71"
-            prob_delta = "> 0.55 — signal haussier"
-            prob_d_pos = True
-        elif prob_up < 0.45:
-            prob_color = "#e74c3c"
-            prob_delta = "< 0.45 — signal baissier"
-            prob_d_pos = False
-        else:
-            prob_color = "#f39c12"
-            prob_delta = "zone morte [0.45 – 0.55]"
-            prob_d_pos = None
-    else:
-        prob_pct, prob_color, prob_delta, prob_d_pos = "N/A", "#888", None, None
-
-    action_v2 = (state.get("action") or "flat").upper()
-    act_v2_color = {"LONG": "#2ecc71", "SHORT": "#e74c3c"}.get(action_v2, "#888")
-    act_v2_fa = {"LONG": "fas fa-arrow-trend-up", "SHORT": "fas fa-arrow-trend-down"}.get(
-        action_v2, "fas fa-minus")
-    reason_v2 = state.get("reason", "")
-
-    cap_v2 = state.get("capital")
-    cap_v2_html = f'${cap_v2:,.0f}' if cap_v2 is not None else "N/A"
-
-    grid = (
-        _html_card("fas fa-wave-square", t("v2_regime"),
-                   f'<span style="color:{regime_color}">{regime_label}</span>',
-                   **kw) +
-        _html_card("fas fa-percent", t("v2_prob_up"),
-                   f'<span style="color:{prob_color}">{prob_pct}</span>',
-                   delta=prob_delta, d_pos=prob_d_pos, **kw) +
-        _html_card(act_v2_fa, t("v2_decision"),
-                   f'<span style="color:{act_v2_color}">{action_v2}</span>',
-                   delta=reason_v2 or None, d_pos=None, **kw) +
-        _html_card("fas fa-wallet", t("v2_capital"),
-                   cap_v2_html, **kw)
-    )
-    st.markdown(
-        f'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));'
-        f'gap:12px;margin-bottom:12px;">{grid}</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Position ouverte ──────────────────────────────────────────────────────
-    pos_side = state.get("position_side")
-    if pos_side:
-        entry = state.get("entry_price")
-        sl    = state.get("sl_price")
-        tp    = state.get("tp_price")
-        close = state.get("close_price")
-        pnl_pct = None
-        if entry and close:
-            pnl_pct = (close - entry) / entry if pos_side == "long" else (entry - close) / entry
-        pnl_col = "#2ecc71" if (pnl_pct or 0) >= 0 else "#e74c3c"
-        pnl_str = f"{pnl_pct:+.2%}" if pnl_pct is not None else "—"
-        pos_html = (
-            f'<div style="background:{bg};border:1px solid {bdr};border-radius:10px;'
-            f'padding:10px 14px;font-size:13px;margin-bottom:10px;">'
-            f'<b style="color:{"#2ecc71" if pos_side=="long" else "#e74c3c"}">'
-            f'{"▲" if pos_side=="long" else "▼"} {pos_side.upper()}</b>'
-            f'&nbsp;·&nbsp; Entry <b>${entry:,.2f}</b>'
-            f'&nbsp;·&nbsp; SL <b style="color:#e74c3c">${sl:,.2f}</b>'
-            f'&nbsp;·&nbsp; TP <b style="color:#2ecc71">${tp:,.2f}</b>'
-            f'&nbsp;·&nbsp; P&L latent <b style="color:{pnl_col}">{pnl_str}</b>'
-            f'</div>'
-        ) if entry and sl and tp else ""
-        if pos_html:
-            st.markdown(pos_html, unsafe_allow_html=True)
-
-    # ── Courbe equity V2 (compacte) ───────────────────────────────────────────
-    equity_rows = get_v2_equity_curve(n=200)
-    if equity_rows and len(equity_rows) >= 2:
-        import pandas as _pd
-        eq_df = _pd.DataFrame(equity_rows)
-        eq_df["ts"] = _pd.to_datetime(eq_df["ts"])
-        eq_df = eq_df.sort_values("ts")
-
-        fig = _go.Figure()
-        fig.add_trace(_go.Scatter(
-            x=eq_df["ts"], y=eq_df["equity"],
-            mode="lines", name=t("v2_equity"),
-            line=dict(color="#4fc3f7", width=2),
-            fill="tozeroy", fillcolor="rgba(79,195,247,0.06)",
-        ))
-        entries = eq_df[eq_df["action"].isin(["long", "short"])]
-        if not entries.empty:
-            fig.add_trace(_go.Scatter(
-                x=entries["ts"], y=entries["equity"],
-                mode="markers",
-                marker=dict(
-                    size=7,
-                    color=entries["action"].map({"long": "#2ecc71", "short": "#e74c3c"}),
-                    symbol=entries["action"].map({"long": "triangle-up", "short": "triangle-down"}),
-                ),
-                name=t("v2_entries"),
-            ))
-        fig.update_layout(
-            height=200, margin=dict(l=0, r=0, t=6, b=0),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(showgrid=False, color=muted),
-            yaxis=dict(showgrid=True, gridcolor=bdr, color=muted),
-            legend=dict(orientation="h", y=1.1, font=dict(color=muted, size=11)),
-            hovermode="x unified",
-        )
-        st.plotly_chart(fig, use_container_width=True, key=f"v2_equity_{asset or 'all'}")
-
-        # Métriques synthétiques inline
-        if len(eq_df) >= 5:
-            init = float(eq_df["equity"].iloc[0])
-            final = float(eq_df["equity"].iloc[-1])
-            total_ret = (final - init) / init
-            rets = eq_df["equity"].pct_change().dropna()
-            sharpe = float(rets.mean() / rets.std() * (365 * 96) ** 0.5) if rets.std() > 0 else 0.0
-            cummax = eq_df["equity"].cummax()
-            max_dd = float(((eq_df["equity"] - cummax) / cummax).min())
-            col_r, col_s, col_d = st.columns(3)
-            col_r.metric(t("v2_total_ret"),  f"{total_ret:+.2%}")
-            col_s.metric(t("v2_sharpe"),     f"{sharpe:.2f}")
-            col_d.metric(t("v2_max_dd"),     f"{max_dd:.2%}")
-
-    # ── F.2 Monitoring live — détection de dégradation (3/3 IA, GPT : CRITIQUE) ───────
-    _render_v2_monitoring(state, theme, bg, bdr, txt, muted)
-
-
-def _render_v2_monitoring(state: dict, theme: str, bg: str, bdr: str, txt: str, muted: str) -> None:
-    """Section monitoring : 6 indicateurs de dégradation en production."""
-    try:
-        from storage.database import get_v2_equity_curve, get_v2_state_history
-        import pandas as _pd
-    except Exception:
-        return
-
-    # Charger les 500 dernières barres d'equity + d'état pour les métriques rolling
-    equity_rows = get_v2_equity_curve(n=500)
-    if not equity_rows or len(equity_rows) < 20:
-        return
-
-    eq_df = _pd.DataFrame(equity_rows)
-    eq_df["ts"] = _pd.to_datetime(eq_df["ts"])
-    eq_df = eq_df.sort_values("ts").reset_index(drop=True)
-
-    # 1. Rolling Sharpe 30 jours (288 barres × 5m = 30j à 5m)
-    window_30d = min(288 * 30, len(eq_df))
-    rets_roll = eq_df["equity"].pct_change().dropna()
-    if len(rets_roll) >= 20:
-        r_win = rets_roll.iloc[-window_30d:]
-        rolling_sharpe = float(r_win.mean() / r_win.std() * (365 * 288) ** 0.5) if r_win.std() > 0 else 0.0
-    else:
-        rolling_sharpe = 0.0
-
-    # 2. Distribution P(up) — dérive par rapport à la moyenne historique
-    prob_up_current = state.get("prob_up")
-
-    # 3. Ratio régime TRENDING (depuis l'état courant uniquement)
-    regime_current = state.get("regime")
-    regime_label = "TRENDING" if regime_current in (1, 1.0) else ("RANGING" if regime_current == 0.5 else ("PANIC" if regime_current is not None else "N/A"))
-
-    # 4. Profit Factor rolling sur les 50 dernières actions
-    actions_50 = eq_df["action"].iloc[-50:] if "action" in eq_df.columns else _pd.Series([], dtype=str)
-    rets_50 = eq_df["equity"].pct_change().iloc[-50:].dropna()
-    if len(rets_50) >= 5:
-        wins = rets_50[rets_50 > 0].sum()
-        losses = abs(rets_50[rets_50 < 0].sum())
-        pf_rolling = float(wins / losses) if losses > 0 else float("inf")
-    else:
-        pf_rolling = None
-
-    # 5. Brier score proxy — |P(up) - 0.5| moyen (signal de conviction)
-    # (score de calibration approximatif sans cible connue)
-    if prob_up_current is not None:
-        conviction = abs(prob_up_current - 0.5)
-    else:
-        conviction = None
-
-    # ── Rendu des alertes ────────────────────────────────────────────────────
-    alerts = []
-    if rolling_sharpe < 0:
-        alerts.append(("🔴", f"Sharpe rolling 30j négatif ({rolling_sharpe:.2f}) — edge possiblement disparu"))
-    elif rolling_sharpe < 0.3:
-        alerts.append(("🟠", f"Sharpe rolling 30j faible ({rolling_sharpe:.2f}) — surveiller"))
-
-    if prob_up_current is not None and abs(prob_up_current - 0.5) < 0.01:
-        alerts.append(("🟠", f"P(up) ≈ 0.50 ({prob_up_current:.3f}) — signal neutre, edge possiblement perdu"))
-
-    if pf_rolling is not None and pf_rolling < 1.0:
-        alerts.append(("🔴", f"Profit Factor rolling 50 barres < 1.0 ({pf_rolling:.2f}) — pertes nettes récentes"))
-
-    st.markdown(
-        '<h4 style="margin:18px 0 8px;font-size:14px;color:' + muted + ';">'
-        '<i class="fas fa-heartbeat" style="margin-right:6px;color:#e74c3c;"></i>'
-        'Monitoring live — indicateurs de dégradation</h4>',
-        unsafe_allow_html=True,
-    )
-
-    col1, col2, col3, col4 = st.columns(4)
-    sharpe_color = "#2ecc71" if rolling_sharpe >= 0.5 else ("#f39c12" if rolling_sharpe >= 0 else "#e74c3c")
-    col1.metric("Sharpe 30j", f"{rolling_sharpe:.2f}",
-                delta="OK" if rolling_sharpe >= 0 else "ALERTE",
-                delta_color="normal" if rolling_sharpe >= 0 else "inverse")
-    col2.metric("P(up) actuel", f"{prob_up_current:.3f}" if prob_up_current else "N/A",
-                delta=f"conv={conviction:.3f}" if conviction is not None else None)
-    col3.metric(t("metric_current_regime"), regime_label)
-    col4.metric("PF rolling 50", f"{pf_rolling:.2f}" if pf_rolling else "N/A",
-                delta="OK" if pf_rolling and pf_rolling >= 1.2 else "bas",
-                delta_color="normal" if pf_rolling and pf_rolling >= 1.2 else "inverse")
-
-    if alerts:
-        for icon, msg in alerts:
-            st.warning(f"{icon} {msg}")
 
 
 def render_portfolio(portfolio: dict):
@@ -2257,207 +1846,6 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
                 pass
 
 
-def render_live_chart(asset: str = "BTC/USDT"):
-    """Graphique prix en temps réel avec niveaux SL/TP des positions ouvertes."""
-    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-satellite-dish" style="margin-right:8px;color:#7986cb;"></i>{asset} — {t("open_pos_label")}</h3>', unsafe_allow_html=True)
-
-    try:
-        from storage.database import get_recent_decisions
-        indicators = _get_live_indicators(asset)
-        current_price = indicators.get("price", 0)
-        ma_50 = indicators.get("ma_50", 0)
-
-        open_pos = [
-            d for d in get_recent_decisions(500, asset=asset)
-            if d.get("action") == "BUY" and d.get("result_24h") is None
-        ]
-    except Exception as exc:
-        st.warning(f'{t("data_load_error")} : {exc}')
-        return
-
-    if not open_pos:
-        c1, c2, c3 = st.columns(3)
-        c1.metric(f"Prix {asset.split('/')[0]}", f"${current_price:,.2f}" if current_price else "—")
-        if ma_50:
-            c2.metric("MA50", f"${ma_50:,.2f}",
-                      delta=f"{(current_price/ma_50-1)*100:+.1f}%" if current_price and ma_50 else None,
-                      delta_color="normal")
-        c3.metric(t("open_pos_label"), "0")
-
-        # Graphique prix 24h même sans positions
-        try:
-            times, closes = _get_ohlcv(asset)
-            if times and closes:
-                fig_empty = go.Figure()
-                fig_empty.add_trace(go.Scatter(
-                    x=pd.to_datetime(times, unit="ms"),
-                    y=closes,
-                    mode="lines",
-                    line=dict(color="#00d4ff", width=2),
-                    name=asset,
-                ))
-                if ma_50:
-                    fig_empty.add_hline(y=ma_50,
-                        line=dict(color="#e74c3c" if current_price < ma_50 else "#2ecc71",
-                                  width=1, dash="dash"),
-                        annotation_text=f"MA50 ${ma_50:,.0f}",
-                        annotation_font=dict(size=11))
-                fig_empty.update_layout(
-                    height=280, margin=dict(l=0, r=60, t=20, b=0),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    yaxis=dict(gridcolor="rgba(128,128,128,0.15)", tickprefix="$"),
-                    xaxis=dict(gridcolor="rgba(128,128,128,0.1)"),
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_empty, use_container_width=True, key=f"live_chart_empty_{asset.replace('/', '_')}")
-            else:
-                st.info(t("no_open_pos"))
-        except Exception:
-            st.info(t("no_open_pos"))
-        return
-
-    fig = go.Figure()
-
-    # Ligne prix actuel
-    prices = [float(p["entry_price"]) for p in open_pos if p.get("entry_price")]
-    all_levels = prices.copy()
-    if ma_50: all_levels.append(ma_50)
-    sls = [float(p["sl_price"]) for p in open_pos if p.get("sl_price")]
-    tps = [float(p["tp_price"]) for p in open_pos if p.get("tp_price")]
-    all_levels += sls + tps
-    if not all_levels:
-        all_levels = [current_price * 0.95, current_price * 1.05]
-    y_min = min(all_levels) * 0.998
-    y_max = max(all_levels) * 1.002
-
-    # Ligne prix courant
-    fig.add_hline(y=current_price, line=dict(color="#00d4ff", width=2),
-                  annotation_text=f"  Prix actuel ${current_price:,.0f}",
-                  annotation_font=dict(color="#00d4ff", size=12))
-
-    # Ligne MA50
-    if ma_50:
-        color_ma = "#2ecc71" if current_price > ma_50 else "#e74c3c"
-        fig.add_hline(y=ma_50, line=dict(color=color_ma, width=1, dash="dash"),
-                      annotation_text=f"  MA50 ${ma_50:,.0f}",
-                      annotation_font=dict(color=color_ma, size=11))
-
-    # Niveaux SL/TP de chaque position
-    for i, pos in enumerate(open_pos):
-        entry = pos.get("entry_price", 0)
-        sl = pos.get("sl_price", 0)
-        tp = pos.get("tp_price", 0)
-        ts = pos.get("timestamp", "")[:10]
-        size = pos.get("position_size", 0)
-        if not entry: continue
-        pnl_float = (current_price - entry) / entry * size if entry else 0
-        label = f"  #{i+1} {ts} ${size:,.0f} | P&L {pnl_float:+,.0f}$"
-        fig.add_hline(y=entry, line=dict(color="#f39c12", width=1, dash="dot"),
-                      annotation_text=label,
-                      annotation_font=dict(color="#f39c12", size=10),
-                      annotation_position="right")
-        if sl:
-            fig.add_hline(y=sl, line=dict(color="#e74c3c", width=1, dash="dot"),
-                          annotation_text=f"  SL #{i+1}",
-                          annotation_font=dict(color="#e74c3c", size=10),
-                          annotation_position="left")
-        if tp:
-            fig.add_hline(y=tp, line=dict(color="#2ecc71", width=1, dash="dot"),
-                          annotation_text=f"  TP #{i+1}",
-                          annotation_font=dict(color="#2ecc71", size=10),
-                          annotation_position="left")
-
-    fig.update_layout(
-        height=380, margin=dict(l=0, r=120, t=30, b=0),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(gridcolor="rgba(128,128,128,0.2)", tickprefix="$", range=[y_min, y_max]),
-        xaxis=dict(visible=False),
-        showlegend=False,
-    )
-
-    n_open = len(open_pos)
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"Prix {asset.split('/')[0]}", f"${current_price:,.2f}" if current_price else "—")
-    if ma_50:
-        c2.metric("MA50", f"${ma_50:,.2f}",
-                  delta=f"{(current_price/ma_50-1)*100:+.1f}%" if current_price else None,
-                  delta_color="normal")
-    c3.metric(t("open_pos_label"), n_open)
-    st.plotly_chart(fig, use_container_width=True, key=f"live_chart_{asset.replace('/', '_')}")
-
-
-def render_trades_list(trades: list[dict]):
-    """Liste détaillée des trades exécutés."""
-    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>{t("trades_title")}</h3>', unsafe_allow_html=True)
-    if not trades:
-        st.info(t("no_trades"))
-        return
-
-    theme = _get_theme()
-    if theme == "light":
-        tbl_bg   = "#ffffff"; tbl_fg   = "#212529"
-        head_bg  = "#f1f3f5"; row_alt  = "#f8f9fa"
-        border   = "#dee2e6"; sep      = "#e9ecef"
-    else:
-        tbl_bg   = "#161b22"; tbl_fg   = "#e6edf3"
-        head_bg  = "#0d1117"; row_alt  = "#1b2129"
-        border   = "rgba(255,255,255,0.08)"; sep = "rgba(255,255,255,0.05)"
-
-    cols = [t("col_date"), t("col_action"), t("col_entry"), t("col_size"),
-            "SL", "TP", t("col_pnl"), t("col_score")]
-
-    header_cells = "".join(
-        f'<th style="padding:9px 12px;font-size:12px;font-weight:600;'
-        f'text-transform:uppercase;letter-spacing:.05em;color:{tbl_fg};'
-        f'opacity:.65;background:{head_bg};white-space:nowrap;'
-        f'border-bottom:2px solid {border};">{c}</th>'
-        for c in cols
-    )
-
-    rows_html = ""
-    for i, trade in enumerate(trades):
-        pnl    = trade.get("result_24h")
-        action = trade.get("action", "")
-        bg     = row_alt if i % 2 == 1 else tbl_bg
-
-        action_color = "#2ecc71" if action == "BUY" else ("#e74c3c" if action == "SELL" else tbl_fg)
-        if action == "SELL":
-            # SELL = signal de sortie (long-only) — le P&L est sur la ligne BUY d'origine
-            pnl_str   = f'<span style="opacity:.6;font-style:italic;">✓ Clôture</span>'
-        elif pnl is None:
-            pnl_str   = f'<span style="opacity:.45;">{t("pending")}</span>'
-        elif pnl >= 0:
-            pnl_str   = f'<span style="color:#2ecc71;font-weight:600;">${pnl:+,.2f}</span>'
-        else:
-            pnl_str   = f'<span style="color:#e74c3c;font-weight:600;">${pnl:+,.2f}</span>'
-
-        cells = [
-            trade.get("timestamp", "")[:16].replace("T", " "),
-            f'<span style="color:{action_color};font-weight:600;">{action}</span>',
-            f'${trade.get("entry_price", 0):,.2f}' if trade.get("entry_price") else "—",
-            f'${(trade.get("position_size_usd") if trade.get("position_size_usd") is not None else trade.get("position_size", 0)):,.0f}'
-                if (trade.get("position_size_usd") is not None or trade.get("position_size")) else "—",
-            f'${trade.get("sl_price", 0):,.2f}'    if trade.get("sl_price")    else "—",
-            f'${trade.get("tp_price", 0):,.2f}'    if trade.get("tp_price")    else "—",
-            pnl_str,
-            f'{trade.get("score", 0):.0f}/100',
-        ]
-        td_style = (f'padding:8px 12px;font-size:13px;color:{tbl_fg};'
-                    f'white-space:nowrap;border-bottom:1px solid {sep};')
-        tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
-        rows_html += f'<tr style="background:{bg};">{tds}</tr>'
-
-    html = f"""
-<div style="overflow-y:auto;max-height:520px;border:1px solid {border};
-            border-radius:10px;background:{tbl_bg};margin-bottom:24px;">
-  <table style="border-collapse:collapse;width:100%;min-width:700px;">
-    <thead><tr>{header_cells}</tr></thead>
-    <tbody>{rows_html}</tbody>
-  </table>
-</div>"""
-    st.markdown(html, unsafe_allow_html=True)
-
-
 def render_trades_list_sortable(trades: list[dict]):
     """Historique global des trades — thème sombre/clair automatique."""
     st.markdown(
@@ -2857,221 +2245,6 @@ def _inject_live_trade_prices_js() -> None:
 </body></html>""", height=0)
 
 
-def render_last_decision(last_cycle: dict | None):
-    """Affiche la dernière décision V2 (depuis v2_state, pas la table V1 decisions)."""
-    st.markdown('<div style="margin-top:24px;"></div>', unsafe_allow_html=True)
-    st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-chart-bar" style="margin-right:8px;color:#7986cb;"></i>{t("last_decision_title")}</h3>', unsafe_allow_html=True)
-
-    # V2 : lire directement v2_state (la table decisions V1 n'est plus alimentée)
-    try:
-        from storage.database import get_v2_state
-        state = get_v2_state()
-    except Exception:
-        state = None
-
-    if not state:
-        st.info(t("no_cycle"))
-        return
-
-    action = (state.get("action") or "flat").upper()
-    action_color = {"LONG": "#2ecc71", "SHORT": "#e74c3c", "FLAT": "#888888"}.get(action, "#888888")
-    explanation = state.get("reason") or "—"
-
-    # Formatage de la date/heure (depuis v2_state.updated_at)
-    _ld_updated = state.get("updated_at") or ""
-    ts_label = ""
-    if _ld_updated:
-        try:
-            dt = datetime.fromisoformat(_ld_updated)
-            ts_label = _fmt_utc_local(dt)
-        except Exception:
-            ts_label = _ld_updated[:16]
-
-    prob_up    = state.get("prob_up")
-    regime_raw = state.get("regime")
-    regime_str = "TREND" if regime_raw in (1, 1.0) else ("RANGE" if regime_raw == 0.5 else ("PANIC" if regime_raw is not None else "—"))
-    close_price = state.get("close_price")
-    atr_14      = state.get("atr_14")
-    model_fit_at = state.get("model_fit_at")
-
-    # Carte action principale
-    st.markdown(
-        f"<div style='border-left:4px solid {action_color};padding:12px 16px;border-radius:4px;"
-        f"background:rgba(255,255,255,0.03);'>"
-        f"<strong style='color:{action_color};font-size:20px;'>{action}</strong>"
-        + (f" &nbsp;<span style='font-size:11px;opacity:0.5;'>🕐 {ts_label}</span>" if ts_label else "")
-        + "<br><span style='font-size:11px;opacity:0.55;'>Pipeline quantitatif</span>"
-        + f"<br><br><b>Raison :</b> <code style='font-size:12px;'>{explanation}</code>"
-        + (f"<br><b>Régime :</b> {regime_str} &nbsp;·&nbsp; <b>P(↑) :</b> {prob_up:.3f}" if prob_up is not None else "")
-        + (f"<br><b>Prix clôture :</b> <b>${close_price:,.2f}</b>" if close_price else "")
-        + (f" &nbsp;·&nbsp; <b>ATR(14) :</b> ${atr_14:.2f}" if atr_14 else "")
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
-    # Position ouverte (si présente)
-    _ld_pos = state.get("position_side")
-    if _ld_pos:
-        _ld_entry = state.get("entry_price")
-        _ld_sl    = state.get("sl_price")
-        _ld_tp    = state.get("tp_price")
-        _ld_pcol  = "#2ecc71" if _ld_pos == "long" else "#e74c3c"
-        _ld_arrow = "▲" if _ld_pos == "long" else "▼"
-        st.markdown(
-            f"<div style='margin-top:8px;padding:8px 12px;border-radius:6px;"
-            f"background:rgba(255,255,255,0.04);font-size:13px;'>"
-            f"<b style='color:{_ld_pcol}'>{_ld_arrow} {_ld_pos.upper()}</b>"
-            + (f" @ <b>${_ld_entry:,.2f}</b>" if _ld_entry else "")
-            + (f" &nbsp;·&nbsp; SL <b style='color:#e74c3c'>${_ld_sl:,.2f}</b>" if _ld_sl else "")
-            + (f" &nbsp;·&nbsp; TP <b style='color:#2ecc71'>${_ld_tp:,.2f}</b>" if _ld_tp else "")
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-
-    # Date refit modèle
-    if model_fit_at:
-        try:
-            fit_dt  = datetime.fromisoformat(model_fit_at)
-            age_h   = int((datetime.utcnow() - fit_dt).total_seconds() / 3600)
-            age_str = f"{age_h}h" if age_h < 48 else f"{age_h // 24}j"
-            st.caption(f"🧠 Modèle refit il y a {age_str}")
-        except Exception:
-            pass
-
-
-_LOGS_PAGE_SIZE = 100
-
-
-def render_agent_scores_chart(asset: str):
-    """Graphique d'évolution des scores agents dans le temps pour un actif."""
-    try:
-        import plotly.graph_objects as go
-        from storage.database import get_agent_scores_history
-        import pandas as pd
-    except ImportError:
-        st.caption(t("plotly_unavailable"))
-        return
-
-    WINDOWS = [24, 48, 168, 720]
-    WINDOW_LABELS = {24: "24h", 48: "48h", 168: "7j", 720: "30j"}
-    COLORS = [
-        "#7986cb", "#4fc3f7", "#81c784", "#ffb74d",
-        "#f06292", "#ce93d8", "#80cbc4", "#fff176",
-        "#ffcc80", "#a1c4fd",
-    ]
-
-    radio_key = f"agent_chart_win_{asset.replace('/', '_')}"
-    hours = st.radio(
-        "Fenêtre",
-        WINDOWS,
-        format_func=lambda h: WINDOW_LABELS[h],
-        horizontal=True,
-        key=radio_key,
-        label_visibility="collapsed",
-    )
-
-    data = get_agent_scores_history(asset=asset, hours=hours)
-    if not data:
-        st.info(f"Pas encore d'historique ({WINDOW_LABELS[hours]}) pour {asset}.")
-        return
-
-    rows = []
-    for entry in data:
-        base = {
-            "ts": entry["timestamp"],
-            "action": entry.get("action", ""),
-            "score_global": entry.get("global_score", 50),
-            "market": entry.get("market_score", 50),
-            "contrarian": entry.get("contrarian_score", 50),
-            "mirofish": entry.get("mirofish_score", 50),
-        }
-        for ag, sc in entry.get("agent_scores", {}).items():
-            base[ag] = sc
-        rows.append(base)
-
-    df = pd.DataFrame(rows)
-    df["ts"] = pd.to_datetime(df["ts"])
-    df = df.sort_values("ts").reset_index(drop=True)
-
-    agent_cols = [c for c in df.columns if c not in ("ts", "action", "score_global")]
-
-    fig = go.Figure()
-
-    fig.add_hline(y=62, line_dash="dash", line_color="#2ecc71", line_width=1,
-                  opacity=0.45, annotation_text="BUY≥62",
-                  annotation_position="bottom right",
-                  annotation_font=dict(size=9, color="#2ecc71"))
-    fig.add_hline(y=52, line_dash="dash", line_color="#e74c3c", line_width=1,
-                  opacity=0.45, annotation_text="EXIT<52",
-                  annotation_position="bottom right",
-                  annotation_font=dict(size=9, color="#e74c3c"))
-
-    for i, col in enumerate(agent_cols):
-        if col not in df.columns:
-            continue
-        fig.add_trace(go.Scatter(
-            x=df["ts"], y=df[col],
-            mode="lines", name=col,
-            line=dict(color=COLORS[i % len(COLORS)], width=1.4),
-            opacity=0.85,
-            hovertemplate=f"{col}: %{{y:.0f}}<extra></extra>",
-        ))
-
-    # Score global en surimpression (blanc, plus épais)
-    fig.add_trace(go.Scatter(
-        x=df["ts"], y=df["score_global"],
-        mode="lines", name="Global",
-        line=dict(color="#ffffff", width=2.5),
-        opacity=0.95,
-        hovertemplate="Global: %{y:.1f}<extra></extra>",
-    ))
-
-    # Marqueurs BUY / SELL sur la ligne globale
-    for action, sym, clr in [("BUY", "triangle-up", "#2ecc71"), ("SELL", "triangle-down", "#e74c3c")]:
-        mask = df["action"] == action
-        if mask.any():
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, "ts"], y=df.loc[mask, "score_global"],
-                mode="markers", name=action,
-                marker=dict(symbol=sym, size=11, color=clr,
-                            line=dict(width=1, color="#000")),
-                hovertemplate=f"{action}: %{{y:.1f}}<extra></extra>",
-            ))
-
-    from datetime import datetime, timezone, timedelta
-    now_utc = datetime.now(timezone.utc)
-    x_start_max = now_utc - timedelta(hours=hours)
-    # df["ts"] est naive (UTC) — comparer en naive
-    x_start_max_naive = now_utc.replace(tzinfo=None) - timedelta(hours=hours)
-    x_start_naive = max(x_start_max_naive, df["ts"].min() - timedelta(minutes=15)) if len(df) else x_start_max_naive
-    x_start = x_start_naive
-
-    fig.update_layout(
-        height=300,
-        margin=dict(l=0, r=50, t=8, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.01,
-                    xanchor="left", x=0, font=dict(size=9)),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(
-            showgrid=False, tickfont=dict(size=10),
-            range=[x_start, now_utc],
-        ),
-        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)",
-                   range=[0, 100], tickfont=dict(size=10)),
-        font=dict(color="#c8c8c8"),
-        hovermode="x unified",
-    )
-
-    st.markdown(
-        '<p style="font-size:12px;font-weight:600;margin:4px 0 2px;">'
-        '📈 Évolution des scores agents</p>',
-        unsafe_allow_html=True,
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False},
-                    key=f"agent_scores_{asset.replace('/', '_')}_{hours}")
-
-
 def _apply_optimized_params(cfg: dict) -> int:
     """Copie les _optimized_* vers les params réels (actifs non verrouillés).
 
@@ -3104,26 +2277,25 @@ def _apply_optimized_params(cfg: dict) -> int:
     return count
 
 
-def _reload_dags():
-    """Appelle POST /dag/reload et affiche le résultat."""
+def _reload_api_config():
+    """POST /carry/reload-config — applique carry_assets.yaml au process API.
+
+    Le dashboard écrit le fichier, mais l'API en garde une copie en cache :
+    sans cet appel, un actif activé ici n'était pris en compte qu'après
+    redémarrage du container.
+    """
     import urllib.request, json
     try:
-        req = urllib.request.Request(f"{_API_BASE}/dag/reload", method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        req = urllib.request.Request(f"{_API_BASE}/carry/reload-config", method="POST")
+        with urllib.request.urlopen(req, timeout=20) as resp:
             result = json.loads(resp.read())
-        added = result.get("added", [])
-        removed = result.get("removed", [])
-        running = result.get("running", 0)
-        if isinstance(running, list):
-            running = len(running)
-        msg = f"✅ {running} DAGs actifs"
-        if added:
-            msg += f" — +{len(added)} ajoutés"
-        if removed:
-            msg += f" — -{len(removed)} retirés"
-        st.success(msg)
+        n = result.get("n_assets", 0)
+        assets = ", ".join(a.split("/")[0] for a in result.get("active_assets", []))
+        st.success(t("carry_reload_ok").format(n=n, assets=assets))
+        if result.get("errors"):
+            st.warning(t("carry_reload_warn").format(errors="; ".join(result["errors"][:3])))
     except Exception as exc:
-        st.error(f"DAG reload failed — {exc}")
+        st.error(t("carry_reload_error").format(err=exc))
 
 
 def _carry_logo_md(sym: str, params: dict) -> str:
@@ -3221,8 +2393,9 @@ def _render_carry_config():
             st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
             st.rerun()
     with col_b4:
-        if st.button("🚀 Apply & Reload DAGs", type="primary", use_container_width=True):
-            _reload_dags()
+        if st.button(t("carry_apply_reload_btn"), type="primary", use_container_width=True,
+                     help=t("carry_apply_reload_help")):
+            _reload_api_config()
 
     # ── Warning: actifs non viables ──
     non_viable = [sym for sym, p in assets.items() 
@@ -3248,19 +2421,29 @@ def _render_carry_config():
         with col3:
             new_max_pos = st.number_input(t("carry_max_positions"), 1, 13, int(global_cfg.get("max_simultaneous_positions", 4)))
         
-        col4, col5 = st.columns(2)
+        col4, col5, col6 = st.columns(3)
         with col4:
             new_rt_cost = st.number_input(t("carry_roundtrip_cost"), 10, 100, int(global_cfg.get("round_trip_cost_bps", 48)))
         with col5:
             new_hold = st.number_input(t("carry_hold_days"), 14, 180, int(global_cfg.get("estimated_hold_days", 60)))
+        with col6:
+            new_staking = st.number_input(
+                t("carry_staking_annual"), 0.0, 20.0,
+                float(global_cfg.get("staking_annual", 0.05)) * 100, 0.5,
+                format="%.1f", help=t("carry_staking_annual_help"),
+            ) / 100
 
         if st.button(t("carry_save_global_btn"), key="save_global"):
+            # Fusion et non remplacement : un dict reconstruit effaçait les clés
+            # non exposées ici (staking_annual notamment).
             cfg["global"] = {
+                **cfg.get("global", {}),
                 "total_capital": new_total,
                 "max_total_exposure_pct": new_max_exp,
                 "max_simultaneous_positions": int(new_max_pos),
                 "round_trip_cost_bps": int(new_rt_cost),
                 "estimated_hold_days": int(new_hold),
+                "staking_annual": new_staking,
             }
             save_config(cfg)
             st.success(t("carry_save_global_ok"))
@@ -3375,40 +2558,6 @@ def _render_carry_config():
     st.caption(t("carry_dag_hint"))
 
 
-def _render_v4_config():
-    """Configuration Funding Carry."""
-    import yaml
-    from pathlib import Path
-
-    st.markdown(f"### ⚙️ {t('config_title')}")
-    st.caption(t("config_strategy_desc"))
-
-    # ── Carry Params ──
-    st.markdown(f"#### 💸 {t('config_carry_section')}")
-    col1, col2 = st.columns(2)
-    with col1:
-        capital_per_asset = st.number_input(t("config_capital_label"), value=2000, min_value=100, step=500)
-        fraction = st.slider(t("config_fraction_label"), value=0.80, min_value=0.10, max_value=1.0, step=0.05, format="%.0f%%")
-        cycle_hours = st.slider(t("config_cycle_label"), value=8, min_value=1, max_value=48, step=1, help=t("config_cycle_help"))
-    with col2:
-        min_funding = st.number_input(t("config_min_funding_label"), value=0.001, min_value=0.0001, max_value=10.0, step=0.001)
-        exit_hours = st.slider(t("config_exit_label"), value=168, min_value=24, max_value=720, step=24)
-
-    st.info(t("config_return_estimate"))
-
-    # ── Risk ──
-    st.markdown(f"#### {t('config_risk_section')}")
-    st.caption(t("config_risk_caption"))
-    max_dd = st.slider(t("config_max_dd_label"), value=5.0, min_value=1.0, max_value=20.0, step=0.5, format="%.1f%%")
-    max_positions = st.slider(t("config_max_pos_label"), value=3, min_value=1, max_value=5, step=1)
-
-    if st.button(t("config_save_btn"), type="primary"):
-        st.success(t("config_saved"))
-
-    st.markdown("---")
-    st.caption(t("config_restart_note"))
-
-
 def _render_ai_analysis(asset: str, expanded: bool = False):
     """Affiche la dernière analyse IA pour un actif (DAG + cache async)."""
     try:
@@ -3455,18 +2604,6 @@ def _render_ai_analysis(asset: str, expanded: bool = False):
                 st.markdown(response)
     except Exception:
         pass
-
-
-def _active_assets_v4() -> list[str]:
-    """Retourne les actifs des DAGs V4 actifs depuis l'API."""
-    try:
-        import urllib.request, json as _json
-        req = urllib.request.Request(f"{_API_BASE}/dag/status")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            dags = _json.loads(resp.read())
-        return [d.get("asset", "") for d in dags if d.get("asset")]
-    except Exception:
-        return []
 
 
 def _render_backtest_v4():
@@ -3516,6 +2653,9 @@ def _render_backtest_v4():
                         st.text(line.strip())
             except Exception as e:
                 st.error(str(e))
+
+_LOGS_PAGE_SIZE = 100
+
 
 def render_live_logs(key: str = "global", asset: str | None = None):
     """Affiche les logs du cycle carry (pagination 100 lignes par page)."""
@@ -3661,24 +2801,6 @@ def render_live_logs(key: str = "global", asset: str | None = None):
         )
 
 
-def render_force_run_button():
-    """Bouton pour forcer un cycle immédiatement."""
-    if st.button("Force Run", type="primary", use_container_width=True,
-                 help=t("force_run_help")):
-        cfg = _get_settings()
-        st.session_state["_force_run_asset"] = cfg.get("project", {}).get("asset", "BTC/USDT")
-
-
-# ===========================================================
-# COMPARAISON DES PROFILS SHADOW
-# ===========================================================
-
-def render_profile_comparison():
-    """Section de comparaison des profils shadow — désactivée (V1 legacy)."""
-    # Fonctionnalité V1 supprimée avec le nettoyage V3→V4
-    return
-
-
 # ===========================================================
 # INTERFACE ADMIN
 # ===========================================================
@@ -3687,19 +2809,14 @@ def render_profile_comparison():
 
 
 def render_admin_panel():
-    """Panneau admin complet — configuration de tous les modules."""
+    """Panneau admin complet — monitoring et configuration de la stratégie carry."""
     # Verrou: aucune UI d'auth ne doit se rendre pendant l'affichage admin.
     st.session_state["_suppress_auth_ui"] = True
     st.session_state.pop("_auth_step", None)
     st.session_state.pop("_auth_pending_user", None)
     st.session_state.pop("_auth_totp_new_secret", None)
-    settings = _get_settings()
-    if not settings:
-        err = st.session_state.get("_settings_error", "fichier introuvable ou YAML invalide")
-        st.error(f"{t('cfg_load_error')} — {err}")
-        return
 
-    # ── Navigation admin via sidebar custom ─────────────────────────────────
+    # ── Navigation admin via sidebar custom ───────────────────────────────────────
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
@@ -3708,17 +2825,15 @@ def render_admin_panel():
         ('<i class="fas fa-chart-line"></i>',      "v4_monitor", "Live Monitor"),
         ('<i class="fas fa-receipt"></i>',         "v4_trades",  "Trades"),
         ('<i class="fas fa-coins"></i>',            "carry_cfg",  "Carry Assets"),
-        ('<i class="fas fa-sliders"></i>',         "v4_admin",   "Config"),
-        # ── Infra & Monitoring ───────────────────────────────────────
-        (None, None,      "Infra & Monitoring"),
-        ('<i class="fas fa-robot"></i>',           "aimodel",    "AI Model"),
-        ('<i class="fas fa-list-check"></i>',      "logging",    "Logging"),
+        # ── Journal ───────────────────────────────────────────────
+        (None, None,      "Journal"),
         ('<i class="fas fa-history"></i>',         "historique", "History"),
         ('<i class="fas fa-brain"></i>',           "decisions",   "Decisions"),
-        ('<i class="fas fa-lightbulb"></i>',       "reflections", "Reflections"),
+        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
+        # ── Système ───────────────────────────────────────────────
+        (None, None,      "Système"),
         ('<i class="fas fa-user"></i>',            "users",      "Users"),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",     "Backup"),
-        ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
         ('<i class="fas fa-trash-alt"></i>',       "reset",      "Reset"),
     ]
     _admin_keys = [s[1] for s in _ADMIN_SECTIONS if s[1] is not None]
@@ -3732,534 +2847,12 @@ def render_admin_panel():
         _atab = "v4_monitor"
     _inject_custom_sidenav(_admin_items, _atab, qparam="_atab", theme=_get_theme())
 
-    if _atab == "quant":  # Quant V2 Pipeline
-        st.markdown(
-            f'<h4><i class="fas fa-microchip" style="margin-right:7px;color:#7986cb;"></i>'
-            f'{t("tab_quant_v2")}</h4>',
-            unsafe_allow_html=True,
-        )
-        st.info(t("quant_info"))
-        q = settings.get("quant", {})
-        col1, col2 = st.columns(2)
-        with col1:
-            _tf_opts = ["1m", "5m", "15m", "30m", "1h", "4h"]
-            _tf_cur = q.get("timeframe", "5m")
-            if _tf_cur not in _tf_opts:
-                _tf_opts.append(_tf_cur)
-            q["timeframe"] = st.selectbox(
-                t("quant_timeframe"), _tf_opts,
-                index=_tf_opts.index(_tf_cur),
-                help="Granularité des barres OHLCV (ccxt notation).",
-            )
-            if q["timeframe"] != _tf_cur:
-                st.info(t("quant_tf_change_warn"))
-            q["history_days"] = st.slider(
-                t("quant_history_days"), 30, 365,
-                int(q.get("history_days", 90)), 10,
-                help=t("days_history_help"),
-            )
-            q["train_fraction"] = st.slider(
-                t("quant_train_fraction"), 0.55, 0.85,
-                float(q.get("train_fraction", 0.70)), 0.05,
-                help="Fraction des données utilisées pour l'entraînement.",
-            )
-            _hz_options = [1, 2, 4, 8, 12, 16, 24, 32, 48, 96]
-            _hz_val = int(q.get("horizon_bars", 4))
-            _hz_idx = _hz_options.index(_hz_val) if _hz_val in _hz_options else 0
-            q["horizon_bars"] = st.selectbox(
-                t("quant_horizon_bars"), _hz_options,
-                index=_hz_idx,
-                help="Horizon de prédiction en barres (ex: 12 × 5min = 1h avec TF 5m).",
-            )
-        with col2:
-            q["p_up_threshold"] = st.slider(
-                t("quant_p_up_label"), 0.50, 0.75,
-                float(q.get("p_up_threshold", 0.55)), 0.01,
-                help="Au-dessus de ce seuil en régime trending → signal LONG.",
-            )
-            q["p_dn_threshold"] = st.slider(
-                t("quant_p_dn_label"), 0.25, 0.50,
-                float(q.get("p_dn_threshold", 0.45)), 0.01,
-                help="En dessous de ce seuil en régime trending → signal SHORT.",
-            )
-            _dead_zone = q["p_up_threshold"] - q["p_dn_threshold"]
-            st.caption(t("quant_dead_zone").format(dn=q['p_dn_threshold'], up=q['p_up_threshold'], amp=_dead_zone))
-            q["refit_interval_hours"] = st.number_input(
-                t("quant_refit_interval"), 12, 720,
-                int(q.get("refit_interval_hours", 168)), 12,
-                help="Le modèle est réentraîné automatiquement toutes les N heures.",
-            )
-            q["use_hmm"] = st.toggle(
-                t("quant_use_hmm"),
-                bool(q.get("use_hmm", False)),
-                help="Active le filtre HMM (hmmlearn requis — désactiver en local si absent).",
-            )
-        settings["quant"] = q
-
-        # ── État live du modèle ───────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown(f"#### {t('quant_model_state_title')}")
-        try:
-            from storage.database import get_v2_state
-            _qs = get_v2_state()
-            if _qs:
-                _qa, _qb = st.columns(2)
-                _qa.metric(t("quant_last_refit"), str(_qs.get("model_fit_at", "—"))[:16])
-                _qa.metric(t("quant_current_regime"), "TRENDING" if _qs.get("regime") in (1, 1.0) else ("RANGING" if _qs.get("regime") == 0.5 else "PANIC"))
-                _qb.metric("P(up)", f"{_qs.get('prob_up', 0):.1%}" if _qs.get("prob_up") else "—")
-                _qb.metric(t("quant_decision"), str(_qs.get("action", "—")).upper())
-            else:
-                st.info(t("quant_no_cycle"))
-        except Exception as _qe:
-            st.caption(f"État indisponible : {_qe}")
-
-    elif _atab == "risk":  # Risk
-        st.markdown(f'<h4><i class="fas fa-shield-halved" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_risk_title")}</h4>', unsafe_allow_html=True)
-
-        st.info(t("cfg_risk_info"))
-        st.caption(t("cfg_risk_peractif_hint"))
-        risk = settings.get("risk", {})
-        risk["human_in_the_loop"] = st.toggle(
-            t("cfg_hitl"),
-            risk.get("human_in_the_loop", False),
-            help=t("cfg_hitl_help")
-        )
-        risk["max_open_positions"] = st.number_input(
-            t("cfg_max_open_pos"),
-            min_value=0, max_value=20,
-            value=int(risk.get("max_open_positions", 3)),
-            help="Nombre maximum de positions simultanées **toutes paires confondues**."
-        )
-        settings["risk"] = risk
-
-        st.markdown("---")
-        st.markdown(f'<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#ef9a9a;"></i>{t("cfg_exchange_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_exchange_info"))
-        exch = settings.get("exchange", {})
-        st.caption(t("cfg_exchange_peractif_hint"))
-        _testnet_current = exch.get("testnet", True)
-        _testnet_new = st.toggle(t("cfg_testnet"), value=_testnet_current)
-        exch["testnet"] = _testnet_new
-        if not _testnet_new:
-            st.error(t("cfg_testnet_warn"))
-        settings["exchange"] = exch
-
-    elif _atab == "logging":  # Logging
-        st.markdown(f'<h4><i class="fas fa-list-check" style="margin-right:7px;color:#7986cb;"></i>{t("cfg_logging_title")}</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_logging_info"))
-        log_cfg = settings.get("logging", {})
-        _log_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
-        _log_default = log_cfg.get("level", "INFO")
-        if _log_default not in _log_levels:
-            _log_levels.append(_log_default)
-        log_cfg["level"] = st.radio(t("cfg_log_level"), _log_levels,
-            index=_log_levels.index(_log_default),
-            horizontal=True, help=t("cfg_log_level_help"))
-        log_cfg["alert_score_threshold"] = st.slider(t("cfg_alert_threshold"),
-            50, 100, int(log_cfg.get("alert_score_threshold", 85)),
-            help=t("cfg_alert_threshold_help"))
-        log_cfg["telegram_enabled"] = st.toggle("Telegram", log_cfg.get("telegram_enabled", False))
-        log_cfg["discord_enabled"] = st.toggle("Discord", log_cfg.get("discord_enabled", False))
-        settings["logging"] = log_cfg
-
-    elif _atab == "aimodel":  # Modèle IA
-        st.markdown(
-            '<h4><i class="fas fa-robot" style="margin-right:7px;color:#7986cb;"></i>'
-            f'{t("tab_ai_model")}</h4>',
-            unsafe_allow_html=True,
-        )
-        st.info(t("ai_model_info"))
-
-        _llm = dict(settings.get("llm", {}))
-
-        _providers = ["deepseek", "openai", "anthropic", "groq", "mistral", "ollama"]
-        _provider_models = {
-            "deepseek":  ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
-            "openai":    ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-            "anthropic": ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-opus-4-5"],
-            "groq":      ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
-            "mistral":   ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
-            "ollama":    ["llama3", "mistral", "phi3"],
-        }
-        _key_field = {
-            "deepseek":  "deepseek_api_key",
-            "openai":    "openai_api_key",
-            "anthropic": "anthropic_api_key",
-            "groq":      "groq_api_key",
-            "mistral":   "mistral_api_key",
-            "ollama":    None,
-        }
-
-        _cur_provider = _llm.get("provider", "deepseek")
-        if _cur_provider not in _providers:
-            _providers.append(_cur_provider)
-
-        _c1, _c2 = st.columns(2)
-        with _c1:
-            _new_provider = st.selectbox(
-                t("ai_provider"), _providers,
-                index=_providers.index(_cur_provider),
-                key="ai_provider_sel",
-            )
-        _model_opts = _provider_models.get(_new_provider, [_llm.get("model", "")])
-        _cur_model = _llm.get("model", _model_opts[0] if _model_opts else "")
-        if _cur_model not in _model_opts:
-            _model_opts = [_cur_model] + _model_opts
-        with _c2:
-            _new_model = st.selectbox(
-                t("ai_model"), _model_opts,
-                index=_model_opts.index(_cur_model),
-                key="ai_model_sel",
-            )
-
-        # Clé API — affichée seulement si le provider en a besoin
-        _key_name = _key_field.get(_new_provider)
-        _existing_key = _llm.get(_key_name, "") if _key_name else ""
-        _new_key = _existing_key
-        if _key_name:
-            _new_key = st.text_input(
-                t("ai_api_key"),
-                value="",
-                placeholder="Laisser vide pour conserver la clé actuelle",
-                type="password",
-                key="ai_api_key_input",
-                help=t("ai_api_key_help"),
-            )
-            if _existing_key:
-                _masked = "sk-" + "*" * (len(_existing_key) - 7) + _existing_key[-4:]
-                st.caption(f"🔑 Clé actuelle : `{_masked}`")
-            else:
-                st.caption("⚠️ Aucune clé API configurée.")
-            # Si l'utilisateur laisse vide → conserver l'ancienne clé
-            if not _new_key:
-                _new_key = _existing_key
-        else:
-            st.caption(f"ℹ️ {_new_provider} — pas de clé API requise (local).")
-
-        _c3, _c4 = st.columns(2)
-        with _c3:
-            _llm["temperature"] = st.slider(
-                t("ai_temperature"), 0.0, 1.0,
-                float(_llm.get("temperature", 0.3)), 0.05,
-                key="ai_temp_sl",
-            )
-        with _c4:
-            _llm["max_tokens"] = st.number_input(
-                t("ai_max_tokens"), 256, 32000,
-                int(_llm.get("max_tokens", 4096)), 256,
-                key="ai_maxtok_ni",
-            )
-
-        _llm["provider"] = _new_provider
-        _llm["model"]    = _new_model
-        if _key_name and _new_key:
-            _llm[_key_name] = _new_key
-
-        # ── Modèle rapide (DAGs, tâches légères) ──
-        st.markdown("---")
-        st.markdown("#### ⚡ Modèle rapide (analyses DAGs, résumés)")
-        st.caption(t("llm_model_caption"))
-
-        _fast_provider = _llm.get("fast_provider", _new_provider)
-        if _fast_provider not in _providers:
-            _providers_fast = [_fast_provider] + _providers
-        else:
-            _providers_fast = _providers
-        _fast_model_opts = _provider_models.get(_fast_provider, [_llm.get("fast_model", "deepseek-chat")])
-        _cur_fast_model = _llm.get("fast_model", _fast_model_opts[0] if _fast_model_opts else "deepseek-chat")
-        if _cur_fast_model not in _fast_model_opts:
-            _fast_model_opts = [_cur_fast_model] + _fast_model_opts
-
-        _fc1, _fc2 = st.columns(2)
-        with _fc1:
-            _new_fast_provider = st.selectbox(
-                "Provider", _providers_fast,
-                index=_providers_fast.index(_fast_provider),
-                key="ai_fast_provider_sel",
-            )
-        with _fc2:
-            _new_fast_model = st.selectbox(
-                "Modèle", _fast_model_opts,
-                index=_fast_model_opts.index(_cur_fast_model) if _cur_fast_model in _fast_model_opts else 0,
-                key="ai_fast_model_sel",
-            )
-
-        # Clé API pour le modèle rapide (si provider différent du principal)
-        _fast_key_name = _key_field.get(_new_fast_provider)
-        if _fast_key_name:
-            if _new_fast_provider == _new_provider:
-                st.caption(f"ℹ️ Même provider que le modèle principal — clé `{_fast_key_name}` partagée.")
-            else:
-                _existing_fast_key = _llm.get("fast_api_key", "") or _llm.get(_fast_key_name, "")
-                _new_fast_key = st.text_input(
-                    f"Clé API ({_new_fast_provider})",
-                    value="",
-                    placeholder="Laisser vide pour conserver la clé actuelle",
-                    type="password",
-                    key="ai_fast_key_input",
-                )
-                if _existing_fast_key:
-                    _masked_fast = _existing_fast_key[:3] + "*" * (len(_existing_fast_key) - 7) + _existing_fast_key[-4:]
-                    st.caption(f"🔑 Clé actuelle : `{_masked_fast}`")
-                if not _new_fast_key:
-                    _new_fast_key = _existing_fast_key
-                if _new_fast_key:
-                    _llm["fast_api_key"] = _new_fast_key
-        else:
-            st.caption(f"ℹ️ {_new_fast_provider} — pas de clé API requise (local).")
-
-        _fc3, _fc4 = st.columns(2)
-        with _fc3:
-            _llm["fast_temperature"] = st.slider(
-                "Temperature", 0.0, 1.0,
-                float(_llm.get("fast_temperature", 0.3)), 0.05,
-                key="ai_fast_temp_sl",
-            )
-        with _fc4:
-            _llm["fast_max_tokens"] = st.number_input(
-                "Max tokens", 64, 4096,
-                int(_llm.get("fast_max_tokens", 256)), 64,
-                key="ai_fast_maxtok_ni",
-            )
-
-        _llm["fast_provider"] = _new_fast_provider
-        _llm["fast_model"]    = _new_fast_model
-
-        settings["llm"] = _llm
-
-    elif _atab == "flux":  # Flux Manager
-        st.markdown('<h4><i class="fas fa-exchange-alt" style="margin-right:7px;color:#7986cb;"></i> Flux Manager</h4>', unsafe_allow_html=True)
-        st.info(t("cfg_flux_info"))
-        render_flux_manager_page()
-        # pas de bouton save ici, géré dans flux_manager
-
-    elif _atab == "users":  # Utilisateurs
+    if _atab == "users":  # Utilisateurs
         st.markdown('<h4><i class="fas fa-user" style="margin-right:7px;color:#7986cb;"></i> Utilisateurs</h4>', unsafe_allow_html=True)
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
         # sauvegarde gérée dans render_users_admin
-
-    elif _atab == "peractif":  # Par Actif — config/assets/{slug}.yaml
-        st.markdown(
-            '<h4><i class="fas fa-layer-group" style="margin-right:7px;color:#7986cb;"></i>'
-            f'{t("pa_title")}</h4>',
-            unsafe_allow_html=True,
-        )
-        st.info(t("pa_info"))
-
-        # ── Actifs — liste combinée intraday + daily (lecture seule ici) ────────
-        st.caption("📋 Pour ajouter ou retirer des actifs, utilisez l'onglet **Flux Manager**.")
-        _pa_intraday = list(settings.get("project", {}).get("active_assets", ["BTC/USDT"]))
-        _pa_daily = list(
-            settings.get("project", {}).get("daily_active_assets")
-            or settings.get("quant", {}).get("daily_active_assets")
-            or []
-        )
-        _pa_all = list(dict.fromkeys(_pa_intraday + _pa_daily))
-
-        st.markdown("---")
-        import yaml as _pa_yaml
-        from pathlib import Path as _PAPath
-        from dashboard.multi_asset import _asset_icon as _pa_icon
-        _pa_tabs = st.tabs([f"{_pa_icon(a)} {a.split('/')[0]}" for a in _pa_all])
-        _padir = _PAPath(__file__).parent.parent / "config" / "assets"
-
-        for _pai, _pas in enumerate(_pa_all):
-            with _pa_tabs[_pai]:
-                _paslug = _pas.replace("/", "_")
-                _pafile = _padir / f"{_paslug}.yaml"
-                _pacfg: dict = {}
-                if _pafile.exists():
-                    with open(_pafile, "r", encoding="utf-8") as _paf:
-                        _pacfg = _pa_yaml.safe_load(_paf) or {}
-                _is_crypto_pa = _pas.endswith("/USDT") or _pas.endswith("/BTC")
-                _is_forex_pa  = any(_pas.endswith(s) for s in ("/USD", "/EUR", "/GBP", "/JPY")) and not _is_crypto_pa
-                _is_commodity_pa = _pas in ("XAU/USD", "XAG/USD", "WTI/USD")
-
-                st.caption(
-                    "💡 V2 lit les paramètres globaux (settings.yaml). "
-                    "Ces valeurs seront utilisées comme surcharges par actif dans une version future."
-                )
-
-                # ── Général ──────────────────────────────────────────────────
-                with st.expander("⚙ Général", expanded=True):
-                    _c1, _c2 = st.columns(2)
-                    with _c1:
-                        _pacfg["paper_capital_usd"] = st.number_input(
-                            "Capital paper (USD)", 1000, 1_000_000,
-                            int(_pacfg.get("paper_capital_usd", 10000)), step=500,
-                            key=f"pa_cap_{_paslug}"
-                        )
-                    with _c2:
-                        _pacfg["loop_interval_seconds"] = st.number_input(
-                            "Intervalle boucle (s)", 60, 3600,
-                            int(_pacfg.get("loop_interval_seconds", 900)), step=60,
-                            key=f"pa_loop_{_paslug}"
-                        )
-
-                # ── Risk & Seuils (V3 — source of truth: v2_risk) ───────────────────────
-                with st.expander("⚖ Risk & Seuils", expanded=True):
-                    _v2r = dict(_pacfg.get("v2_risk", {}))
-                    _par_extra = dict(_pacfg.get("risk", {}))  # human_in_the_loop + max_open_positions
-                    _c1, _c2 = st.columns(2)
-                    with _c1:
-                        _new_frac = st.slider(
-                            "Position size (%)", 0.1, 5.0,
-                            round(float(_v2r.get("fraction_per_trade", 0.0075)) * 100, 3), 0.05,
-                            key=f"pa_pos_{_paslug}",
-                            help="fraction_per_trade × 100 — written to v2_risk (read by graph/workflow.py)"
-                        )
-                        _new_dd = st.slider(
-                            t("pa_max_dd"), 3.0, 50.0,
-                            float(_v2r.get("max_drawdown_pct", 15.0)), 1.0,
-                            key=f"pa_dd_{_paslug}"
-                        )
-                        _new_mop = st.number_input(
-                            t("pa_max_positions"), 0, 20,
-                            int(_par_extra.get("max_open_positions", 3)),
-                            key=f"pa_mop_{_paslug}",
-                            help="0 = unlimited."
-                        )
-                    with _c2:
-                        _new_sl = st.slider(
-                            "ATR ×SL", 0.5, 5.0,
-                            float(_v2r.get("stop_loss_atr_mult", 2.0)), 0.25,
-                            key=f"pa_atrs_{_paslug}",
-                            help="stop_loss_atr_mult — written to v2_risk"
-                        )
-                        _new_tp = st.slider(
-                            "ATR ×TP", 0.5, 8.0,
-                            float(_v2r.get("take_profit_atr_mult", 4.0)), 0.25,
-                            key=f"pa_atrtp_{_paslug}",
-                            help="take_profit_atr_mult — written to v2_risk"
-                        )
-                        _new_hitl = st.toggle(
-                            "Human in the loop",
-                            _par_extra.get("human_in_the_loop", False),
-                            key=f"pa_hitl_{_paslug}"
-                        )
-                    # Write back to v2_risk (used by graph/workflow.py V3 engine)
-                    _pacfg["v2_risk"] = {
-                        **_v2r,
-                        "fraction_per_trade": round(_new_frac / 100, 6),
-                        "stop_loss_atr_mult": _new_sl,
-                        "take_profit_atr_mult": _new_tp,
-                        "max_drawdown_pct": _new_dd,
-                    }
-                    _pacfg["risk"] = {
-                        **_par_extra,
-                        "human_in_the_loop": _new_hitl,
-                        "max_open_positions": int(_new_mop),
-                    }
-
-                # ── Circuit Breaker (crypto uniquement) ──────────────────────
-                if _is_crypto_pa:
-                    with st.expander("⚡ Circuit Breaker (Funding Rate)", expanded=False):
-                        _pcb = dict(_pacfg.get("circuit_breaker", {}))
-                        _c1, _c2 = st.columns(2)
-                        with _c1:
-                            _pcb["funding_warning"] = st.number_input(
-                                "Warning threshold", 0.0, 0.01,
-                                float(_pcb.get("funding_warning", 0.00018)),
-                                format="%.5f", key=f"pa_cbw_{_paslug}"
-                            )
-                            _pcb["funding_block"] = st.number_input(
-                                "Block threshold", 0.0, 0.01,
-                                float(_pcb.get("funding_block", 0.00045)),
-                                format="%.5f", key=f"pa_cbb_{_paslug}"
-                            )
-                        with _c2:
-                            _pcb["sustain_period_cycles"] = st.number_input(
-                                "Sustain cycles", 0, 10,
-                                int(_pcb.get("sustain_period_cycles", 3)),
-                                key=f"pa_cbsc_{_paslug}"
-                            )
-                            _pcb["max_reduction"] = st.slider(
-                                t("pa_cb_max_reduction"), 0.0, 1.0,
-                                float(_pcb.get("max_reduction", 0.75)), 0.05,
-                                key=f"pa_cbmr_{_paslug}"
-                            )
-                        _pacfg["circuit_breaker"] = _pcb
-
-                # ── Market Regime (V2) ────────────────────────────────────────
-                with st.expander("⊞ Market Regime", expanded=False):
-                    _pmr = dict(_pacfg.get("market_regime", {}))
-                    _c1, _c2 = st.columns(2)
-                    with _c1:
-                        _pmr["n_hmm_states"] = st.number_input(
-                            t("pa_hmm_states"), 2, 4, int(_pmr.get("n_hmm_states", 2)),
-                            key=f"pa_hmm_{_paslug}"
-                        )
-                        _pmr["adx_period"] = st.slider(
-                            t("pa_adx_period"), 7, 30, int(_pmr.get("adx_period", 18)),
-                            key=f"pa_adx_{_paslug}"
-                        )
-                    with _c2:
-                        _pmr["vol_window"] = st.slider(
-                            t("pa_vol_window"), 10, 60, int(_pmr.get("vol_window", 30)),
-                            key=f"pa_vw_{_paslug}"
-                        )
-                        _pmr["trend_window"] = st.slider(
-                            t("pa_trend_window"), 20, 100, int(_pmr.get("trend_window", 50)),
-                            key=f"pa_tw_{_paslug}"
-                        )
-                    _pacfg["market_regime"] = _pmr
-
-                # ── Bouton Sauvegarder ────────────────────────────────────────
-                st.markdown("---")
-                if st.button(
-                    t("pa_save_btn").format(asset=_pas),
-                    key=f"pa_save_{_paslug}",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    try:
-                        from utils.config import save_asset_config as _sac
-                        _padir.mkdir(parents=True, exist_ok=True)
-                        _sac(_pas, _pacfg)
-                        st.success(t("pa_save_success").format(slug=_paslug))
-                    except Exception as _savexc:
-                        st.error(f"{t('pa_save_error')} {_savexc}")
-
-    elif _atab == "reflections":  # 🧠 Réflexions IA (V7 ReflectionNode)
-        st.markdown(f'<h4><i class="fas fa-lightbulb" style="margin-right:7px;color:#ffb74d;"></i>{t("reflections_title")}</h4>', unsafe_allow_html=True)
-        st.caption(t("reflections_caption"))
-        
-        try:
-            import json
-            from pathlib import Path as _RPath
-            refl_path = "/app/data/v6_reflections.json"
-            if _RPath(refl_path).exists():
-                with open(refl_path) as f:
-                    reflections = json.load(f)
-                st.success(t("reflections_available").format(n=len(reflections)))
-                for ref in reversed(reflections[-10:]):
-                    ts = ref.get("timestamp", "?")[:16]
-                    n = ref.get("n_trades_analyzed", 0)
-                    symbols = ref.get("symbols", [])
-                    with st.expander(f"📅 {ts} — {t('reflections_trades_analyzed').format(n=n)} ({', '.join(symbols)})"):
-                        analysis = ref.get("analysis", t("reflections_no_analysis"))
-                        st.markdown(analysis[:3000])
-                        suggestions = ref.get("suggestions", [])
-                        if suggestions:
-                            st.markdown(f"**{t('reflections_suggestions_label')}**")
-                            for s in suggestions:
-                                st.info(f"`{s.get('param','?')}` : {s.get('current','?')} → **{s.get('suggested','?')}** — {s.get('reason','?')}")
-            else:
-                st.info(t("reflections_empty"))
-        except Exception as e:
-            st.warning(f"{t('reflections_error')}: {e}")
-
-        # ── Latest AI Analysis (per-asset LLM results) ──
-        st.markdown("---")
-        st.markdown(f"#### 🧠 {t('latest_ai_title')}")
-        assets = _active_assets_v4() or ["BTC/USDT"]
-        if assets:
-            for asset in assets:
-                _render_ai_analysis(asset, expanded=False)
-        else:
-            st.caption(t('no_transactions'))
 
     elif _atab == "backup":  # Sauvegarde / Restauration
         st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)
@@ -4403,11 +2996,23 @@ def render_admin_panel():
             # Filtres
             _h_col1, _h_col2, _h_col3 = st.columns([2, 1, 1])
             with _h_col1:
-                _h_asset = st.selectbox("Actif", ["Tous", "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT"], key="hist_asset")
+                _h_asset = st.selectbox(
+                    t("col_asset"), [None] + _carry_asset_list(),
+                    format_func=lambda v: t("filter_all") if v is None else v,
+                    key="hist_asset",
+                )
             with _h_col2:
-                _h_action = st.selectbox("Action", ["Toutes", "long", "short"], key="hist_action")
+                _h_action = st.selectbox(
+                    t("filter_action"), [None, "carry", "long", "short"],
+                    format_func=lambda v: t("filter_all") if v is None else v,
+                    key="hist_action",
+                )
             with _h_col3:
-                _h_status = st.selectbox("Statut", ["Tous", "open", "closed"], key="hist_status")
+                _h_status = st.selectbox(
+                    t("filter_status"), [None, "open", "closed"],
+                    format_func=lambda v: t("filter_all") if v is None else v,
+                    key="hist_status",
+                )
 
             # Récupérer les trades
             all_trades = get_v4_trades(n=2000)
@@ -4417,13 +3022,12 @@ def render_admin_panel():
 
             # Filtrer
             filtered = all_trades
-            if _h_asset != "Tous":
+            if _h_asset is not None:
                 filtered = [tr for tr in filtered if tr.get("symbol") == _h_asset]
-            if _h_action != "Toutes":
+            if _h_action is not None:
                 filtered = [tr for tr in filtered if tr.get("action") == _h_action]
-            if _h_status != "Tous":
-                _st = "open" if _h_status == "open" else "closed"
-                filtered = [tr for tr in filtered if tr.get("status") == _st]
+            if _h_status is not None:
+                filtered = [tr for tr in filtered if tr.get("status") == _h_status]
 
             if not filtered:
                 st.info(t("no_trades"))
@@ -4595,15 +3199,20 @@ def render_admin_panel():
 
         _dcol1, _dcol2 = st.columns([1, 1])
         with _dcol1:
-            _dsymbol = st.selectbox("Actif", ["Tous", "BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"], key="dec_symbol")
+            _dsymbol = st.selectbox(
+                t("col_asset"), [None] + _carry_asset_list(),
+                format_func=lambda v: t("filter_all") if v is None else v,
+                key="dec_symbol",
+            )
         with _dcol2:
             _dlimit = st.slider("Nombre", 10, 500, 50, 10, key="dec_limit")
 
         try:
             _dparams = {"n": _dlimit}
-            if _dsymbol != "Tous":
+            if _dsymbol is not None:
                 _dparams["symbol"] = _dsymbol
-            _durl = f"{_API_BASE}/dag/decisions?" + "&".join(f"{k}={v}" for k, v in _dparams.items())
+            import urllib.parse as _uparse
+            _durl = f"{_API_BASE}/dag/decisions?" + _uparse.urlencode(_dparams)
             import urllib.request as _urdec, json as _jdec
             _dresp = _jdec.loads(_urdec.urlopen(_durl, timeout=10).read())
 
@@ -4643,24 +3252,11 @@ def render_admin_panel():
         except Exception as _de:
             st.error(f"Erreur chargement décisions : {_de}")
 
-    # Bouton de sauvegarde (pour tous les onglets sauf Flux Manager, Par Actif, Sauvegarde, Reset, Historique et Décisions)
-    if _atab not in ("backup", "flux", "peractif", "reset", "historique", "decisions"):
-        st.markdown("---")
-    if _atab == "backup":
-        pass  # pas de bouton save_settings pour l'onglet backup
-    elif _atab == "reset":
-        pass  # le panneau reset gère ses propres boutons
-    elif _atab == "historique":
-        pass  # le panneau historique gère son propre affichage
-    elif _atab == "decisions":
-        pass  # le panneau décisions gère son propre affichage
-    elif _atab == "carry_cfg":
+    # Onglets autonomes — chacun gère son affichage et sa persistance
+    if _atab == "carry_cfg":
         _render_carry_config()
         return
-    elif _atab in ("v4_monitor", "v4_trades", "v4_admin"):
-        if _atab == "v4_admin":
-            _render_v4_config()
-            return
+    if _atab in ("v4_monitor", "v4_trades"):
         if _atab == "v4_trades":
             st.markdown("### 📋 " + t("trades_journal_title"))
             st.caption(t("paper_trading_mode"))
@@ -4745,71 +3341,11 @@ def render_admin_panel():
             c3.metric("Open Trades", _pf.get("n_trades", 0))
             c4.metric("Total P&L", f"${_pf.get('total_pnl', 0):,.2f}")
             return
-    elif st.button(t('save_config_btn'), type="primary", use_container_width=True):
-        if _save_settings(settings):
-            st.success(t('config_saved'))
-        else:
-            _err = st.session_state.pop("_save_error", "inconnue")
-            st.error(f"❌ {t('config_error')} — {_err}")
 
 
 # ===========================================================
 # SESSION PERSISTENCE (localStorage)
 # ===========================================================
-
-def _inject_sticky_tabs_js() -> None:
-    """
-    Sticky tabs — injecte CSS dans <head> (permanent) + JS MutationObserver
-    pour corriger l'overflow:hidden inline sur le parent direct du tab-list
-    (généré par Streamlit React, inaccessible via CSS pur).
-    """
-    import streamlit.components.v1 as _cv1
-    _cv1.html("""<script>
-(function() {
-  var p = window.parent || window;
-  var doc = p.document;
-
-  // 1. CSS dans <head> — permanent, survit aux re-renders Streamlit
-  if (!doc.getElementById('atlas-sticky-tabs-css')) {
-    var s = doc.createElement('style');
-    s.id = 'atlas-sticky-tabs-css';
-    s.textContent =
-      'div[data-baseweb="tab-list"] {' +
-      '  position: sticky !important;' +
-      '  top: 48px !important;' +
-      '  z-index: 998 !important;' +
-      '}';
-    doc.head.appendChild(s);
-  }
-
-  // 2. Correction des overflow:hidden inline sur les ancêtres du tab-list
-  //    (le parent direct génère overflow:hidden via style inline React)
-  function fixOverflows() {
-    doc.querySelectorAll('[data-baseweb="tab-list"]').forEach(function(tabList) {
-      var el = tabList.parentElement;
-      var depth = 0;
-      while (el && depth < 8) {
-        el.style.setProperty('overflow', 'visible', 'important');
-        var tid = el.getAttribute('data-testid') || '';
-        if (tid === 'stMain') break;
-        el = el.parentElement;
-        depth++;
-      }
-    });
-  }
-
-  // 3. MutationObserver — réappliquer après chaque re-render Streamlit
-  function start() {
-    if (!doc.body) { setTimeout(start, 100); return; }
-    new MutationObserver(fixOverflows).observe(doc.body, { childList: true, subtree: true });
-    fixOverflows();
-  }
-  start();
-  setTimeout(fixOverflows, 600);
-  setTimeout(fixOverflows, 1500);
-})();
-</script>""", height=0, scrolling=False)
-
 
 def _inject_session_persistence_js(has_valid_session: bool) -> None:
     """

@@ -138,3 +138,43 @@ async def carry_run() -> dict:
 
     threading.Thread(target=_run, daemon=True, name="carry-run-manual").start()
     return {"ok": True, "message": "Cycle carry lancé en arrière-plan"}
+
+
+@app.post("/carry/reload-config")
+async def carry_reload_config() -> dict:
+    """Recharge carry_assets.yaml côté API.
+
+    Le dashboard écrit ce fichier, mais le process API en garde une copie en
+    cache : activer/désactiver un actif n'avait donc aucun effet avant un
+    redémarrage du container. Cet endpoint vide le cache, remonte la nouvelle
+    liste d'actifs et démarre les tickers prix des actifs ajoutés.
+    """
+    from v7.core.asset_config import reload_config, get_active_assets
+
+    cfg = reload_config()
+    active = get_active_assets()
+
+    tickers_ok, errors = 0, []
+    try:
+        from v4.api.routes.prices import ensure_ticker
+        for sym in active:
+            try:
+                ensure_ticker(sym)
+                tickers_ok += 1
+            except Exception as exc:
+                errors.append(f"{sym}: {exc}")
+    except Exception as exc:
+        errors.append(f"module prices indisponible: {exc}")
+
+    logging.getLogger("v4.api.main").info(
+        "Config rechargée — %d actifs actifs | tickers: %d | erreurs: %d",
+        len(active), tickers_ok, len(errors),
+    )
+    return {
+        "ok": True,
+        "n_assets": len(active),
+        "active_assets": active,
+        "tickers_ready": tickers_ok,
+        "errors": errors,
+        "global": cfg.get("global", {}),
+    }

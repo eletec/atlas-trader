@@ -93,9 +93,15 @@ def run_cycle(
         dict avec summary (n_scanned, n_open, n_close, n_flat, errors).
     """
     from v7.nodes.funding_carry_node import FundingCarryNode
+    from v7.core.asset_config import get_active_assets, reload_config
 
     if assets is None:
-        assets = ASSETS
+        # Recharger la config à CHAQUE cycle : activer/désactiver un actif dans
+        # le dashboard (carry_assets.yaml) doit prendre effet sans redémarrer
+        # le container. Sans ce reload, le cache du process gardait la liste
+        # figée au premier import.
+        reload_config()
+        assets = get_active_assets() or ASSETS
     
     # ── Anti-concurrency lock ──
     import fcntl, os as _os

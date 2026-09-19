@@ -265,6 +265,17 @@ class FundingCarryNode:
         base = symbol.split("/")[0]
         return 1000.0 if base in {"PEPE", "SHIB", "BONK", "FLOKI", "LUNC"} else 1.0
 
+    @staticmethod
+    def _staking_annual_rate() -> float:
+        """Taux de staking annuel du capital inactif (carry_assets.yaml, clé
+        global.staking_annual). Lu depuis la config pour que la valeur affichée
+        dans l'admin ait réellement un effet."""
+        try:
+            from v7.core.asset_config import get_global_params
+            return float(get_global_params().get("staking_annual", 0.05))
+        except Exception:
+            return 0.05
+
     def fetch_current_funding(self) -> float:
         """Fetch le funding rate actuel."""
         try:
@@ -424,7 +435,7 @@ class FundingCarryNode:
         
         if not self.state.position_open:
             # ── Staking sur capital inactif ──
-            staking_annual = 0.05  # 5%/an simulé USDT
+            staking_annual = self._staking_annual_rate()  # carry_assets.yaml (global)
             idle_capital = self.capital * self.fraction
             staking_8h = idle_capital * staking_annual / (365 * 3)  # 3 périodes de 8h/jour
             self.state.staking_earned += staking_8h

@@ -103,7 +103,11 @@ docker exec atlas-v4-api python -B /app/src/v7/backtest_walkforward.py --symbols
 # Cross-exchange funding scanner (Binance vs Bybit)
 docker exec atlas-v4-api python -B /app/src/v7/cross_exchange_scanner.py
 
-# Unit tests
+# Unit tests — host (Python 3.11+, requires pytest: pip install pytest)
+python -m pytest v7/tests/test_carry_accounting.py -v
+
+# Unit tests — inside the container (pytest is NOT in the prod image, install on the fly)
+docker exec atlas-v4-api pip install -q pytest
 docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accounting.py -v
 ```
 

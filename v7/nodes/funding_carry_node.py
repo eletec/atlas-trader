@@ -28,6 +28,12 @@ from v7.core.carry_accounting import (
     funding_payment_usd,
 )
 
+# Funding arrives every 8h. Keep 90 days of it (270 periods) so the
+# 60th-percentile filter has a real distribution to compare against: the window
+# held 21 periods, enough for a 7-day mean but never enough for the filter that
+# needs 30, so live ran without it while the backtest ran with it.
+FUNDING_WINDOW = 270
+
 logger = logging.getLogger("funding_carry_node")
 
 
@@ -56,6 +62,10 @@ class FundingCarryState:
     n_negative_payments: int = 0
     fees_paid: float = 0.0           # entry legs, then exit legs on close
     closed: bool = False
+    # Funding period already booked (ISO, floored to the settlement boundary).
+    # Without it a manual /carry/run or a restart cycle books the same payment
+    # a second time while the backtest books it once.
+    last_funding_ts: Optional[str] = None
     funding_history: list[float] = field(default_factory=list)   # one row per period
     staking_earned: float = 0.0      # USDT staking yield on idle capital
     last_funding_rate: float = 0.0
@@ -74,7 +84,8 @@ class FundingCarryState:
             "n_payments": self.n_payments,
             "n_negative_payments": self.n_negative_payments,
             "negative_since": self.negative_since,
-            "funding_history": self.funding_history[-21:],
+            "funding_history": self.funding_history[-FUNDING_WINDOW:],
+            "last_funding_ts": self.last_funding_ts,
             "closed": self.closed,
         }
 
@@ -98,10 +109,11 @@ class FundingCarryState:
         self.n_payments = int(data.get("n_payments", 0) or 0)
         self.n_negative_payments = int(data.get("n_negative_payments", 0) or 0)
         self.negative_since = data.get("negative_since") or None
+        self.last_funding_ts = data.get("last_funding_ts") or None
         self.closed = bool(data.get("closed", False))
         history = data.get("funding_history") or []
         if history:
-            self.funding_history = [float(r) for r in history][-270:]
+            self.funding_history = [float(r) for r in history][-FUNDING_WINDOW:]
         self.position_open = self.entry_capital > 0
         return self.position_open
 
@@ -197,16 +209,37 @@ class FundingCarryNode:
         """True when the node runs inside the backtester (no live DB access)."""
         return bool(self.params.get("_backtest", False))
 
-    def _seed_funding_history(self) -> None:
-        """Backfill the rolling funding window so the 7-day MA is a real MA.
+    def _funding_period_key(self) -> Optional[str]:
+        """The funding period the current rate belongs to, or None in a backtest.
 
-        The node is rebuilt on every live cycle, so an in-memory window would
-        never hold more than the current sample and the "7-day MA" filter would
-        silently degrade to "is the rate positive right now". No-op in a backtest
-        (the simulated bars supply the history) and once the window is long
-        enough.
+        Binance settles at fixed boundaries (every 8h on the contracts we trade) and
+        the fetched rate is `lastFundingRate`, the one settled at the most recent
+        boundary. Flooring the clock onto that boundary gives every cycle inside one
+        period the same key, so the second one books nothing.
         """
-        if self._is_backtest() or len(self._funding_rate_history) >= 21:
+        if self._is_backtest():
+            return None  # one row per period by construction
+        dt = self._now()
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        step = max(int(self.params.get("funding_interval_hours", 8)), 1)
+        return dt.replace(hour=(dt.hour // step) * step, minute=0,
+                          second=0, microsecond=0).isoformat(timespec="seconds")
+
+    def _seed_funding_history(self) -> None:
+        """Make the rolling funding window real, from the state then the exchange.
+
+        The node is rebuilt on every live cycle, so an in-memory window would never
+        hold more than the current sample: the "7-day MA" degrades to "is the rate
+        positive right now", and the 60th-percentile filter - which needs 30
+        periods - never activates at all. It seeded 21, so live ran without the
+        filter while the backtest ran with it.
+        """
+        if self._is_backtest():
+            return  # the simulated bars supply the history
+        if not self._funding_rate_history and self.state.funding_history:
+            self._funding_rate_history = list(self.state.funding_history)
+        if len(self._funding_rate_history) >= FUNDING_WINDOW:
             return
         try:
             import ccxt
@@ -215,12 +248,12 @@ class FundingCarryNode:
             market_id = market.get("id") if market else None
             if not market_id:
                 return
-            rows = exchange.fetch_funding_rate_history(market_id, limit=21)
+            rows = exchange.fetch_funding_rate_history(market_id, limit=FUNDING_WINDOW)
             if rows:
                 self._funding_rate_history = [
                     float(r.get("fundingRate") or 0) for r in rows
-                ]
-                logger.debug("[%s] funding window seeded with %d periods",
+                ][-FUNDING_WINDOW:]
+                logger.debug("[%s] funding window seeded: %d periods",
                              self.node_id, len(self._funding_rate_history))
         except Exception as exc:
             logger.debug("[%s] funding window seed skipped: %s", self.node_id, exc)
@@ -559,8 +592,11 @@ class FundingCarryNode:
         # rate. Backfill it from the exchange when it is too short.
         self._seed_funding_history()
         self._funding_rate_history.append(funding_rate)
-        if len(self._funding_rate_history) > 270:
-            self._funding_rate_history = self._funding_rate_history[-270:]
+        self._funding_rate_history = self._funding_rate_history[-FUNDING_WINDOW:]
+        # One series, persisted. `state.funding_history` and `_funding_rate_history`
+        # were two variables holding the same idea and only the first was written
+        # to the database, so the window never survived a cycle.
+        self.state.funding_history = list(self._funding_rate_history)
         funding_ma_7d = funding_ma(self._funding_rate_history)
         
         # ── Decision ──
@@ -716,6 +752,7 @@ class FundingCarryNode:
                                         self.state.n_payments = 0
                                         self.state.n_negative_payments = 0
                                         self.state.negative_since = None
+                                        self.state.last_funding_ts = None
                                         self.state.closed = False
                                         self.state.fees_paid = entry_fee_usd(size_usd, LEG_FEE_BPS_DEFAULT)
                                         signal = "open_carry"
@@ -799,14 +836,29 @@ class FundingCarryNode:
                            self.node_id, unrealized_pct * 100)
                 # In paper mode we do not close automatically but raise a strong alert
             
+            # Funding settles once per period. Two cycles inside one period — a
+            # manual POST /carry/run, or the startup cycle right after a restart —
+            # would both book the same payment, while the backtest books it exactly
+            # once. The key is None in a backtest, so this guards only the live path.
+            period_key = self._funding_period_key()
+            already_booked = period_key is not None and period_key == self.state.last_funding_ts
+
             if signal == "close_carry":
                 pass  # already handled above
+            elif already_booked:
+                signal = "flat"
+                reason = (f"carry active | period {period_key} already booked "
+                          f"({self.state.n_payments} payments, funding="
+                          f"{self.state.total_funding_received:+.4f})")
+                confidence = 0.70
             else:
                 # Funding is SIGNED: a negative period is a payment the book
                 # makes. Accruing positive rates only overstated the P&L.
                 payment = funding_payment_usd(self.state.entry_capital, funding_rate)
                 self.state.total_funding_received += payment
                 self.state.n_payments += 1
+                if period_key is not None:
+                    self.state.last_funding_ts = period_key
                 if funding_rate < 0:
                     self.state.n_negative_payments += 1
                     now = self._now()

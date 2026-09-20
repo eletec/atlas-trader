@@ -30,13 +30,13 @@ jobs:
       - name: Byte-compile every module
         run: python -m compileall -q v7 v4 utils dashboard backtest quant execution storage
 
-      - name: Lint (real errors only: syntax, undefined names)
+      - name: "Lint (real errors only: syntax, undefined names)"
         run: ruff check --select E9,F63,F7,F82 --output-format=github .
 
-      - name: Tests
+      - name: "Tests"
         run: python -m pytest v7/tests v4/tests -q
 
-      - name: No secrets, no keys, no databases in the tree
+      - name: "No secrets, no keys, no databases in the tree"
         run: |
           set -e
           fail=0

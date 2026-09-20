@@ -152,31 +152,69 @@ class TestMonitorCarryEconomics:
         assert r["data_degraded"] is True
         assert r["net_carry_pnl"] == 0.0
 
-    def test_basis_gain_adds_to_the_funding(self):
-        """Entry basis 1% (spot 100, perp 99) closing to 0 is a gain on the book."""
+    def test_short_perp_at_a_discount_loses_when_it_converges(self):
+        """Entry perp BELOW spot: the short perp is what loses as the gap closes.
+
+        The monitor's old formula was `(basis_entry - basis_now)` with
+        `basis = (spot - perp) / spot`, which returned **+10** on this trade — the
+        opposite sign, because it booked the spot leg's premium as though the book
+        were long the perp. The book is short it.
+        """
         m = _monitor_with_perp(100.0)
         r = m._compute_carry_economics(
             _position(entry_perp=99.0, funding_pnl=0.5), -0.05
         )
-        # basis_entry = (100-99)/100 = 0.01, basis_now = 0 -> +1% of 1000
-        assert r["basis_pnl"] == pytest.approx(10.0)
-        assert r["net_carry_pnl"] == pytest.approx(10.5)
+        # (100/100 - 1) - (100/99 - 1) = -1.0101% of 1000
+        assert r["basis_pnl"] == pytest.approx(-10.101, abs=0.01)
+        assert r["net_carry_pnl"] == pytest.approx(-9.601, abs=0.01)
+
+    def test_short_perp_at_a_premium_gains_when_it_converges(self):
+        """Entry perp ABOVE spot: the short perp profits as the premium decays."""
+        m = _monitor_with_perp(100.0)
+        r = m._compute_carry_economics(
+            _position(entry_perp=101.0, funding_pnl=0.5), -0.05
+        )
+        # (100/100 - 1) - (100/101 - 1) = +0.9901% of 1000
+        assert r["basis_pnl"] == pytest.approx(9.901, abs=0.01)
+        assert r["net_carry_pnl"] == pytest.approx(10.401, abs=0.01)
+
+    def test_exit_fees_are_included_in_what_a_close_would_bank(self):
+        """The node charges both exit legs on close; the monitor used not to."""
+        m = _monitor_with_perp(100.0)
+        r = m._compute_carry_economics(
+            _position(entry_perp=101.0, funding_pnl=0.5), -0.05
+        )
+        expected_exit = 1000.0 * 0.0012 * 2   # two legs at 12 bps
+        assert r["exit_fee_usd"] == pytest.approx(expected_exit)
+        assert r["realized_usd"] == pytest.approx(10.401 - expected_exit, abs=0.01)
+        # the open mark stays gross of the exit legs: the position is still open
+        assert r["net_carry_pnl"] == pytest.approx(10.401, abs=0.01)
 
     def test_payback_uses_the_real_daily_rate(self):
         m = _monitor_with_perp(100.0)
-        # entry basis -1% (spot 100, perp 101) closing to 0 is a loss on the book
+        # a loss on the book: the short perp is under water and funding is negative
         r = m._compute_carry_economics(
-            _position(entry_perp=101.0, funding_pnl=-0.4), -0.05
+            _position(entry_perp=99.0, funding_pnl=-0.4), -0.05
         )
-        assert r["basis_pnl"] == pytest.approx(-10.0)
-        assert r["net_carry_pnl"] == pytest.approx(-10.4)
+        assert r["net_carry_pnl"] < 0
         assert r["payback_days"] > 0
 
     def test_negative_funding_can_never_repay(self):
         m = _monitor_with_perp(100.0)
-        pd = _position(entry_perp=101.0, funding_pnl=-2.0)
-        pd["opened_at"] = (datetime.now() - timedelta(days=2)).isoformat()
+        pd = _position(entry_perp=99.0, funding_pnl=-2.0)
+        # `ts_str` is the key the monitoring loop actually sets on each row
+        pd["ts_str"] = (datetime.now() - timedelta(days=2)).isoformat()
         r = m._compute_carry_economics(pd, -0.05)
         # -2.0 over 2 days = -1/day -> the shortfall can never be repaid
         assert r["funding_source"] == "state"
         assert r["payback_days"] == 999
+
+    def test_age_is_read_from_ts_str_not_from_a_made_up_key(self):
+        """Regression: the payback read opened_at/entry_time, which the monitoring
+        loop never sets, so the daily rate always fell back to the constant."""
+        m = _monitor_with_perp(100.0)
+        pd = _position(entry_perp=101.0, funding_pnl=6.0)
+        pd["ts_str"] = (datetime.now() - timedelta(days=3)).isoformat()
+        r = m._compute_carry_economics(pd, -0.05)
+        # 6.0 over 3 days = 2.0/day, not the 0.01% x 3 fallback (0.3)
+        assert r["basis_pnl"] == pytest.approx(9.901, abs=0.01)

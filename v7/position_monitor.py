@@ -20,6 +20,9 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from v7.core.carry_accounting import basis_pnl_usd, exit_fee_usd
+from v7.core.risk_state import set_circuit_breaker
+
 logger = logging.getLogger("v7.position_monitor")
 
 # ── Configuration ──────────────────────────────────────────────────────────
@@ -30,6 +33,23 @@ MAX_LOSS_PCT_DEFAULT = -0.05     # max loss per position (-5%)
 PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
 TOTAL_CAPITAL_DEFAULT = 14_000   # fallback when carry_assets.yaml cannot be read
 PAYBACK_DAYS_MAX_DEFAULT = 30    # carry economic exit when payback > 30d
+
+
+def position_age_days(ts_value: Any) -> float | None:
+    """Days elapsed since an ISO timestamp, or None when it cannot be read.
+
+    Tolerates a trailing `Z` and mixes of naive and aware values: the monitor
+    subtracts the result from an aware `now`, so a naive timestamp raised
+    TypeError, which the surrounding `except (ValueError, OSError)` did not catch.
+    """
+    if not ts_value:
+        return None
+    try:
+        opened = datetime.fromisoformat(str(ts_value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    now = datetime.now(timezone.utc) if opened.tzinfo else datetime.now()
+    return (now - opened).total_seconds() / 86400
 
 
 def portfolio_dd_breached(total_pnl_pct: float, max_portfolio_dd_pct: float) -> bool:
@@ -225,8 +245,10 @@ class PositionMonitor:
             stale_data = True
             logger.warning("TIER 0 CIRCUIT BREAKER: stale prices (%.0fs) → NO NEW RISK", max_cache_age)
             self._circuit_breaker = True
+            set_circuit_breaker(True, f"stale prices ({max_cache_age:.0f}s)")
         elif max_cache_age < 60 and self._circuit_breaker:
             self._circuit_breaker = False
+            set_circuit_breaker(False)
             logger.info("TIER 0: circuit breaker lifted — prices OK")
 
         # ── Phase 2: Multi-tier kill-switch ─────────────────────────────
@@ -345,8 +367,9 @@ class PositionMonitor:
             #     For the others: calendar time-stop
             if not should_close and pd["ts_str"]:
                 try:
-                    opened_at = datetime.fromisoformat(pd["ts_str"].replace("Z", "+00:00"))
-                    days_held = (now - opened_at).total_seconds() / 86400
+                    days_held = position_age_days(pd["ts_str"])
+                    if days_held is None:
+                        days_held = 0.0
                     if is_carry:
                         # Grace period: skip economic stop for positions < 1h old
                         # (PositionMonitor needs time to fetch perp prices, 25/07/2026)
@@ -392,8 +415,17 @@ class PositionMonitor:
             # 3e) Execute the close
             if should_close:
                 if pd["action"] == "carry":
-                    # Real carry P&L (basis+funding) - delta-neutral, not the directional spot P&L
-                    pnl = pd["unrealized"]
+                    # The closed-position P&L from the canonical module: funding
+                    # actually accrued, the exact basis move, both entry legs and
+                    # both exit legs. The old value was `pd["unrealized"]`, which
+                    # carried no funding and no exit fee at all.
+                    _econ = self._compute_carry_economics(pd, max_loss_pct)
+                    pnl = _econ.get("realized_usd")
+                    if pnl is None:
+                        pnl = pd["unrealized"]
+                        logger.warning(
+                            "PositionMonitor: %s carry economics unavailable - closing on "
+                            "the mark; P&L excludes funding and exit fees", pd["trade_id"])
                 elif pd["action"] in ("short",):
                     pnl = (pd["entry_price"] - close_price) / pd["entry_price"] * pd["size_usd"]
                 else:
@@ -502,14 +534,14 @@ class PositionMonitor:
                 logger.warning("PositionMonitor: entry_perp missing for %s → carry economics UNKNOWN", symbol)
                 return result
 
-            # Compute the basis (spot - perp) / spot
-            basis_entry = (entry_spot - entry_perp) / entry_spot if entry_spot > 0 else 0
-            basis_now = (current_spot - current_perp) / current_spot if current_spot > 0 else 0
-
-            # Basis P&L (Round 4 fix, 22/07/2026)
-            # Position: LONG spot + SHORT perp → gains when basis CONTRACTS
-            # basis_entry > basis_now → gain (basis decreased)
-            basis_pnl = (basis_entry - basis_now) * size_usd
+            # Basis P&L, from the canonical module. This used to be
+            # `(basis_entry - basis_now) * size_usd`, the first-order approximation
+            # the node and the backtest had already dropped: on a 50% directional
+            # move the two disagree by ~33%, and a delta-neutral book is exposed to
+            # nothing except that differential. The monitor was the last caller
+            # still computing it its own way.
+            basis_pnl = basis_pnl_usd(size_usd, entry_spot, entry_perp,
+                                      current_spot, current_perp)
             result["basis_pnl"] = round(basis_pnl, 4)
 
             # Funding. This used to be estimated at a hardcoded 0.01%/8h and then
@@ -521,15 +553,14 @@ class PositionMonitor:
             if funding_real is not None:
                 result["funding_est"] = round(funding_real, 6)
                 result["funding_source"] = "state"
-                # Derive the daily rate from the position's age for the payback.
-                try:
-                    opened = pd.get("opened_at") or pd.get("entry_time")
-                    if opened:
-                        age_days = (datetime.now() - datetime.fromisoformat(str(opened))).total_seconds() / 86400
-                        if age_days > 0.01:
-                            daily_funding = funding_real / age_days
-                except Exception:
-                    pass
+                # `ts_str` is what the monitoring loop actually puts on each row;
+                # opened_at/entry_time are accepted for callers that build their own
+                # dict. Reading only the latter meant the real accrued funding was in
+                # hand and the daily rate still fell back to the hardcoded estimate.
+                age_days = position_age_days(
+                    pd.get("ts_str") or pd.get("opened_at") or pd.get("entry_time"))
+                if age_days is not None and age_days > 0.01:
+                    daily_funding = funding_real / age_days
             else:
                 result["funding_est"] = round(daily_funding, 6)
                 result["funding_source"] = "estimate"
@@ -537,6 +568,14 @@ class PositionMonitor:
             # Net carry P&L = basis + funding actually received - fees paid so far
             net_carry_pnl = basis_pnl + (funding_real or 0.0) - (fees_paid or 0.0)
             result["net_carry_pnl"] = round(net_carry_pnl, 4)
+
+            # What a close at this price would actually bank: the same net figure
+            # less the two exit legs. The node charges them when it closes; a close
+            # driven by the monitor did not, so the same trade banked one amount or
+            # another depending on which component happened to close it.
+            exit_fees = exit_fee_usd(size_usd)
+            result["exit_fee_usd"] = round(exit_fees, 4)
+            result["realized_usd"] = round(net_carry_pnl - exit_fees, 4)
 
             # Payback days: how many days of funding are needed to repay the shortfall
             if net_carry_pnl < 0 and daily_funding > 0:

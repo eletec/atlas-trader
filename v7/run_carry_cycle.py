@@ -156,15 +156,38 @@ def run_cycle(
                 summary["errors"].append(f"{sym}: spot fetch failed")
                 continue
 
+            # No spot fallback for the perp. Substituting spot invents basis = 0,
+            # which is precisely the flat basis the entry filter is looking for: a
+            # missing perp quote could open a position on a fabricated price.
+            # PositionMonitor already refuses to price a carry without a real perp;
+            # the entry path now applies the same rule.
+            if perp_price <= 0:
+                logger.warning("  %s: perp price fetch failed, skipping (no spot fallback)", sym)
+                summary["n_errors"] += 1
+                summary["errors"].append(f"{sym}: perp fetch failed")
+                continue
+
             result = node.run({
                 "symbol": sym,
                 "spot_price": spot_price,
                 "funding_rate": funding_rate,
-                "perp_price": perp_price if perp_price > 0 else spot_price,
+                "perp_price": perp_price,
             })
 
             signal = result.get("signal", "flat")
             reason = result.get("reason", "")
+
+            # Tier 0 was described as "blocks new entries" but the flag lived on the
+            # PositionMonitor instance and nothing on this path could read it. It is
+            # published process-wide now, so the description is finally true.
+            if signal == "open_carry":
+                from v7.core.risk_state import circuit_breaker_active, circuit_breaker_reason
+                if circuit_breaker_active():
+                    logger.warning("  %s: entry blocked — circuit breaker active (%s)",
+                                   sym, circuit_breaker_reason())
+                    signal = "flat"
+                    reason = f"entry blocked by circuit breaker: {circuit_breaker_reason()}"
+
             summary["n_scanned"] += 1
             summary["signals"][sym] = signal
 

@@ -38,16 +38,22 @@ risk premium paid by leveraged longs to whoever is willing to hold the hedge.
 
 Three components, all in USD:
 
-**a. Funding collected** — on the perp leg only (half the position):
+**a. Funding collected** — on the perp leg only:
 ```
-funding_pnl = entry_capital × funding_rate      per 8h payment
+funding_pnl = leg_notional × funding_rate      per 8h payment     (signed)
 ```
-The node accumulates this in `total_funding_received` each cycle.
+`size_usd` is the notional of **one** leg; the gross position is `2 × size_usd`.
+The node accumulates the **signed** payment in `total_funding_received`, so a
+period of negative funding is a payment the book *makes*. It used to be skipped
+entirely, which made every reported P&L optimistic.
 
-**b. Basis P&L** — the perp/spot price differential, where `basis = (spot − perp) / spot`:
+**b. Basis P&L** — the perp/spot price differential:
 ```
-basis_pnl = (basis_entry − basis_now) × size_usd
+basis_pnl = leg_notional × [ (spot_exit / spot_entry − 1) − (perp_exit / perp_entry − 1) ]
 ```
+This is the exact relative-return form. The first-order `basis_entry − basis_now`
+difference it replaces drifts by ~33% on a 50% directional move — and a carry book
+is exposed to *nothing but* that differential.
 Because the position is long spot *and* short perp, it **gains when the basis
 contracts** and loses when it widens. Basis is the main source of unrealised
 drawdown even while funding is being collected.
@@ -106,10 +112,16 @@ Two independent mechanisms:
 
 | Zone | Condition | Action |
 |------|-----------|--------|
-| < 14 d | — | Hold |
-| > 14 d | — | REVIEW — logged only |
-| > 30 d | — | **DERISK** — close if `forward_funding < hurdle + exit_cost_annual` |
-| > 60 d | — | **CLOSE** unconditionally |
+| < 0.25 × `max_hold_days` | — | Hold |
+| > 0.25 × `max_hold_days` | — | REVIEW — logged only |
+| > 0.50 × `max_hold_days` | — | **DERISK** — close if `forward_funding < hurdle + exit_cost_annual` |
+| > `max_hold_days` | — | **CLOSE** unconditionally |
+
+The boundaries **scale with `max_hold_days`**, which *is* the forced exit. They used
+to be hardcoded at 14/30/60 d while the entry gate amortised its fees over
+`max_hold_days`: the gate assumed one holding period and the exit imposed another,
+so a grid search over the holding period changed the gate and never the exit it was
+named after. With the default `max_hold_days = 30` the zones are 7.5 / 15 / 30 d.
 
 "Forward funding" is the current annualised rate — the bar's own rate, not a
 forecast; the exit cost is the 48 bps round-trip amortised over the days actually
@@ -118,13 +130,16 @@ in hope.
 
 Two consequences are worth knowing, both measured (§5):
 
-- **The economic test is gated to `> 30 d`.** Between day 14 and day 30 the only
-  exits that can fire are the basis stop and the negative-funding timer, so a
-  position whose funding collapses on day 3 is held until day 30 regardless.
+- **The economic test is gated to the DERISK zone.** Below it the only exits that
+  can fire are the basis stop and the negative-funding timer, so a position whose
+  funding collapses early is held into the zone regardless.
 - **The threshold is conservative by construction.** It compares the instantaneous
   rate against `hurdle + the full round-trip cost`, even though the entry leg is
   already sunk, and it amortises that cost over the days *elapsed* — so the bar
-  loosens the longer you hold (10.8%/yr at 30 d, 7.9%/yr at 60 d).
+  loosens the longer you hold.
+- **The DERISK test uses the instantaneous rate, not its 7-day mean.** The entry
+  side already uses the mean; the exit should too — one noisy period can close a
+  position today.
 
 **Continuous monitor** (`v7/position_monitor.py`, every 60 s) — a 4-tier
 kill-switch that closes everything:
@@ -308,9 +323,10 @@ and even the bull quarters annualise to well under the 5% hurdle.
   assets, which are also the thinnest.
 - **No rebalancing logic**: as the two legs drift, the position becomes
   slightly directional until closed.
-- **`max_hold_days` no longer drives exits.** The economic zones (14/30/60 d)
-  replaced it; the key survives in the config but only affects fee amortisation
-  in the entry calculation.
+- **`max_hold_days` drives the exits.** The zones are fractions of it (review at a
+  quarter, derisk at half, forced close at the value itself), so it also sets the
+  holding period the entry gate amortises its fees over. Before, the exits were
+  hardcoded at 14/30/60 d and the key only affected the entry calculation.
 - **`safety_cap` is far below the capital it allocates.** With `capital: 2000`
   and `fraction: 0.5`, sizes are capped at $100–400 — a 2–10% utilisation — which
   makes the fixed 48 bps round trip disproportionate.

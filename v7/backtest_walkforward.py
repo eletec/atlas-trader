@@ -112,9 +112,18 @@ def fetch_funding_history_3y(symbol: str, days: int = 1300) -> pd.DataFrame:
 
 
 def fetch_prices_3y(symbol: str, days: int = 1300, is_perp: bool = False) -> pd.DataFrame:
-    """Fetch the daily spot or perp prices."""
+    """Fetch 8h spot or perp closes, paginated, shifted one bar.
+
+    The single-asset backtest moved to 8h causal prices; this one kept daily
+    candles and a plain `index <= ts` slice, so a funding stamp at 08:00 still saw
+    the close of that same day at 23:59. Same defect, same fix.
+
+    A bar stamped T closes at T+8h, so shifting the index forward by one bar means
+    a stamp can only ever see a bar that has already closed.
+    """
     try:
         import ccxt
+        from v7.backtest_v7_node import _paginate
         if is_perp:
             ex = ccxt.binanceusdm({"enableRateLimit": True})
             sym = _perp_symbol(symbol)
@@ -122,10 +131,19 @@ def fetch_prices_3y(symbol: str, days: int = 1300, is_perp: bool = False) -> pd.
             ex = ccxt.binance({"enableRateLimit": True})
             sym = symbol
         since = ex.parse8601((datetime.utcnow() - timedelta(days=days + 5)).strftime("%Y-%m-%dT00:00:00Z"))
-        ohlcv = ex.fetch_ohlcv(sym, "1d", since=since, limit=days + 10)
+        # limit=days + 10 used to cap this: 1310 daily bars for a 1300-day run, but
+        # only 383 eight-hour bars, so most of the window had no price at all and
+        # the nearest-price lookup silently served a much older one.
+        ohlcv = _paginate(
+            lambda cursor, limit: ex.fetch_ohlcv(sym, "8h", since=cursor, limit=limit),
+            since,
+        )
+        if not ohlcv:
+            return pd.DataFrame()
         df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "volume"])
         df["datetime"] = pd.to_datetime(df["ts"], unit="ms")
         df = df.set_index("datetime")
+        df.index = df.index + pd.Timedelta(hours=8)
         return df[["close"]].rename(columns={"close": "perp_price" if is_perp else "spot_price"})
     except Exception as e:
         logger.warning("Price fetch %s (perp=%s): %s", symbol, is_perp, e)

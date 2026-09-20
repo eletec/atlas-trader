@@ -190,7 +190,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
     else:
         # OLD BEHAVIOUR (bug): a silent $1000 fallback meant the backtest
         # no longer modelled any price risk and displayed fabricated P&L.
-        logger.error("Spot/perp prices unavailable for %s — backtest refused", symbol)
+        logger.error("Spot/perp prices unavailable for %s - backtest refused", symbol)
         return {
             "symbol": symbol,
             "error": "spot/perp prices unavailable (fabricated fallback removed)",
@@ -374,7 +374,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="V7 Backtest — FundingCarryNode + real spot/perp prices")
+    parser = argparse.ArgumentParser(description="V7 Backtest - FundingCarryNode + real spot/perp prices")
     parser.add_argument("--symbol", type=str, default="ALL",
                         help="ALL, ACTIVE, BTC, BTC/USDT, or BTC,ETH (comma-separated)")
     parser.add_argument("--days", type=int, default=365)
@@ -391,7 +391,7 @@ def main():
         symbols = [normalize_symbol(s) for s in args.symbol.split(",") if s.strip()]
 
     print("=" * 90)
-    print("ATLAS V7 — Backtest (FundingCarryNode + real spot/perp prices)")
+    print("ATLAS V7 - Backtest (FundingCarryNode + real spot/perp prices)")
     print(f"Symbols: {len(symbols)} assets | Days: {args.days} | Capital: ${args.capital:,.0f}/asset")
     print(f"Fees: 48bps RT (4 legs) | Hurdle: 5% | Staking: 5%/yr on idle (separate from trading P&L)")
     print("=" * 90)
@@ -406,7 +406,7 @@ def main():
         if "error" not in r:
             tag = ""
             if r.get("no_trade_reason"):
-                tag = f"  ⚠️ {r['no_trade_reason'][:80]}"
+                tag = f"  [no trade] {r['no_trade_reason'][:80]}"
             print(f"  {sym:<12} Trade=${r['trading_pnl']:>7,.2f} ({r['pnl_pct']:>5.1f}%)  "
                   f"Sharpe={r['sharpe']:>6.2f}  MaxDD={r['max_dd_pct']:>5.1f}%  "
                   f"Trades={r['trades']:>2d}  Util={r['capital_utilisation_pct']:>4.1f}%  "
@@ -454,17 +454,17 @@ def main():
     print(f"  Total                  : ${total_pnl_all:>10,.2f}   {total_pnl_all/total_cap*100:+.2f}%   <-- do not read as a strategy performance")
     print()
     if not valid:
-        print("  ⚠️  NO TRADE over the period: at these funding levels no asset clears")
+        print("  [WARN] NO TRADE over the period: at these funding levels no asset clears")
         print("      the entry threshold (min_funding). The 'Total' above is entirely")
         print("      staking on idle capital.")
     elif total_trading_pnl <= 0:
-        print("  ⚠️  The strategy is flat or losing over the period.")
+        print("  [WARN] The strategy is flat or losing over the period.")
     print(f"\n  Mean Sharpe (traded): {avg_sharpe:.2f} | Capital utilisation: {avg_util:.1f}%")
     print(f"  Duration: {elapsed:.0f}s | Total capital: ${total_cap:,.0f}")
     if staking_only:
-        print(f"\n⚠️  {len(staking_only)} assets with no trade (simulated staking only):")
+        print(f"\n[WARN] {len(staking_only)} assets with no trade (simulated staking only):")
         for r in staking_only:
-            print(f"    {r['symbol']:<12} → {r.get('no_trade_reason', '?')}")
+            print(f"    {r['symbol']:<12} -> {r.get('no_trade_reason', '?')}")
     print("=" * 90)
 
 

@@ -18,6 +18,7 @@ Three defects from the external review are covered here:
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -220,6 +221,69 @@ def _stub_ccxt(rows, called):
             return _Exchange()
 
     return _Module()
+
+
+class TestDeriskRule:
+    """The DERISK exit is a marginal decision: hold, or close now?
+
+    The exit legs are paid whenever the position closes - now or at max_hold_days -
+    so they cancel out of that comparison. The rule used to compare against
+    `hurdle + 48bps * 365 / days_held`, which billed a decision already made AND
+    amortised over the days ELAPSED: the test was tightest when the position was
+    youngest, so the zone always fired on its first bar. The effective holding period
+    was max_hold_days / 2 and the fee burden was twice what the entry gate budgeted.
+    """
+
+    def _run_aged(self, days_held: float, funding_rate: float, max_hold_days: int = 14):
+        node = FundingCarryNode(node_id="t_derisk", symbol="BTC/USDT", capital=1000.0,
+                                max_hold_days=max_hold_days,
+                                params={"_backtest": True})
+        st = node.state
+        st.position_open = True
+        st.entry_capital = 1000.0
+        st.entry_spot = 100.0
+        st.entry_perp = 100.0
+        st.closed = False
+        now = datetime(2026, 9, 20, 12, 0, 0)
+        st.entry_time = (now - timedelta(days=days_held)).isoformat()
+        return node.run({
+            "symbol": "BTC/USDT", "spot_price": 100.0, "perp_price": 100.0,
+            "funding_rate": funding_rate, "now": now,
+        })
+
+    def test_a_carry_that_still_covers_the_hurdle_is_held(self):
+        """0.01%/8h is Binance's neutral rate, 10.95%/yr - well above the 5% hurdle.
+
+        The old rule closed it: at 8 days held it demanded
+        5% + 0.48% * 365/8 = 26.9%/yr.
+        """
+        r = self._run_aged(days_held=8, funding_rate=0.0001)
+        assert r["signal"] != "close_carry"
+        assert r["position_open"] is True
+        assert "DERISK" not in r["reason"]
+
+    def test_a_carry_that_no_longer_covers_the_hurdle_is_closed(self):
+        r = self._run_aged(days_held=8, funding_rate=0.00001)   # 1.1%/yr
+        assert r["signal"] == "close_carry"
+        assert "DERISK" in r["reason"]
+
+    def test_the_round_trip_is_no_longer_amortised_over_elapsed_days(self):
+        """The reason string carried the symptom: `hurdle+exit=<n>%/yr` with n rising
+        as the position got younger."""
+        r = self._run_aged(days_held=8, funding_rate=0.00001)
+        assert "hurdle+exit" not in r["reason"]
+        assert "hurdle=5.0%/yr" in r["reason"]
+
+    def test_the_horizon_the_entry_budgeted_is_now_reachable(self):
+        """A carry that clears the hurdle is held into the CLOSE zone rather than
+        being stopped at half the configured holding period."""
+        # 13 of 14 days: inside DERISK, one day short of the forced close
+        r = self._run_aged(days_held=13, funding_rate=0.0001)
+        assert r["signal"] != "close_carry"
+        # past max_hold_days the forced close still applies
+        r2 = self._run_aged(days_held=15, funding_rate=0.0001)
+        assert r2["signal"] == "close_carry"
+        assert "ZONE CLOSE" in r2["reason"]
 
 
 if __name__ == "__main__":

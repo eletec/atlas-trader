@@ -477,6 +477,20 @@ class FundingCarryNode:
         except Exception:
             return 0.05
 
+    @staticmethod
+    def _round_trip_cost_bps() -> float:
+        """Configured round-trip cost in bps (global.round_trip_cost_bps).
+
+        The admin panel exposes it (10-100 bps) and carry_assets.yaml carries it, so
+        the entry gate comparing against a hardcoded 48 meant editing that number
+        changed nothing.
+        """
+        try:
+            from v7.core.asset_config import get_global_params
+            return float(get_global_params().get("round_trip_cost_bps", 48))
+        except Exception:
+            return 48.0
+
     def fetch_latest_settlement(self) -> Optional[tuple[datetime, float]]:
         """The most recently SETTLED funding period, as (settlement time, rate).
 
@@ -743,10 +757,17 @@ class FundingCarryNode:
                     # Grid search V7.3: 25 of 26 assets prefer 5% over 7%.
                     
                     # -- Annualised costs (deducted from the return, not from the hurdle) --
-                    round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage)
+                    # Read the configured round trip rather than the literal 48bps. The
+                    # admin panel exposes `round_trip_cost_bps` (10-100) and
+                    # carry_assets.yaml carries it, so editing it there did nothing:
+                    # the same defect class as the allocator's hardcoded limits.
+                    round_trip_cost = self._round_trip_cost_bps() / 10_000.0
                     # The annualised cost depends on the real time-stop: a short hold
                     # makes the fees prohibitive (48bps amortised over very few days).
                     # Ex: max_hold_days=14 -> 12.5%/yr in fees; 60d -> 2.9%/yr.
+                    # This is truthful only because the DERISK exit no longer closes at
+                    # half the horizon; before that, the real hold was max_hold_days/2
+                    # and the true cost was twice this number.
                     estimated_hold = max(self.max_hold_days, 1)
                     annualized_cost = round_trip_cost * 365 / estimated_hold
                     net_expected_return = expected_return - annualized_cost
@@ -890,18 +911,31 @@ class FundingCarryNode:
                             confidence = 0.85
                             logger.warning("[%s] %s", self.node_id, reason)
                         elif days_held > derisk_after:
-                            # DERISK: close when forward funding no longer justifies the position
+                            # DERISK: close when the forward funding no longer covers the
+                            # cost of capital.
+                            #
+                            # This used to compare against `hurdle + 48bps * 365 /
+                            # days_held`, which was wrong twice over. The exit legs are
+                            # paid whenever the position closes, now or at
+                            # max_hold_days, so they cancel out of a marginal hold-or-close
+                            # decision - charging them again invoices a decision already
+                            # made. And amortising over the days ELAPSED makes the test
+                            # tightest when the position is youngest, so the zone always
+                            # fired on its first bar: the effective holding period was
+                            # max_hold_days / 2 and the fee burden was twice what the
+                            # entry gate had budgeted. max_hold_days never actually
+                            # bound, and the entry gate amortised over a horizon the exit
+                            # would not allow.
                             forward_funding = funding_rate * periods_per_year
-                            exit_cost_annual = 0.0048 * (365 / max(days_held, 1))  # 48bps round-trip amortised
-                            if forward_funding < economic_hurdle + exit_cost_annual:
+                            if forward_funding < economic_hurdle:
                                 signal = "close_carry"
                                 reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}d, "
                                           f"forward funding={forward_funding*100:.1f}%/yr < "
-                                          f"hurdle+exit={(economic_hurdle+exit_cost_annual)*100:.1f}%/yr")
+                                          f"hurdle={economic_hurdle*100:.1f}%/yr")
                                 confidence = 0.75
                                 logger.warning("[%s] %s", self.node_id, reason)
                             else:
-                                logger.info("[%s] DERISK zone: %dd, forward funding=%.1f%% > costs -> hold",
+                                logger.info("[%s] DERISK zone: %dd, forward funding=%.1f%% > hurdle -> hold",
                                            self.node_id, days_held, forward_funding*100)
                         elif days_held > review_after:
                             logger.info("[%s] REVIEW zone: %dd — monitoring", self.node_id, days_held)

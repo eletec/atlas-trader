@@ -133,10 +133,15 @@ Two consequences are worth knowing, both measured (§5):
 - **The economic test is gated to the DERISK zone.** Below it the only exits that
   can fire are the basis stop and the negative-funding timer, so a position whose
   funding collapses early is held into the zone regardless.
-- **The threshold is conservative by construction.** It compares the instantaneous
-  rate against `hurdle + the full round-trip cost`, even though the entry leg is
-  already sunk, and it amortises that cost over the days *elapsed* — so the bar
-  loosens the longer you hold.
+- **The DERISK test is a marginal one.** It asks whether the forward funding still
+  covers the cost of capital: `forward_funding < hurdle` closes the position. The exit
+  legs are paid whenever it closes — now or at `max_hold_days` — so they cancel out of
+  a hold-or-close comparison. The rule used to compare against
+  `hurdle + 48 bps × 365 / days_held`, which was wrong twice: it billed a decision
+  already made, and amortising over the days *elapsed* made it tightest when the
+  position was youngest. The zone therefore always fired on its first bar, the
+  effective holding period was `max_hold_days / 2`, and the entry gate amortised its
+  fees over a horizon the exit would not allow.
 - **The DERISK test uses the instantaneous rate, not its 7-day mean.** The entry
   side already uses the mean; the exit should too — one noisy period can close a
   position today.
@@ -190,9 +195,9 @@ full paginated funding history, real spot/perp/funding data:
 ```
 Portfolio: 6 assets | 2 traded, 4 never entered | capital $12,000
 
-  TRADING (the strategy) : $   -2.52   (-0.02%)
-  Staking (idle capital) : $  284.55   (+2.37%)   <- simulated, NOT trading
-  Mean Sharpe (traded)   : -1.30 | Worst max drawdown: -0.07% | Fees: $2.88
+  TRADING (the strategy) : $   -2.43   (-0.02%)
+  Staking (idle capital) : $  284.36   (+2.37%)   <- simulated, NOT trading
+  Mean Sharpe (traded)   : -1.27 | Worst max drawdown: -0.07% | Fees: $2.88
 ```
 
 Four of the six never entered at all. The two that did (XRP, BNB) traded once and
@@ -238,6 +243,13 @@ universe is ASTER at 9.6%/yr.
 | 30-day cycles (12 round trips) | 5.76% | 10.84%/yr | **0 of 69** |
 | Static hold (1 round trip) | 0.48% | 5.00%/yr | 3 of 69 |
 
+Those break-evens are the **entry gate's** numbers, and they describe the engine as it
+now stands. Until the DERISK fix above they were optimistic by 2×: the exit closed
+every position at `max_hold_days / 2`, so a "30-day" rotation really paid 24 round
+trips a year and the true break-even was 16.68%/yr, not 10.84%. Nothing in the
+universe clears either figure, so the conclusion did not move — but the number a
+reader would have used to check the claim was wrong by half.
+
 The same assets that lose money on a 30-day cycle are the best performers in the
 universe if you simply hold them. The strategy's own exit schedule is what makes
 it unprofitable.
@@ -278,14 +290,14 @@ step 3, parameters frozen, causal universe:
 
 ```
 Traded windows  : 5/10 (50% coverage)
-OOS median      : +0.021%/quarter  ~ +0.08%/yr
-OOS worst/best  : -0.016% / +0.377%
-Total Trading   : $56.14 over 3 years ($12,000 of capital)
-Total Staking   : $629.50                      <- 11x the trading
+OOS median      : +0.030%/quarter  ~ +0.12%/yr
+OOS worst/best  : -0.015% / +0.432%
+Total Trading   : $69.12 over 3 years ($12,000 of capital)
+Total Staking   : $620.40                      <- 9x the trading
 
-RANGE : 5 windows, median +0.021%
+RANGE : 5 windows, median +0.030%
 
-Verdict: Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)
+Verdict: Paper trading only — OOS return +0.12%/yr below the hurdle (5%/yr)
 ```
 
 Two things a reader should not skim past:
@@ -293,15 +305,15 @@ Two things a reader should not skim past:
 - **Half the windows never traded at all.** A window with zero trades proves
   nothing about the edge — it is not evidence of profitability, and the tool now
   reports it as 50% coverage rather than folding it into a "% positive" figure.
-- **+0.08%/yr is ~60x below the hurdle.** The tool's own verdict logic reports
-  `Paper trading only — OOS return +0.08%/yr below the hurdle (5%/yr)` instead of
+- **+0.12%/yr is ~42x below the hurdle.** The tool's own verdict logic reports
+  `Paper trading only — OOS return +0.12%/yr below the hurdle (5%/yr)` instead of
   the "GO for real capital" it used to print for any positive median.
 
 An earlier run of this table segmented two windows as BULL and credited the return
 to those. That split came from the regime classifier reading daily bars while the
 strategy now reads 8h bars; on the same resolution the traded windows all classify
-as RANGE. The share shifted, the P&L did not — +0.021% per quarter either way,
-still ~60x below the hurdle. It is worth knowing that a regime label here is an
+as RANGE. The share shifted, the P&L barely did — +0.030% per quarter either way,
+still ~42x below the hurdle. It is worth knowing that a regime label here is an
 artefact of the bar size the classifier is handed.
 
 ### Limits, stated plainly

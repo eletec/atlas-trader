@@ -170,8 +170,34 @@ Current live funding rates (20 Sep 2026) explain why:
 
 **Conclusion: the strategy is structurally sound but not currently profitable.**
 At these funding levels the measured trading edge is ~0% — below the 5% hurdle
-and below the risk-free rate. The 3-year walk-forward (July 2026) points the
-same way: median OOS return +0.032%/quarter (~0.13%/yr) once fees are paid.
+and below the risk-free rate.
+
+The 3-year walk-forward, re-run 20 Sep 2026 over the 6 active assets
+(`backtest_walkforward.py --symbols ACTIVE --days 1300`), says the same thing:
+
+```
+Fenêtres tradées : 5/10 (50% de couverture)
+Médiane OOS      : +0.149%/trimestre  ≈ +0.60%/an     ← vs hurdle 5%/an
+Meilleure / pire : +0.410% / +0.005%
+Total Trading    : $88.47 sur 3 ans ($12,000 de capital)
+Total Staking    : $521.74                            ← 6× le trading
+
+BULL  : 2 fenêtres, médiane +0.280%
+RANGE : 3 fenêtres, médiane +0.019%
+```
+
+Two things this table makes clear, and that a reader should not skim past:
+
+- **Half the windows never traded at all.** A window with zero trades proves
+  nothing about the edge — it is not evidence of profitability, and the tool now
+  reports it as 50% coverage rather than folding it into a "% positive" figure.
+- **+0.60%/yr is ~8× below the hurdle.** The tool's own verdict logic now says
+  `Paper trading uniquement — rendement OOS sous le hurdle`, instead of the
+  "GO pour capital réel" it used to print for any positive median.
+
+Only 2 of 10 windows fell in a BULL regime, and those are the only ones with a
+meaningful return (+0.28%/quarter). The strategy is a **regime bet**, not an
+all-weather one.
 
 The strategy only becomes interesting in a **high-funding regime** (broadly:
 strong bullish leverage demand), which did not occur in the sampled period.
@@ -226,10 +252,14 @@ assets:
     leverage: 2.0               # used by the margin/liquidation check
 ```
 
-**Why 6 majors and not 37?** `carry_scanner.py` finds 37 Spot∩Perp pairs, but
-alt funding is noisy and round-trips are expensive: a 24 h hold pays 48 bps of
-fees against ~6 bps of funding. The universe was cut to assets where liquidity
-and funding quality justify the fixed cost.
+**Why 6 majors and not 77?** `carry_scanner.py` returns **77 eligible Spot∩Perp
+pairs** (filters: ≥ $5M 24h spot volume, ≥ $10M 24h perp volume, ≥ $2M open
+interest). But alt funding is noisy and round-trips are expensive: a 24 h hold
+pays 48 bps of fees against ~6 bps of funding. The universe was cut to assets
+where liquidity and funding quality justify the fixed cost.
+
+The full scan is kept in the config (disabled) so it can be re-enabled per asset
+from the dashboard once its funding history justifies it.
 
 **Why a 5% hurdle?** It represents the cost of capital, and it is deliberately
 **not** optimised. Grid-searching the hurdle reintroduces data mining: whatever

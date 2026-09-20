@@ -559,7 +559,7 @@ def main():
     print(f"OOS median return: {ps['oos_median_return_pct']:+.3f}%")
     print(f"OOS worst return:  {ps['oos_worst_return_pct']:+.3f}%")
     print(f"OOS best return:   {ps['oos_best_return_pct']:+.3f}%")
-    print(f"OOS % positive:    {ps['oos_positive_pct']:.0f}%")
+    print(f"OOS % positive:    {ps['oos_positive_pct']:.0f}%  (sur les {ps['n_oos_windows']} fenêtres ayant réellement tradé)")
     print(f"Total Trading P&L: ${ps['total_trading_pnl']:,.2f}")
     print(f"Total Staking P&L: ${ps['total_staking_pnl']:,.2f}")
     
@@ -580,11 +580,36 @@ def main():
               f"${w.total_trading_pnl:>8,.2f}   {w.trading_return_pct:>+.3f}%")
     
     print("\n" + "=" * 80)
-    verdict = (
-        "GO pour capital réel" if ps['oos_positive_pct'] >= 70 and ps['oos_median_return_pct'] > 0
-        else "Paper trading uniquement" if ps['oos_positive_pct'] >= 50
-        else "NO-GO — edge non significatif OOS"
-    )
+    # Une fenêtre sans aucun trade ne dit RIEN sur l'edge : elle ne doit ni
+    # gonfler le "% positive" ni déclencher un feu vert. Le verdict compare
+    # désormais la médiane annualisée au hurdle de la stratégie (5%/an) et
+    # vérifie la couverture réelle (fenêtres ayant tradé / fenêtres totales).
+    _n_traded = ps['n_oos_windows']
+    _n_total = ps['n_windows']
+    _coverage = (_n_traded / _n_total * 100) if _n_total else 0.0
+    _med_quarter = ps['oos_median_return_pct']
+    _med_annual = _med_quarter * 4
+    _hurdle = 5.0
+
+    print(f"Fenêtres tradées : {_n_traded}/{_n_total} ({_coverage:.0f}% de couverture)")
+    print(f"Médiane OOS      : {_med_quarter:+.3f}%/trimestre  ≈ {_med_annual:+.2f}%/an")
+    print(f"Hurdle stratégie : {_hurdle:+.2f}%/an")
+    if _med_annual < _hurdle:
+        print(f"  ⚠️  La médiane OOS est SOUS le hurdle : la stratégie ne couvre pas")
+        print(f"      son coût du capital sur cet échantillon.")
+    if _coverage < 50:
+        print(f"  ⚠️  Moins de la moitié des fenêtres ont tradé : échantillon faible.")
+    print("-" * 80)
+
+    if _n_traded < 5:
+        verdict = f"NO-GO — échantillon insuffisant ({_n_traded} fenêtre(s) tradée(s))"
+    elif _coverage < 50:
+        verdict = f"Paper trading uniquement — couverture OOS insuffisante ({_coverage:.0f}%)"
+    elif _med_annual < _hurdle:
+        verdict = (f"Paper trading uniquement — rendement OOS {_med_annual:+.2f}%/an "
+                   f"sous le hurdle ({_hurdle:.0f}%/an)")
+    else:
+        verdict = "GO pour capital réel"
     print(f"Verdict: {verdict}")
     print("=" * 80)
 

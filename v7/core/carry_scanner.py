@@ -1,11 +1,11 @@
 """
-v7/core/carry_scanner.py — Scanner dynamique de l'univers Funding Carry.
+v7/core/carry_scanner.py — Dynamic scanner for the Funding Carry universe.
 
-Détecte automatiquement tous les couples Spot/USDT + Perp USDⓈ-M compatibles
-sur Binance, avec filtres de liquidité et gestion des contrats à multiplicateur.
+Automatically detects every compatible Spot/USDT + USDⓈ-M Perp pair
+on Binance, with liquidity filters and multiplier-contract handling.
 
 Usage:
-    python -m v7.core.carry_scanner              # affiche la liste
+    python -m v7.core.carry_scanner              # print the list
     python -m v7.core.carry_scanner --save       # updates carry_assets.yaml
 """
 
@@ -25,7 +25,7 @@ MIN_SPOT_VOLUME_24H_USD = 5_000_000    # $5M volume spot minimum
 MIN_PERP_VOLUME_24H_USD = 10_000_000   # $10M volume perp minimum
 MIN_OPEN_INTEREST_USD    = 2_000_000   # $2M open interest minimum
 MAX_SPREAD_BPS           = 15           # spread max 0.15%
-MIN_FUNDING_HISTORY_DAYS = 90           # au moins 90j d'historique de funding
+MIN_FUNDING_HISTORY_DAYS = 90           # at least 90 days of funding history
 
 # -- Excluded assets (stablecoins, wrapped, problematic tokens) --
 EXCLUDED_BASES = {
@@ -64,10 +64,10 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
                          min_oi: float = MIN_OPEN_INTEREST_USD,
                          max_spread_bps: int = MAX_SPREAD_BPS) -> list[dict[str, Any]]:
     """
-    Scanne Binance pour trouver tous les couples Spot/USDT ∩ Perp USDⓈ-M éligibles.
+    Scan Binance for every eligible Spot/USDT ∩ USDⓈ-M Perp pair.
 
     Returns:
-        Liste de dicts avec: symbol, spot_symbol, perp_symbol, multiplier,
+        List of dicts with: symbol, spot_symbol, perp_symbol, multiplier,
         contract_size, spot_volume_24h, perp_volume_24h, open_interest, spread_bps.
     """
     try:
@@ -222,10 +222,10 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
 
 def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """
-    Calcule les paramètres optimisés pour chaque actif à partir des données réelles.
-    
-    Retourne un dict {symbol: {_optimized_capital, _optimized_stress_loss_pct, ...}}
-    qui sera stocké dans carry_assets.yaml sans écraser les valeurs actuelles.
+    Compute optimised parameters for each asset from real data.
+
+    Returns a dict {symbol: {_optimized_capital, _optimized_stress_loss_pct, ...}}
+    to be stored in carry_assets.yaml without overwriting the current values.
     """
     try:
         import ccxt

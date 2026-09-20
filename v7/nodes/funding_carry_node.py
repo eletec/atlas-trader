@@ -1,10 +1,10 @@
 """
-v7/nodes/funding_carry_node.py — Nœud Funding Carry V7.
+v7/nodes/funding_carry_node.py — V7 Funding Carry node.
 
-Fetch le funding rate, évalue le hurdle économique, produit un signal.
-Appelé par v7/run_carry_cycle.py (cycle carry unique, 8h).
+Fetches the funding rate, evaluates the economic hurdle, produces a signal.
+Called by v7/run_carry_cycle.py (single carry cycle, every 8h).
 
-Output: signal carry (open/close/flat) + expected_return + size
+Output: carry signal (open/close/flat) + expected_return + size
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class FundingCarryState:
     entry_capital: float = 0.0
     entry_spot: float = 0.0          # spot price at entry
     entry_perp: float = 0.0          # perp price at entry
-    entry_time: str = ""             # ISO timestamp d'ouverture (time-stop)
+    entry_time: str = ""             # ISO open timestamp (time-stop)
     negative_since: Optional[str] = None  # ISO timestamp
     total_funding_received: float = 0.0
     n_payments: int = 0
@@ -41,12 +41,12 @@ class FundingCarryState:
 
 
 class FundingCarryNode:
-    """Nœud DAG pour le funding carry.
-    
-    Compatible avec le framework DAG Atlas.
-    Implémente l'interface minimale: run(inputs), execute(inputs), output_schema().
-    
-    Usage dans un DAG:
+    """DAG node for the funding carry strategy.
+
+    Compatible with the Atlas DAG framework.
+    Implements the minimal interface: run(inputs), execute(inputs), output_schema().
+
+    Usage inside a DAG:
         node = FundingCarryNode(node_id="btc_carry", symbol="BTC/USDT", capital=5000)
         outputs = node.run({"spot_price": 67000})
     """
@@ -65,7 +65,7 @@ class FundingCarryNode:
         stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
         cooldown_hours: int = 24,       # anti-churn: do not reopen within N hours of closing
         exchange_name: str = "binance",  # binance | bybit | okx | kraken
-        fee_bps: float = 10.0,       # frais spot Binance standard (0.1% = 10bps)
+        fee_bps: float = 10.0,       # standard Binance spot fee (0.1% = 10bps)
         slippage_bps: float = 2.0,
         params: dict | None = None,
         meta: object = None,  # DAG framework NodeMeta
@@ -132,12 +132,12 @@ class FundingCarryNode:
         return bool(self.params.get("_backtest", False))
     
     def _restore_state(self):
-        """Vérifie si une position carry est déjà ouverte pour ce symbole.
-        
-        Restaure TOUS les champs nécessaires au suivi de position :
+        """Check whether a carry position is already open for this symbol.
+
+        Restores EVERY field needed to track the position:
         entry_spot, entry_perp, entry_time, entry_capital,
         total_funding_received, n_payments.
-        Sans ces valeurs, les vérifications SL/TP/time-stop sont ignorées.
+        Without these values the SL/TP/time-stop checks are silently skipped.
         """
         try:
             from storage.paper_trader import get_open_positions
@@ -159,7 +159,7 @@ class FundingCarryNode:
                         self.state.total_funding_received = float(ctx.get("total_funding_received", 0) or 0)
                         self.state.n_payments = int(ctx.get("n_payments", 0) or 0)
                         # context_json holds the full decision dict
-                        # entry_price = spot, on cherche le perp dans carry_* ou on l'estime
+                        # entry_price = spot; look for the perp in the carry_* keys, else estimate it
                         if ctx.get("carry_signal") == "open_carry":
                             # The perp was close to spot at entry (basis ~0)
                             self.state.entry_perp = self.state.entry_spot
@@ -181,8 +181,10 @@ class FundingCarryNode:
             logger.debug("[%s] DB restore skipped: %s", self.node_id, e)
 
     def _get_funding_interval(self) -> float:
-        """Retourne l'intervalle de funding en heures depuis Binance (3 audits, 20/07/2026).
-        Fallback: 8h si l'API est injoignable ou si backtest."""
+        """Return the funding interval in hours as reported by Binance (3 audits, 20/07/2026).
+
+        Falls back to 8h when the API is unreachable, or inside a backtest.
+        """
         # Backtest: no CCXT call, use the standard 8h
         if self.params.get("_backtest", False):
             return 8.0
@@ -199,16 +201,17 @@ class FundingCarryNode:
             self._cached_funding_interval = max(4, min(interval, 24))
             return self._cached_funding_interval
         except Exception:
-            return 8.0  # fallback standard
+            return 8.0  # standard fallback
 
     def _funding_in_top_percentile(self, funding_rate: float, pct: float = 0.20,
                                     window_days: int = 90) -> bool:
-        """Vérifie si le funding_rate actuel est dans le top pct% de l'historique récent.
-        Utilise l'historique local (max 21 valeurs = 7 jours).
-        Pour window_days > 7, on utilise ce qu'on a + hypothèse conservative.
+        """Check whether the current funding_rate sits in the top pct% of recent history.
+
+        Uses the local history (at most 21 samples = 7 days).
+        For window_days > 7 this uses what is available plus a conservative assumption.
         (3 audits, 20/07/2026)"""
         if not self._funding_rate_history or len(self._funding_rate_history) < 5:
-            return True  # pas assez d'historique → laisse passer
+            return True  # not enough history -> let it through
         # Use the available history (up to 21 samples = 7 days)
         sorted_rates = sorted(self._funding_rate_history)
         threshold_idx = int(len(sorted_rates) * (1 - pct))
@@ -275,17 +278,17 @@ class FundingCarryNode:
 
     @staticmethod
     def _perp_multiplier(symbol: str) -> float:
-        """Multiplicateur du contrat perp USDⓈ-M : 1000 pour les contrats ×1000
-        (le prix du contrat vaut ×1000 le prix spot du token), 1 sinon.
-        Indispensable pour que la basis (perp − spot)/spot soit correcte."""
+        """USDⓈ-M perp contract multiplier: 1000 for ×1000 contracts
+        (the contract price is 1000× the token's spot price), 1 otherwise.
+        Essential for the basis (perp − spot)/spot to be correct."""
         base = symbol.split("/")[0]
         return 1000.0 if base in {"PEPE", "SHIB", "BONK", "FLOKI", "LUNC"} else 1.0
 
     @staticmethod
     def _staking_annual_rate() -> float:
-        """Taux de staking annuel du capital inactif (carry_assets.yaml, clé
-        global.staking_annual). Lu depuis la config pour que la valeur affichée
-        dans l'admin ait réellement un effet."""
+        """Annual staking rate on idle capital (carry_assets.yaml, key
+        global.staking_annual). Read from the config so that the value shown
+        in the admin panel actually takes effect."""
         try:
             from v7.core.asset_config import get_global_params
             return float(get_global_params().get("staking_annual", 0.05))
@@ -358,9 +361,9 @@ class FundingCarryNode:
         return 0.0
 
     def _last_close_age_hours(self) -> float | None:
-        """Heures depuis la dernière clôture de ce symbole (None si jamais fermé).
+        """Hours since this symbol last closed (None when it never closed).
 
-        Anti-churn : prevents reopening an asset whose funding just
+        Anti-churn: prevents reopening an asset whose funding just
         flipped (e.g. SHIB/PEPE) and which would pay round-trip fees over
         and over.
         """
@@ -387,13 +390,13 @@ class FundingCarryNode:
 
     
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Exécute le nœud Funding Carry.
-        
+        """Run the Funding Carry node.
+
         Args:
-            inputs: dict avec:
-                - spot_price (float): prix spot actuel
-                - funding_rate (float, optional): override le fetch auto
-                - perp_price (float, optional): prix du perpetual
+            inputs: dict with:
+                - spot_price (float): current spot price
+                - funding_rate (float, optional): overrides the automatic fetch
+                - perp_price (float, optional): perpetual price
         
         Returns:
             dict avec signal, size_usd, expected_return, confidence, reason

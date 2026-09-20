@@ -1,7 +1,7 @@
 """
-v7/core/grid_search.py — Grid search des paramètres Funding Carry par backtest.
+v7/core/grid_search.py — Grid search of the Funding Carry parameters via backtest.
 
-Teste des combinaisons de paramètres pour trouver le meilleur rendement ajusté au risque.
+Tests parameter combinations to find the best risk-adjusted return.
 
 Usage:
     docker exec atlas-v4-api python -B /app/src/v7/core/grid_search.py --symbol ALL --days 365
@@ -129,10 +129,10 @@ def grid_search_symbol(symbol: str, days: int, capital: float, passes: int = 2) 
 def main():
     parser = argparse.ArgumentParser(description="Grid search Funding Carry params")
     parser.add_argument("--symbol", default="ALL",
-                        help="Symbole (BTC, BTC/USDT, BTC,ETH) ou ALL/ACTIVE")
+                        help="Symbol (BTC, BTC/USDT, BTC,ETH) or ALL/ACTIVE")
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--capital", type=float, default=2000)
-    parser.add_argument("--passes", type=int, default=2, help="Nombre de passes (1=coarse, 2=coarse+fine)")
+    parser.add_argument("--passes", type=int, default=2, help="Number of passes (1=coarse, 2=coarse+fine)")
     parser.add_argument("--output", default="/app/data/grid_search_results.yaml")
     args = parser.parse_args()
 

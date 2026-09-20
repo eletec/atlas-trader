@@ -1,14 +1,14 @@
 """
-v7/core/asset_config.py — Chargeur de configuration des actifs Funding Carry.
+v7/core/asset_config.py — Configuration loader for the Funding Carry assets.
 
-Lit config/carry_assets.yaml et expose les actifs activés avec leurs paramètres.
-Utilisé par la DAG factory, le backtest, et le dashboard.
+Reads config/carry_assets.yaml and exposes the enabled assets with their parameters.
+Used by the DAG factory, the backtest and the dashboard.
 
-Chemins :
-- Container : /app/data/carry_assets.yaml  (runtime writable, volume v4_storage)
-- Hors container : config/carry_assets.yaml (dépôt, jamais de copie parasite)
-- Override : variable d'environnement V7_DATA_DIR
-- Bootstrap : en container, si le runtime n'existe pas, copie depuis le dépôt.
+Paths:
+- Container: /app/data/carry_assets.yaml  (runtime writable, volume v4_storage)
+- Outside the container: config/carry_assets.yaml (repo copy, never duplicated)
+- Override: V7_DATA_DIR environment variable
+- Bootstrap: inside the container, if the runtime copy is missing, copy the repo one.
 """
 
 from __future__ import annotations
@@ -44,11 +44,11 @@ def config_path() -> Path:
 
 
 def _bootstrap_config() -> Path:
-    """Retourne le fichier de config à lire.
+    """Return the config file to read.
 
-    En container : /app/data/carry_assets.yaml (persisté par le volume), copié
-    depuis la version du dépôt au premier lancement.
-    Hors container : directement la version du dépôt (aucune copie parasite).
+    Inside the container: /app/data/carry_assets.yaml (volume-backed), copied from
+    the repo version on first start.
+    Outside the container: the repo file directly (no stray copy).
     """
     runtime = config_path()
     if runtime != _RUNTIME_PATH:

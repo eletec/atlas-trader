@@ -1,7 +1,8 @@
 """
-v7/api/live_pnl.py — Endpoint minimal pour widget live P&L.
-Appelé par le widget JS du dashboard Streamlit.
-Retourne le P&L latent de toutes les positions V7.
+v7/api/live_pnl.py — Minimal endpoint for the live P&L widget.
+
+Called by the dashboard's JS widget.
+Returns the unrealised P&L of every V7 position.
 """
 from __future__ import annotations
 
@@ -19,10 +20,10 @@ DB_PATH = _DB_URL[10:] if _DB_URL.startswith("sqlite:///") else _DB_URL
 
 
 def get_live_prices() -> dict[str, float]:
-    """Prix live — lecture directe du PriceStore en mémoire (même process).
+    """Live prices — read the in-memory PriceStore directly (same process).
 
-    Évite le round-trip HTTP localhost:8000 qui timeout quand l'event loop
-    est occupée par les cycles DAG (ccxt synchrone, 23 actifs).
+    Avoids the localhost:8000 HTTP round-trip, which times out while the event
+    loop is busy with the DAG cycles (synchronous ccxt, 23 assets).
     """
     try:
         from v4.api.routes.prices import PriceStore
@@ -96,11 +97,11 @@ def get_live_pnl():
 
 
 def get_carry_pnl():
-    """Retourne le P&L réel du carry (basis P&L + funding), pas le P&L spot trompeur.
-    
-    Pour chaque position carry ouverte :
+    """Return the real carry P&L (basis P&L + funding), not the misleading spot P&L.
+
+    For every open carry position:
       - Fetch spot + perp via /prices/snapshot
-      - Calcule basis_entry depuis context_json
+      - Compute basis_entry from context_json
       - Calcule basis_now = (perp - spot) / spot
       - basis_pnl = (basis_now - basis_entry) × size_usd
     """

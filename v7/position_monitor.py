@@ -1,15 +1,15 @@
 """
-v7/position_monitor.py — Surveillance continue des positions ouvertes.
+v7/position_monitor.py — Continuous monitoring of open positions.
 
-Thread indépendant du cycle carry. Toutes les 60 secondes :
-  1. Récupère les positions ouvertes (tous symboles)
-  2. Fetch les prix spot et perp actuels via CCXT (cache 30s)
-  3. Vérifie SL/TP contre le prix courant (sauf carry)
-  4. Applique le time-stop (max_hold_days écoulé — positions NON-carry ;
-     les positions carry utilisent les zones économiques 30/60/90j)
-  5. Applique la perte max par position (max_loss_pct, unifié SL+time-stop)
-  6. Kill-switch global : ferme tout si P&L total < -max_portfolio_dd_pct
-  7. Ferme les positions qui ont atteint leur condition de sortie
+Independent thread alongside the carry cycle. Every 60 seconds:
+  1. Load the open positions (all symbols)
+  2. Fetch the current spot and perp prices via CCXT (30s cache)
+  3. Check SL/TP against the current price (except carry)
+  4. Apply the time-stop (max_hold_days elapsed — NON-carry positions;
+     carry positions use the 30/60/90-day economic zones)
+  5. Apply the per-position max loss (max_loss_pct, unifies SL + time-stop)
+  6. Global kill-switch: close everything when total P&L < -max_portfolio_dd_pct
+  7. Close the positions that reached their exit condition
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ logger = logging.getLogger("v7.position_monitor")
 CHECK_INTERVAL_S = 60
 PRICE_CACHE_TTL_S = 30
 MAX_HOLD_DAYS_DEFAULT = 10       # default time-stop when the asset is not configured (non-carry)
-MAX_LOSS_PCT_DEFAULT = -0.05     # perte max par position (-5%)
+MAX_LOSS_PCT_DEFAULT = -0.05     # max loss per position (-5%)
 PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
 TOTAL_CAPITAL_DEFAULT = 14_000   # fallback when carry_assets.yaml cannot be read
 PAYBACK_DAYS_MAX_DEFAULT = 30    # carry economic exit when payback > 30d
 
 
 class PositionMonitor:
-    """Moniteur de positions — singleton thread-safe."""
+    """Position monitor — thread-safe singleton."""
 
     _instance: "PositionMonitor | None" = None
     _thread: threading.Thread | None = None
@@ -53,11 +53,11 @@ class PositionMonitor:
 
     @staticmethod
     def _load_config() -> dict:
-        """Paramètres de risk management.
+        """Risk-management parameters.
 
-        Source unique de vérité : carry_assets.yaml via v7.core.asset_config.
-        (config/asset_profiles.yaml — reliquat V2 directionnel — a été supprimé :
-        il portait un max_hold_days différent de celui de la stratégie.)
+        Single source of truth: carry_assets.yaml via v7.core.asset_config.
+        (config/asset_profiles.yaml — a leftover from the directional V2 — was
+        removed: it carried a max_hold_days that differed from the strategy's.)
         """
         glob: dict = {}
         try:
@@ -126,12 +126,12 @@ class PositionMonitor:
             self._stop_event.wait(CHECK_INTERVAL_S)
 
     def _check_all_positions(self) -> None:
-        """Vérifie toutes les positions ouvertes et ferme celles qui doivent l'être.
-        
-        Ordre des vérifications :
-          1. Kill-switch global (P&L total < -max_portfolio_dd_pct)
-          2. Perte max par position (unrealized P&L < max_loss_pct)
-          3. SL/TP prix (sauf carry)
+        """Check every open position and close those that must be closed.
+
+        Order of the checks:
+          1. Global kill-switch (total P&L < -max_portfolio_dd_pct)
+          2. Per-position max loss (unrealized P&L < max_loss_pct)
+          3. Price SL/TP (except carry)
           4. Time-stop
         """
         try:
@@ -418,8 +418,8 @@ class PositionMonitor:
 
     @staticmethod
     def _fetch_perp(symbol: str) -> float:
-        """Fetch le prix du perpetual via CCXT Binance (gère les contrats ×1000).
-        Retourne le prix normalisé au token (÷1000 pour les contrats 1000X)."""
+        """Fetch the perpetual price via CCXT Binance (handles ×1000 contracts).
+        Returns the price normalised to the token (÷1000 for 1000X contracts)."""
         try:
             import ccxt
             exchange = ccxt.binance({"enableRateLimit": True})
@@ -436,10 +436,10 @@ class PositionMonitor:
             return 0.0
 
     def _compute_carry_economics(self, pd: dict, max_loss_pct: float) -> dict:
-        """Calcule le P&L carry réel (basis + funding estimé) et le payback.
+        """Compute the real carry P&L (basis + estimated funding) and the payback.
 
         Returns:
-            dict avec basis_pnl, funding_est, net_carry_pnl, payback_days
+            dict with basis_pnl, funding_est, net_carry_pnl, payback_days
         """
         result = {"basis_pnl": 0.0, "funding_est": 0.0, "net_carry_pnl": 0.0, "payback_days": 999}
         try:

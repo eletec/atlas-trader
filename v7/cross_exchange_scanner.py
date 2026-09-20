@@ -1,13 +1,13 @@
 """
-v7/cross_exchange_scanner.py — Scanner de carry cross-exchange (Binance vs Bybit vs OKX).
+v7/cross_exchange_scanner.py — Cross-exchange carry scanner (Binance vs Bybit vs OKX).
 
-DeepSeek/GPT audit (25/07/2026) : meilleure piste pour augmenter le rendement.
-Compare les funding rates entre exchanges et identifie les opportunités d'arbitrage.
+DeepSeek/GPT audit (25/07/2026): the most promising lead for lifting the return.
+Compares funding rates across exchanges and identifies arbitrage opportunities.
 
-Principe :
-    - Short perp sur l'exchange où le funding est le PLUS ÉLEVÉ (on reçoit plus)
-    - Long spot sur l'exchange où le spot est le MOINS CHER
-    - Ou : short perp exchange A + long perp exchange B (plus simple, pas de spot)
+Principle:
+    - Short the perp on the exchange where funding is HIGHEST (you receive more)
+    - Long spot on the exchange where spot is CHEAPEST
+    - Or: short perp on exchange A + long perp on exchange B (simpler, no spot leg)
 
 Usage:
     python v7/cross_exchange_scanner.py              # scan one-shot
@@ -41,9 +41,9 @@ class CrossExchangeOpportunity:
     funding_short: float           # funding rate on exchange_short
     spread_bps: float              # spread in bps (100 = 1%)
     annual_spread_pct: float       # annualised spread
-    spot_long: float               # prix spot exchange_long
-    spot_short: float              # prix spot exchange_short
-    viable: bool                   # spread > frais round-trip ?
+    spot_long: float               # spot price on exchange_long
+    spot_short: float              # spot price on exchange_short
+    viable: bool                   # spread > round-trip fees?
 
 
 def get_exchange(name: str):
@@ -103,19 +103,19 @@ def fetch_spot_prices(exchange_name: str, symbols: list[str]) -> dict[str, float
 def scan_cross_exchange(
     symbols: list[str] | None = None,
     exchanges: list[str] | None = None,
-    min_spread_bps: float = 0.5,    # spread minimum en bps (0.5 = 0.005%)
+    min_spread_bps: float = 0.5,    # minimum spread in bps (0.5 = 0.005%)
     fees_roundtrip_bps: float = 48,  # estimated round-trip fees
 ) -> list[CrossExchangeOpportunity]:
-    """Scanne les opportunités de carry cross-exchange.
+    """Scan for cross-exchange carry opportunities.
 
     Args:
-        symbols: liste de symboles (ex: ["BTC/USDT", "ETH/USDT"]). None = top 20.
-        exchanges: liste d'exchanges. None = ["binance", "bybit"].
-        min_spread_bps: spread minimum en bps pour considérer une opportunité.
-        fees_roundtrip_bps: frais estimés pour un round-trip cross-exchange.
-    
+        symbols: list of symbols (e.g. ["BTC/USDT", "ETH/USDT"]). None = top 20.
+        exchanges: list of exchanges. None = ["binance", "bybit"].
+        min_spread_bps: minimum spread in bps for an opportunity to count.
+        fees_roundtrip_bps: estimated cost of a cross-exchange round trip.
+
     Returns:
-        Liste d'opportunités triées par spread décroissant.
+        List of opportunities sorted by decreasing spread.
     """
     if symbols is None:
         # Top liquid perps
@@ -247,7 +247,7 @@ def main():
     if viable:
         print(f"\n✅ {len(viable)} viable opportunities (spread > 48bps fees)")
         print(f"   Spread max: {max(o.spread_bps for o in viable):.1f} bps")
-        print(f"   Rendement annualisé max: {max(o.annual_spread_pct for o in viable):.1f}%")
+        print(f"   Max annualised return: {max(o.annual_spread_pct for o in viable):.1f}%")
     else:
         print(f"\n❌ No viable opportunity - the spreads do not cover the fees")
     

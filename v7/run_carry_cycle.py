@@ -1,19 +1,19 @@
 """
-v7/run_carry_cycle.py — Script unique de cycle Funding Carry (remplace 29 DAGs).
+v7/run_carry_cycle.py — Single Funding Carry cycle script (replaces 29 DAGs).
 
-DeepSeek/ GPT audit (25/07/2026) : l'infrastructure DAG est surdimensionnée.
-Ce script unique itère sur tous les assets configurés, exécute le FundingCarryNode,
-et enregistre les décisions dans le PaperTrader.
+DeepSeek/GPT audit (25/07/2026): the DAG infrastructure was oversized for the job.
+This single script iterates over every configured asset, runs the FundingCarryNode
+and records the decisions in the PaperTrader.
 
 Usage:
-    python v7/run_carry_cycle.py              # un cycle (manuel)
+    python v7/run_carry_cycle.py              # one cycle (manual)
     python v7/run_carry_cycle.py --daemon     # infinite loop every 8h (cron-like)
 
-Planification recommandée :
+Recommended scheduling:
     # crontab -e
     0 */8 * * * cd /app/src && python v7/run_carry_cycle.py >> /app/data/carry_cycle.log 2>&1
 
-Ou dans Docker :
+Or inside Docker:
     docker exec atlas-v4-api python -B /app/src/v7/run_carry_cycle.py
 """
 
@@ -87,10 +87,10 @@ def run_cycle(
     capital_per_asset: float = 2_000,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Exécute un cycle complet de funding carry sur tous les assets.
+    """Run one full funding carry cycle over every asset.
 
     Returns:
-        dict avec summary (n_scanned, n_open, n_close, n_flat, errors).
+        dict with a summary (n_scanned, n_open, n_close, n_flat, errors).
     """
     from v7.nodes.funding_carry_node import FundingCarryNode
     from v7.core.asset_config import get_active_assets, reload_config

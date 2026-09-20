@@ -146,10 +146,10 @@ class RegimeLabel:
 
 
 def classify_regimes(btc_prices: pd.DataFrame) -> pd.DataFrame:
-    """Classifie chaque jour en bull/bear/range basé sur BTC vs MA 200j.
-    
-    Bull:  prix > MA200 et prix en hausse sur 30j
-    Bear:  prix < MA200 et prix en baisse sur 30j
+    """Classify each day as bull/bear/range based on BTC vs its 200-day MA.
+
+    Bull:  price > MA200 and rising over 30 days
+    Bear:  price < MA200 and falling over 30 days
     Range: tout le reste
     """
     df = btc_prices.copy()

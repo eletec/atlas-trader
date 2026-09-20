@@ -199,6 +199,14 @@ Four of the six never entered at all. The two that did (XRP, BNB) traded once an
 twice respectively over the full year and lost, in every case, almost exactly
 their own fees.
 
+**Why the dashboard shows different numbers.** These figures come from
+`config/carry_assets.yaml`, the tracked default — what you reproduce from a clone.
+The dashboard runs the same command against the **live** config in the data volume,
+which the admin panel can edit. That one currently carries 77 assets instead of 13
+and a per-asset `safety_cap` of 100 instead of 200, so its positions are half the
+size and its P&L roughly half as well (−$1.25 over the same year). Both are correct
+for their own configuration; they are not two measurements of the same thing.
+
 ### Why: the entry gate sits above the market
 
 Measured funding over the same 12 months (1,000 real Binance periods of 8 h):

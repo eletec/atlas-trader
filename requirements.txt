@@ -1,35 +1,39 @@
 # Atlas Trader — Python dependencies
 # Install with: pip install -r requirements.txt
 # NOTE: the production image (docker-compose.v4.yml) uses v4/requirements.backend.txt
+#
+# Versions are pinned deliberately. Everything here used to carry a `>=`, so two
+# installs a week apart could resolve to different code — which is how a
+# "pandas 2.x" assumption survived into a pandas 3 image. The pins match what is
+# running in production; bump them on purpose, not by accident.
 
 # ---- Streamlit interface ----
-streamlit>=1.37.0
-plotly>=5.20.0
-pandas>=2.2.0
+streamlit==1.62.0
+plotly==7.0.0
+pandas==3.0.5
 
 # ---- Authentication (SQLite sessions, 2FA TOTP) ----
-bcrypt>=4.1.0            # password hashing
-pyotp>=2.9.0             # TOTP 2FA (Google Authenticator, Authy…)
-qrcode[pil]>=7.4.0       # TOTP QR code generation
+bcrypt==5.0.0            # password hashing
+pyotp==2.10.0            # TOTP 2FA (Google Authenticator, Authy…)
+qrcode[pil]==8.2         # TOTP QR code generation
 
 # ---- Market Data ----
-ccxt>=4.3.0
+ccxt==4.5.76
 
 # ---- Web Crawling / HTTP ----
-requests>=2.32.0
+requests==2.34.2
+httpx==0.28.1
 
 # ---- Config & Validation ----
-pyyaml>=6.0
-pydantic>=2.8.0
-python-dotenv>=1.0.0
+PyYAML==6.0.3
+pydantic==2.13.5
+python-dotenv==1.2.3
 
 # ---- Storage ----
 
 # ---- Utilities ----
-numpy>=1.26.0
-httpx>=0.27.0
+numpy==2.4.6
 
 # ---- Tests ----
-pytest>=8.3.0
-pytest-asyncio>=0.23.0
-pytest-mock>=3.14.0
+# pytest-asyncio and pytest-mock were listed but never imported by any test.
+pytest==9.0.3

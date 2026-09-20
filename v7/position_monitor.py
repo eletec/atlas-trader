@@ -474,14 +474,26 @@ class PositionMonitor:
                 logger.warning("PositionMonitor: perp price missing for %s → carry economics UNKNOWN", symbol)
                 return result
 
-            # Fetch entry_perp from context_json
+            # Entry perp and the funding actually accrued on this position.
+            # The cycle writes the node's carry_state as context_json, which names
+            # these `entry_perp` and `funding_pnl`; older rows used
+            # `entry_perp_price` / `total_funding_received`. Accept both, or the
+            # economics silently degrade to "UNKNOWN" for every new position.
             entry_perp = None
+            funding_real = None
+            fees_paid = None
             try:
                 import json as _j
                 ctx_raw = pd.get("context_json")
                 if ctx_raw:
                     ctx = _j.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
-                    entry_perp = float(ctx.get("entry_perp_price", 0))
+                    entry_perp = float(ctx.get("entry_perp", ctx.get("entry_perp_price", 0)) or 0)
+                    funding_raw = ctx.get("funding_pnl", ctx.get("total_funding_received"))
+                    if funding_raw is not None:
+                        funding_real = float(funding_raw)
+                    fees_raw = ctx.get("fees_paid")
+                    if fees_raw is not None:
+                        fees_paid = float(fees_raw)
             except Exception:
                 pass
 
@@ -500,18 +512,36 @@ class PositionMonitor:
             basis_pnl = (basis_entry - basis_now) * size_usd
             result["basis_pnl"] = round(basis_pnl, 4)
 
-            # Estimated funding (approximation: ~0.01%/8h recent average)
-            # In practice the real funding should be read from the DB/state
-            daily_funding_est = size_usd * 0.0001 * 3  # 0.01% x 3 times per day
-            result["funding_est"] = round(daily_funding_est, 6)
+            # Funding. This used to be estimated at a hardcoded 0.01%/8h and then
+            # dropped from the total with the comment "negligible on a daily
+            # horizon": the monitor reported a basis-only P&L and ignored the leg
+            # the strategy is actually built on. The node persists what it really
+            # received, so read that.
+            daily_funding = size_usd * 0.0001 * 3  # fallback: 0.01% x 3 per day
+            if funding_real is not None:
+                result["funding_est"] = round(funding_real, 6)
+                result["funding_source"] = "state"
+                # Derive the daily rate from the position's age for the payback.
+                try:
+                    opened = pd.get("opened_at") or pd.get("entry_time")
+                    if opened:
+                        age_days = (datetime.now() - datetime.fromisoformat(str(opened))).total_seconds() / 86400
+                        if age_days > 0.01:
+                            daily_funding = funding_real / age_days
+                except Exception:
+                    pass
+            else:
+                result["funding_est"] = round(daily_funding, 6)
+                result["funding_source"] = "estimate"
 
-            # Net carry P&L
-            result["net_carry_pnl"] = round(basis_pnl, 4)  # + funding (negligible on a daily horizon)
+            # Net carry P&L = basis + funding actually received - fees paid so far
+            net_carry_pnl = basis_pnl + (funding_real or 0.0) - (fees_paid or 0.0)
+            result["net_carry_pnl"] = round(net_carry_pnl, 4)
 
-            # Payback days: how many days of funding are needed to repay the basis loss
-            if basis_pnl < 0 and daily_funding_est > 0:
-                result["payback_days"] = abs(basis_pnl) / daily_funding_est
-            elif basis_pnl >= 0:
+            # Payback days: how many days of funding are needed to repay the shortfall
+            if net_carry_pnl < 0 and daily_funding > 0:
+                result["payback_days"] = abs(net_carry_pnl) / daily_funding
+            elif net_carry_pnl >= 0:
                 result["payback_days"] = 0  # no loss to repay
             else:
                 result["payback_days"] = 999  # zero or negative funding -> impossible to repay

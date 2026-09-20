@@ -32,7 +32,11 @@ services:
     restart: unless-stopped
     networks: [v4_net]
     ports:
-      - "8000:8000"
+      # Loopback only. nginx on the host proxies /api/ to 127.0.0.1:8000, so the
+      # UI is unaffected. Published as 0.0.0.0:8000 the API had no authentication
+      # and was reachable from the internet: scanners were already posting to
+      # /dag/reset-kill-switch.
+      - "127.0.0.1:8000:8000"
     volumes:
       - v4_storage:/app/data
       - ./config:/app/src/config:ro
@@ -62,7 +66,8 @@ services:
     restart: unless-stopped
     networks: [v4_net]
     ports:
-      - "8502:8501"
+      # Loopback only: nginx (or a tunnel) is the only way in.
+      - "127.0.0.1:8502:8501"
     environment:
       - PYTHONPATH=/app/src
       - V4_ENV=development

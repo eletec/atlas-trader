@@ -2,8 +2,8 @@
 v7/core/global_allocator.py — Global Carry Allocator (3 audits consensus, 20/07/2026).
 
 Constraints:
-- Max total carry exposure: 40% of total capital
-- Max simultaneous positions: 4 (out of 7 assets)
+- Max total carry exposure: from carry_assets.yaml (max_total_exposure_pct)
+- Max simultaneous positions: from carry_assets.yaml (max_simultaneous_positions)
 - Per-asset safety caps (unchanged)
 - Per-venue (Binance) budget tracking
 - Per-stablecoin (USDT) budget tracking
@@ -20,9 +20,36 @@ from typing import Optional
 logger = logging.getLogger("v7.core.global_allocator")
 
 # ── Global limits ────────────────────────────────────────────────────────────
-MAX_TOTAL_EXPOSURE_PCT = 0.40      # 40% of total capital in carry
-MAX_SIMULTANEOUS_POSITIONS = 4     # max 4 simultaneous carries
-TOTAL_CAPITAL = 14_000             # 7 x $2,000
+# Defaults only. The live values live in carry_assets.yaml and are read through
+# get_global_params() on every call: these used to be module constants, so the
+# engine capped the book at 40% and 4 positions while the dashboard happily let
+# you save 60% and 6. The two never met, and a config reload changed nothing.
+MAX_TOTAL_EXPOSURE_PCT_DEFAULT = 0.40
+MAX_SIMULTANEOUS_POSITIONS_DEFAULT = 4
+TOTAL_CAPITAL_DEFAULT = 14_000
+
+
+def get_limits() -> tuple[float, int, float]:
+    """(max_exposure_pct, max_simultaneous_positions, total_capital).
+
+    Read from the live config; falls back to the defaults above when the config
+    cannot be read (backtests, unit tests).
+    """
+    try:
+        from v7.core.asset_config import get_global_params
+
+        g = get_global_params()
+        return (
+            float(g.get("max_total_exposure_pct", MAX_TOTAL_EXPOSURE_PCT_DEFAULT)),
+            int(g.get("max_simultaneous_positions", MAX_SIMULTANEOUS_POSITIONS_DEFAULT)),
+            float(g.get("total_capital", TOTAL_CAPITAL_DEFAULT)),
+        )
+    except Exception:
+        return (
+            MAX_TOTAL_EXPOSURE_PCT_DEFAULT,
+            MAX_SIMULTANEOUS_POSITIONS_DEFAULT,
+            TOTAL_CAPITAL_DEFAULT,
+        )
 
 # ── Per-asset safety caps (same as FundingCarryNode) ─────────────────────────
 # ── Per-asset safety caps (loaded from config or defaults) ──────────────────
@@ -97,18 +124,19 @@ def can_open_position(
         return False, f"size ${proposed_size_usd:.0f} > safety cap ${cap:.0f}"
 
     # 2) Max simultaneous positions
+    max_exposure_pct, max_positions, total_capital = get_limits()
     open_count = get_open_count()
-    if open_count >= MAX_SIMULTANEOUS_POSITIONS:
-        return False, f"max {MAX_SIMULTANEOUS_POSITIONS} positions already open ({open_count})"
+    if open_count >= max_positions:
+        return False, f"max {max_positions} positions already open ({open_count})"
 
     # 3) Total exposure check
     current_exposure = get_total_exposure()
     new_exposure = current_exposure + proposed_size_usd
-    max_exposure = TOTAL_CAPITAL * MAX_TOTAL_EXPOSURE_PCT
+    max_exposure = total_capital * max_exposure_pct
     if new_exposure > max_exposure:
         return False, (
             f"total exposure ${new_exposure:.0f} > "
-            f"${max_exposure:.0f} ({MAX_TOTAL_EXPOSURE_PCT*100:.0f}% of capital)"
+            f"${max_exposure:.0f} ({max_exposure_pct*100:.0f}% of capital)"
         )
 
     # 4) Score must be positive (excess carry > 0)
@@ -127,13 +155,15 @@ def allocate_capital(
 
     Args:
         asset_scores: {asset: score} where score = net_return / stress_loss
-        available_capital: total capital to allocate (default: 40% of TOTAL_CAPITAL)
+        available_capital: total capital to allocate (default: the configured
+            share of TOTAL_CAPITAL, i.e. max_total_exposure_pct)
 
     Returns:
         {asset: allocated_size_usd}
     """
+    max_exposure_pct, max_positions, total_capital = get_limits()
     if available_capital is None:
-        available_capital = TOTAL_CAPITAL * MAX_TOTAL_EXPOSURE_PCT
+        available_capital = total_capital * max_exposure_pct
 
     # Filter: only positive scores
     candidates = {
@@ -146,14 +176,14 @@ def allocate_capital(
     # Sort by score descending
     ranked = sorted(candidates.items(), key=lambda x: x[1], reverse=True)
 
-    # Allocate top N (max MAX_SIMULTANEOUS_POSITIONS)
+    # Allocate top N (max max_simultaneous_positions)
     allocation: dict[str, float] = {}
     remaining = available_capital
 
-    for asset, score in ranked[:MAX_SIMULTANEOUS_POSITIONS]:
+    for asset, score in ranked[:max_positions]:
         coin = asset.split("/")[0].upper()
         cap = SAFETY_CAPS.get(coin, 200)
-        alloc = min(cap, remaining / max(1, len(ranked[:MAX_SIMULTANEOUS_POSITIONS])))
+        alloc = min(cap, remaining / max(1, len(ranked[:max_positions])))
         if alloc >= 50:  # min trade size
             allocation[asset] = round(alloc, 2)
             remaining -= alloc

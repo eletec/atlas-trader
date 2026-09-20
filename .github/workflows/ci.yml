@@ -1,0 +1,55 @@
+name: CI
+
+# The repository had no checks at all: the accounting model, the kill-switch and
+# the backtest were only ever exercised by hand, on one machine, against
+# whatever happened to be installed that day. This runs on every push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Byte-compile every module
+        run: python -m compileall -q v7 v4 utils dashboard backtest quant execution storage
+
+      - name: Lint (real errors only: syntax, undefined names)
+        run: ruff check --select E9,F63,F7,F82 --output-format=github .
+
+      - name: Tests
+        run: python -m pytest v7/tests v4/tests -q
+
+      - name: No secrets, no keys, no databases in the tree
+        run: |
+          set -e
+          fail=0
+          # credentials and private keys
+          if git grep -nIE '(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9]{24,}|ssh-rsa AAAA)' -- . ':!*.md'; then
+            echo "::error::a credential or private key is committed"; fail=1
+          fi
+          # the live store must never be tracked
+          if git ls-files | grep -E '\.(db|sqlite3?|bundle|pem|key)$'; then
+            echo "::error::a database or key file is tracked"; fail=1
+          fi
+          # secrets files (the *.example templates are meant to be committed)
+          if git ls-files | grep -E '(^|/)(\.env|users\.yaml|settings\.yaml|secrets\.(yaml|yml|json))$'; then
+            echo "::error::a secrets file is tracked"; fail=1
+          fi
+          exit $fail

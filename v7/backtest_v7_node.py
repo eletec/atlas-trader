@@ -55,8 +55,33 @@ def _perp_symbol(symbol: str) -> str:
     return f"{base_perp}/USDT:USDT"
 
 
+def _paginate(fetch_page, since: int, limit: int = 1000, max_rows: int = 40_000) -> list:
+    """Walk a paginated ccxt history call forward until it runs dry.
+
+    One call with limit=1000 covers 333 days at one funding period per 8h, so a
+    3-year run was silently truncated to 333 days and reported as if it covered
+    three years. Prices were truncated the same way.
+    """
+    rows: list = []
+    cursor = since
+    while len(rows) < max_rows:
+        batch = fetch_page(cursor, limit)
+        if not batch:
+            break
+        rows.extend(batch)
+        if len(batch) < limit:
+            break
+        cursor = batch[-1][0] + 1
+    return rows
+
+
 def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
-    """Fetch daily OHLCV spot ou perp via CCXT."""
+    """Fetch 8h closes via CCXT.
+
+    Eight hours because the funding periods are 8h. With daily candles a funding
+    stamp at 08:00 forward-filled onto the candle stamped that same day, whose
+    close is at 23:59: the strategy was reading 16 hours into its own future.
+    """
     try:
         import ccxt
         if is_perp:
@@ -66,7 +91,12 @@ def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
             ex = ccxt.binance({"enableRateLimit": True})
             sym = symbol
         since = ex.parse8601((datetime.utcnow() - timedelta(days=days + 7)).strftime("%Y-%m-%dT00:00:00Z"))
-        ohlcv = ex.fetch_ohlcv(sym, "1d", since=since, limit=days + 10)
+        ohlcv = _paginate(
+            lambda cursor, limit: ex.fetch_ohlcv(sym, "8h", since=cursor, limit=limit),
+            since,
+        )
+        if not ohlcv:
+            return pd.DataFrame()
         df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "volume"])
         df["datetime"] = pd.to_datetime(df["ts"], unit="ms")
         df = df.set_index("datetime")
@@ -77,19 +107,24 @@ def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
 
 
 def fetch_funding_history(symbol: str, days: int) -> pd.DataFrame:
-    """Fetch the funding rate history from Binance USDⓈ-M."""
+    """Fetch the funding rate history from Binance USDⓈ-M, paginated."""
     try:
         import ccxt
         exchange = ccxt.binanceusdm({"enableRateLimit": True})
         symbol_perp = _perp_symbol(symbol)
         since = int((datetime.utcnow() - timedelta(days=days + 1)).timestamp() * 1000)
-        rates = exchange.fetch_funding_rate_history(symbol_perp, since=since, limit=1000)
+        rates = _paginate(
+            lambda cursor, limit: exchange.fetch_funding_rate_history(
+                symbol_perp, since=cursor, limit=limit),
+            since,
+            max_rows=(days + 2) * 3 + 10,
+        )
         if not rates:
             import requests
             symbol_clean = symbol.replace("/", "")
             resp = requests.get(
                 "https://fapi.binance.com/fapi/v1/fundingRate",
-                params={"symbol": symbol_clean, "limit": min(days * 3, 1000)},
+                params={"symbol": symbol_clean, "limit": 1000, "startTime": since},
                 timeout=30,
             )
             rates = resp.json()
@@ -119,13 +154,23 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         return {"symbol": symbol, "error": "no funding data"}
 
     # 2) Merge prices + funding on the dates
-    # Interpolate the spot/perp prices onto the funding timestamps (forward fill)
+    # Shift the price index forward by one bar so every funding stamp only sees a
+    # bar that has ALREADY CLOSED. With the old ffill on daily candles, a decision
+    # taken at 08:00 read the close of that same day at 23:59: the backtest knew
+    # the next 16 hours of prices.
     if not spot_df.empty and not perp_df.empty:
-        combined = funding_df.join(spot_df.rename(columns={"spot_price": "spot_raw"}), how="left")
-        combined = combined.join(perp_df.rename(columns={"perp_price": "perp_raw"}), how="left")
-        combined["spot_price"] = combined["spot_raw"].ffill().bfill()
-        combined["perp_price"] = combined["perp_raw"].ffill().bfill()
-        if combined["spot_price"].isna().any() or combined["perp_price"].isna().any():
+        bar = pd.Timedelta(hours=8)
+        spot_known = spot_df.copy()
+        spot_known.index = spot_known.index + bar
+        perp_known = perp_df.copy()
+        perp_known.index = perp_known.index + bar
+        combined = funding_df.join(spot_known.rename(columns={"spot_price": "spot_raw"}), how="left")
+        combined = combined.join(perp_known.rename(columns={"perp_price": "perp_raw"}), how="left")
+        combined["spot_price"] = combined["spot_raw"].ffill()
+        combined["perp_price"] = combined["perp_raw"].ffill()
+        # Drop the warm-up funding stamps that predate the first known price
+        combined = combined.dropna(subset=["spot_price", "perp_price"])
+        if combined.empty:
             return {"symbol": symbol, "error": "spot/perp prices cannot be aligned with the funding"}
     else:
         # OLD BEHAVIOUR (bug): a silent $1000 fallback meant the backtest

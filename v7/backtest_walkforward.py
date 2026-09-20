@@ -352,6 +352,9 @@ def run_walkforward(
         window_trading_pnl = 0.0
         window_staking = 0.0
         window_assets_traded = 0
+        # Portfolio equity per timestamp, accumulated across every asset in the
+        # window. Per-asset, it would only ever describe the last asset seen.
+        equity_by_ts: dict = {}
         
         for sym in available:
             df_f = funding_data[sym]
@@ -380,9 +383,14 @@ def run_walkforward(
                 params={"_backtest": True},
             )
             
-            asset_funding = 0.0
-            asset_fees = 0.0
+            # Per-asset accounting. The node owns the numbers - it charges all four
+            # legs and realises the basis on close - so this loop only accumulates.
+            # It used to charge 24bps per side itself AND saturate the funding with
+            # max(), which made the report disagree with the node it is meant to be
+            # measuring.
+            asset_realized = 0.0
             asset_traded = False
+            asset_open_mtm = 0.0
             
             for ts, row in test_data.iterrows():
                 fr = float(row["funding_rate"])
@@ -421,20 +429,50 @@ def run_walkforward(
                 
                 signal = result.get("signal", "flat")
                 size_usd = result.get("size_usd", 0)
-                asset_funding = max(asset_funding, result.get("total_funding_received", 0) or 0)
-                
+
                 if signal == "open_carry" and size_usd > 0:
-                    asset_fees += size_usd * 0.0024  # 24bps open
                     asset_traded = True
                 if signal == "close_carry":
-                    asset_fees += node.state.entry_capital * 0.0024  # 24bps close
+                    asset_realized += float(result.get("realized_pnl_usd", 0) or 0)
+
+                # Mark the open position to market: its funding so far, its fees so
+                # far and its basis at the current price.
+                asset_open_mtm = 0.0
+                if result.get("position_open"):
+                    unrealized_usd = (
+                        (result.get("unrealized_pnl_pct", 0) or 0) / 100.0
+                        * node.state.entry_capital
+                    )
+                    asset_open_mtm = (node.state.total_funding_received
+                                      - node.state.fees_paid + unrealized_usd)
+                equity_by_ts[ts] = equity_by_ts.get(ts, 0.0) + asset_realized + asset_open_mtm
             
             if asset_traded:
                 window_assets_traded += 1
-                window_trading_pnl += asset_funding - asset_fees
+                window_trading_pnl += asset_realized + asset_open_mtm
             window_staking += node.state.staking_earned
         
         total_capital = len(available) * capital
+
+        # ── Window equity curve → real Sharpe and drawdown ──
+        # These were hardcoded to 0.0, so every walk-forward report printed a
+        # Sharpe of zero and a drawdown of zero for every window.
+        portfolio_sharpe = 0.0
+        window_max_dd_pct = 0.0
+        nav_series = sorted(equity_by_ts.items())
+        if len(nav_series) > 10 and total_capital > 0:
+            navs = np.array([v for _, v in nav_series], dtype=float)
+            # Returns on the allocated book: the P&L moves over a fixed capital base,
+            # so this stays well behaved when the running P&L crosses zero.
+            period_returns = np.diff(navs) / total_capital
+            if period_returns.std() > 0:
+                # one observation per funding period, three per day
+                portfolio_sharpe = float(
+                    period_returns.mean() / period_returns.std() * np.sqrt(365 * 3)
+                )
+            curve = np.cumsum(period_returns)
+            peak = np.maximum.accumulate(curve)
+            window_max_dd_pct = float(((curve - peak) * 100).min())
         wf_result = WFWindow(
             train_start=wc["train_start"],
             train_end=wc["train_end"],
@@ -446,8 +484,8 @@ def run_walkforward(
             total_trading_pnl=round(window_trading_pnl, 2),
             total_capital=total_capital,
             trading_return_pct=round(window_trading_pnl / total_capital * 100, 4) if total_capital > 0 else 0,
-            portfolio_sharpe=0.0,
-            max_dd_pct=0.0,
+            portfolio_sharpe=round(portfolio_sharpe, 3),
+            max_dd_pct=round(window_max_dd_pct, 3),
             capital_utilisation_pct=round(window_assets_traded / len(available) * 100, 1) if available else 0,
             staking_pnl=round(window_staking, 2),
         )

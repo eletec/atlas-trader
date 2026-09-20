@@ -446,20 +446,20 @@ class FundingCarryNode:
             # Anti-churn cooldown: do not reopen a recently closed asset
             _close_age_h = self._last_close_age_hours()
             if _close_age_h is not None and _close_age_h < self.cooldown_hours:
-                reason = f"cooldown {self.cooldown_hours}h après clôture ({_close_age_h:.1f}h)"
+                reason = f"cooldown {self.cooldown_hours}h after close ({_close_age_h:.1f}h)"
                 confidence = 0.1
             # Filter 1: instantaneous funding within range
             elif funding_rate >= self.min_funding and funding_rate <= self.max_funding:
                 # Filter 2: positive 7d funding MA (avoids isolated spikes)
                 if funding_ma_7d <= 0:
-                    reason = f"funding MA 7j={funding_ma_7d*100:.4f}% ≤ 0 → attente"
+                    reason = f"funding 7d MA={funding_ma_7d*100:.4f}% <= 0 -> wait"
                     confidence = 0.2
                 # Filter 3: basis not too unfavourable
                 elif basis_pct < -0.003:
-                    reason = f"basis défavorable ({basis_pct*100:.4f}%)"
+                    reason = f"unfavourable basis ({basis_pct*100:.4f}%)"
                     confidence = 0.3
                 else:
-                    # ── Rendement attendu (22/07/2026) ──
+                    # -- Expected return (2026-07-22) --
                     # Funding is annualised; the basis is an entry-quality filter only.
                     # The basis is NOT annualised into the return - there is no convergence
                     # guarantee, and a negative basis must not cancel the funding
@@ -469,13 +469,13 @@ class FundingCarryNode:
                     # -- Economic hurdle = SOFR (pure opportunity cost) --
                     # The risk premia (exchange, stablecoin, operational) are covered
                     # by safety_cap and stress_loss_pct, not by the hurdle.
-                    # Grid search V7.3: 25/26 actifs preferent 5% vs 7%.
+                    # Grid search V7.3: 25 of 26 assets prefer 5% over 7%.
                     
                     # -- Annualised costs (deducted from the return, not from the hurdle) --
                     round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage)
                     # The annualised cost depends on the real time-stop: a short hold
                     # makes the fees prohibitive (48bps amortised over very few days).
-                    # Ex: max_hold_days=14 → 12.5%/an de frais ; 60j → 2.9%/an.
+                    # Ex: max_hold_days=14 -> 12.5%/yr in fees; 60d -> 2.9%/yr.
                     estimated_hold = max(self.max_hold_days, 1)
                     annualized_cost = round_trip_cost * 365 / estimated_hold
                     net_expected_return = expected_return - annualized_cost
@@ -525,7 +525,7 @@ class FundingCarryNode:
 
                             size_usd = min(raw_size, max_size)
                             if size_usd < min_size:
-                                reason = f"taille ${size_usd:.0f} < min ${min_size} → skip"
+                                reason = f"size ${size_usd:.0f} < min ${min_size} -> skip"
                                 confidence = 0.3
                             else:
                                 # ── Global Allocator check (3 audits consensus, 20/07/2026) ──
@@ -543,7 +543,7 @@ class FundingCarryNode:
                                     if _db_carry:
                                         # Sync in-memory state with DB reality
                                         self.state.position_open = True
-                                        reason = f"DB safety: position déjà ouverte (id={_db_carry[0].get('trade_id','?')})"
+                                        reason = f"DB safety: position already open (id={_db_carry[0].get('trade_id','?')})"
                                         confidence = 0.1
                                         logger.warning("[%s] %s", self.node_id, reason)
                                     else:
@@ -556,35 +556,35 @@ class FundingCarryNode:
                                         signal = "open_carry"
                                         confidence = min(0.90, 0.50 + score * 2)
                                         reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
-                                                  f"→ net={net_expected_return*100:.1f}%/an (hurdle={economic_hurdle*100:.0f}%) | "
+                                                  f"-> net={net_expected_return*100:.1f}%/yr (hurdle={economic_hurdle*100:.0f}%) | "
                                                   f"size=${size_usd:.0f} (score={score:.2f}, cap=${max_size})")
                     else:
-                        reason = f"retour net {net_expected_return*100:.1f}%/an < {economic_hurdle*100:.0f}% hurdle"
+                        reason = f"net return {net_expected_return*100:.1f}%/yr < {economic_hurdle*100:.0f}% hurdle"
                         confidence = 0.5
             else:
-                reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"
+                reason = f"funding={funding_rate*100:.4f}% outside [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"
         else:
-            # ── Position ouverte ──
+            # -- Position open --
             # Compute unrealised P&L (basis only; the delta is hedged)
             if self.state.entry_spot > 0 and spot_price > 0:
-                # Short perp: on perd si perp monte vs spot, on gagne si perp baisse vs spot
+                # Short perp: we lose when perp rises vs spot, we gain when perp falls vs spot
                 basis_entry = (self.state.entry_perp - self.state.entry_spot) / self.state.entry_spot
                 basis_now = (perp_price - spot_price) / spot_price if perp_price > 0 else 0
                 # LONG spot + SHORT perp → gain when basis CONTRACTS (Round 4 fix)
                 unrealized_pct = basis_entry - basis_now  # positive = gain, negative = loss
                 unrealized_usd = unrealized_pct * self.state.entry_capital
                 
-                # Stop-loss : basis loss > 5% → close
+                # Stop-loss: basis loss > 5% -> close
                 if unrealized_pct < self.stop_loss_pct:
                     signal = "close_carry"
                     self.state.position_open = False
-                    reason = f"STOP-LOSS: basis loss {unrealized_pct*100:.1f}% > {abs(self.stop_loss_pct)*100:.0f}% → close"
+                    reason = f"STOP-LOSS: basis loss {unrealized_pct*100:.1f}% > {abs(self.stop_loss_pct)*100:.0f}% -> close"
                     confidence = 0.95
                     logger.warning("[%s] %s", self.node_id, reason)
                 
                 # -- Economic exit (3 audits, 2026-07-20) --
                 # Replaces the strict 14d time-stop.
-                # ZONES : HEALTHY (<14j), REVIEW (14-30j), DERISK (30-60j), CLOSE (>60j)
+                # ZONES: HEALTHY (<14d), REVIEW (14-30d), DERISK (30-60d), CLOSE (>60d)
                 if signal != "close_carry" and self.state.entry_time:
                     try:
                         entry_dt = datetime.fromisoformat(self.state.entry_time)
@@ -593,26 +593,26 @@ class FundingCarryNode:
                         if days_held > 60:
                             signal = "close_carry"
                             self.state.position_open = False
-                            reason = f"ECONOMIC STOP (ZONE CLOSE): {days_held:.0f}j > 60j max"
+                            reason = f"ECONOMIC STOP (ZONE CLOSE): {days_held:.0f}d > 60d max"
                             confidence = 0.85
                             logger.warning("[%s] %s", self.node_id, reason)
                         elif days_held > 30:
                             # DERISK: close when forward funding no longer justifies the position
                             forward_funding = funding_rate * periods_per_year
-                            exit_cost_annual = 0.0048 * (365 / max(days_held, 1))  # 48bps round-trip amortis
+                            exit_cost_annual = 0.0048 * (365 / max(days_held, 1))  # 48bps round-trip amortised
                             if forward_funding < economic_hurdle + exit_cost_annual:
                                 signal = "close_carry"
                                 self.state.position_open = False
-                                reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}j, "
-                                          f"forward funding={forward_funding*100:.1f}%/an < "
-                                          f"hurdle+exit={(economic_hurdle+exit_cost_annual)*100:.1f}%/an")
+                                reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}d, "
+                                          f"forward funding={forward_funding*100:.1f}%/yr < "
+                                          f"hurdle+exit={(economic_hurdle+exit_cost_annual)*100:.1f}%/yr")
                                 confidence = 0.75
                                 logger.warning("[%s] %s", self.node_id, reason)
                             else:
-                                logger.info("[%s] DERISK zone: %dj, forward funding=%.1f%% > costs → hold",
+                                logger.info("[%s] DERISK zone: %dd, forward funding=%.1f%% > costs -> hold",
                                            self.node_id, days_held, forward_funding*100)
                         elif days_held > 14:
-                            logger.info("[%s] REVIEW zone: %dj — monitoring", self.node_id, days_held)
+                            logger.info("[%s] REVIEW zone: %dd — monitoring", self.node_id, days_held)
                     except Exception:
                         pass
             else:
@@ -634,7 +634,7 @@ class FundingCarryNode:
                 self.state.total_funding_received += payment
                 self.state.n_payments += 1
                 signal = "flat"
-                reason = f"carry actif | funding reçu={self.state.total_funding_received:.4f} ({self.state.n_payments} paiements)"
+                reason = f"carry active | funding received={self.state.total_funding_received:.4f} ({self.state.n_payments} payments)"
                 confidence = 0.70
             elif funding_rate < 0:
                 # Negative funding -> timer
@@ -652,11 +652,11 @@ class FundingCarryNode:
                     # Fermer
                     signal = "close_carry"
                     self.state.position_open = False
-                    reason = f"funding négatif > {self.exit_after_hours}h → close"
+                    reason = f"negative funding > {self.exit_after_hours}h -> close"
                     confidence = 0.85
                 else:
                     signal = "flat"
-                    reason = f"funding négatif depuis {hours_neg:.0f}h (max {self.exit_after_hours}h)"
+                    reason = f"negative funding for {hours_neg:.0f}h (max {self.exit_after_hours}h)"
                     confidence = 0.50
             else:
                 self.state.negative_since = None

@@ -2574,47 +2574,78 @@ def _render_backtest_v4():
     except Exception:
         _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
     
-    symbol = st.selectbox(t("col_asset"), _bt_assets)
+    # Scope selector - ALL (every active asset) or a single asset.
+    # The script accepts ACTIVE (enabled assets) / ALL (every declared asset).
+    _SCOPE_ACTIVE, _SCOPE_ALL = "__ACTIVE__", "__ALL__"
+    _opt_labels = [t("backtest_scope_active"), t("backtest_scope_all")] + list(_bt_assets)
+    _opt_values = {t("backtest_scope_active"): _SCOPE_ACTIVE,
+                   t("backtest_scope_all"): _SCOPE_ALL}
+    for _s in _bt_assets:
+        _opt_values[_s] = _s
+    _choice_label = st.selectbox(t("col_asset"), _opt_labels)
+    symbol = _opt_values[_choice_label]
+    _is_group = symbol in (_SCOPE_ACTIVE, _SCOPE_ALL)
+
+    if _is_group:
+        try:
+            from v7.core.asset_config import get_all_assets
+            _n_scope = len(_bt_assets) if symbol == _SCOPE_ACTIVE else len(get_all_assets())
+        except Exception:
+            _n_scope = len(_bt_assets)
+        st.caption(t("backtest_scope_caption").format(n=_n_scope))
+
     days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
     
     # Defaults come from carry_assets.yaml (single source), no hardcoded constants
     _btp: dict = {}
     try:
-        if get_asset_params:
+        if get_asset_params and not _is_group:
             _btp = get_asset_params(symbol) or {}
     except Exception:
         _btp = {}
 
-    col1, col2 = st.columns(2)
-    with col1:
-        capital = st.number_input(t("backtest_capital"), 100, 100000,
-                                  int(_btp.get("capital", 2000)), 100,
-                                  help=t("backtest_capital_help"))
-    with col2:
-        fraction = st.slider(t("backtest_fraction"), 0.10, 1.0,
-                             float(_btp.get("fraction", 0.50)), 0.05,
-                             help=t("backtest_fraction_help"))
+    capital, fraction = 2000.0, 0.50
+    if _is_group:
+        # Group runs let the script read each asset's own settings from the config
+        st.info(t("backtest_per_asset_note"))
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            capital = st.number_input(t("backtest_capital"), 100, 100000,
+                                      int(_btp.get("capital", 2000)), 100,
+                                      help=t("backtest_capital_help"))
+        with col2:
+            fraction = st.slider(t("backtest_fraction"), 0.10, 1.0,
+                                 float(_btp.get("fraction", 0.50)), 0.05,
+                                 help=t("backtest_fraction_help"))
     
     if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
-        with st.spinner(t("backtest_running").format(symbol=symbol, days=days)):
+        _cli_symbol = ("ACTIVE" if symbol == _SCOPE_ACTIVE
+                       else "ALL" if symbol == _SCOPE_ALL else symbol)
+        with st.spinner(t("backtest_running").format(symbol=_choice_label, days=days)):
             try:
                 import subprocess, sys
                 cmd = [
                     sys.executable, "v7/backtest_v7_node.py",
-                    "--symbol", symbol,
+                    "--symbol", _cli_symbol,
                     "--days", str(days),
-                    "--capital", str(capital),
-                    "--fraction", str(round(fraction, 4)),
                 ]
-                result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
+                # Single-asset runs honour the on-screen overrides; group runs let
+                # the script read each asset's own capital/fraction from the config.
+                if not _is_group:
+                    cmd += ["--capital", str(int(capital)),
+                            "--fraction", str(round(fraction, 4))]
+                _timeout = 1800 if _is_group else 300
+                result = subprocess.run(cmd, capture_output=True, text=True,
+                                        cwd="/app/src", timeout=_timeout)
                 output = result.stdout
                 if result.stderr:
                     output += "\n\n[stderr]\n" + result.stderr[-500:]
-                st.code(output[-4000:] if len(output) > 4000 else output)
-                # Highlight TRADING: the 'Total' includes staking,
+                st.code(output[-8000:] if len(output) > 8000 else output)
+                # Highlight TRADING: 'Total' includes staking,
                 # which is not a strategy performance
                 for line in output.split("\n"):
-                    if any(kw in line for kw in ("TRADING (la stratégie)", "AUCUN TRADE", "Sharpe moyen")):
+                    if any(kw in line for kw in ("TRADING (the strategy)", "NO TRADE", "Mean Sharpe")):
                         st.text(line.strip())
             except Exception as e:
                 st.error(str(e))

@@ -1,8 +1,8 @@
 """
-v7/backtest_v7_node.py — Backtest avec le vrai FundingCarryNode + prix réels spot/perp.
+v7/backtest_v7_node.py — Backtest with the real FundingCarryNode + real spot/perp prices.
 
-Fetch les données daily spot + perp + funding, les aligne, et nourrit le
-même nœud que le live. Produit des métriques réalistes.
+Fetches the daily spot + perp + funding data, aligns it, and feeds the same
+node that runs live. Produces realistic metrics.
 
 Usage:
     docker exec atlas-v4-api python /app/src/v7/backtest_v7_node.py --symbol ALL --days 365
@@ -126,14 +126,14 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         combined["spot_price"] = combined["spot_raw"].ffill().bfill()
         combined["perp_price"] = combined["perp_raw"].ffill().bfill()
         if combined["spot_price"].isna().any() or combined["perp_price"].isna().any():
-            return {"symbol": symbol, "error": "prix spot/perp non alignables sur le funding"}
+            return {"symbol": symbol, "error": "spot/perp prices cannot be aligned with the funding"}
     else:
         # OLD BEHAVIOUR (bug): a silent $1000 fallback meant the backtest
         # no longer modelled any price risk and displayed fabricated P&L.
-        logger.error("Prix spot/perp indisponibles pour %s — backtest refusé", symbol)
+        logger.error("Spot/perp prices unavailable for %s — backtest refused", symbol)
         return {
             "symbol": symbol,
-            "error": "prix spot/perp indisponibles (fallback fictif supprimé)",
+            "error": "spot/perp prices unavailable (fabricated fallback removed)",
         }
 
     if combined.empty:
@@ -296,13 +296,13 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="V7 Backtest — FundingCarryNode + données réelles")
+    parser = argparse.ArgumentParser(description="V7 Backtest — FundingCarryNode + real spot/perp prices")
     parser.add_argument("--symbol", type=str, default="ALL",
-                        help="ALL, ACTIVE, BTC, BTC/USDT, ou BTC,ETH (séparés par virgule)")
+                        help="ALL, ACTIVE, BTC, BTC/USDT, or BTC,ETH (comma-separated)")
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--capital", type=float, default=2000)
     parser.add_argument("--fraction", type=float, default=None,
-                        help="Part du capital immobilisée en carry (défaut : valeur de carry_assets.yaml)")
+                        help="Share of capital held in carry (default: value from carry_assets.yaml)")
     args = parser.parse_args()
 
     if args.symbol == "ALL":
@@ -313,9 +313,9 @@ def main():
         symbols = [normalize_symbol(s) for s in args.symbol.split(",") if s.strip()]
 
     print("=" * 90)
-    print("ATLAS V7 — Backtest (FundingCarryNode + prix spot/perp réels)")
-    print(f"Symbols: {len(symbols)} actifs | Days: {args.days} | Capital: ${args.capital:,.0f}/asset")
-    print(f"Frais: 48bps RT (4 jambes) | Hurdle: 5% | Staking: 5%/an sur idle (séparé du P&L trading)")
+    print("ATLAS V7 — Backtest (FundingCarryNode + real spot/perp prices)")
+    print(f"Symbols: {len(symbols)} assets | Days: {args.days} | Capital: ${args.capital:,.0f}/asset")
+    print(f"Fees: 48bps RT (4 legs) | Hurdle: 5% | Staking: 5%/yr on idle (separate from trading P&L)")
     print("=" * 90)
 
     results = []
@@ -368,23 +368,23 @@ def main():
         avg_sharpe = 0.0
         avg_util = 0.0
     print("\n" + "=" * 90)
-    print(f"Portfolio: {len(symbols)} actifs | {len(valid)} tradés, {len(staking_only)} sans trade")
+    print(f"Portfolio: {len(symbols)} assets | {len(valid)} traded, {len(staking_only)} with no trade")
     print()
-    print(f"  TRADING (la stratégie)    : ${total_trading_pnl:>10,.2f}   {total_trading_pnl/total_cap*100:+.2f}%")
-    print(f"  Staking (capital inactif) : ${total_staking:>10,.2f}   {total_staking/total_cap*100:+.2f}%   <-- simulé, PAS du trading")
+    print(f"  TRADING (the strategy) : ${total_trading_pnl:>10,.2f}   {total_trading_pnl/total_cap*100:+.2f}%")
+    print(f"  Staking (idle capital) : ${total_staking:>10,.2f}   {total_staking/total_cap*100:+.2f}%   <-- simulated, NOT trading")
     print( "  " + "-" * 72)
-    print(f"  Total                     : ${total_pnl_all:>10,.2f}   {total_pnl_all/total_cap*100:+.2f}%   <-- ne pas lire comme une perf de stratégie")
+    print(f"  Total                  : ${total_pnl_all:>10,.2f}   {total_pnl_all/total_cap*100:+.2f}%   <-- do not read as a strategy performance")
     print()
     if not valid:
-        print("  ⚠️  AUCUN TRADE sur la période : à ces niveaux de funding, aucun actif ne")
-        print("      franchit le seuil d'entrée (min_funding). Le 'Total' ci-dessus est")
-        print("      intégralement du staking sur capital inactif.")
+        print("  ⚠️  NO TRADE over the period: at these funding levels no asset clears")
+        print("      the entry threshold (min_funding). The 'Total' above is entirely")
+        print("      staking on idle capital.")
     elif total_trading_pnl <= 0:
-        print("  ⚠️  La stratégie est en perte ou à l'équilibre sur la période.")
-    print(f"\n  Sharpe moyen (tradés): {avg_sharpe:.2f} | Capital utilisation: {avg_util:.1f}%")
-    print(f"  Durée: {elapsed:.0f}s | Capital total: ${total_cap:,.0f}")
+        print("  ⚠️  The strategy is flat or losing over the period.")
+    print(f"\n  Mean Sharpe (traded): {avg_sharpe:.2f} | Capital utilisation: {avg_util:.1f}%")
+    print(f"  Duration: {elapsed:.0f}s | Total capital: ${total_cap:,.0f}")
     if staking_only:
-        print(f"\n⚠️  {len(staking_only)} actifs sans trade (staking fictif uniquement):")
+        print(f"\n⚠️  {len(staking_only)} assets with no trade (simulated staking only):")
         for r in staking_only:
             print(f"    {r['symbol']:<12} → {r.get('no_trade_reason', '?')}")
     print("=" * 90)

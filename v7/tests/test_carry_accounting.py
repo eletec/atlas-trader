@@ -29,6 +29,8 @@ for _stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
+from v7.core.carry_accounting import CarryPosition, exit_fee_usd
+
 FEE_PER_LEG = 0.0012       # 12 bps (10 fees + 2 slippage)
 FEES_4_LEGS = FEE_PER_LEG * 4  # 48 bps round-trip
 FEES_2_LEGS_OPEN = FEE_PER_LEG * 2   # 24 bps on entry
@@ -41,46 +43,42 @@ def simulate_carry_trade(
     exit_spot: float,
     exit_perp: float,
     funding_rates: list[float],  # list of rates per 8h period
-    capital: float = 2000.0,
+    capital: float = 1000.0,
 ) -> dict:
-    """Simulate a complete carry trade: short perp + long spot.
+    """Simulate a complete carry trade through the canonical accounting model.
+
+    ``capital`` is the notional of ONE leg — see v7/core/carry_accounting.py.
+    Both legs always carry the same notional, so the gross exposure is 2x this.
+
+    This helper used to re-implement the P&L locally, with ``capital`` meaning
+    *both* legs while the node meant *one* leg. That ambiguity is why the same
+    word produced two different numbers. It now delegates to CarryPosition, so
+    there is a single model and these cases verify it end to end.
 
     Returns:
         Dict with the full P&L breakdown.
     """
-    # -- Entry --
-    # Spot long: we buy capital/2 worth of spot
-    spot_qty = (capital / 2) / entry_spot
-    # Short perp: we sell capital/2 worth of perp
-    perp_qty = (capital / 2) / entry_perp
+    leg = capital
+    spot_pnl = leg * (exit_spot / entry_spot - 1.0)      # long spot
+    perp_pnl = -leg * (exit_perp / entry_perp - 1.0)      # short perp
+    basis_pnl = spot_pnl + perp_pnl                       # 0 when perfectly hedged
 
-    open_fees = capital * FEES_2_LEGS_OPEN  # 2 legs on entry
-
-    # -- Funding received --
-    total_funding = 0.0
+    pos = CarryPosition(symbol="TEST/USDT", leg_notional=leg,
+                        entry_spot=entry_spot, entry_perp=entry_perp)
+    open_fees = pos.charge_entry_fees()
     for fr in funding_rates:
-        if fr > 0:
-            total_funding += (capital / 2) * fr  # paid on the short perp leg only
-        elif fr < 0:
-            total_funding += (capital / 2) * fr  # we pay when the funding is negative
-
-    # ── Exit ──
-    spot_pnl = spot_qty * (exit_spot - entry_spot)        # long spot
-    perp_pnl = perp_qty * (entry_perp - exit_perp)         # short perp
-    basis_pnl = spot_pnl + perp_pnl                        # should be ~0 when hedged
-    close_fees = capital * FEES_2_LEGS_CLOSE               # 2 legs on exit
-    total_fees = open_fees + close_fees
-
-    net_pnl = total_funding + basis_pnl - total_fees
+        pos.accrue_funding(fr)                            # signed
+    close_fees = exit_fee_usd(leg)
+    net_pnl = pos.realized_pnl_usd(exit_spot, exit_perp)
 
     return {
         "spot_pnl": round(spot_pnl, 4),
         "perp_pnl": round(perp_pnl, 4),
         "basis_pnl": round(basis_pnl, 4),
-        "total_funding": round(total_funding, 4),
+        "total_funding": round(pos.funding_pnl, 4),
         "open_fees": round(open_fees, 4),
         "close_fees": round(close_fees, 4),
-        "total_fees": round(total_fees, 4),
+        "total_fees": round(pos.fees_paid, 4),
         "net_pnl": round(net_pnl, 4),
         "net_pnl_pct": round(net_pnl / capital * 100, 4),
     }
@@ -100,7 +98,7 @@ class TestCarryAccounting:
             exit_spot=100.0,
             exit_perp=100.0,
             funding_rates=[0.0020],  # +20 bps over 1 period
-            capital=2000.0,
+            capital=1000.0,
         )
 
         # Assertions
@@ -113,12 +111,12 @@ class TestCarryAccounting:
         assert abs(result["total_funding"] - expected_funding) < 0.01, \
             f"Funding should be ${expected_funding:.2f}, received ${result['total_funding']:.2f}"
 
-        # Fees: 2000 * 0.0048 = $9.60
-        expected_fees = 2000 * FEES_4_LEGS  # $9.60
+        # Fees: 1000 * 0.0048 = $4.80 (4 legs x 12bps on the leg notional)
+        expected_fees = 1000 * FEES_4_LEGS  # $4.80
         assert abs(result["total_fees"] - expected_fees) < 0.01, \
             f"Fees should be ${expected_fees:.2f}, charged ${result['total_fees']:.2f}"
 
-        # Net: $2.00 - $9.60 = -$7.60 (-0.38%)
+        # Net: $2.00 - $4.80 = -$2.80 = -28 bps of the leg notional
         expected_net = expected_funding - expected_fees
         assert abs(result["net_pnl"] - expected_net) < 0.01, \
             f"Net P&L should be ${expected_net:.2f}, got ${result['net_pnl']:.2f}"
@@ -138,7 +136,7 @@ class TestCarryAccounting:
             exit_spot=101.0,
             exit_perp=101.7,    # basis +0.7% on exit -> a 50 bps loss
             funding_rates=[0.0030],  # +30 bps
-            capital=2000.0,
+            capital=1000.0,
         )
 
         # Basis P&L: LONG spot = +$10, SHORT perp = (100.2-101.7)*10 = -$15 → basis = -$5
@@ -155,12 +153,12 @@ class TestCarryAccounting:
         assert result["basis_pnl"] < 0, "Unfavourable basis → basis P&L must be negative"
 
         # Funding: 1000 * 0.003 = $3
-        expected_funding = (2000 / 2) * 0.0030  # $3.00
+        expected_funding = 1000 * 0.0030  # $3.00
 
-        # Fees: $9.60
-        expected_fees = 2000 * FEES_4_LEGS
+        # Fees: $4.80
+        expected_fees = 1000 * FEES_4_LEGS
 
-        # Net: $3.00 + (-$4.97) - $9.60 = -$11.57
+        # Net: $3.00 + (-$4.97) - $4.80 = -$6.77
         expected_net = expected_funding + expected_basis - expected_fees
         assert abs(result["net_pnl"] - expected_net) < 0.05, \
             f"Net P&L should be ~${expected_net:.2f}, got ${result['net_pnl']:.2f}"
@@ -179,7 +177,7 @@ class TestCarryAccounting:
             exit_spot=120.0,   # +20%
             exit_perp=120.0,   # +20% (perfectly correlated)
             funding_rates=[0.0050, 0.0050, 0.0050],  # 3 periods x 50 bps
-            capital=2000.0,
+            capital=1000.0,
         )
 
         # Directional: spot + perp must cancel out
@@ -193,13 +191,13 @@ class TestCarryAccounting:
             f"Perfect hedge → basis P&L must be ~0, got ${result['basis_pnl']:.2f}"
 
         # Funding: 3 x (1000 * 0.005) = $15
-        expected_funding = 3 * (2000 / 2) * 0.0050  # $15.00
+        expected_funding = 3 * 1000 * 0.0050  # $15.00
         assert abs(result["total_funding"] - expected_funding) < 0.01
 
-        # Fees: $9.60
-        expected_fees = 2000 * FEES_4_LEGS
+        # Fees: $4.80
+        expected_fees = 1000 * FEES_4_LEGS
 
-        # Net: $15.00 + $0 - $9.60 = $5.40
+        # Net: $15.00 + $0 - $4.80 = $10.20
         expected_net = expected_funding - expected_fees
         assert abs(result["net_pnl"] - expected_net) < 0.01, \
             f"Net P&L should be ${expected_net:.2f}, got ${result['net_pnl']:.2f}"

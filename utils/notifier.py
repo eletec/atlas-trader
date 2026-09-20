@@ -33,7 +33,7 @@ class TelegramNotifier:
         self._chat_id = chat_id
 
     def notify(self, message: str) -> None:
-        """Envoie un message Telegram."""
+        """Send a Telegram message."""
         try:
             from utils.http_session import get_http_session
             resp = get_http_session().post(
@@ -46,7 +46,7 @@ class TelegramNotifier:
             logger.warning(f"Telegram notify echoue: {exc}")
 
     def notify_decision(self, decision: dict, score: float) -> None:
-        """Formate et envoie une notification de decision de trading."""
+        """Format and send a trading decision notification."""
         action = decision.get("action", "HOLD")
         emoji = "&#x1F7E2;" if action == "BUY" else ("&#x1F534;" if action == "SELL" else "&#x1F7E1;")
         entry = decision.get("entry_price", 0)
@@ -74,7 +74,7 @@ class DiscordNotifier:
         self._url = webhook_url
 
     def notify(self, message: str) -> None:
-        """Envoie un message Discord."""
+        """Send a Discord message."""
         try:
             from utils.http_session import get_http_session
             resp = get_http_session().post(
@@ -87,7 +87,7 @@ class DiscordNotifier:
             logger.warning(f"Discord notify echoue: {exc}")
 
     def notify_decision(self, decision: dict, score: float) -> None:
-        """Formate et envoie une notification de decision de trading."""
+        """Format and send a trading decision notification."""
         action = decision.get("action", "HOLD")
         emoji = ":green_circle:" if action == "BUY" else (":red_circle:" if action == "SELL" else ":yellow_circle:")
         entry = decision.get("entry_price", 0)
@@ -184,7 +184,7 @@ def get_notifier() -> CompositeNotifier | None:
 
 
 def should_notify(score: float) -> bool:
-    """Retourne True si le score depasse le seuil d'alerte configure."""
+    """Return True when the score exceeds the configured alert threshold."""
     try:
         from utils.config import load_settings
         cfg = load_settings()

@@ -111,9 +111,20 @@ Two independent mechanisms:
 | > 30 d | — | **DERISK** — close if `forward_funding < hurdle + exit_cost_annual` |
 | > 60 d | — | **CLOSE** unconditionally |
 
-"Forward funding" is the current annualised rate; the exit cost is the 48 bps
-round-trip amortised over the days actually held. A carry that no longer covers
-its own exit costs is closed rather than held in hope.
+"Forward funding" is the current annualised rate — the bar's own rate, not a
+forecast; the exit cost is the 48 bps round-trip amortised over the days actually
+held. A carry that no longer covers its own exit costs is closed rather than held
+in hope.
+
+Two consequences are worth knowing, both measured (§5):
+
+- **The economic test is gated to `> 30 d`.** Between day 14 and day 30 the only
+  exits that can fire are the basis stop and the negative-funding timer, so a
+  position whose funding collapses on day 3 is held until day 30 regardless.
+- **The threshold is conservative by construction.** It compares the instantaneous
+  rate against `hurdle + the full round-trip cost`, even though the entry leg is
+  already sunk, and it amortises that cost over the days *elapsed* — so the bar
+  loosens the longer you hold (10.8%/yr at 30 d, 7.9%/yr at 60 d).
 
 **Continuous monitor** (`v7/position_monitor.py`, every 60 s) — a 4-tier
 kill-switch that closes everything:
@@ -144,81 +155,157 @@ closed P&L was −$4.25, not −$22.69.
 
 **This is the most important section of this README.**
 
-A fresh 1-year backtest on the 6 active assets, run 20 Sep 2026
-(`backtest_v7_node.py --symbol ACTIVE --days 365`, real spot/perp/funding data):
+All the figures in this section were produced on 20 Sep 2026, **after** the
+simulated-clock fix described in §11. Before that fix the backtester never told
+the strategy what date it was simulating, so no time-based exit could ever fire
+and every published figure was inflated by funding collected on positions that
+were never closed. The numbers below replace them.
+
+### A 1-year backtest on the 6 active assets
+
+`backtest_v7_node.py --symbol ACTIVE --days 365`, real spot/perp/funding data:
 
 ```
-Portfolio: 6 actifs | 2 traded, 4 never entered
-Trading P&L : $3.71   (0.03% on $12,000)     ← the strategy itself
-Staking P&L : $187.57 (1.56%)                ← idle capital, NOT trading
-Total P&L   : $191.28 (1.59%)
+Portfolio: 6 assets | 2 traded, 4 never entered
+
+  TRADING (the strategy) : $   -0.89   (-0.01%)
+  Staking (idle capital) : $  269.35   (+2.24%)   <- simulated, NOT trading
+  Mean Sharpe (traded)   : -1.18 | Capital utilisation: 1.4%
 ```
 
-Two of six assets traded **once each** over a full year. The other four never
-cleared the 0.02%/8h entry gate.
+Four of the six never entered at all. The two that did (XRP, BNB) traded **once
+each** over the full year and lost, in both cases, almost exactly their own fees.
 
-Current live funding rates (20 Sep 2026) explain why:
+### Why: the entry gate sits above the market
 
-| Asset | Funding / 8h | vs 0.02% gate |
-|-------|--------------|---------------|
-| BTC | +0.0071% | below |
-| ETH | −0.0009% | **negative** |
-| SOL | +0.0100% | below |
-| BNB | +0.0103% | below |
-| AVAX | +0.0100% | below |
-| XRP | +0.0100% | below |
+Measured funding over the same 12 months (1,000 real Binance periods of 8 h):
 
-**Conclusion: the strategy is structurally sound but not currently profitable.**
-At these funding levels the measured trading edge is ~0% — below the 5% hurdle
-and below the risk-free rate.
+| Asset | Mean funding | Yearly maximum | Periods above the 0.02%/8h gate |
+|-------|--------------|----------------|--------------------------------|
+| BTC | +3.38%/yr | 10.9%/yr | **0.0%** |
+| ETH | +2.40%/yr | 10.9%/yr | **0.0%** |
+| SOL | −1.82%/yr | 10.9%/yr | **0.0%** |
+| AVAX | −0.87%/yr | 10.9%/yr | **0.0%** |
+| XRP | +0.12%/yr | 47.7%/yr | 0.1% |
+| BNB | +1.94%/yr | 23.0%/yr | 0.1% |
 
-The 3-year walk-forward, re-run 20 Sep 2026 over the 6 active assets
-(`backtest_walkforward.py --symbols ACTIVE --days 1300`), says the same thing:
+10.9%/yr is 0.01%/8h — Binance's **neutral** funding rate, where the market
+settles whenever the perp trades at spot. BTC, ETH, SOL and AVAX essentially never
+leave it. The entry gate (0.02%/8h = 21.9%/yr) is therefore **above the yearly
+maximum of four of the six assets**, and is touched on roughly one period in a
+thousand by the other two.
+
+This is not specific to the six majors. Sweeping the whole configured universe
+(77 assets, 74 with public history): **0 of the 69 assets that have a full year of
+data reach the strategy's break-even.** The highest carry anywhere in the
+universe is ASTER at 9.6%/yr.
+
+### The rotation schedule, not the asset choice, is what kills it
+
+| Policy | Fees per year | Break-even | Assets clearing it |
+|--------|---------------|------------|--------------------|
+| 30-day cycles (12 round trips) | 5.76% | 10.84%/yr | **0 of 69** |
+| Static hold (1 round trip) | 0.48% | 5.00%/yr | 3 of 69 |
+
+The same assets that lose money on a 30-day cycle are the best performers in the
+universe if you simply hold them. The strategy's own exit schedule is what makes
+it unprofitable.
+
+### Timing the carry makes it worse
+
+The obvious repair — “hold while trailing funding ≥ 5%/yr, flat otherwise” — was
+tested with no look-ahead. It never beats a static hold on any asset:
+
+| Asset | Funding, static hold | Best timing rule | Fees, static | Fees, rule |
+|-------|----------------------|------------------|--------------|------------|
+| ASTER | 9.27%/yr | 5.13%/yr | 0.24% | 1.20% |
+| XPL | 6.69%/yr | 5.57%/yr | 0.24% | 1.20% |
+| CELR | 5.93%/yr | 5.31%/yr | 0.24% | 0.24% |
+| PUMP | 5.37%/yr | 4.28%/yr | 0.24% | 2.16% |
+
+With short windows (3–14 days, what any live implementation would use) it is far
+worse: PUMP loses **−14.8%/yr** across 41 round trips paying 19.9%/yr in fees.
+
+A trailing average is a **lagging** signal — it enters after the spike has begun
+and leaves at the first dip. Forgoing funding costs more (~6.4%/yr on ASTER) than
+the staking earned while flat (~3.5%/yr). Holding, not timing, is the better rule
+at every threshold tested.
+
+### Cross-venue spreads
+
+“Short the perp on the venue with the higher funding, long the other venue” was
+measured on Binance, Bybit and OKX. Binance vs Bybit over a full year: **9 pairs,
+0 with a stable sign** (best: XPL at +3.4%/yr but the sign flips on 35% of days).
+Binance vs OKX cannot be settled from public data at all — OKX retains only three
+months of funding history, and on those 96 shared days the average OKX-minus-
+Binance spread is **+0.31%/yr** across nine assets, i.e. noise.
+
+### The 3-year walk-forward
+
+`backtest_walkforward.py --symbols ACTIVE --days 1300` — train 12 months, test 3,
+step 3, parameters frozen, causal universe:
 
 ```
-Fenêtres tradées : 5/10 (50% de couverture)
-Médiane OOS      : +0.149%/trimestre  ≈ +0.60%/an     ← vs hurdle 5%/an
-Meilleure / pire : +0.410% / +0.005%
-Total Trading    : $88.47 sur 3 ans ($12,000 de capital)
-Total Staking    : $521.74                            ← 6× le trading
+Traded windows  : 5/10 (50% coverage)
+OOS median      : +0.036%/quarter  ~ +0.15%/yr
+OOS worst/best  : -0.008% / +0.346%
+Total Trading   : $56.47 over 3 years ($12,000 of capital)
+Total Staking   : $624.80                      <- 11x the trading
 
-BULL  : 2 fenêtres, médiane +0.280%
-RANGE : 3 fenêtres, médiane +0.019%
+BULL  : 2 windows, median +0.225%
+RANGE : 3 windows, median -0.007%
+
+Verdict: Paper trading only — OOS return +0.15%/yr below the hurdle (5%/yr)
 ```
 
-Two things this table makes clear, and that a reader should not skim past:
+Two things a reader should not skim past:
 
 - **Half the windows never traded at all.** A window with zero trades proves
   nothing about the edge — it is not evidence of profitability, and the tool now
   reports it as 50% coverage rather than folding it into a "% positive" figure.
-- **+0.60%/yr is ~8× below the hurdle.** The tool's own verdict logic now says
-  `Paper trading uniquement — rendement OOS sous le hurdle`, instead of the
-  "GO pour capital réel" it used to print for any positive median.
+- **+0.15%/yr is ~33x below the hurdle.** The tool's own verdict logic reports
+  `Paper trading only — OOS return +0.15%/yr below the hurdle (5%/yr)` instead of
+  the "GO for real capital" it used to print for any positive median.
 
-Only 2 of 10 windows fell in a BULL regime, and those are the only ones with a
-meaningful return (+0.28%/quarter). The strategy is a **regime bet**, not an
-all-weather one.
-
-The strategy only becomes interesting in a **high-funding regime** (broadly:
-strong bullish leverage demand), which did not occur in the sampled period.
+Only 2 of 10 windows fell in a BULL regime, and those carry the return (+0.225%
+per quarter median). The strategy is a **regime bet**, not an all-weather one —
+and even the bull quarters annualise to well under the 5% hurdle.
 
 ### Limits, stated plainly
 
 - **Paper trading only.** No order routing, no exchange account, no keys. Fills
   are modelled, not observed.
+- **The measured edge is ~1–3%/yr above the staking rate, at best.** The best
+  result found anywhere in this work is a static, unmanaged basket of the four
+  highest-carry assets: ~6.3%/yr against a 5%/yr staking benchmark — before
+  basis, liquidation, venue and operational risk, none of which are modelled.
 - **Regime-dependent.** BEAR markets are **untested** — no bear regime appears
   in the 2023–2026 sample. Conclusions do not extrapolate to one.
-- **Two trades is not a sample.** All performance figures above are indicative,
-  not statistically meaningful.
+- **Few trades is not a sample.** 5 of 10 walk-forward windows traded; two of the
+  six active assets traded once in a year. All performance figures are
+  indicative, not statistically meaningful.
+- **The entry gate is above the market it trades.** Not a bug, a calibration
+  fact: 0 of 69 assets clear the strategy's break-even under its own 30-day
+  rotation schedule.
+- **The basis term is not reliably measurable from daily closes.** On thin
+  alts a single bad bar manufactures a double-digit annual return (see §11). The
+  backtests model the basis from daily closes, forward-filled onto funding
+  timestamps; treat basis-sensitive results with suspicion.
 - **Staking yield is an assumption** (5%/yr), not a realised return. It is
   reported separately for exactly this reason.
 - **Counterparty / venue risk is not modelled.** If Binance halts withdrawals or
   the perp leg is force-closed, the hedge breaks.
 - **Liquidation risk is approximated**, not simulated: the monitor uses a
-  simplified maintenance-margin model.
-- **Concentrated universe** — 6 majors. Fewer candidates means fewer trades.
+  simplified maintenance-margin model. This matters most for the highest-carry
+  assets, which are also the thinnest.
 - **No rebalancing logic**: as the two legs drift, the position becomes
   slightly directional until closed.
+- **`max_hold_days` no longer drives exits.** The economic zones (14/30/60 d)
+  replaced it; the key survives in the config but only affects fee amortisation
+  in the entry calculation.
+- **`safety_cap` is far below the capital it allocates.** With `capital: 2000`
+  and `fraction: 0.5`, sizes are capped at $100–400 — a 2–10% utilisation — which
+  makes the fixed 48 bps round trip disproportionate.
 
 ---
 
@@ -392,7 +479,25 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 
 ## 10. Known issues / not production-ready
 
-- Only 2 trades in 12 months of backtest — statistically meaningless.
+- **The strategy is not profitable as configured.** 0 of 69 assets with a full
+  year of history clear the break-even of a 30-day rotation. See §5.
+- `capital_utilisation` is mislabelled: it counts periods where the NAV moved
+  (`abs() > 1e-10`), not time spent in a position. An asset held 9% of the year
+  reports 2.3% because its funding is zero on most periods.
+- **The funding history is truncated.** `fetch_funding_rate_history(limit=1000)`
+  returns the *first* 1000 records from `since` — 333 days, not 365 — so a
+  "--days 365" run silently stops about a month early. Paginating is a one-line
+  fix that has not been applied.
+- The no-trade diagnostic prints the funding of the **first** period of the
+  series, not the maximum reached.
+- OKX publishes only ~3 months of public funding history, so no venue effect can
+  be established against it without forward recording. A Binance↔OKX arbitrage
+  scanner in this repository cannot be backtested.
+- `PEPE`, `SHIB` and `BONK` return an empty funding history from the raw symbol;
+  they need the `1000X` contract identifier (the backtester handles this, the
+  scanners do not).
+- The runtime config contains a non-ASCII symbol (`牛来/USDT`); it works, but it
+  breaks any tooling that assumes ASCII tickers.
 - No order execution layer: turning this into a live system requires at minimum
   exchange order routing, leg-synchronisation, margin management, and error
   recovery for partially-filled hedges.
@@ -418,6 +523,9 @@ Kept because the failure modes are instructive:
 | Sep 2026 | Fee amortisation hardcoded at 60 d | Round-trip cost underestimated 4× | Amortise on real `max_hold_days` |
 | Sep 2026 | Alt churn | 3 round-trips in 16 h = −$1.44 fees | 24 h cooldown, universe → majors |
 | Sep 2026 | Backtests silently used flat $1000 prices when data was missing | Fabricated P&L | Backtests refuse to run without real prices |
+| 20 Sep 2026 | **The backtest had no clock.** `node.run()` received symbol/spot/funding/perp but no timestamp, while every time-based decision read `datetime.now()`. A 365-day backtest runs in ~5 real seconds, so `days_held` stayed at 0 | ZONE CLOSE (>60 d), ZONE DERISK (>30 d), the 72 h negative-funding timer and the anti-churn cooldown **could never fire**. Only the −5% basis stop could close anything. 14 of 18 positions were still open at day 343, and the reported "trading P&L" was unrealised funding on positions that were never closed: +$29.74 became **+$0.83** once exits worked, and a live Sharpe of +4.49 became **−0.33** | `_now()` in the node — returns the caller's simulated timestamp when one is injected, the wall clock otherwise. Injected by both backtesters. Proven by a deterministic harness that opens at T0 and advances in 5/20/35/65/90-day steps |
+| 20 Sep 2026 | The backtest read the production database: `_last_close_age_hours()` and the anti-duplicate check both queried live `v4_trades` | A backtest could inherit a real cooldown, or be forced to `position_open=True` on an asset the live system happened to hold | Both guarded by `params["_backtest"]` |
+| 20 Sep 2026 | Universe scan reported `BANK/USDT` at +44%/yr, driven by a perp/spot ratio reaching **3.29** | The gain came entirely from the basis term (+211%/yr), not funding, and the result swung from +218% to +11% between neighbouring parameters — one price dislocation, not an edge | Asset discarded. Lesson recorded: daily-close basis is untrustworthy on thin alts |
 
 ---
 

@@ -108,12 +108,28 @@ class FundingCarryNode:
         
         self.state = FundingCarryState(symbol=symbol)
         self._funding_rate_history: list[float] = []  # 7d moving average (~21 samples)
+
+        # Simulated clock. Backtests inject inputs["now"] so the time-based exits
+        # (time-stop, DERISK/CLOSE zones, negative-funding timer, cooldown) are
+        # evaluated on simulated days. Without it they all read the real wall
+        # clock, which a backtest burns in seconds - so none of them ever fired
+        # and every position stayed open until the end of the run.
+        # Live leaves it None and the node uses the real time as before.
+        self._sim_now: datetime | None = None
         
         # Restore state from the DB (survives restarts)
-        # Sauf en mode backtest (pas de DB live)
+        # Not in backtest mode (no live DB)
         backtest = params.get("_backtest", False) if params else False
         if not backtest:
             self._restore_state()
+
+    def _now(self) -> datetime:
+        """Current time: the simulated bar timestamp in a backtest, real time live."""
+        return self._sim_now if self._sim_now is not None else datetime.now()
+
+    def _is_backtest(self) -> bool:
+        """True when the node runs inside the backtester (no live DB access)."""
+        return bool(self.params.get("_backtest", False))
     
     def _restore_state(self):
         """Vérifie si une position carry est déjà ouverte pour ce symbole.
@@ -344,10 +360,13 @@ class FundingCarryNode:
     def _last_close_age_hours(self) -> float | None:
         """Heures depuis la dernière clôture de ce symbole (None si jamais fermé).
 
-        Anti-churn : empêche de rouvrir un actif dont le funding vient de
-        basculer (ex: SHIB/PEPE) et qui coûterait des frais de round-trip
-        à répétition.
+        Anti-churn : prevents reopening an asset whose funding just
+        flipped (e.g. SHIB/PEPE) and which would pay round-trip fees over
+        and over.
         """
+        # A backtest has no live trade history - never read the production DB.
+        if self._is_backtest():
+            return None
         try:
             from storage.database import get_connection
             with get_connection() as conn:
@@ -385,6 +404,16 @@ class FundingCarryNode:
         # L'etat interne (position ouverte, capital engage, historique de funding)
         # state is not reset between calls - so callers instantiate
         # one node per asset (run_carry_cycle, backtests).
+
+        # Pick up the simulated timestamp when the caller provides one (backtest).
+        _now_in = inputs.get("now")
+        self._sim_now = None
+        if _now_in is not None:
+            try:
+                self._sim_now = (_now_in if isinstance(_now_in, datetime)
+                                 else datetime.fromisoformat(str(_now_in)))
+            except (TypeError, ValueError):
+                self._sim_now = None
         
         spot_price = float(inputs.get("spot_price", 0))
         funding_rate = float(inputs.get("funding_rate", 0))
@@ -404,7 +433,7 @@ class FundingCarryNode:
             funding_rate = self.fetch_current_funding()
         
         self.state.last_funding_rate = funding_rate
-        self.state.last_update = datetime.now().isoformat()
+        self.state.last_update = self._now().isoformat()
         
         # Keep the funding history for the 7d MA and the percentile (max 270 samples = 90d)
         self._funding_rate_history.append(funding_rate)
@@ -537,9 +566,14 @@ class FundingCarryNode:
                                     confidence = 0.3
                                 else:
                                     # ── DB safety check (anti-duplicate, 24/07/2026) ──
-                                    from storage.paper_trader import get_open_positions
-                                    _db_open = get_open_positions(symbol=self.symbol)
-                                    _db_carry = [p for p in _db_open if p.get("action") in ("carry", "short")]
+                                    # Skipped in backtest: the production DB would
+                                    # otherwise force position_open=True on a symbol
+                                    # that a live cycle happens to hold right now.
+                                    _db_carry = []
+                                    if not self._is_backtest():
+                                        from storage.paper_trader import get_open_positions
+                                        _db_open = get_open_positions(symbol=self.symbol)
+                                        _db_carry = [p for p in _db_open if p.get("action") in ("carry", "short")]
                                     if _db_carry:
                                         # Sync in-memory state with DB reality
                                         self.state.position_open = True
@@ -551,7 +585,7 @@ class FundingCarryNode:
                                         self.state.entry_capital = size_usd
                                         self.state.entry_spot = spot_price
                                         self.state.entry_perp = perp_price if perp_price > 0 else spot_price
-                                        self.state.entry_time = datetime.now().isoformat()
+                                        self.state.entry_time = self._now().isoformat()
                                         self.state.negative_since = None
                                         signal = "open_carry"
                                         confidence = min(0.90, 0.50 + score * 2)
@@ -588,7 +622,7 @@ class FundingCarryNode:
                 if signal != "close_carry" and self.state.entry_time:
                     try:
                         entry_dt = datetime.fromisoformat(self.state.entry_time)
-                        days_held = (datetime.now() - entry_dt).total_seconds() / 86400
+                        days_held = (self._now() - entry_dt).total_seconds() / 86400
                         
                         if days_held > 60:
                             signal = "close_carry"
@@ -638,7 +672,7 @@ class FundingCarryNode:
                 confidence = 0.70
             elif funding_rate < 0:
                 # Negative funding -> timer
-                now = datetime.now()
+                now = self._now()
                 if self.state.negative_since is None:
                     self.state.negative_since = now.isoformat()
                 
@@ -719,7 +753,8 @@ class FundingCarryNode:
     def reset(self):
         """Reset the state (for backtests)."""
         self.state = FundingCarryState(symbol=self.symbol)
-        self._funding_cache = []
+        self._funding_rate_history = []
+        self._sim_now = None
 
 
 # ── Test ──

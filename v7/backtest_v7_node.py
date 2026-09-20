@@ -186,6 +186,10 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
             "spot_price": spot_price,
             "funding_rate": fr,
             "perp_price": perp_price,
+            # Simulated bar timestamp: the node's time-based exits (time-stop,
+            # DERISK/CLOSE zones, negative-funding timer, cooldown) are evaluated
+            # against it instead of the real clock.
+            "now": ts,
         })
 
         signal = result.get("signal", "flat")

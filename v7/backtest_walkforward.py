@@ -414,6 +414,9 @@ def run_walkforward(
                     "spot_price": spot_price,
                     "funding_rate": fr,
                     "perp_price": perp_price,
+                    # Simulated bar timestamp so the node's time-based exits are
+                    # evaluated on simulated days, not on real elapsed seconds.
+                    "now": ts,
                 })
                 
                 signal = result.get("signal", "flat")

@@ -157,14 +157,15 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         exit_after_hours=int(_cfg.get("exit_after_hours", 72)),
         max_hold_days=ov.get("max_hold_days", int(_cfg.get("max_hold_days", 30))),
         stop_loss_pct=float(_cfg.get("stop_loss_pct", -0.05)),
-        params={"_backtest": True},
+        params={"_backtest": True, **ov.get("node_params", {})},
     )
 
     # 4) Backtest loop with NAV tracking (round 5, 2026-07-25)
     # BUGFIX: unrealized_pnl_pct from node is already ×100 (percent), backtest must ÷100
     trades: list[dict] = []
-    total_funding = 0.0
-    total_fees = 0.0
+    realized_total = 0.0     # sum of closed positions' P&L (funding + basis - fees)
+    funding_closed = 0.0     # signed funding of the closed positions
+    fees_closed = 0.0        # fees of the closed positions
     nav_history: list[tuple] = []  # (timestamp, trading_nav, total_nav)
     no_trade_reason = ""  # diagnostic for assets that never trade
     max_funding_seen = 0.0  # for diagnosing why no trade
@@ -194,8 +195,10 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
 
         signal = result.get("signal", "flat")
         size_usd = result.get("size_usd", 0)
-        total_funding = max(total_funding, result.get("total_funding_received", 0) or 0)
-        # BUGFIX (25/07/2026): unrealized_pnl_pct is already ×100 from node → divide by 100
+        # The node owns the accounting; the backtest only accumulates it.
+        # Funding is SIGNED, the four legs are charged by the node on entry and on
+        # exit, and a close realises the basis instead of dropping it. Recomputing
+        # any of it here is how the two engines used to disagree.
         unrealized_pnl_pct_raw = result.get("unrealized_pnl_pct", 0) or 0
         unrealized_pct = unrealized_pnl_pct_raw / 100.0  # convert % → decimal
         position_open = result.get("position_open", False)
@@ -205,34 +208,43 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         if not position_open and signal == "flat" and reason and not no_trade_reason:
             no_trade_reason = reason[:120]
 
-        # Fees: 4 legs x 12bps = 48bps round-trip (GPT audit, 2026-07-25)
-        #   Open:  long spot (12bps) + short perp (12bps) = 24bps
-        #   Close: sell spot (12bps) + buy back perp (12bps) = 24bps
-        cost_this_step = 0.0
         if signal == "open_carry" and size_usd > 0:
-            cost_this_step = size_usd * 0.0024  # 24bps = 2 jambes (spot + perp)
-            total_fees += cost_this_step
-            trades.append({"open_ts": ts, "size": size_usd, "open_fee": cost_this_step, "close_fee": 0.0})
+            trades.append({"open_ts": ts, "size": size_usd, "open_fee": 0.0, "close_fee": 0.0})
 
         if signal == "close_carry":
-            cost_this_step = node.state.entry_capital * 0.0024  # 24bps = 2 jambes
-            total_fees += cost_this_step
-            if trades and trades[-1].get("close_fee") == 0.0:
-                trades[-1]["close_fee"] = cost_this_step
+            realized = float(result.get("realized_pnl_usd", 0) or 0)
+            realized_total += realized
+            funding_closed += node.state.total_funding_received
+            fees_closed += node.state.fees_paid
+            if trades:
+                trades[-1]["close_fee"] = node.state.fees_paid
                 trades[-1]["close_ts"] = ts
+                trades[-1]["realized"] = realized
 
-        # ── NAV computation (Round 5, 25/07/2026) ──
-        # Trading NAV = capital + funding - fees + unrealized (NO staking)
-        # Total NAV = trading NAV + staking (staking is separate, not trading alpha)
+        # ── NAV computation ──
+        # Trading NAV = capital + the closed positions' P&L + the open position's
+        # mark-to-market. Staking is tracked separately: it is not trading alpha.
         staking_now = node.state.staking_earned
         unrealized_usd = unrealized_pct * (node.state.entry_capital if position_open else 0) if position_open else 0
-        trading_nav = capital + total_funding - total_fees + unrealized_usd
+        open_mtm = 0.0
+        if position_open:
+            open_mtm = (node.state.total_funding_received
+                        - node.state.fees_paid + unrealized_usd)
+        trading_nav = capital + realized_total + open_mtm
         total_nav = trading_nav + staking_now
         nav_history.append((ts, trading_nav, total_nav))
 
     # 5) Metrics (round 5, 2026-07-25 - GPT audit: staking separated, unrealised % fix)
     staking = node.state.staking_earned
-    trading_pnl = total_funding - total_fees  # P&L from actual trading activity (ex-staking, ex-unrealized)
+    # Final figures: the closed positions' realised P&L plus what the open position
+    # is worth, marked at the last price of the run.
+    total_funding = funding_closed
+    total_fees = fees_closed
+    if position_open:
+        total_funding += node.state.total_funding_received
+        total_fees += node.state.fees_paid
+    trading_pnl = realized_total + (open_mtm if position_open else 0.0)
+    basis_pnl = trading_pnl - total_funding + total_fees
     total_pnl = trading_pnl + staking  # includes staking for reference, but trading_pnl is the real metric
     
     # No-trade diagnostic
@@ -276,6 +288,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
             "open_fee": round(open_fee, 4),
             "close_fee": round(close_fee, 4),
             "total_fee": round(open_fee + close_fee, 4),
+            "realized": round(t.get("realized", 0), 4),
         })
 
     return {
@@ -285,6 +298,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         "total_pnl": round(total_pnl, 2),        # trading + staking (for reference)
         "total_pnl_pct": round(total_pnl / capital * 100, 2),
         "funding": round(total_funding, 4),
+        "basis_pnl": round(basis_pnl, 2),        # realised + marked basis, net of funding
         "staking": round(staking, 2),
         "fees": round(total_fees, 2),
         "trading_pnl": round(trading_pnl, 2),    # explicit alias

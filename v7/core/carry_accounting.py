@@ -102,6 +102,20 @@ def funding_ma(rates: list[float], periods: int = 21) -> float:
     return sum(window) / len(window)
 
 
+def closed_pnl_usd(leg_notional: float, entry_spot: float, entry_perp: float,
+                   exit_spot: float, exit_perp: float,
+                   funding_pnl: float = 0.0, fees_paid: float = 0.0) -> float:
+    """Final P&L of a closed position, from plain values.
+
+    Same arithmetic as :meth:`CarryPosition.realized_pnl_usd`, exposed for callers
+    that keep their state in their own dataclass. One implementation, two entry
+    points — never a second formula.
+    """
+    return (funding_pnl
+            + basis_pnl_usd(leg_notional, entry_spot, entry_perp, exit_spot, exit_perp)
+            - fees_paid)
+
+
 @dataclass
 class CarryPosition:
     """The complete state of one carry position, and its P&L.
@@ -225,7 +239,9 @@ class CarryPosition:
         if charge_exit and not self.closed:
             self.charge_exit_fees()
             self.closed = True
-        return self.funding_pnl + basis - self.fees_paid
+        return closed_pnl_usd(self.leg_notional, self.entry_spot, self.entry_perp,
+                              exit_spot, exit_perp,
+                              funding_pnl=self.funding_pnl, fees_paid=self.fees_paid)
 
     def realized_return_pct(self, exit_spot: float, exit_perp: float,
                             charge_exit: bool = True) -> float:

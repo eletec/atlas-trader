@@ -203,6 +203,13 @@ def run_cycle(
                         ctx["total_funding_received"] = result.get("total_funding_received", 0)
                         ctx["n_payments"] = result.get("n_payments", 0)
                         ctx["annual_funding_pct"] = result.get("annual_funding_pct", 0)
+                        # Persist the full position state. Without it the next
+                        # cycle rebuilds the node with no entry_perp, no
+                        # negative_since and no funding window: the basis at entry
+                        # reads as zero, the 72h timer restarts and the 7-day
+                        # funding MA collapses to the current rate.
+                        if result.get("carry_state"):
+                            ctx["carry_state"] = result["carry_state"]
                         conn.execute(
                             "UPDATE v4_trades SET context_json=? WHERE trade_id=?",
                             (_json.dumps(ctx), row[0]),
@@ -246,14 +253,25 @@ def run_cycle(
                                 if db_path.startswith("sqlite:///"):
                                     db_path = db_path[10:]
                                 conn = sqlite3.connect(db_path, timeout=10)
+                                import json as _json2
+                                realized = float(result.get("realized_pnl_usd", 0) or 0)
                                 for p in carry_pos:
+                                    # Single close path: status, timestamp AND the
+                                    # realised P&L, so a cycle close and a monitor
+                                    # close leave the same record behind. This used
+                                    # to write no pnl_usd at all, so every trade
+                                    # closed by the cycle showed a P&L of zero.
                                     conn.execute(
-                                        "UPDATE v4_trades SET status='closed', closed_at=? WHERE trade_id=?",
-                                        (datetime.now().isoformat(), p.get("trade_id")),
+                                        "UPDATE v4_trades SET status='closed', closed_at=?, "
+                                        "pnl_usd=?, context_json=? WHERE trade_id=?",
+                                        (datetime.now().isoformat(), round(realized, 4),
+                                         _json2.dumps(result.get("carry_state") or {}),
+                                         p.get("trade_id")),
                                     )
                                 conn.commit()
                                 conn.close()
-                                logger.info("  💾 %s CLOSE saved to DB (%d positions)", sym, len(carry_pos))
+                                logger.info("  💾 %s CLOSE saved to DB (%d positions, pnl=$%.2f)",
+                                            sym, len(carry_pos), realized)
                     except ImportError:
                         logger.debug("  ⚠️ PaperTrader not available")
                     except Exception as e:

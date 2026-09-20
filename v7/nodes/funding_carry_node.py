@@ -18,26 +18,92 @@ from typing import Any, Optional
 import numpy as np
 
 from v4.core.node import NodeRunResult, NodeStatus
+from v7.core.carry_accounting import (
+    LEG_FEE_BPS_DEFAULT,
+    basis_return,
+    closed_pnl_usd,
+    entry_fee_usd,
+    exit_fee_usd,
+    funding_ma,
+    funding_payment_usd,
+)
 
 logger = logging.getLogger("funding_carry_node")
 
 
 @dataclass
 class FundingCarryState:
-    """Persistent state of the Funding Carry node."""
+    """Persistent state of the Funding Carry node.
+
+    NOTIONAL CONVENTION — ``entry_capital`` (a.k.a. ``size_usd``) is the notional
+    of ONE leg. The spot leg and the perp leg always carry the same notional, so
+    the gross exposure is ``2 * entry_capital``. See v7/core/carry_accounting.py;
+    nothing here re-implements the arithmetic.
+
+    ``total_funding_received`` is **signed**: a negative funding period is a
+    payment the book makes. It used to accumulate positive rates only, which made
+    every negative period free and systematically overstated the P&L.
+    """
     symbol: str
     position_open: bool = False
-    entry_capital: float = 0.0
+    entry_capital: float = 0.0       # notional of ONE leg
     entry_spot: float = 0.0          # spot price at entry
     entry_perp: float = 0.0          # perp price at entry
     entry_time: str = ""             # ISO open timestamp (time-stop)
     negative_since: Optional[str] = None  # ISO timestamp
-    total_funding_received: float = 0.0
+    total_funding_received: float = 0.0   # signed
     n_payments: int = 0
+    n_negative_payments: int = 0
+    fees_paid: float = 0.0           # entry legs, then exit legs on close
+    closed: bool = False
+    funding_history: list[float] = field(default_factory=list)   # one row per period
     staking_earned: float = 0.0      # USDT staking yield on idle capital
     last_funding_rate: float = 0.0
     last_signal: str = "flat"
     last_update: str = ""
+
+    def to_dict(self) -> dict:
+        """Serialise the position so it survives a container restart."""
+        return {
+            "leg_notional": self.entry_capital,
+            "entry_spot": self.entry_spot,
+            "entry_perp": self.entry_perp,
+            "entry_time": self.entry_time,
+            "funding_pnl": self.total_funding_received,
+            "fees_paid": self.fees_paid,
+            "n_payments": self.n_payments,
+            "n_negative_payments": self.n_negative_payments,
+            "negative_since": self.negative_since,
+            "funding_history": self.funding_history[-21:],
+            "closed": self.closed,
+        }
+
+    def load_position_dict(self, data: dict) -> bool:
+        """Restore an open position from its persisted form.
+
+        Restores ``entry_perp``, ``negative_since`` and the funding window too —
+        without them the basis at entry reads as zero, the 72h negative-funding
+        timer restarts on every cycle and the 7-day funding MA collapses to the
+        current rate.
+        """
+        if not data:
+            return False
+        self.entry_capital = float(data.get("leg_notional", data.get("size_usd", 0)) or 0)
+        self.entry_spot = float(data.get("entry_spot", 0) or 0)
+        self.entry_perp = float(data.get("entry_perp", 0) or 0) or self.entry_spot
+        self.entry_time = str(data.get("entry_time", "") or "")
+        self.total_funding_received = float(
+            data.get("funding_pnl", data.get("total_funding_received", 0)) or 0)
+        self.fees_paid = float(data.get("fees_paid", 0) or 0)
+        self.n_payments = int(data.get("n_payments", 0) or 0)
+        self.n_negative_payments = int(data.get("n_negative_payments", 0) or 0)
+        self.negative_since = data.get("negative_since") or None
+        self.closed = bool(data.get("closed", False))
+        history = data.get("funding_history") or []
+        if history:
+            self.funding_history = [float(r) for r in history][-270:]
+        self.position_open = self.entry_capital > 0
+        return self.position_open
 
 
 class FundingCarryNode:
@@ -130,6 +196,54 @@ class FundingCarryNode:
     def _is_backtest(self) -> bool:
         """True when the node runs inside the backtester (no live DB access)."""
         return bool(self.params.get("_backtest", False))
+
+    def _seed_funding_history(self) -> None:
+        """Backfill the rolling funding window so the 7-day MA is a real MA.
+
+        The node is rebuilt on every live cycle, so an in-memory window would
+        never hold more than the current sample and the "7-day MA" filter would
+        silently degrade to "is the rate positive right now". No-op in a backtest
+        (the simulated bars supply the history) and once the window is long
+        enough.
+        """
+        if self._is_backtest() or len(self._funding_rate_history) >= 21:
+            return
+        try:
+            import ccxt
+            exchange = ccxt.binanceusdm({"enableRateLimit": True})
+            market = exchange.market(self._perp_symbol(self.symbol))
+            market_id = market.get("id") if market else None
+            if not market_id:
+                return
+            rows = exchange.fetch_funding_rate_history(market_id, limit=21)
+            if rows:
+                self._funding_rate_history = [
+                    float(r.get("fundingRate") or 0) for r in rows
+                ]
+                logger.debug("[%s] funding window seeded with %d periods",
+                             self.node_id, len(self._funding_rate_history))
+        except Exception as exc:
+            logger.debug("[%s] funding window seed skipped: %s", self.node_id, exc)
+
+    def _realize_close(self, spot_price: float, perp_price: float) -> float:
+        """Close the position: realise the basis and charge the two exit legs.
+
+        Idempotent — the cycle and the monitor may both ask for the final P&L
+        without the exit legs being charged twice.
+        """
+        exit_perp = perp_price if perp_price > 0 else spot_price
+        exit_fee = 0.0
+        if not self.state.closed:
+            exit_fee = exit_fee_usd(self.state.entry_capital, LEG_FEE_BPS_DEFAULT)
+        pnl = closed_pnl_usd(
+            self.state.entry_capital, self.state.entry_spot, self.state.entry_perp,
+            spot_price, exit_perp,
+            funding_pnl=self.state.total_funding_received,
+            fees_paid=self.state.fees_paid + exit_fee,
+        )
+        self.state.fees_paid += exit_fee
+        self.state.closed = True
+        return pnl
     
     def _restore_state(self):
         """Check whether a carry position is already open for this symbol.
@@ -146,37 +260,38 @@ class FundingCarryNode:
             carry_pos = [p for p in open_pos if p.get("action") in ("carry", "short")]
             if carry_pos:
                 pos = carry_pos[0]
-                self.state.position_open = True
-                self.state.entry_capital = float(pos.get("size_usd", 0))
-                # Restore the spot entry price (stored in entry_price)
-                self.state.entry_spot = float(pos.get("entry_price", 0) or 0)
-                # Restore the perp price from context_json when available
                 ctx_raw = pos.get("context_json")
+                ctx: dict = {}
                 if ctx_raw:
                     try:
                         ctx = _json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
-                        # Restore accumulated funding (persisted by run_carry_cycle.py on HOLD)
-                        self.state.total_funding_received = float(ctx.get("total_funding_received", 0) or 0)
-                        self.state.n_payments = int(ctx.get("n_payments", 0) or 0)
-                        # context_json holds the full decision dict
-                        # entry_price = spot; look for the perp in the carry_* keys, else estimate it
-                        if ctx.get("carry_signal") == "open_carry":
-                            # The perp was close to spot at entry (basis ~0)
-                            self.state.entry_perp = self.state.entry_spot
                     except Exception:
-                        self.state.entry_perp = self.state.entry_spot
-                else:
-                    # No context: estimate perp ~ spot (the basis is usually small)
-                    self.state.entry_perp = self.state.entry_spot
-                # Restore the entry timestamp (for the time-stop)
-                ts = pos.get("timestamp", "")
-                if ts:
-                    self.state.entry_time = ts
-                logger.info(
-                    "[%s] Carry position restored: spot=%.2f perp=%.2f capital=$%.0f opened=%s",
-                    self.node_id, self.state.entry_spot, self.state.entry_perp,
-                    self.state.entry_capital, self.state.entry_time[:19] if self.state.entry_time else "?"
-                )
+                        ctx = {}
+                # Prefer the persisted accounting state: it carries entry_perp,
+                # negative_since and the funding window, none of which can be
+                # rebuilt from the trade row alone. Fall back to the row itself
+                # for positions written before that state existed.
+                persisted = (ctx or {}).get("carry_state") or {}
+                if not persisted:
+                    persisted = {
+                        "leg_notional": pos.get("size_usd", 0),
+                        "entry_spot": pos.get("entry_price", 0),
+                        "entry_perp": ctx.get("entry_perp_price", 0),
+                        "entry_time": pos.get("timestamp", ""),
+                        "funding_pnl": ctx.get("total_funding_received", 0),
+                        "n_payments": ctx.get("n_payments", 0),
+                        "negative_since": ctx.get("negative_since"),
+                        "funding_history": ctx.get("funding_history"),
+                    }
+                if self.state.load_position_dict(persisted):
+                    logger.info(
+                        "[%s] Carry position restored: spot=%.6g perp=%.6g capital=$%.0f "
+                        "opened=%s funding=$%.4f fees=$%.2f",
+                        self.node_id, self.state.entry_spot, self.state.entry_perp,
+                        self.state.entry_capital,
+                        self.state.entry_time[:19] if self.state.entry_time else "?",
+                        self.state.total_funding_received, self.state.fees_paid,
+                    )
         except Exception as e:
             logger.debug("[%s] DB restore skipped: %s", self.node_id, e)
 
@@ -439,10 +554,14 @@ class FundingCarryNode:
         self.state.last_update = self._now().isoformat()
         
         # Keep the funding history for the 7d MA and the percentile (max 270 samples = 90d)
+        # The node is rebuilt on every live cycle, so an in-memory window would
+        # never exceed one sample and the "7-day MA" would just be the current
+        # rate. Backfill it from the exchange when it is too short.
+        self._seed_funding_history()
         self._funding_rate_history.append(funding_rate)
         if len(self._funding_rate_history) > 270:
             self._funding_rate_history = self._funding_rate_history[-270:]
-        funding_ma_7d = sum(self._funding_rate_history[-21:]) / min(len(self._funding_rate_history), 21) if self._funding_rate_history else funding_rate
+        funding_ma_7d = funding_ma(self._funding_rate_history)
         
         # ── Decision ──
         signal = "flat"
@@ -451,6 +570,7 @@ class FundingCarryNode:
         confidence = 0.5
         reason = ""
         unrealized_pct = 0.0
+        realized_this_run = 0.0
         economic_hurdle = self.economic_hurdle  # scoped for both open/close branches
         
         # Annualise - uses Binance's real interval (3 audits, 2026-07-20)
@@ -589,7 +709,15 @@ class FundingCarryNode:
                                         self.state.entry_spot = spot_price
                                         self.state.entry_perp = perp_price if perp_price > 0 else spot_price
                                         self.state.entry_time = self._now().isoformat()
+                                        # Per-position accounting: reset on every open so
+                                        # these numbers describe THIS position and not a
+                                        # running total the consumer would have to undo.
+                                        self.state.total_funding_received = 0.0
+                                        self.state.n_payments = 0
+                                        self.state.n_negative_payments = 0
                                         self.state.negative_since = None
+                                        self.state.closed = False
+                                        self.state.fees_paid = entry_fee_usd(size_usd, LEG_FEE_BPS_DEFAULT)
                                         signal = "open_carry"
                                         confidence = min(0.90, 0.50 + score * 2)
                                         reason = (f"funding={funding_rate*100:.4f}% MA={funding_ma_7d*100:.4f}% "
@@ -604,17 +732,16 @@ class FundingCarryNode:
             # -- Position open --
             # Compute unrealised P&L (basis only; the delta is hedged)
             if self.state.entry_spot > 0 and spot_price > 0:
-                # Short perp: we lose when perp rises vs spot, we gain when perp falls vs spot
-                basis_entry = (self.state.entry_perp - self.state.entry_spot) / self.state.entry_spot
-                basis_now = (perp_price - spot_price) / spot_price if perp_price > 0 else 0
-                # LONG spot + SHORT perp → gain when basis CONTRACTS (Round 4 fix)
-                unrealized_pct = basis_entry - basis_now  # positive = gain, negative = loss
+                # Exact relative return of the hedged book (long spot, short perp).
+                # The previous (perp-spot)/spot difference was a first-order
+                # approximation: on a 50% directional move it drifts by ~33%.
+                unrealized_pct = basis_return(self.state.entry_spot, self.state.entry_perp,
+                                              spot_price, perp_price or spot_price)
                 unrealized_usd = unrealized_pct * self.state.entry_capital
                 
                 # Stop-loss: basis loss > 5% -> close
                 if unrealized_pct < self.stop_loss_pct:
                     signal = "close_carry"
-                    self.state.position_open = False
                     reason = f"STOP-LOSS: basis loss {unrealized_pct*100:.1f}% > {abs(self.stop_loss_pct)*100:.0f}% -> close"
                     confidence = 0.95
                     logger.warning("[%s] %s", self.node_id, reason)
@@ -626,20 +753,29 @@ class FundingCarryNode:
                     try:
                         entry_dt = datetime.fromisoformat(self.state.entry_time)
                         days_held = (self._now() - entry_dt).total_seconds() / 86400
-                        
-                        if days_held > 60:
+
+                        # The zones scale with max_hold_days, which IS the forced
+                        # exit. They used to be hardcoded at 14/30/60 while the
+                        # entry gate amortised its fees over max_hold_days: the
+                        # gate assumed one holding period and the exit imposed
+                        # another, so a grid search over max_hold_days changed
+                        # the gate and never the exit it was named after.
+                        hard_stop = max(int(self.max_hold_days), 1)
+                        derisk_after = hard_stop * 0.5
+                        review_after = hard_stop * 0.25
+
+                        if days_held > hard_stop:
                             signal = "close_carry"
-                            self.state.position_open = False
-                            reason = f"ECONOMIC STOP (ZONE CLOSE): {days_held:.0f}d > 60d max"
+                            reason = (f"ECONOMIC STOP (ZONE CLOSE): {days_held:.0f}d "
+                                      f"> {hard_stop}d max")
                             confidence = 0.85
                             logger.warning("[%s] %s", self.node_id, reason)
-                        elif days_held > 30:
+                        elif days_held > derisk_after:
                             # DERISK: close when forward funding no longer justifies the position
                             forward_funding = funding_rate * periods_per_year
                             exit_cost_annual = 0.0048 * (365 / max(days_held, 1))  # 48bps round-trip amortised
                             if forward_funding < economic_hurdle + exit_cost_annual:
                                 signal = "close_carry"
-                                self.state.position_open = False
                                 reason = (f"ECONOMIC STOP (ZONE DERISK): {days_held:.0f}d, "
                                           f"forward funding={forward_funding*100:.1f}%/yr < "
                                           f"hurdle+exit={(economic_hurdle+exit_cost_annual)*100:.1f}%/yr")
@@ -648,7 +784,7 @@ class FundingCarryNode:
                             else:
                                 logger.info("[%s] DERISK zone: %dd, forward funding=%.1f%% > costs -> hold",
                                            self.node_id, days_held, forward_funding*100)
-                        elif days_held > 14:
+                        elif days_held > review_after:
                             logger.info("[%s] REVIEW zone: %dd — monitoring", self.node_id, days_held)
                     except Exception:
                         pass
@@ -665,38 +801,54 @@ class FundingCarryNode:
             
             if signal == "close_carry":
                 pass  # already handled above
-            elif funding_rate > 0:
-                # Receive funding
-                payment = self.state.entry_capital * funding_rate
+            else:
+                # Funding is SIGNED: a negative period is a payment the book
+                # makes. Accruing positive rates only overstated the P&L.
+                payment = funding_payment_usd(self.state.entry_capital, funding_rate)
                 self.state.total_funding_received += payment
                 self.state.n_payments += 1
-                signal = "flat"
-                reason = f"carry active | funding received={self.state.total_funding_received:.4f} ({self.state.n_payments} payments)"
-                confidence = 0.70
-            elif funding_rate < 0:
-                # Negative funding -> timer
-                now = self._now()
-                if self.state.negative_since is None:
-                    self.state.negative_since = now.isoformat()
-                
-                try:
-                    neg_start = datetime.fromisoformat(self.state.negative_since)
-                    hours_neg = (now - neg_start).total_seconds() / 3600
-                except Exception:
-                    hours_neg = 0
-                
-                if hours_neg > self.exit_after_hours:
-                    # Close
-                    signal = "close_carry"
-                    self.state.position_open = False
-                    reason = f"negative funding > {self.exit_after_hours}h -> close"
-                    confidence = 0.85
+                if funding_rate < 0:
+                    self.state.n_negative_payments += 1
+                    now = self._now()
+                    if self.state.negative_since is None:
+                        self.state.negative_since = now.isoformat()
+
+                    try:
+                        neg_start = datetime.fromisoformat(self.state.negative_since)
+                        hours_neg = (now - neg_start).total_seconds() / 3600
+                    except Exception:
+                        hours_neg = 0
+
+                    if hours_neg > self.exit_after_hours:
+                        signal = "close_carry"
+                        reason = f"negative funding > {self.exit_after_hours}h -> close"
+                        confidence = 0.85
+                    else:
+                        signal = "flat"
+                        reason = (f"negative funding for {hours_neg:.0f}h "
+                                  f"(max {self.exit_after_hours}h) | funding={payment:+.4f}")
+                        confidence = 0.50
                 else:
+                    self.state.negative_since = None
                     signal = "flat"
-                    reason = f"negative funding for {hours_neg:.0f}h (max {self.exit_after_hours}h)"
-                    confidence = 0.50
-            else:
-                self.state.negative_since = None
+                    reason = (f"carry active | funding received="
+                              f"{self.state.total_funding_received:.4f} "
+                              f"({self.state.n_payments} payments)")
+                    confidence = 0.70
+
+            # Realise the position the moment the signal closes it: the basis and
+            # the exit legs used to be dropped, which is why the backtest reported
+            # funding minus fees and never the basis. This is the ONLY place that
+            # flips `position_open`: branches that close the position only set the
+            # signal, otherwise this block would see it already closed and the P&L
+            # would vanish.
+            if signal == "close_carry" and self.state.position_open:
+                realized_this_run = self._realize_close(spot_price, perp_price)
+                self.state.position_open = False
+                self.state.closed = True
+                reason = f"{reason} | realized=${realized_this_run:+.2f}"
+                logger.info("[%s] carry closed, realized=$%.2f: %s",
+                            self.node_id, realized_this_run, reason)
         
         elapsed = time.time() - t0
         
@@ -738,7 +890,17 @@ class FundingCarryNode:
             "annual_funding_pct": round(annual_funding * 100, 2),
             "position_open": self.state.position_open,
             "total_funding_received": round(self.state.total_funding_received, 4),
+            "realized_pnl_usd": round(realized_this_run, 4),
             "n_payments": self.state.n_payments,
+            "n_negative_payments": self.state.n_negative_payments,
+            "fees_paid": round(self.state.fees_paid, 4),
+            # Notional convention: size_usd / entry_capital is ONE leg.
+            "leg_notional": round(self.state.entry_capital, 2),
+            "gross_notional": round(2 * self.state.entry_capital, 2),
+            # Full position state, so the cycle can persist it in context_json and
+            # the next cycle can restore entry_perp, negative_since and the
+            # funding window instead of starting from zero.
+            "carry_state": self.state.to_dict(),
             "staking_earned": round(self.state.staking_earned, 4),
             "basis_pct": round(basis_pct * 100, 4),
             "entry_perp_price": perp_price if perp_price > 0 else spot_price,

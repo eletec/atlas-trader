@@ -1,16 +1,16 @@
 """
-v7/backtest_walkforward.py — Walk-Forward Backtest (3 ans, 2023-2026).
+v7/backtest_walkforward.py — Walk-Forward Backtest (3 years, 2023-2026).
 
-Priorité #2 du GPT audit (25/07/2026):
-  - Univers historique causal (actifs disponibles à t, pas de look-ahead)
-  - Walk-forward: train 12 mois, test 3 mois, pas 3 mois
-  - Paramètres gelés (hurdle exogène, pas optimisé dans la fenêtre)
-  - Métriques OOS: Sharpe portfolio, MaxDD, % fenêtres positives
-  - Segmentation par régime de marché (bull/bear/range via BTC)
+GPT audit priority #2 (25/07/2026):
+  - Causal historical universe (assets listed at t, no look-ahead)
+  - Walk-forward: train 12 months, test 3 months, step 3 months
+  - Frozen parameters (exogenous hurdle, never optimised inside the window)
+  - OOS metrics: portfolio Sharpe, MaxDD, % of positive windows
+  - Market-regime segmentation (bull/bear/range via BTC)
 
 Usage:
     docker exec atlas-v4-api python -B /app/src/v7/backtest_walkforward.py --days 1278
-    docker exec atlas-v4-api python -B /app/src/v7/backtest_walkforward.py --quick  # 6 mois, test rapide
+    docker exec atlas-v4-api python -B /app/src/v7/backtest_walkforward.py --quick  # 6 months, fast
 """
 
 from __future__ import annotations
@@ -524,9 +524,9 @@ def main():
     parser.add_argument("--days", type=int, default=1300, help="Days of data (default 1300 = ~3.5 years)")
     parser.add_argument("--capital", type=float, default=2000)
     parser.add_argument("--train", type=int, default=12, help="Training months")
-    parser.add_argument("--test", type=int, default=3, help="Mois de test OOS")
-    parser.add_argument("--step", type=int, default=3, help="Pas en mois")
-    parser.add_argument("--quick", action="store_true", help="Mode rapide (train=3, test=1, step=1)")
+    parser.add_argument("--test", type=int, default=3, help="OOS test length in months")
+    parser.add_argument("--step", type=int, default=3, help="Step in months")
+    parser.add_argument("--quick", action="store_true", help="Fast mode (train=3, test=1, step=1)")
     args = parser.parse_args()
     
     if args.symbols == "ALL":
@@ -607,9 +607,9 @@ def main():
     if _n_traded < 5:
         verdict = f"NO-GO - insufficient sample ({_n_traded} traded window(s))"
     elif _coverage < 50:
-        verdict = f"Paper trading uniquement — couverture OOS insuffisante ({_coverage:.0f}%)"
+        verdict = f"Paper trading only — insufficient OOS coverage ({_coverage:.0f}%)"
     elif _med_annual < _hurdle:
-        verdict = (f"Paper trading uniquement — rendement OOS {_med_annual:+.2f}%/an "
+        verdict = (f"Paper trading only — OOS return {_med_annual:+.2f}%/yr "
                    f"below the hurdle ({_hurdle:.0f}%/yr)")
     else:
         verdict = "GO for real capital"

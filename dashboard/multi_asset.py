@@ -510,9 +510,13 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
     d.head.appendChild(dropS);
   }}
 
+  /* Lien de navigation : reprend l'URL courante (lang/theme/admin/_sid) en ne
+     changeant que la cle de section. On force menu=0 sinon le hamburger restait
+     ouvert indefiniment : chaque navigation recopiait menu=1 vers la suivante. */
   function navUrl(key) {{
     var u = new URL(p.location.href);
     u.searchParams.set(QPARAM, key);
+    u.searchParams.set('menu', '0');
     return u.toString();
   }}
 

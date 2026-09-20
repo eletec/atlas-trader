@@ -13,7 +13,7 @@ logger = logging.getLogger("storage.paper_trader")
 
 
 def _ensure_table(conn) -> None:
-    """Crée la table v4_trades si elle n'existe pas."""
+    """Create the v4_trades table when missing."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS v4_trades (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +87,7 @@ def persist_trade(
                  stop_loss, take_profit, size_usd, size_units, atr, int(testnet), ctx_json),
             )
             conn.commit()
-        logger.info("Trade persisté: %s %s %s @ %.2f size=$%.0f", trade_id, symbol, action, entry_price, size_usd)
+        logger.info("Trade persisted: %s %s %s @ %.2f size=$%.0f", trade_id, symbol, action, entry_price, size_usd)
         return trade_id
     except Exception as exc:
         logger.warning("persist_trade failed: %s", exc)
@@ -95,7 +95,7 @@ def persist_trade(
 
 
 def get_v4_trades(n: int = 200, symbol: str | None = None) -> list[dict]:
-    """Retourne les N derniers trades V4."""
+    """Return the last N V4 trades."""
     from storage.database import get_connection
 
     try:
@@ -116,7 +116,7 @@ def get_v4_trades(n: int = 200, symbol: str | None = None) -> list[dict]:
 
 
 def get_open_positions(symbol: str | None = None) -> list[dict]:
-    """Retourne toutes les positions encore ouvertes."""
+    """Return every still-open position."""
     from storage.database import get_connection
 
     try:
@@ -170,7 +170,7 @@ def close_position(
             )
             conn.commit()
         logger.info(
-            "Position fermée: %s @ %.2f pnl=$%.2f (%s)",
+            "Position closed: %s @ %.2f pnl=$%.2f (%s)",
             trade_id, close_price, pnl_usd, reason,
         )
         return True
@@ -180,7 +180,7 @@ def close_position(
 
 
 def update_stop_loss(trade_id: str, new_sl: float) -> bool:
-    """Met à jour le stop-loss d'une position ouverte (trailing)."""
+    """Update the stop-loss of an open position (trailing)."""
     from storage.database import get_connection
 
     try:

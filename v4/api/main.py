@@ -137,7 +137,7 @@ async def carry_run() -> dict:
             logging.getLogger("v4.api.main").error("Manual carry cycle failed: %s", e)
 
     threading.Thread(target=_run, daemon=True, name="carry-run-manual").start()
-    return {"ok": True, "message": "Cycle carry lancé en arrière-plan"}
+    return {"ok": True, "message": "Carry cycle launched in the background"}
 
 
 @app.post("/carry/reload-config")
@@ -164,10 +164,10 @@ async def carry_reload_config() -> dict:
             except Exception as exc:
                 errors.append(f"{sym}: {exc}")
     except Exception as exc:
-        errors.append(f"module prices indisponible: {exc}")
+        errors.append(f"prices module unavailable: {exc}")
 
     logging.getLogger("v4.api.main").info(
-        "Config rechargée — %d actifs actifs | tickers: %d | erreurs: %d",
+        "Config reloaded - %d active assets | tickers: %d | errors: %d",
         len(active), tickers_ok, len(errors),
     )
     return {

@@ -57,7 +57,7 @@ _SESSION_LOCK = threading.Lock()
 
 
 def _init_session_db() -> None:
-    """Crée la table sessions si absente."""
+    """Create the sessions table when missing."""
     _SESSION_DB.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(_SESSION_DB), timeout=10) as conn:
         conn.execute("""
@@ -71,7 +71,7 @@ def _init_session_db() -> None:
 
 
 def _store_session(username: str, roles: list[str], expiry_days: int) -> str:
-    """Crée une session SQLite, retourne le session_id (UUID)."""
+    """Create a SQLite session, return the session_id (UUID)."""
     session_id = str(uuid.uuid4())
     exp = time.time() + expiry_days * 86400
     _init_session_db()
@@ -86,7 +86,7 @@ def _store_session(username: str, roles: list[str], expiry_days: int) -> str:
 
 
 def _get_stored_session(session_id: str) -> dict | None:
-    """Récupère une session SQLite. None si expirée/invalide."""
+    """Fetch a SQLite session. None when expired/invalid."""
     if not session_id:
         return None
     try:
@@ -104,7 +104,7 @@ def _get_stored_session(session_id: str) -> dict | None:
 
 
 def _delete_session(session_id: str) -> None:
-    """Supprime une session SQLite."""
+    """Delete a SQLite session."""
     if not session_id:
         return
     try:
@@ -204,7 +204,7 @@ def logout(cm=None) -> None:
 
 def render_auth(cm=None) -> None:
     """
-    Affiche le formulaire d'authentification adapté à l'étape courante.
+    Render the authentication form matching the current step.
     Gère : premier lancement, login, TOTP setup, TOTP verify.
     Cookie manager supprimé (incompatible Streamlit ≥1.35) — session via _sid URL.
     """
@@ -305,7 +305,7 @@ def render_auth(cm=None) -> None:
 
 
 def _render_first_setup(cfg: dict) -> None:
-    """Formulaire de création du compte admin lors du premier lancement."""
+    """Admin account creation form on first launch."""
     _centered_open()
     st.markdown("### ⚙️ Configuration initiale — Atlas Trader")
     st.info(t("setup_info"))
@@ -345,7 +345,7 @@ def _render_first_setup(cfg: dict) -> None:
 
 
 def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
-    """Configuration TOTP initiale : génère et affiche le QR code."""
+    """Initial TOTP setup: generate and show the QR code."""
     active = get_session()
     if active and has_role(active, "back"):
         st.session_state.pop("_auth_step", None)
@@ -416,7 +416,7 @@ def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
 
 
 def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
-    """Vérification TOTP lors d'une connexion normale."""
+    """TOTP verification during a normal login."""
     active = get_session()
     if active and has_role(active, "back"):
         st.session_state.pop("_auth_step", None)
@@ -488,7 +488,7 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
 
 
 def _finalize_login(username: str, roles: list[str], expiry_days: int = 7) -> None:
-    """Finalise la connexion : crée la session SQLite + met à jour les query params + rerun."""
+    """Finalise the login: create the SQLite session + update the query params + rerun."""
     session = {"username": username, "roles": roles}
     st.session_state["_auth_session"] = session
     st.session_state["admin_authenticated"] = "back" in roles
@@ -558,7 +558,7 @@ def render_users_admin() -> None:
         st.info(t("usr_no_users"))
     else:
         for uname, udata in list(users.items()):
-            with st.expander(f"👤 {uname} — rôles : {', '.join(udata.get('roles', []))}"):
+            with st.expander(f"👤 {uname} — roles: {', '.join(udata.get('roles', []))}"):
                 roles = udata.get("roles", [])
                 col_r1, col_r2 = st.columns(2)
                 with col_r1:
@@ -651,4 +651,4 @@ def render_users_admin() -> None:
     if st.button(t("auth_save_changes"), type="primary", use_container_width=True):
         cfg["users"] = users
         save_users_config(cfg)
-        st.success("✅ Configuration utilisateurs sauvegardée.")
+        st.success("✅ User configuration saved.")

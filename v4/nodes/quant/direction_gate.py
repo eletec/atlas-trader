@@ -188,19 +188,19 @@ class DirectionGate(Node):
                 # Standard mode: block a signal that goes against the trend
                 if trend == "bullish" and signal == "short":
                     return {"signal": "flat", "blocked": True, "score": 0.0,
-                            "reason": f"trend_veto: 4h bullish → SHORT bloqué"}
+                            "reason": f"trend_veto: 4h bullish -> SHORT blocked"}
                 if trend == "bearish" and signal == "long":
                     return {"signal": "flat", "blocked": True, "score": 0.0,
-                            "reason": f"trend_veto: 4h bearish → LONG bloqué"}
+                            "reason": f"trend_veto: 4h bearish -> LONG blocked"}
 
             return {"signal": signal, "blocked": False, "reason": "", "score": 0.0}
 
         # ── Mode 2 : params allow_* (pas de trend) ────────────────────────
         if signal == "long" and not allow_long:
             return {"signal": "flat", "blocked": True, "score": 0.0,
-                    "reason": "direction_gate: LONG désactivé (allow_long=False)"}
+                    "reason": "direction_gate: LONG disabled (allow_long=False)"}
         if signal == "short" and not allow_short:
             return {"signal": "flat", "blocked": True, "score": 0.0,
-                    "reason": "direction_gate: SHORT désactivé (allow_short=False)"}
+                    "reason": "direction_gate: SHORT disabled (allow_short=False)"}
 
         return {"signal": signal, "blocked": False, "reason": "", "score": 0.0}

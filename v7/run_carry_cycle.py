@@ -50,7 +50,7 @@ except Exception:
 
 
 def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
-    """Écrit un log dans la table dag_logs pour compatibilité dashboard."""
+    """Write a log row into the dag_logs table for dashboard compatibility."""
     try:
         import sqlite3, os
         db_path = os.environ.get("DATABASE_URL", "sqlite:////app/data/v4.db")
@@ -282,7 +282,7 @@ def run_cycle(
 
 
 def daemon_loop(interval_hours: float = 8.0):
-    """Boucle infinie — exécute un cycle toutes les N heures."""
+    """Infinite loop - runs one cycle every N hours."""
     logger.info("Starting carry daemon (interval=%.1fh). Press Ctrl+C to stop.", interval_hours)
     
     stop_flag = False

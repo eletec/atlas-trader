@@ -29,7 +29,7 @@ _LOG_LOCK = threading.Lock()
 
 
 def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
-    """Ajoute une entrée dans le buffer circulaire de logs + persiste en DB."""
+    """Append an entry to the circular log buffer + persist it in the DB."""
     entry = {
         "ts": datetime.now().isoformat(timespec="seconds"),
         "level": level,
@@ -62,7 +62,7 @@ def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
 
 
 def get_logs(n: int = 50) -> list[dict]:
-    """Retourne les N derniers logs."""
+    """Return the last N logs."""
     with _LOG_LOCK:
         return list(_LOG_BUFFER)[-n:]
 
@@ -80,7 +80,7 @@ class DAGEntry:
 
 
 class DAGRegistry:
-    """Singleton — accès via DAGRegistry.instance()."""
+    """Singleton - access through DAGRegistry.instance()."""
 
     _instance: "DAGRegistry | None" = None
     _lock = threading.Lock()
@@ -102,7 +102,7 @@ class DAGRegistry:
     # ------------------------------------------------------------------
 
     def _build_executor(self, dag_spec: "DAGSpec") -> DAGExecutor:  # noqa: F821
-        """Instancie les nœuds depuis le registre et monte le DAGExecutor."""
+        """Instantiate the nodes from the registry and build the DAGExecutor."""
         from v4.nodes import NODE_REGISTRY
         from v4.core.node import NodeMeta
 
@@ -138,8 +138,8 @@ class DAGRegistry:
     # ------------------------------------------------------------------
 
     def run_once(self, dag_spec: "DAGSpec") -> dict[str, NodeRunResult]:
-        """Exécute un DAG une fois et retourne les résultats. Sans persistance."""
-        _emit_log("INFO", dag_spec.dag_id, f"▶ {dag_spec.asset} — démarrage")
+        """Run a DAG once and return the results. Without persistence."""
+        _emit_log("INFO", dag_spec.dag_id, f"▶ {dag_spec.asset} — starting")
         executor = self._build_executor(dag_spec)
         results = executor.run_once()
         done = sum(1 for r in results.values() if r.status.value == "done")
@@ -202,7 +202,7 @@ class DAGRegistry:
         return True
 
     def status(self, dag_id: str | None = None) -> list[DAGEntry]:
-        """Retourne le statut d'un DAG ou de tous les DAGs."""
+        """Return the status of one DAG or of every DAG."""
         with self._mu:
             if dag_id is not None:
                 entry = self._dags.get(dag_id)
@@ -214,7 +214,7 @@ class DAGRegistry:
     # ------------------------------------------------------------------
 
     def _loop(self, dag_id: str, cycle_s: float) -> None:
-        _emit_log("INFO", dag_id, f"Boucle démarrée (cycle={cycle_s}s)")
+        _emit_log("INFO", dag_id, f"Loop started (cycle={cycle_s}s)")
         while True:
             with self._mu:
                 entry = self._dags.get(dag_id)
@@ -239,7 +239,7 @@ class DAGRegistry:
 
             time.sleep(cycle_s)
 
-        _emit_log("INFO", dag_id, "Boucle arrêtée")
+        _emit_log("INFO", dag_id, "Loop stopped")
         logger.info("DAG %s — loop ended", dag_id)
 
 
@@ -248,7 +248,7 @@ class DAGRegistry:
 # ------------------------------------------------------------------
 
 def _summarize_node(nid: str, r: "NodeRunResult") -> str:
-    """Résumé compact d'un résultat de nœud pour les logs."""
+    """Compact summary of a node result for the logs."""
     dur_s = r.duration_ms / 1000
     status = r.status.value
     if status == "error":

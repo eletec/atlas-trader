@@ -22,13 +22,13 @@ DEFAULT_STORE_PATH = "/app/data/dags.json"
 
 
 def _store_path() -> Path:
-    """Chemin du fichier de persistance."""
+    """Path of the persistence file."""
     env = os.environ.get("DAG_STORE_PATH", DEFAULT_STORE_PATH)
     return Path(env)
 
 
 def load_all() -> list[DAGSpec]:
-    """Charge tous les DAGs persistés. Retourne [] si fichier absent/vide."""
+    """Load every persisted DAG. Returns [] when the file is missing/empty."""
     path = _store_path()
     if not path.exists():
         logger.info("dag_store: %s not found, no persisted DAGs", path)
@@ -42,12 +42,12 @@ def load_all() -> list[DAGSpec]:
         logger.info("dag_store: %d DAG(s) loaded from %s", len(dags), path)
         return dags
     except Exception as exc:
-        logger.warning("dag_store: erreur lecture %s: %s", path, exc)
+        logger.warning("dag_store: read error %s: %s", path, exc)
         return []
 
 
 def save_all(dags: list[DAGSpec]) -> None:
-    """Sauvegarde la liste complète des DAGs (écrase le fichier)."""
+    """Save the full DAG list (overwrites the file)."""
     path = _store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [d.model_dump() for d in dags]
@@ -56,7 +56,7 @@ def save_all(dags: list[DAGSpec]) -> None:
 
 
 def upsert(dag: DAGSpec) -> None:
-    """Ajoute ou met à jour un DAG dans le store."""
+    """Add or update a DAG in the store."""
     dags = load_all()
     replaced = False
     for i, d in enumerate(dags):
@@ -70,7 +70,7 @@ def upsert(dag: DAGSpec) -> None:
 
 
 def remove(dag_id: str) -> bool:
-    """Retire un DAG du store. Retourne True si trouvé/supprimé."""
+    """Remove a DAG from the store. Returns True when found/removed."""
     dags = load_all()
     new_dags = [d for d in dags if d.dag_id != dag_id]
     if len(new_dags) == len(dags):

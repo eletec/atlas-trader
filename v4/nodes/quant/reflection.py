@@ -172,7 +172,7 @@ class ReflectionNode(Node):
     def _generate_lesson(
         self, symbol: str, action: str, entry: float, pnl: float, trade: dict
     ) -> str:
-        """Génère une leçon concise sans LLM (patterns heuristiques)."""
+        """Generate a concise lesson without an LLM (heuristic patterns)."""
         won = pnl > 0
 
         # Patterns communs

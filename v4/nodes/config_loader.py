@@ -19,7 +19,7 @@ _cache_mtime: float = 0.0
 
 
 def _get_settings() -> dict:
-    """Charge settings.yaml + secrets.yaml avec cache (invalidation si fichier modifié)."""
+    """Load settings.yaml + secrets.yaml with a cache (invalidated when a file changes)."""
     global _cache, _cache_mtime
     # Priority: /app/data/ (writable, persistent) > config/ (git-tracked, read-only)
     _git_settings = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"

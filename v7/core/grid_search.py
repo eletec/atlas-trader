@@ -39,7 +39,7 @@ COARSE_GRID = {
 }
 
 def refine_grid(best_params: dict) -> dict[str, list]:
-    """Genere une grille fine autour des meilleurs parametres."""
+    """Generate a fine grid around the best parameters."""
     mf = best_params.get("min_funding", 0.00005)
     hold = best_params.get("max_hold_days", 30)
     frac = best_params.get("fraction", 0.50)
@@ -56,13 +56,13 @@ OBJECTIVE = "sharpe"
 
 
 def run_backtest(symbol: str, days: int, capital: float, params: dict) -> dict:
-    """Lance un backtest avec les parametres donnes (utilise backtest_v7_node.backtest_asset)."""
+    """Run a backtest with the given parameters (uses backtest_v7_node.backtest_asset)."""
     from v7.backtest_v7_node import backtest_asset
     return backtest_asset(symbol, days, capital, params_override=params)
 
 
 def grid_search_symbol(symbol: str, days: int, capital: float, passes: int = 2) -> dict:
-    """Grid search en entonnoir (coarse → fine) pour un actif."""
+    """Funnel grid search (coarse -> fine) for one asset."""
     grid = COARSE_GRID
     best_result = None
     all_results = []
@@ -104,7 +104,7 @@ def grid_search_symbol(symbol: str, days: int, capital: float, passes: int = 2) 
             if pn < passes:
                 grid = refine_grid(pass_best.get("params", {}))
         else:
-            logger.warning("%s pass %d: aucun resultat", symbol, pn)
+            logger.warning("%s pass %d: no result", symbol, pn)
             break
 
     # Dedup + tri
@@ -143,7 +143,7 @@ def main():
     else:
         symbols = [normalize_symbol(s) for s in args.symbol.split(",") if s.strip()]
 
-    logger.info("Grid search: %d actifs, %d jours, $%.0f/asset", len(symbols), args.days, args.capital)
+    logger.info("Grid search: %d assets, %d days, $%.0f/asset", len(symbols), args.days, args.capital)
 
     all_results = {}
     t0 = time.time()
@@ -160,8 +160,8 @@ def main():
 
     # Summary
     print(f"\n{'='*80}")
-    print(f"Grid search termine — {len(symbols)} actifs, {args.passes} passes — {elapsed:.0f}s")
-    print(f"Résultats : {args.output}")
+    print(f"Grid search finished - {len(symbols)} assets, {args.passes} passes - {elapsed:.0f}s")
+    print(f"Results: {args.output}")
     for sym, r in all_results.items():
         best = r.get("best")
         if best and "error" not in best:

@@ -48,7 +48,7 @@ class PositionMonitor:
 
     @property
     def circuit_breaker_active(self) -> bool:
-        """Tier 0: vrai si les nouvelles entrées doivent être bloquées."""
+        """Tier 0: true when new entries must be blocked."""
         return self._circuit_breaker
 
     @staticmethod
@@ -64,7 +64,7 @@ class PositionMonitor:
             from v7.core.asset_config import get_global_params
             glob = get_global_params()
         except Exception as exc:
-            logger.warning("PositionMonitor: carry_assets.yaml indisponible (%s) — fallback", exc)
+            logger.warning("PositionMonitor: carry_assets.yaml unavailable (%s) - fallback", exc)
         return {
             "max_loss_pct": MAX_LOSS_PCT_DEFAULT,
             "max_portfolio_dd_pct": PORTFOLIO_DD_PCT_DEFAULT,
@@ -74,7 +74,7 @@ class PositionMonitor:
 
     @staticmethod
     def _max_hold_days_for(symbol: str) -> int:
-        """Time-stop configuré pour l'actif (carry_assets.yaml), sinon défaut."""
+        """Time-stop configured for the asset (carry_assets.yaml), otherwise the default."""
         try:
             from v7.core.asset_config import get_asset_params
             val = get_asset_params(symbol).get("max_hold_days")
@@ -93,9 +93,9 @@ class PositionMonitor:
     # ── Public API ─────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Démarre le thread de surveillance en arrière-plan."""
+        """Start the background monitoring thread."""
         if self._thread is not None and self._thread.is_alive():
-            logger.info("PositionMonitor déjà actif")
+            logger.info("PositionMonitor already running")
             return
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="position-monitor")
@@ -103,7 +103,7 @@ class PositionMonitor:
         logger.info("PositionMonitor started (interval=%ds)", CHECK_INTERVAL_S)
 
     def stop(self) -> None:
-        """Arrête le thread proprement."""
+        """Stop the thread cleanly."""
         if self._stop_event:
             self._stop_event.set()
         if self._thread:
@@ -113,7 +113,7 @@ class PositionMonitor:
     # ── Internal ───────────────────────────────────────────────────────────
 
     def _loop(self) -> None:
-        """Boucle principale : vérifie les positions toutes les N secondes."""
+        """Main loop: check the positions every N seconds."""
         logger.info("PositionMonitor loop started")
         # Small initial delay to let the API start
         time.sleep(10)
@@ -251,7 +251,7 @@ class PositionMonitor:
         if kill_switch and kill_tier and not self._kill_switch_triggered:
             self._kill_switch_triggered = True
             logger.error(
-                "🔴 KILL-SWITCH TIER %s : P&L=%.2f%% (%.2f$) → FERMETURE DE TOUTES LES POSITIONS",
+                "🔴 KILL-SWITCH TIER %s: P&L=%.2f%% (%.2f$) -> CLOSING ALL POSITIONS",
                 kill_tier, total_pnl_pct, total_unrealized,
             )
             for pd in pos_data:
@@ -404,7 +404,7 @@ class PositionMonitor:
     # ── Carry Economics (two-leg P&L) ────────────────────────────────────
 
     def _get_cached_perp(self, symbol: str) -> float:
-        """Retourne le prix perp actuel, avec cache 30s."""
+        """Return the current perp price, with a 30s cache."""
         now = time.time()
         with self._lock:
             cached = self._perp_cache.get(symbol)
@@ -598,7 +598,7 @@ class PositionMonitor:
     # -- Price fetching (with a short-lived cache) --
 
     def _get_cached_price(self, symbol: str) -> float:
-        """Retourne le prix spot actuel, avec cache 30s pour éviter de spammer l'exchange."""
+        """Return the current spot price, with a 30s cache to avoid hammering the exchange."""
         now = time.time()
         with self._lock:
             cached = self._price_cache.get(symbol)
@@ -614,7 +614,7 @@ class PositionMonitor:
 
     @staticmethod
     def _fetch_spot(symbol: str) -> float:
-        """Fetch le prix spot via CCXT Binance."""
+        """Fetch the spot price through CCXT Binance."""
         try:
             import ccxt
             exchange = ccxt.binance({"enableRateLimit": True})
@@ -631,7 +631,7 @@ _monitor: PositionMonitor | None = None
 
 
 def start_monitor() -> None:
-    """Lance le moniteur de positions (appelé depuis main.py au démarrage)."""
+    """Start the position monitor (called from main.py at startup)."""
     global _monitor
     if _monitor is None:
         _monitor = PositionMonitor.instance()
@@ -639,7 +639,7 @@ def start_monitor() -> None:
 
 
 def stop_monitor() -> None:
-    """Arrête le moniteur (appelé au shutdown)."""
+    """Stop the monitor (called on shutdown)."""
     global _monitor
     if _monitor:
         _monitor.stop()

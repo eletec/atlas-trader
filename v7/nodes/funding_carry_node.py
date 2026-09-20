@@ -24,7 +24,7 @@ logger = logging.getLogger("funding_carry_node")
 
 @dataclass
 class FundingCarryState:
-    """État persistant du nœud Funding Carry."""
+    """Persistent state of the Funding Carry node."""
     symbol: str
     position_open: bool = False
     entry_capital: float = 0.0
@@ -157,7 +157,7 @@ class FundingCarryNode:
                 if ts:
                     self.state.entry_time = ts
                 logger.info(
-                    "[%s] Position carry restaurée : spot=%.2f perp=%.2f capital=$%.0f opened=%s",
+                    "[%s] Carry position restored: spot=%.2f perp=%.2f capital=$%.0f opened=%s",
                     self.node_id, self.state.entry_spot, self.state.entry_perp,
                     self.state.entry_capital, self.state.entry_time[:19] if self.state.entry_time else "?"
                 )
@@ -218,7 +218,7 @@ class FundingCarryNode:
         return {"symbol": "str", "spot_price": "float", "funding_rate": "float", "perp_price": "float"}
     
     def execute(self, inputs: dict[str, Any]) -> NodeRunResult:
-        """Point d'entrée DAG framework → délègue à run()."""
+        """DAG framework entry point -> delegates to run()."""
         import time as _time
         t0 = _time.time()
         try:
@@ -240,7 +240,7 @@ class FundingCarryNode:
     # ── Data fetching ──
     
     def _get_exchange(self):
-        """Retourne l'instance CCXT configurée (binance | bybit | okx | kraken)."""
+        """Return the configured CCXT instance (binance | bybit | okx | kraken)."""
         import ccxt
         ex_map = {
             "binance": ccxt.binance, "bybit": ccxt.bybit,
@@ -250,7 +250,7 @@ class FundingCarryNode:
 
     @staticmethod
     def _perp_symbol(symbol: str) -> str:
-        """Convertit un symbole spot en symbole perp USDⓈ-M (gère les contrats ×1000)."""
+        """Convert a spot symbol into a USDⓈ-M perp symbol (handles x1000 contracts)."""
         base = symbol.split("/")[0]
         MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB", "BONK": "1000BONK",
                           "FLOKI": "1000FLOKI", "LUNC": "1000LUNC"}
@@ -277,7 +277,7 @@ class FundingCarryNode:
             return 0.05
 
     def fetch_current_funding(self) -> float:
-        """Fetch le funding rate actuel."""
+        """Fetch the current funding rate."""
         try:
             import ccxt
             exchange = self._get_exchange()
@@ -303,7 +303,7 @@ class FundingCarryNode:
             return 0.0
     
     def fetch_spot_price(self) -> float:
-        """Fetch le prix spot actuel avec retry + log en cas d'échec."""
+        """Fetch the current spot price with retries + logging on failure."""
         import time as _time
         last_err = ""
         for attempt in range(3):
@@ -322,7 +322,7 @@ class FundingCarryNode:
         return 0.0
     
     def fetch_perp_price(self) -> float:
-        """Fetch le prix du perpetual (normalisé au prix par token) avec retry."""
+        """Fetch the perpetual price (normalised to the per-token price) with retries."""
         import time as _time
         last_err = ""
         for attempt in range(3):
@@ -717,7 +717,7 @@ class FundingCarryNode:
         return outputs
     
     def reset(self):
-        """Réinitialise l'état (pour backtest)."""
+        """Reset the state (for backtests)."""
         self.state = FundingCarryState(symbol=self.symbol)
         self._funding_cache = []
 
@@ -742,7 +742,7 @@ if __name__ == "__main__":
         "spot_price": 67100,
         "funding_rate": 0.0001,
     })
-    print(f"Signal: {result2['signal']} | Funding reçu: {result2['total_funding_received']:.6f}")
+    print(f"Signal: {result2['signal']} | Funding received: {result2['total_funding_received']:.6f}")
     
     # Simulate negative funding
     node.state.negative_since = (datetime.now() - timedelta(hours=50)).isoformat()

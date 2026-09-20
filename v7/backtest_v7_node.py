@@ -47,7 +47,7 @@ except Exception:
 
 
 def _perp_symbol(symbol: str) -> str:
-    """Convertit un symbole spot en symbole perp USDⓈ-M (gère les contrats ×1000)."""
+    """Convert a spot symbol into a USDⓈ-M perp symbol (handles x1000 contracts)."""
     base = symbol.split("/")[0]
     MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB", "BONK": "1000BONK",
                       "FLOKI": "1000FLOKI", "LUNC": "1000LUNC"}
@@ -77,7 +77,7 @@ def fetch_prices(symbol: str, days: int, is_perp: bool = False) -> pd.DataFrame:
 
 
 def fetch_funding_history(symbol: str, days: int) -> pd.DataFrame:
-    """Récupère l'historique des funding rates depuis Binance USDⓈ-M."""
+    """Fetch the funding rate history from Binance USDⓈ-M."""
     try:
         import ccxt
         exchange = ccxt.binanceusdm({"enableRateLimit": True})
@@ -107,7 +107,7 @@ def fetch_funding_history(symbol: str, days: int) -> pd.DataFrame:
 
 def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
                    params_override: dict | None = None) -> dict:
-    """Backtest un actif avec le vrai FundingCarryNode + prix reels."""
+    """Backtest one asset with the real FundingCarryNode + real prices."""
     from v7.nodes.funding_carry_node import FundingCarryNode
 
     # 1) Load the data

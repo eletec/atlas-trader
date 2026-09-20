@@ -52,7 +52,7 @@ class PositionManager(Node):
     def _calc_chandelier_sl(
         self, ohlcv, action: str, atr: float, lookback: int, atr_mult: float
     ) -> float:
-        """Chandelier Exit : SL basé sur le plus haut/bas des N barres."""
+        """Chandelier exit: stop based on the highest/lowest of the last N bars."""
         recent = ohlcv.iloc[-lookback:]
         if action == "long":
             highest = float(recent["high"].max())
@@ -101,7 +101,7 @@ class PositionManager(Node):
             return {"closed": [], "open_positions": positions}
 
         if ohlcv_atr is None or len(ohlcv_atr) < atr_period:
-            logger.warning("PositionManager: pas assez d'OHLCV pour ATR")
+            logger.warning("PositionManager: not enough OHLCV for the ATR")
             return {"closed": [], "open_positions": positions}
 
         # ATR on the 1h timeframe
@@ -210,7 +210,7 @@ class PositionManager(Node):
                     if current_sl > 0:
                         new_sl = min(new_sl, current_sl)
                     new_sl = max(new_sl, current_close + _min_dist * atr)
-                logger.info("posmgr multi-TF: trend_1h=%s action=%s → SL×%.1f (%s)", trend_1h, action, _tf_mult, _tf_label)
+                logger.info("posmgr multi-TF: trend_1h=%s action=%s -> SL x%.1f (%s)", trend_1h, action, _tf_mult, _tf_label)
 
             # -- Time-stop: close dormant positions (>48h, <0.5% profit) --
             if not hit:

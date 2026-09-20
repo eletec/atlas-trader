@@ -25,7 +25,7 @@ _pending_lock = threading.Lock()
 
 
 def dispatch(key: str, fn: Callable[[], dict[str, Any]]) -> None:
-    """Lance `fn()` en arrière-plan. Le résultat est accessible via get_result(key)."""
+    """Run `fn()` in the background. The result is available through get_result(key)."""
     def _run_and_store():
         try:
             result = fn()
@@ -52,20 +52,20 @@ def dispatch(key: str, fn: Callable[[], dict[str, Any]]) -> None:
 
 
 def get_result(key: str) -> dict[str, Any] | None:
-    """Récupère le résultat du dernier appel async pour cette clé, ou None."""
+    """Fetch the result of the last async call for this key, or None."""
     with _cache_lock:
         return _cache.get(key)
 
 
 def is_pending(key: str) -> bool:
-    """Vérifie si une tâche est en cours pour cette clé."""
+    """Check whether a task is running for this key."""
     with _pending_lock:
         fut = _pending.get(key)
         return fut is not None and not fut.done()
 
 
 def clear_cache():
-    """Vide le cache (utile au reset)."""
+    """Clear the cache (useful on reset)."""
     with _cache_lock:
         _cache.clear()
     with _pending_lock:

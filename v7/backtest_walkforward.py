@@ -62,7 +62,7 @@ def _perp_symbol(symbol: str) -> str:
 
 
 def fetch_funding_history_3y(symbol: str, days: int = 1300) -> pd.DataFrame:
-    """Récupère jusqu'à ~3.5 ans de funding rates (depuis ~2023-01-01)."""
+    """Fetch up to ~3.5 years of funding rates (since ~2023-01-01)."""
     try:
         import ccxt
         exchange = ccxt.binanceusdm({"enableRateLimit": True})
@@ -112,7 +112,7 @@ def fetch_funding_history_3y(symbol: str, days: int = 1300) -> pd.DataFrame:
 
 
 def fetch_prices_3y(symbol: str, days: int = 1300, is_perp: bool = False) -> pd.DataFrame:
-    """Récupère les prix daily spot ou perp."""
+    """Fetch the daily spot or perp prices."""
     try:
         import ccxt
         if is_perp:
@@ -138,7 +138,7 @@ def fetch_prices_3y(symbol: str, days: int = 1300, is_perp: bool = False) -> pd.
 
 @dataclass
 class RegimeLabel:
-    """Classification simple du régime BTC."""
+    """Simple BTC regime classification."""
     date: pd.Timestamp
     regime: str       # "bull", "bear", "range"
     btc_price: float
@@ -179,7 +179,7 @@ def classify_regimes(btc_prices: pd.DataFrame) -> pd.DataFrame:
 
 @dataclass
 class WFWindow:
-    """Résultat d'une fenêtre walk-forward."""
+    """Result of one walk-forward window."""
     train_start: str
     train_end: str
     test_start: str
@@ -203,7 +203,7 @@ def generate_wf_windows(
     test_months: int = 3,
     step_months: int = 3,
 ) -> list[dict]:
-    """Génère les fenêtres walk-forward (causal, pas de look-ahead)."""
+    """Generate the walk-forward windows (causal, no look-ahead)."""
     start = pd.Timestamp(start_date)
     end = pd.Timestamp(end_date)
     windows = []
@@ -229,7 +229,7 @@ def generate_wf_windows(
 def is_asset_available_at(symbol: str, date: pd.Timestamp, 
                           funding_data: dict[str, pd.DataFrame],
                           min_history_months: int = 6) -> bool:
-    """Vérifie si un actif est disponible à la date t (≥6 mois d'historique avant t)."""
+    """Check whether an asset is available at date t (>=6 months of history before t)."""
     df = funding_data.get(symbol)
     if df is None or df.empty:
         return False
@@ -260,7 +260,7 @@ def run_walkforward(
     
     # ── 1) Data pipeline (one fetch per asset) ──
     logger.info("=" * 70)
-    logger.info("PHASE 1: Data pipeline — %d actifs, ~3.5 ans", len(symbols))
+    logger.info("PHASE 1: Data pipeline - %d assets, ~3.5 years", len(symbols))
     logger.info("=" * 70)
     
     funding_data: dict[str, pd.DataFrame] = {}
@@ -287,7 +287,7 @@ def run_walkforward(
             price_data[sym] = {"spot": df_spot, "perp": df_perp}
         else:
             # Without real prices the backtest fell back to $1000: 100% fabricated P&L.
-            logger.error("%s: prix spot/perp indisponibles — actif exclu du backtest", sym)
+            logger.error("%s: spot/perp prices unavailable - asset excluded from the backtest", sym)
             funding_data.pop(sym, None)
             continue
         
@@ -319,7 +319,7 @@ def run_walkforward(
     )
     
     logger.info("=" * 70)
-    logger.info("PHASE 3: Walk-forward — %d fenêtres", len(windows_config))
+    logger.info("PHASE 3: Walk-forward - %d windows", len(windows_config))
     logger.info("=" * 70)
     
     from v7.nodes.funding_carry_node import FundingCarryNode
@@ -517,10 +517,10 @@ def run_walkforward(
 def main():
     parser = argparse.ArgumentParser(description="V7 Walk-Forward Backtest (GPT audit Priority #2)")
     parser.add_argument("--symbols", type=str, default="ALL",
-                        help="ALL, ACTIVE, BTC, BTC/USDT, ou BTC,ETH (séparés par virgule)")
-    parser.add_argument("--days", type=int, default=1300, help="Jours de données (défaut 1300 = ~3.5 ans)")
+                        help="ALL, ACTIVE, BTC, BTC/USDT, or BTC,ETH (comma-separated)")
+    parser.add_argument("--days", type=int, default=1300, help="Days of data (default 1300 = ~3.5 years)")
     parser.add_argument("--capital", type=float, default=2000)
-    parser.add_argument("--train", type=int, default=12, help="Mois d'entraînement")
+    parser.add_argument("--train", type=int, default=12, help="Training months")
     parser.add_argument("--test", type=int, default=3, help="Mois de test OOS")
     parser.add_argument("--step", type=int, default=3, help="Pas en mois")
     parser.add_argument("--quick", action="store_true", help="Mode rapide (train=3, test=1, step=1)")
@@ -534,9 +534,9 @@ def main():
         symbols = [normalize_symbol(s) for s in args.symbols.split(",") if s.strip()]
     
     print("=" * 80)
-    print("ATLAS V7 — Walk-Forward Backtest (GPT Audit Priorité #2)")
+    print("ATLAS V7 — Walk-Forward Backtest (GPT audit priority #2)")
     print(f"Assets: {len(symbols)} | Train: {args.train}m | Test: {args.test}m | Step: {args.step}m")
-    print(f"Capital: ${args.capital}/asset | Frais: 48bps RT | Hurdle: 5% (gelé)")
+    print(f"Capital: ${args.capital}/asset | Fees: 48bps RT | Hurdle: 5% (frozen)")
     print("=" * 80)
     
     results = run_walkforward(
@@ -551,27 +551,27 @@ def main():
     
     # -- Display the results --
     print("\n" + "=" * 80)
-    print("RÉSULTATS OOS (Out-Of-Sample)")
+    print("OOS RESULTS (out-of-sample)")
     print("=" * 80)
     
     ps = results["portfolio_summary"]
-    print(f"Fenêtres: {ps['n_windows']} total, {ps['n_oos_windows']} avec trades")
+    print(f"Windows: {ps['n_windows']} total, {ps['n_oos_windows']} with trades")
     print(f"OOS median return: {ps['oos_median_return_pct']:+.3f}%")
     print(f"OOS worst return:  {ps['oos_worst_return_pct']:+.3f}%")
     print(f"OOS best return:   {ps['oos_best_return_pct']:+.3f}%")
-    print(f"OOS % positive:    {ps['oos_positive_pct']:.0f}%  (sur les {ps['n_oos_windows']} fenêtres ayant réellement tradé)")
+    print(f"OOS % positive:    {ps['oos_positive_pct']:.0f}%  (over the {ps['n_oos_windows']} windows that actually traded)")
     print(f"Total Trading P&L: ${ps['total_trading_pnl']:,.2f}")
     print(f"Total Staking P&L: ${ps['total_staking_pnl']:,.2f}")
     
     if results["regime_summary"]:
-        print("\n── Par régime ──")
+        print("\n-- By regime --")
         for regime, stats in sorted(results["regime_summary"].items()):
-            print(f"  {regime.upper():5s}: {stats['n_windows']} fenêtres, "
+            print(f"  {regime.upper():5s}: {stats['n_windows']} windows, "
                   f"median={stats['median_return_pct']:+.3f}%, "
                   f"worst={stats['worst_return_pct']:+.3f}%, "
                   f"best={stats['best_return_pct']:+.3f}%")
     
-    print("\n── Détail par fenêtre ──")
+    print("\n-- Per-window detail --")
     print(f"{'Train':<22} {'Test':<22} {'Regime':<6} {'Assets':<8} {'Traded':<7} {'Trading P&L':<12} {'Return%':<10}")
     print("-" * 90)
     for w in results["windows"]:
@@ -591,25 +591,25 @@ def main():
     _med_annual = _med_quarter * 4
     _hurdle = 5.0
 
-    print(f"Fenêtres tradées : {_n_traded}/{_n_total} ({_coverage:.0f}% de couverture)")
-    print(f"Médiane OOS      : {_med_quarter:+.3f}%/trimestre  ≈ {_med_annual:+.2f}%/an")
-    print(f"Hurdle stratégie : {_hurdle:+.2f}%/an")
+    print(f"Traded windows  : {_n_traded}/{_n_total} ({_coverage:.0f}% coverage)")
+    print(f"OOS median      : {_med_quarter:+.3f}%/quarter  ~ {_med_annual:+.2f}%/yr")
+    print(f"Strategy hurdle : {_hurdle:+.2f}%/yr")
     if _med_annual < _hurdle:
-        print(f"  ⚠️  La médiane OOS est SOUS le hurdle : la stratégie ne couvre pas")
-        print(f"      son coût du capital sur cet échantillon.")
+        print(f"  ⚠️  The OOS median is BELOW the hurdle: the strategy does not cover")
+        print(f"      its cost of capital on this sample.")
     if _coverage < 50:
-        print(f"  ⚠️  Moins de la moitié des fenêtres ont tradé : échantillon faible.")
+        print(f"  ⚠️  Fewer than half of the windows traded: weak sample.")
     print("-" * 80)
 
     if _n_traded < 5:
-        verdict = f"NO-GO — échantillon insuffisant ({_n_traded} fenêtre(s) tradée(s))"
+        verdict = f"NO-GO - insufficient sample ({_n_traded} traded window(s))"
     elif _coverage < 50:
         verdict = f"Paper trading uniquement — couverture OOS insuffisante ({_coverage:.0f}%)"
     elif _med_annual < _hurdle:
         verdict = (f"Paper trading uniquement — rendement OOS {_med_annual:+.2f}%/an "
-                   f"sous le hurdle ({_hurdle:.0f}%/an)")
+                   f"below the hurdle ({_hurdle:.0f}%/yr)")
     else:
-        verdict = "GO pour capital réel"
+        verdict = "GO for real capital"
     print(f"Verdict: {verdict}")
     print("=" * 80)
 

@@ -94,7 +94,7 @@ class LLMNode(Node):
                             "error" in (cached or {}))
                 return {
                     "response": "⏳ Analyse en cours...",
-                    "parsed": {"status": "pending", "message": "L'IA analyse le marché, résultat au prochain cycle."},
+                    "parsed": {"status": "pending", "message": "The AI is analysing the market; result on the next cycle."},
                     "tokens_used": 0,
                     "model": self.params.get("model", "?"),
                     "duration_ms": 0,
@@ -106,7 +106,7 @@ class LLMNode(Node):
         return self._run_sync(inputs)
 
     def _run_sync(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Exécution synchrone du LLM (utilisée par async mode en background)."""
+        """Synchronous LLM execution (used by async mode in the background)."""
         from v4.nodes.config_loader import load_v4_config
 
         # -- Model: DAG params first -> settings.yaml (back-office) -> DeepSeek default --

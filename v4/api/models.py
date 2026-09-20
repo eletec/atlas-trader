@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 # ------------------------------------------------------------------
 
 class NodeSpec(BaseModel):
-    """Définition d'un nœud dans un DAG JSON."""
+    """Definition of one node in a JSON DAG."""
     id: str
     type: str                                  # ex: "LoadMultiTF"
     params: dict[str, Any] = Field(default_factory=dict)
@@ -29,7 +29,7 @@ class EdgeSpec(BaseModel):
 
 
 class DAGSpec(BaseModel):
-    """Payload complet décrivant un graphe."""
+    """Full payload describing a graph."""
     dag_id: str
     asset: str = ""
     nodes: list[NodeSpec]
@@ -43,7 +43,7 @@ class RunDAGRequest(BaseModel):
 
 class ScheduleDAGRequest(BaseModel):
     dag: DAGSpec
-    cycle_s: float = Field(gt=0, description="Intervalle de répétition en secondes")
+    cycle_s: float = Field(gt=0, description="Repeat interval in seconds")
 
 
 # ------------------------------------------------------------------

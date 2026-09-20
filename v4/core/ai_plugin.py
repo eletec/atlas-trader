@@ -22,7 +22,7 @@ DEFAULT_TIMEOUT_S = 10.0
 
 @dataclass
 class AIOutput:
-    """Résultat d'un plugin IA."""
+    """Result of an AI plugin."""
     value: Any                          # scalar, dict or string depending on the plugin
     rationale: str = ""                 # human-readable explanation (shown in the dashboard)
     confidence: float = 1.0            # [0, 1] - the model's confidence in its answer
@@ -57,7 +57,7 @@ class AIPlugin(ABC):
     @property
     @abstractmethod
     def plugin_type(self) -> str:
-        """Identifiant du plugin, ex: 'OllamaText'."""
+        """Plugin identifier, e.g. 'OllamaText'."""
 
     @abstractmethod
     def run(self, context: dict[str, Any]) -> AIOutput:

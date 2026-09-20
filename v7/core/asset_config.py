@@ -37,7 +37,7 @@ _CACHE: dict | None = None
 
 
 def config_path() -> Path:
-    """Chemin de config actif : /app/data en container, dépôt sinon."""
+    """Active config path: /app/data inside the container, the repo otherwise."""
     if _IN_CONTAINER or "V7_DATA_DIR" in os.environ:
         return _RUNTIME_PATH
     return _GIT_PATH
@@ -67,7 +67,7 @@ def _bootstrap_config() -> Path:
 
 
 def load_config() -> dict:
-    """Charge la configuration YAML (runtime > git, avec cache)."""
+    """Load the YAML config (runtime > git, with a cache)."""
     global _CACHE
     if _CACHE is not None:
         return _CACHE
@@ -83,14 +83,14 @@ def load_config() -> dict:
 
 
 def reload_config() -> dict:
-    """Vide le cache et recharge la configuration (après un scan ou une modif externe)."""
+    """Clear the cache and reload the config (after a scan or an external change)."""
     global _CACHE
     _CACHE = None
     return load_config()
 
 
 def save_config(cfg: dict) -> None:
-    """Sauvegarde la configuration YAML (runtime en container, dépôt sinon)."""
+    """Save the YAML config (runtime inside the container, the repo otherwise)."""
     global _CACHE
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -104,32 +104,32 @@ def save_config(cfg: dict) -> None:
 
 
 def get_active_assets() -> list[str]:
-    """Retourne la liste des symboles activés (enabled: true)."""
+    """Return the list of enabled symbols (enabled: true)."""
     cfg = load_config()
     assets = cfg.get("assets", {})
     return [sym for sym, params in assets.items() if params.get("enabled", False)]
 
 
 def get_all_assets() -> list[str]:
-    """Retourne TOUS les symboles (actifs et inactifs)."""
+    """Return ALL symbols (enabled and disabled)."""
     cfg = load_config()
     return list(cfg.get("assets", {}).keys())
 
 
 def get_asset_params(symbol: str) -> dict[str, Any]:
-    """Retourne les paramètres d'un actif spécifique."""
+    """Return the parameters of one specific asset."""
     cfg = load_config()
     return cfg.get("assets", {}).get(symbol, {})
 
 
 def get_global_params() -> dict[str, Any]:
-    """Retourne les paramètres globaux."""
+    """Return the global parameters."""
     cfg = load_config()
     return cfg.get("global", {})
 
 
 def set_asset_enabled(symbol: str, enabled: bool) -> None:
-    """Active ou désactive un actif."""
+    """Enable or disable an asset."""
     cfg = load_config()
     if symbol in cfg.get("assets", {}):
         cfg["assets"][symbol]["enabled"] = enabled
@@ -137,7 +137,7 @@ def set_asset_enabled(symbol: str, enabled: bool) -> None:
 
 
 def update_asset_params(symbol: str, params: dict) -> None:
-    """Met à jour les paramètres d'un actif."""
+    """Update the parameters of one asset."""
     cfg = load_config()
     if symbol in cfg.get("assets", {}):
         cfg["assets"][symbol].update(params)

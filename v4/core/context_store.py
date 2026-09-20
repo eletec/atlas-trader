@@ -73,7 +73,7 @@ class ContextStore:
             return self._slots.get(key)
 
     def snapshot(self) -> dict[str, dict]:
-        """Retourne un snapshot lisible de tous les slots (pour le dashboard)."""
+        """Return a readable snapshot of every slot (for the dashboard)."""
         with self._lock:
             return {
                 key: {
@@ -108,7 +108,7 @@ class ContextRegistry:
 
     @classmethod
     def global_store(cls) -> ContextStore:
-        """Store partagé pour les lanes transverses (FearGreed, Macro, CorrelMonitor...)."""
+        """Shared store for the cross-cutting lanes (FearGreed, Macro, CorrelMonitor...)."""
         return cls.get_store("__global__")
 
     @classmethod

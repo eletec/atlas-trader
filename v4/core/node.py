@@ -31,7 +31,7 @@ class NodeStatus(str, Enum):
 
 @dataclass
 class NodeMeta:
-    """Métadonnées d'un nœud : position canvas, label, groupe (lane)."""
+    """Node metadata: canvas position, label, group (lane)."""
     x: float = 0.0
     y: float = 0.0
     label: str = ""
@@ -85,12 +85,12 @@ class Node(ABC):
     @property
     @abstractmethod
     def node_type(self) -> str:
-        """Identifiant du type de nœud, ex: 'LoadMultiTF'."""
+        """Node type identifier, e.g. 'LoadMultiTF'."""
 
     @staticmethod
     @abstractmethod
     def input_schema() -> dict[str, str]:
-        """Port d'entrée → type attendu. Ex: {'ohlcv': 'DataFrame'}."""
+        """Input port -> expected type. E.g. {'ohlcv': 'DataFrame'}."""
 
     @staticmethod
     @abstractmethod
@@ -99,14 +99,14 @@ class Node(ABC):
 
     @abstractmethod
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Exécution synchrone. Reçoit les inputs résolus, retourne les outputs."""
+        """Synchronous execution. Receives the resolved inputs, returns the outputs."""
 
     # ------------------------------------------------------------------
     # Logique commune (bypass, AI blend, statut)
     # ------------------------------------------------------------------
 
     def execute(self, inputs: dict[str, Any]) -> NodeRunResult:
-        """Point d'entrée appelé par le DAGExecutor."""
+        """Entry point called by the DAGExecutor."""
         import time
 
         if self.meta.bypass:
@@ -154,7 +154,7 @@ class Node(ABC):
     def _apply_ai_blend(
         self, inputs: dict[str, Any], quant_outputs: dict[str, Any]
     ) -> dict[str, Any]:
-        """Tente le blend IA avec timeout. Fallback silencieux sur erreur."""
+        """Try the AI blend with a timeout. Silent fallback on error."""
         if self.ai_plugin is None:
             return quant_outputs
         try:
@@ -173,7 +173,7 @@ class Node(ABC):
             return quant_outputs
 
     def to_dict(self) -> dict[str, Any]:
-        """Sérialisation partielle pour le DAG JSON (sans outputs)."""
+        """Partial serialisation for the DAG JSON (without outputs)."""
         return {
             "id": self.node_id,
             "type": self.node_type,

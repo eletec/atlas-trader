@@ -22,7 +22,7 @@ logger = logging.getLogger("v4.nodes.quant.regime_detector")
 
 
 class RegimeDetector(Node):
-    """Détection de régime : TREND / CHOP / RANGE."""
+    """Regime detection: TREND / CHOP / RANGE."""
 
     @property
     def node_type(self) -> str:

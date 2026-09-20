@@ -18,7 +18,7 @@ def setup_logging(
     sqlite_db: str = "storage/zeitgeist.db",
     enable_sqlite: bool = True,
 ) -> None:
-    """Configure le logging global de l'application."""
+    """Configure the global application logging."""
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
 
     config: dict[str, Any] = {
@@ -75,7 +75,7 @@ def setup_logging(
                 f"Handler SQLite non disponible: {exc}"
             )
 
-    logging.getLogger("zeitgeist").info("Logging initialisé")
+    logging.getLogger("zeitgeist").info("Logging initialised")
 
 
 def log_flux_metric(
@@ -85,7 +85,7 @@ def log_flux_metric(
     items_count: int = 0,
     error_message: str | None = None,
 ) -> None:
-    """Raccourci pour enregistrer une métrique de flux."""
+    """Shortcut to record a flux metric."""
     try:
         from storage.database import log_flux_metric as _log
         _log(flux_name, status, latency_ms, items_count, error_message)

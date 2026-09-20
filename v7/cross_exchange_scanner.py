@@ -33,7 +33,7 @@ logger = logging.getLogger("cross_exchange")
 
 @dataclass
 class CrossExchangeOpportunity:
-    """Une opportunité d'arbitrage de funding entre deux exchanges."""
+    """A funding arbitrage opportunity between two exchanges."""
     symbol: str                    # ex: "BTC/USDT"
     exchange_long: str             # exchange where we short (to receive the funding)
     exchange_short: str            # exchange where we go long (to pay the funding)
@@ -47,7 +47,7 @@ class CrossExchangeOpportunity:
 
 
 def get_exchange(name: str):
-    """Retourne une instance CCXT configurée."""
+    """Return a configured CCXT instance."""
     import ccxt
     exchanges = {
         "binance": ccxt.binance,
@@ -60,7 +60,7 @@ def get_exchange(name: str):
 
 
 def fetch_funding_rates(exchange_name: str, symbols: list[str]) -> dict[str, float]:
-    """Récupère les funding rates pour une liste de symboles sur un exchange."""
+    """Fetch the funding rates for a list of symbols on one exchange."""
     try:
         ex = get_exchange(exchange_name)
         # Build the exchange-formatted symbols
@@ -85,7 +85,7 @@ def fetch_funding_rates(exchange_name: str, symbols: list[str]) -> dict[str, flo
 
 
 def fetch_spot_prices(exchange_name: str, symbols: list[str]) -> dict[str, float]:
-    """Récupère les prix spot."""
+    """Fetch the spot prices."""
     try:
         ex = get_exchange(exchange_name)
         syms = [f"{s.split('/')[0]}/USDT" for s in symbols]
@@ -227,12 +227,12 @@ def main():
     elapsed = time.time() - t0
     
     if not opps:
-        print(f"\nAucune opportunité ≥ {args.min_spread} bps trouvée. ({elapsed:.1f}s)")
-        print("Le marché est efficient entre ces exchanges en ce moment.")
+        print(f"\nNo opportunity >= {args.min_spread} bps found. ({elapsed:.1f}s)")
+        print("The market is efficient across these exchanges right now.")
         return
     
     viable = [o for o in opps if o.viable]
-    print(f"\n{len(opps)} opportunités trouvées ({len(viable)} viables après frais) en {elapsed:.1f}s\n")
+    print(f"\n{len(opps)} opportunities found ({len(viable)} viable after fees) in {elapsed:.1f}s\n")
     
     print(f"{'Symbol':<12} {'Short on':<10} {'Long on':<10} {'Spread':>8} {'Ann.%':>8} "
           f"{'FR Short':>10} {'FR Long':>10} {'Viable':>7}")
@@ -245,18 +245,18 @@ def main():
               f"{o.funding_short*100:>8.4f}% {o.funding_long*100:>8.4f}%  {viable_str:>6}")
     
     if viable:
-        print(f"\n✅ {len(viable)} opportunités viables (spread > frais 48bps)")
+        print(f"\n✅ {len(viable)} viable opportunities (spread > 48bps fees)")
         print(f"   Spread max: {max(o.spread_bps for o in viable):.1f} bps")
         print(f"   Rendement annualisé max: {max(o.annual_spread_pct for o in viable):.1f}%")
     else:
-        print(f"\n❌ Aucune opportunité viable — les spreads ne couvrent pas les frais")
+        print(f"\n❌ No viable opportunity - the spreads do not cover the fees")
     
-    print(f"\n⚠️  Risques à considérer :")
-    print(f"   1. Leg risk : une jambe exécutée, l'autre non → hedge d'urgence nécessaire")
-    print(f"   2. Capital sur 2 exchanges → fragmentation, coût d'opportunité")
-    print(f"   3. Retraits entre exchanges : délais, frais, limites")
-    print(f"   4. API rate limits : risque de ne pas pouvoir fermer en urgence")
-    print(f"   5. KYC/Compliance : comptes vérifiés sur chaque exchange requis")
+    print(f"\n⚠️  Risks to consider:")
+    print(f"   1. Leg risk: one leg filled, the other not -> emergency hedge required")
+    print(f"   2. Capital split across 2 exchanges -> fragmentation, opportunity cost")
+    print(f"   3. Withdrawals between exchanges: delays, fees, limits")
+    print(f"   4. API rate limits: risk of being unable to close in an emergency")
+    print(f"   5. KYC/compliance: verified accounts on every exchange required")
 
 
 if __name__ == "__main__":

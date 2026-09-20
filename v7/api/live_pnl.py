@@ -53,7 +53,7 @@ def get_live_prices() -> dict[str, float]:
 
 
 def get_live_pnl():
-    """Retourne le P&L latent total et par actif."""
+    """Return the total unrealised P&L and the per-asset breakdown."""
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
@@ -221,12 +221,12 @@ try:
 
     @router.get("/carry-pnl")
     def carry_pnl_endpoint():
-        """P&L réel du carry (two-leg : basis + funding)."""
+        """Real carry P&L (two-leg: basis + funding)."""
         return get_carry_pnl()
 
     @router.get("/live-pnl-widget", response_class=HTMLResponse)
     def live_pnl_widget():
-        """Widget HTML auto-rafraîchi — intégré en iframe dans le dashboard."""
+        """Self-refreshing HTML widget - embedded as an iframe in the dashboard."""
         data = get_live_pnl()
         total = data.get("total_pnl", 0)
         color = "#2ecc71" if total >= 0 else "#e74c3c"

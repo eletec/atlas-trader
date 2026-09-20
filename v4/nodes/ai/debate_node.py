@@ -102,7 +102,7 @@ class DebateNode(Node):
         temperature: float, max_tokens: int, ollama_url: str, timeout_s: int,
         api_key: str = "",
     ) -> str:
-        """Appelle le LLM et retourne le texte brut."""
+        """Call the LLM and return the raw text."""
         payload = {
             "model": model,
             "system": system,
@@ -146,7 +146,7 @@ class DebateNode(Node):
         return response_text
 
     def _parse_json_response(self, text: str) -> dict:
-        """Extrait le JSON d'une réponse LLM."""
+        """Extract the JSON from an LLM response."""
         raw = text.strip()
         if "```json" in raw:
             raw = raw.split("```json", 1)[1].split("```", 1)[0].strip()
@@ -198,9 +198,9 @@ class DebateNode(Node):
                 return {
                     "decision": "neutral",
                     "confidence": 0.5,
-                    "bull_argument": "⏳ Débat en cours...",
-                    "bear_argument": "⏳ Débat en cours...",
-                    "verdict": "L'IA débat, verdict au prochain cycle.",
+                    "bull_argument": "⏳ Debate in progress...",
+                    "bear_argument": "⏳ Debate in progress...",
+                    "verdict": "The AI is debating; verdict on the next cycle.",
                     "_async": True,
                     "_pending_next": True,
                 }
@@ -208,7 +208,7 @@ class DebateNode(Node):
         return self._run_sync(inputs)
 
     def _run_sync(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Exécution synchrone du débat (utilisée par async mode en background)."""
+        """Synchronous debate execution (used by async mode in the background)."""
         from v4.nodes.config_loader import load_v4_config
 
         _llm_cfg = load_v4_config(None, "llm", {

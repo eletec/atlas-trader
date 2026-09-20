@@ -28,7 +28,7 @@ logger = logging.getLogger("v4.core.dag_executor")
 
 @dataclass
 class EdgeSpec:
-    """Définit une connexion : output d'un nœud source vers input d'un nœud cible."""
+    """Define a connection: the output of a source node to the input of a target node."""
     source_node: str
     source_port: str
     target_node: str
@@ -84,7 +84,7 @@ class DAGExecutor:
     # ------------------------------------------------------------------
 
     def validate(self) -> None:
-        """Valide le DAG : acyclique, nœuds référencés, ports existants."""
+        """Validate the DAG: acyclic, referenced nodes, existing ports."""
         self._validate_nodes_exist()
         self._validate_no_cycles()
         self._validate_ports()
@@ -96,7 +96,7 @@ class DAGExecutor:
                     raise DAGValidationError(f"Edge references unknown node: {nid}")
 
     def _validate_no_cycles(self) -> None:
-        """Kahn's algorithm — lève si cycle détecté."""
+        """Kahn's algorithm - raises when a cycle is detected."""
         in_degree: dict[str, int] = defaultdict(int)
         adj: dict[str, list[str]] = defaultdict(list)
         for edge in self._edges:
@@ -230,7 +230,7 @@ class DAGExecutor:
     # ------------------------------------------------------------------
 
     def start_async_nodes(self) -> None:
-        """Lance les threads des nœuds avec cycle_interval_s défini."""
+        """Start the threads of the nodes that define cycle_interval_s."""
         for node_id, node in self._nodes.items():
             if node.meta.cycle_interval_s and node_id not in self._async_threads:
                 t = threading.Thread(
@@ -266,7 +266,7 @@ class DAGExecutor:
             self._stop_event.wait(interval)
 
     def stop(self) -> None:
-        """Arrête proprement tous les threads async."""
+        """Stop every async thread cleanly."""
         self._stop_event.set()
         for t in self._async_threads.values():
             t.join(timeout=5.0)

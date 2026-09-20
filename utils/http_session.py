@@ -13,7 +13,7 @@ _SESSION: requests.Session | None = None
 
 
 def get_http_session() -> requests.Session:
-    """Retourne la session requests partagée (singleton thread-safe en lecture)."""
+    """Return the shared requests session (read-safe singleton)."""
     global _SESSION
     if _SESSION is None:
         _SESSION = requests.Session()

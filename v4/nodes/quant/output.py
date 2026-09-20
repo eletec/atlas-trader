@@ -106,7 +106,7 @@ class PaperTrader(Node):
                 open_count = len(get_open_positions(symbol=symbol))
                 if open_count >= max_positions:
                     logger.info(
-                        "PaperTrader [%s] skip %s: %d/%d positions déjà ouvertes",
+                        "PaperTrader [%s] skip %s: %d/%d positions already open",
                         symbol, action, open_count, max_positions,
                     )
                     return {"trade_result": {"status": "skipped", "symbol": symbol,

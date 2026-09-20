@@ -38,7 +38,7 @@ def _node_result_to_out(node_id: str, result) -> NodeResultOut:
 
 
 def _serialize(value):
-    """Convertit les types non-JSON-serializable (DataFrame, ndarray…) en primitives."""
+    """Convert non-JSON-serialisable types (DataFrame, ndarray...) into primitives."""
     try:
         import pandas as pd
         import numpy as np
@@ -58,13 +58,13 @@ def _serialize(value):
 
 @router.post("/run", response_model=RunDAGResponse)
 async def run_dag(body: RunDAGRequest):
-    """Exécute le DAG une seule fois et retourne les résultats immédiats."""
+    """Run the DAG once and return the immediate results."""
     try:
         results = DAGRegistry.instance().run_once(body.dag)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Erreur run_dag")
+        logger.exception("run_dag error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return RunDAGResponse(
@@ -75,13 +75,13 @@ async def run_dag(body: RunDAGRequest):
 
 @router.post("/schedule")
 async def schedule_dag(body: ScheduleDAGRequest):
-    """Démarre un DAG en boucle périodique (daemon thread) + persiste dans dag_store."""
+    """Start a DAG on a periodic loop (daemon thread) + persist it in dag_store."""
     try:
         dag_id = DAGRegistry.instance().schedule(body.dag, body.cycle_s)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Erreur schedule_dag")
+        logger.exception("schedule_dag error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     # Persist into the store (the canvas is the source of truth)
@@ -98,10 +98,10 @@ async def schedule_dag(body: ScheduleDAGRequest):
 
 @router.delete("/{dag_id}")
 async def stop_dag(dag_id: str):
-    """Arrête un DAG schedulé (ne le supprime pas du store persistant)."""
+    """Stop a scheduled DAG (does not remove it from the persistent store)."""
     found = DAGRegistry.instance().stop(dag_id)
     if not found:
-        raise HTTPException(status_code=404, detail=f"DAG '{dag_id}' non trouvé")
+        raise HTTPException(status_code=404, detail=f"DAG '{dag_id}' not found")
     return {"dag_id": dag_id, "status": "stopped"}
 
 
@@ -170,7 +170,7 @@ async def reload_dags_from_config():
 
 @router.post("/restart-demo")
 async def restart_demo_dags():
-    """Redémarre les DAGs depuis le store persisté (ou V7 par défaut)."""
+    """Restart the DAGs from the persisted store (or V7 by default)."""
     from v4.api.dag_store import load_all, get_defaults, save_all
 
     registry = DAGRegistry.instance()
@@ -202,7 +202,7 @@ async def all_dag_status():
 
 @router.get("/store")
 async def dag_store_info():
-    """Debug : liste les DAGs persistés dans /app/data/dags.json."""
+    """Debug: list the DAGs persisted in /app/data/dags.json."""
     try:
         from v4.api.dag_store import load_all, _store_path
         dags = load_all()
@@ -227,7 +227,7 @@ async def dag_store_info():
 
 @router.get("/llm-results")
 async def llm_results():
-    """Retourne les résultats LLM en cache (async), pour affichage temps réel."""
+    """Return the cached LLM results (async), for real-time display."""
     try:
         from v4.core.async_tasks import _cache
         llm = {k: v for k, v in _cache.items() if k.startswith("llm_")}
@@ -246,14 +246,14 @@ async def reset_kill_switch():
         monitor._kill_switch_triggered = False
         monitor._circuit_breaker = False
         logger.warning("⚠️ KILL-SWITCH MANUALLY RESET via API")
-        return {"status": "reset", "message": "Kill-switch réarmé. Les nouvelles entrées sont autorisées."}
+        return {"status": "reset", "message": "Kill-switch re-armed. New entries are allowed."}
     except Exception as exc:
         return {"error": str(exc)}
 
 
 @router.get("/logs")
 async def dag_logs(n: int = 50):
-    """Retourne les N derniers logs d'exécution des DAGs (mémoire + DB fallback)."""
+    """Return the last N DAG execution logs (memory + DB fallback)."""
     mem_logs = get_logs(n)
     if len(mem_logs) >= n:
         return mem_logs
@@ -277,7 +277,7 @@ async def dag_logs(n: int = 50):
 
 @router.get("/decisions")
 async def decisions_history(symbol: str = "", dag_id: str = "", n: int = 100):
-    """Retourne l'historique des décisions (V7: lit dag_logs, plus de DAGs)."""
+    """Return the decision history (V7: reads dag_logs, no more DAGs)."""
     try:
         import sqlite3, json as _jd
         db_path = "/app/data/v4.db"
@@ -311,7 +311,7 @@ async def decisions_history(symbol: str = "", dag_id: str = "", n: int = 100):
 
 @router.post("/close-trade")
 async def close_trade_route(trade_id: str = "", close_price: float = 0):
-    """Ferme manuellement un trade paper (depuis le dashboard)."""
+    """Manually close a paper trade (from the dashboard)."""
     try:
         from storage.paper_trader import close_position
         ok = close_position(trade_id, close_price, 0, "manual")
@@ -362,7 +362,7 @@ async def close_all_trades():
 async def dag_status(dag_id: str):
     entries = DAGRegistry.instance().status(dag_id)
     if not entries:
-        raise HTTPException(status_code=404, detail=f"DAG '{dag_id}' non trouvé")
+        raise HTTPException(status_code=404, detail=f"DAG '{dag_id}' not found")
     return _entries_to_out(entries)[0]
 
 

@@ -3,7 +3,7 @@ v4/nodes/quant/cross_tf.py — Nœud CrossTFArb (Cross-Timeframe Repricing)
 
 Détecte le lag de repricing entre 5m et 1h pour capturer un edge microstructure.
 Principe : quand le timeframe rapide (5m) bouge avant le lent (1h),
-une fenêtre d'opportunité s'ouvre avant que le marché ne corrige.
+a window of opportunity opens before the market corrects.
 
 Stratégies :
   - "divergence" : 5m bearish + 1h encore bullish → short (et vice-versa)
@@ -65,7 +65,7 @@ class CrossTFArb(Node):
         return {"signal": "str", "confidence": "float", "tf_divergence": "float"}
 
     def _momentum(self, ohlcv: pd.DataFrame, n: int) -> float:
-        """Calcule le momentum en % sur N barres : (close[-1] - close[-N]) / close[-N] * 100."""
+        """Compute the momentum in % over N bars: (close[-1] - close[-N]) / close[-N] * 100."""
         if ohlcv is None or len(ohlcv) < n + 1:
             return 0.0
         closes = ohlcv["close"]
@@ -76,7 +76,7 @@ class CrossTFArb(Node):
         return (c_now - c_n) / c_n * 100.0
 
     def _rolling_momentum(self, ohlcv: pd.DataFrame, n: int) -> pd.Series:
-        """Série de momentum glissant sur N barres (en %)."""
+        """Rolling momentum series over N bars (in %)."""
         if ohlcv is None or len(ohlcv) < n + 1:
             return pd.Series(dtype=float)
         closes = ohlcv["close"]
@@ -117,7 +117,7 @@ class CrossTFArb(Node):
             vol_ma = float(ohlcv_5m["volume"].iloc[-20:].mean())
             vol_ok = vol_recent >= vol_ma * 0.5
             if not vol_ok:
-                logger.debug("CrossTF: volume 5m faible (%.0f < 0.5×MA %.0f)", vol_recent, vol_ma)
+                logger.debug("CrossTF: weak 5m volume (%.0f < 0.5xMA %.0f)", vol_recent, vol_ma)
 
         # -- ATR filter (real range > ATR/3) --
         atr_ok = True

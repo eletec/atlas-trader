@@ -172,7 +172,7 @@ class MarketSession:
         if w is None:
             nxt = self.next_open(now)
             mins = int((nxt - now).total_seconds() / 60)
-            return f"⛔ fermé — ouverture dans {mins}min"
+            return f"⛔ closed — opens in {mins}min"
         h = now.hour
         if 7 <= h < 12:
             return "🟡 London"
@@ -182,5 +182,5 @@ class MarketSession:
             return "🟠 NY"
         # h = 0-7 or 22-24: the window exists but the session is quiet
         if w.open_utc in self._no_trade_opens:
-            return "⚫ hors session"  # forex : no-trade explicite
+            return "⚫ out of session"  # forex: explicit no-trade
         return "🌙 calme"  # xau/xag : monitoring actif, volume faible

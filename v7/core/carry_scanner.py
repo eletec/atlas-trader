@@ -45,7 +45,7 @@ MULTIPLIER_PREFIXES = [
 
 
 def _resolve_spot_underlying(futures_base: str, spot_bases: set[str]) -> tuple[str | None, float]:
-    """Résout le sous-jacent spot pour un contrat perp (ex: 1000PEPE → PEPE, ×1000)."""
+    """Resolve the spot underlying for a perp contract (e.g. 1000PEPE -> PEPE, x1000)."""
     if futures_base in spot_bases:
         return futures_base, 1.0
 
@@ -73,25 +73,25 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     try:
         import ccxt
     except ImportError:
-        logger.error("CCXT non installé. pip install ccxt")
+        logger.error("CCXT not installed. pip install ccxt")
         return []
 
     spot_ex = ccxt.binance({"enableRateLimit": True})
     perp_ex = ccxt.binanceusdm({"enableRateLimit": True})
 
     # -- 1. Load the market structure (exchangeInfo) --
-    logger.info("Chargement des marchés Spot...")
+    logger.info("Loading the Spot markets...")
     try:
         spot_markets = spot_ex.load_markets()
     except Exception as e:
-        logger.error("Échec chargement marchés Spot: %s", e)
+        logger.error("Failed to load the Spot markets: %s", e)
         return []
 
-    logger.info("Chargement des marchés Perp USDⓈ-M...")
+    logger.info("Loading the USDⓈ-M Perp markets...")
     try:
         perp_markets = perp_ex.load_markets()
     except Exception as e:
-        logger.error("Échec chargement marchés Perp: %s", e)
+        logger.error("Failed to load the Perp markets: %s", e)
         return []
 
     # Index the active USDT spot markets
@@ -101,7 +101,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
                 and market.get("quote") == "USDT"):
             spot_usdt[market["base"]] = market
 
-    logger.info("Spot USDT actifs: %d paires", len(spot_usdt))
+    logger.info("Active USDT spot pairs: %d", len(spot_usdt))
     spot_bases = set(spot_usdt.keys())
 
     # -- 2. Spot intersected with Perp (without volumes) --
@@ -131,7 +131,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
             "spot_base": spot_base,
         })
 
-    logger.info("Candidats Spot∩Perp (avant filtres volume): %d", len(candidates))
+    logger.info("Spot∩Perp candidates (before volume filters): %d", len(candidates))
     if not candidates:
         return []
 
@@ -142,7 +142,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     spot_tickers: dict[str, dict] = {}
     perp_tickers: dict[str, dict] = {}
 
-    logger.info("Récupération des tickers spot (%d symboles)...", len(spot_symbols))
+    logger.info("Fetching the spot tickers (%d symbols)...", len(spot_symbols))
     try:
         # Binance caps at ~100 symbols per call, so we chunk the requests
         for i in range(0, len(spot_symbols), 80):
@@ -150,16 +150,16 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
             tickers = spot_ex.fetch_tickers(chunk)
             spot_tickers.update(tickers)
     except Exception as e:
-        logger.warning("Échec tickers spot: %s — on continue sans filtre volume", e)
+        logger.warning("Spot tickers failed: %s - continuing without a volume filter", e)
 
-    logger.info("Récupération des tickers perp (%d symboles)...", len(perp_symbols))
+    logger.info("Fetching the perp tickers (%d symbols)...", len(perp_symbols))
     try:
         for i in range(0, len(perp_symbols), 80):
             chunk = perp_symbols[i:i+80]
             tickers = perp_ex.fetch_tickers(chunk)
             perp_tickers.update(tickers)
     except Exception as e:
-        logger.warning("Échec tickers perp: %s — on continue sans filtre volume", e)
+        logger.warning("Perp tickers failed: %s - continuing without a volume filter", e)
 
     # -- 4. Apply the filters --
     results: list[dict[str, Any]] = []
@@ -211,7 +211,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     # Sort by descending spot volume
     results.sort(key=lambda r: r["spot_volume_24h_usd"], reverse=True)
 
-    logger.info("Univers carry éligible: %d actifs (filtré depuis %d candidats)",
+    logger.info("Eligible carry universe: %d assets (filtered from %d candidates)",
                 len(results), len(candidates))
 
     if save:
@@ -231,7 +231,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
         import ccxt
         import numpy as np
     except ImportError:
-        logger.warning("CCXT ou numpy non disponible — optimisation ignorée")
+        logger.warning("CCXT or numpy unavailable - optimisation skipped")
         return {}
 
     perp_ex = ccxt.binanceusdm({"enableRateLimit": True})
@@ -264,7 +264,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
                     opt["_optimized_stress_loss_pct"] = round(max(0.03, min(0.25, vol_30d / 100)), 2)
                     opt["_optimized_volatility_30d_pct"] = round(vol_30d, 1)
         except Exception as e:
-            logger.debug("Volatilité %s: %s", sym, e)
+            logger.debug("Volatility %s: %s", sym, e)
 
         # -- 3. Minimum funding based on the history --
         try:
@@ -338,12 +338,12 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
     except Exception as e:
         logger.debug("Backtest merge skipped: %s", e)
 
-    logger.info("Optimisation terminée pour %d actifs", len(optimized))
+    logger.info("Optimisation finished for %d assets", len(optimized))
     return optimized
 
 
 def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -> None:
-    """Met à jour carry_assets.yaml avec les actifs scannés (préserve les params existants)."""
+    """Update carry_assets.yaml with the scanned assets (preserves the existing params)."""
     config_path = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
     # Writable runtime path takes priority
     data_path = Path("/app/data") / "carry_assets.yaml"
@@ -362,7 +362,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
     # Compute the optimised parameters when requested
     optimized_params: dict = {}
     if optimize:
-        logger.info("Calcul des paramètres optimisés...")
+        logger.info("Computing the optimised parameters...")
         optimized_params = compute_optimized_params(assets)
 
     # Merge: new assets added with defaults, existing ones preserved
@@ -440,7 +440,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
-    logger.info("carry_assets.yaml mis à jour: %d actifs", len(new_assets))
+    logger.info("carry_assets.yaml updated: %d assets", len(new_assets))
 
 
 # ── CLI ──
@@ -453,9 +453,9 @@ if __name__ == "__main__":
 
     # Affichage
     print(f"\n{'='*80}")
-    print(f"Univers Funding Carry — {len(universe)} actifs éligibles")
+    print(f"Funding Carry universe - {len(universe)} eligible assets")
     print(f"{'='*80}")
-    print(f"{'Actif':<12} {'Spot Vol 24h':>14} {'Perp Vol 24h':>14} {'OI':>12} {'Multiplier':>10}")
+    print(f"{'Asset':<12} {'Spot Vol 24h':>14} {'Perp Vol 24h':>14} {'OI':>12} {'Multiplier':>10}")
     print(f"{'-'*12} {'-'*14} {'-'*14} {'-'*12} {'-'*10}")
     for a in universe:
         print(f"{a['symbol']:<12} ${a['spot_volume_24h_usd']:>13,.0f} "
@@ -465,6 +465,6 @@ if __name__ == "__main__":
     print(f"{'='*80}")
 
     if save_flag:
-        print("\n✅ carry_assets.yaml mis à jour.")
+        print("\n✅ carry_assets.yaml updated.")
     else:
-        print("\n💡 Utilise --save pour mettre à jour carry_assets.yaml.")
+        print("\n💡 Use --save to update carry_assets.yaml.")

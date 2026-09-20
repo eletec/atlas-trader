@@ -108,7 +108,7 @@ def can_open_position(
     if new_exposure > max_exposure:
         return False, (
             f"total exposure ${new_exposure:.0f} > "
-            f"${max_exposure:.0f} ({MAX_TOTAL_EXPOSURE_PCT*100:.0f}% capital)"
+            f"${max_exposure:.0f} ({MAX_TOTAL_EXPOSURE_PCT*100:.0f}% of capital)"
         )
 
     # 4) Score must be positive (excess carry > 0)

@@ -101,12 +101,12 @@ st.set_page_config(
 
 
 def _get_theme() -> str:
-    """Lit le thème depuis query params (dark par défaut)."""
+    """Read the theme from the query params (dark by default)."""
     return st.query_params.get("theme", "dark")
 
 
 def _inject_theme_css():
-    """Injecte les overrides CSS selon le thème choisi."""
+    """Inject the CSS overrides for the selected theme."""
     theme = _get_theme()
 
     # Font Awesome 6 (modern monochrome icons)
@@ -750,7 +750,7 @@ def _init_session():
 
 @st.cache_data(ttl=20)
 def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
-    """Cache 20s — décisions V7 depuis dag_logs (fallback sur table decisions V1)."""
+    """20s cache - V7 decisions from dag_logs (fallback to the V1 decisions table)."""
     try:
         from storage.database import get_connection
         with get_connection() as conn:
@@ -787,7 +787,7 @@ def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
 
 @st.cache_data(ttl=90)
 def _get_live_indicators(asset: str) -> dict:
-    """Indicateurs live avec cache 90s — interroge l'API V4 pour les prix."""
+    """Live indicators with a 90s cache - queries the V4 API for prices."""
     try:
         import urllib.request, json
         req = urllib.request.Request(f"{_API_BASE}/prices/snapshot?asset={asset}")
@@ -799,7 +799,7 @@ def _get_live_indicators(asset: str) -> dict:
 
 @st.cache_data(ttl=120)
 def _get_ohlcv(asset: str) -> tuple[list, list]:
-    """OHLCV 15m / 24h avec cache 2min — évite fetch_ohlcv bloquant à chaque rerun."""
+    """OHLCV 15m / 24h with a 2min cache - avoids a blocking fetch_ohlcv on every rerun."""
     try:
         import ccxt
         exchange = ccxt.binance()
@@ -829,7 +829,7 @@ def _get_ohlcv(asset: str) -> tuple[list, list]:
 
 @st.cache_data(ttl=30)
 def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
-    """Retourne les trades récents : V4 DB (prioritaire) + V3 DB fallback."""
+    """Return the recent trades: V4 DB (preferred) + V3 DB fallback."""
     trades: list[dict] = []
 
     # 1) V4 trades from the DB (persistent, not tied to the cycle)
@@ -877,7 +877,7 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 @st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
-    """Portefeuille consolidé — positions ouvertes + PnL cumulé depuis la DB."""
+    """Consolidated portfolio - open positions + cumulative PnL from the DB."""
     portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
                  "live_mode": False, "exposure": 0, "exposure_pct": 0}
@@ -957,8 +957,8 @@ def _force_run_background(asset: str, log_q) -> None:
 
     start_ts = _time.strftime("%Y-%m-%d %H:%M:%S")
     _logger.info(f"=== DASHBOARD FORCE-RUN — {asset} @ {start_ts} ===")
-    _log(f"🚀 <b>Cycle Funding Carry lancé</b> ({start_ts})")
-    _log("⏳ Scan des actifs → funding → décisions → persistance…")
+    _log(f"🚀 <b>Funding carry cycle started</b> ({start_ts})")
+    _log("⏳ Asset scan → funding → decisions → persistence…")
 
     t_total = _time.time()
     try:
@@ -972,9 +972,9 @@ def _force_run_background(asset: str, log_q) -> None:
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
         if not result.get("ok"):
-            raise RuntimeError(result.get("error", "lancement refusé"))
+            raise RuntimeError(result.get("error", "launch refused"))
 
-        _log("✅ <b>Cycle démarré</b> — lecture des premiers logs…")
+        _log("✅ <b>Cycle started</b> — reading the first logs…")
 
         # Let the cycle start, then show the recent carry logs
         _time.sleep(8)
@@ -991,12 +991,12 @@ def _force_run_background(asset: str, log_q) -> None:
                 if shown >= 12:
                     break
             if shown == 0:
-                _log("  <i>(aucun log pour l'instant — le cycle démarre)</i>")
+                _log("  <i>(no log yet - the cycle is starting)</i>")
         except Exception as _e:
             _log(f"  <i>(logs indisponibles : {str(_e)[:80]})</i>")
 
         total_s = _time.time() - t_total
-        log_q.put(("__done__", (False, f"Cycle lancé en arrière-plan ({total_s:.1f}s)")))
+        log_q.put(("__done__", (False, f"Cycle launched in the background ({total_s:.1f}s)")))
 
     except Exception as exc:
         total_s = _time.time() - t_total
@@ -1316,7 +1316,7 @@ header[data-testid="stHeader"]{{display:none!important;}}
 
 
 def _card_colors(theme: str) -> tuple[str, str, str, str, str]:
-    """(bg, border, text, muted, icon_color) selon le thème courant."""
+    """(bg, border, text, muted, icon_color) for the current theme."""
     if theme == "light":
         return "#ffffff", "#dee2e6", "#212529", "#6c757d", "#5c73c0"
     return "#1b1f27", "rgba(255,255,255,0.1)", "#f0f0f0", "rgba(255,255,255,0.45)", "#7986cb"
@@ -1325,7 +1325,7 @@ def _card_colors(theme: str) -> tuple[str, str, str, str, str]:
 def _html_card(fa: str, label: str, val_html: str,
                bg: str, bdr: str, txt: str, muted: str, ic: str,
                delta: str | None = None, d_pos: bool | None = None) -> str:
-    """Génère une carte Bootstrap-like en HTML pur avec icône Font Awesome."""
+    """Build a Bootstrap-like card in pure HTML with a Font Awesome icon."""
     d_html = ""
     if delta:
         dc  = "#2ecc71" if d_pos is True else "#e74c3c" if d_pos is False else muted
@@ -1346,7 +1346,7 @@ def _html_card(fa: str, label: str, val_html: str,
 
 
 def render_portfolio(portfolio: dict):
-    """Portefeuille paper en cartes Bootstrap-like avec Font Awesome."""
+    """Paper portfolio as Bootstrap-like cards with Font Awesome."""
     theme   = _get_theme()
     pnl     = portfolio.get("total_pnl", 0)
     pnl_pct = portfolio.get("total_pnl_pct", 0)
@@ -1377,7 +1377,7 @@ def render_portfolio(portfolio: dict):
                    delta=f"{pnl_pct:+.2f}%", d_pos=pnl_pos, **kw) +
         _html_card("fas fa-chart-pie", "💸 Exposure",
                    f'${portfolio.get("exposure", 0):,.0f}',
-                   delta=f"{portfolio.get('exposure_pct', 0):.1f}% du capital", d_pos=None, **kw) +
+                   delta=f"{portfolio.get('exposure_pct', 0):.1f}% of capital", d_pos=None, **kw) +
         _html_card("fas fa-right-left", t("trades_label"),
                    str(portfolio.get("n_trades", 0)), **kw)
     )
@@ -1394,7 +1394,7 @@ def render_portfolio(portfolio: dict):
 
 @st.dialog("Decision Analysis", width="large")
 def _show_trade_detail_dialog(trade: dict) -> None:
-    """Modal : logique complète + traçabilité des poids pour un trade."""
+    """Modal: full logic + weight traceability for one trade."""
     import json as _json
 
     action = trade.get("action", "?")
@@ -1496,7 +1496,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
             agent_detail_scores   = agents_comp.get("detail", {})
             if agent_weights_in_comp or agent_detail_scores:
                 st.markdown("---")
-                st.caption("**Poids individuels des agents dans la composante IA**")
+                st.caption("**Individual agent weights inside the AI component**")
                 agt_ctx = ctx.get("agents") or {}
                 all_names = set(agent_weights_in_comp) | set(agent_detail_scores)
                 rows_agt = []
@@ -1579,7 +1579,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
 
         if rgm:
             c1, c2, c3 = st.columns(3)
-            c1.metric("Régime", str(rgm.get("state", rgm.get("hmm_regime", "—"))))
+            c1.metric("Regime", str(rgm.get("state", rgm.get("hmm_regime", "—"))))
             hmm_p = rgm.get("hmm_prob")
             c2.metric("Prob. HMM", f"{float(hmm_p):.1%}" if hmm_p is not None else "—")
             c3.metric("Direction", str(rgm.get("direction_pressure", "—")))
@@ -1604,8 +1604,8 @@ def _show_trade_detail_dialog(trade: dict) -> None:
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Score final", f"{float(s_val):.1f}/100" if s_val is not None else "—")
-        c2.metric("Seuil BUY", str(buy_thr))
-        c3.metric("Seuil SELL", str(exit_thr))
+        c2.metric("BUY threshold", str(buy_thr))
+        c3.metric("SELL threshold", str(exit_thr))
 
         reasoning = dec.get("reasoning", "")
         if reasoning:
@@ -1655,7 +1655,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
 
         if _dlg_bull and _dlg_bear and _dlg_bull not in ("[debate skipped]", "[debate unavailable]"):
             st.markdown("---")
-            st.markdown("**🥊 Débat Bull/Bear**")
+            st.markdown("**🥊 Bull/Bear debate**")
             if _dlg_debate_win:
                 _dw_clr = "#69f0ae" if "BULL" in str(_dlg_debate_win).upper() else ("#e53935" if "BEAR" in str(_dlg_debate_win).upper() else "#ffb74d")
                 st.markdown(
@@ -1683,7 +1683,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
 
 @st.fragment
 def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
-    """Graphique de performance cumulée."""
+    """Cumulative performance chart."""
     st.markdown(f'<h3 style="margin:0 0 12px;font-size:18px;"><i class="fas fa-chart-area" style="margin-right:8px;color:#7986cb;"></i>{t("perf_chart_title")}</h3>', unsafe_allow_html=True)
 
     if not history:
@@ -1724,7 +1724,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
         sells = df[df["action"] == "SELL"]
 
         def _build_ctx(row: dict, hist_idx: int) -> list:
-            """Extrait les champs clés de decision_context pour customdata Plotly."""
+            """Extract the key decision_context fields for the Plotly customdata."""
             import json as _json
             pnl = row.get("result_24h")
             entry = row.get("entry_price")
@@ -1776,24 +1776,24 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
         _hover_buy = (
             "<b>▲ BUY — %{customdata[0]}</b><br>"
             "Date : %{x|%Y-%m-%d %H:%M}<br>"
-            "P&L cumulé : %{y:+.2f}$<br>"
+            "Cumulative P&L: %{y:+.2f}$<br>"
             "Entry : %{customdata[2]}<br>"
-            "Score : %{customdata[3]} | Régime : %{customdata[4]}<br>"
+            "Score: %{customdata[3]} | Regime: %{customdata[4]}<br>"
             "RSI : %{customdata[5]} | MACD : %{customdata[6]}<br>"
             "Agents : %{customdata[7]}<br>"
-            "<i style='opacity:0.6'>🖱 Cliquer pour le détail complet</i>"
+            "<i style='opacity:0.6'>🖱 Click for the full detail</i>"
             "<extra></extra>"
         )
         _hover_sell = (
             "<b>▼ SELL — %{customdata[0]}</b><br>"
             "Date : %{x|%Y-%m-%d %H:%M}<br>"
-            "P&L cumulé : %{y:+.2f}$<br>"
+            "Cumulative P&L: %{y:+.2f}$<br>"
             "P&L position : %{customdata[1]}<br>"
             "Entry : %{customdata[2]}<br>"
-            "Score : %{customdata[3]} | Régime : %{customdata[4]}<br>"
+            "Score: %{customdata[3]} | Regime: %{customdata[4]}<br>"
             "RSI : %{customdata[5]} | MACD : %{customdata[6]}<br>"
             "Agents : %{customdata[7]}<br>"
-            "<i style='opacity:0.6'>🖱 Cliquer pour le détail complet</i>"
+            "<i style='opacity:0.6'>🖱 Click for the full detail</i>"
             "<extra></extra>"
         )
 
@@ -1847,7 +1847,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
 
 
 def render_trades_list_sortable(trades: list[dict]):
-    """Historique global des trades — thème sombre/clair automatique."""
+    """Global trade history - automatic dark/light theme."""
     st.markdown(
         f'<h3 style="margin:16px 0 12px;font-size:18px;">'
         f'<i class="fas fa-clock-rotate-left" style="margin-right:8px;color:#7986cb;"></i>'
@@ -2248,7 +2248,7 @@ def _inject_live_trade_prices_js() -> None:
 def _apply_optimized_params(cfg: dict) -> int:
     """Copie les _optimized_* vers les params réels (actifs non verrouillés).
 
-    NOTE : `capital` N'EST PAS copié — l'optimiseur l'écrasait à $500,
+    NOTE: `capital` is NOT copied - the optimiser overwrote it to $500,
     écrasant le capital cible de $2,000/actif. Le safety_cap garde un
     plancher de $100.
     """
@@ -2281,7 +2281,7 @@ def _reload_api_config():
     """POST /carry/reload-config — applique carry_assets.yaml au process API.
 
     Le dashboard écrit le fichier, mais l'API en garde une copie en cache :
-    sans cet appel, un actif activé ici n'était pris en compte qu'après
+    without this call, an asset enabled here was only picked up after
     redémarrage du container.
     """
     import urllib.request, json
@@ -2332,7 +2332,7 @@ def _carry_logo_md(sym: str, params: dict) -> str:
 
 
 def _render_carry_config():
-    """Éditeur de configuration des actifs Funding Carry — lit/écrit carry_assets.yaml."""
+    """Funding carry asset config editor - reads/writes carry_assets.yaml."""
     st.markdown(f"### {t('tab_carry_cfg')}")
     st.caption(t("carry_cfg_subtitle"))
 
@@ -2376,13 +2376,13 @@ def _render_carry_config():
                     st.error(f"{t('carry_scan_error')} — {exc}")
     with col_b2:
         if st.button(t("carry_optimize_btn"), help=t("carry_optimize_help"), use_container_width=True):
-            with st.spinner("Calcul des paramètres optimisés..."):
+            with st.spinner("Computing the optimised parameters..."):
                 try:
                     from v7.core.carry_scanner import scan_carry_universe
                     from v7.core.asset_config import reload_config
                     scan_carry_universe(save=True, optimize=True)
                     reload_config()
-                    st.session_state["_carry_msg"] = "📊 Paramètres optimisés calculés (voir champs _optimized_*)"
+                    st.session_state["_carry_msg"] = "📊 Optimised parameters computed (see the _optimized_* fields)"
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Optimization failed — {exc}")
@@ -2390,7 +2390,7 @@ def _render_carry_config():
         if st.button(t("carry_apply_optimized_btn"), type="secondary", use_container_width=True,
                      help=t("carry_apply_optimized_help")):
             count = _apply_optimized_params(cfg)
-            st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
+            st.session_state["_carry_msg"] = f"📊 Optimised parameters applied to {count} assets" if count > 0 else "📊 No change - already optimal"
             st.rerun()
     with col_b4:
         if st.button(t("carry_apply_reload_btn"), type="primary", use_container_width=True,
@@ -2654,7 +2654,7 @@ _LOGS_PAGE_SIZE = 100
 
 
 def render_live_logs(key: str = "global", asset: str | None = None):
-    """Affiche les logs du cycle carry (pagination 100 lignes par page)."""
+    """Show the carry cycle logs (100 rows per page)."""
     col_title, col_del = st.columns([5, 1])
     with col_title:
         st.markdown(
@@ -2805,7 +2805,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
 
 
 def render_admin_panel():
-    """Panneau admin complet — monitoring et configuration de la stratégie carry."""
+    """Full admin panel - monitoring and configuration of the carry strategy."""
     # Guard: no auth UI may render while the admin view is displayed.
     st.session_state["_suppress_auth_ui"] = True
     st.session_state.pop("_auth_step", None)
@@ -2827,7 +2827,7 @@ def render_admin_panel():
         ('<i class="fas fa-brain"></i>',           "decisions",   "Decisions"),
         ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
         # -- System --
-        (None, None,      "Système"),
+        (None, None,      "System"),
         ('<i class="fas fa-user"></i>',            "users",      "Users"),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",     "Backup"),
         ('<i class="fas fa-trash-alt"></i>',       "reset",      "Reset"),
@@ -2918,7 +2918,7 @@ def render_admin_panel():
                             key=f"dl_{_bk['filename']}",
                         )
                     with _bcol3:
-                        if st.button("🔄", key=f"restore_{_bk['filename']}", help="Restaurer cette sauvegarde"):
+                        if st.button("🔄", key=f"restore_{_bk['filename']}", help="Restore this backup"):
                             try:
                                 _r = import_config_zip(_bk_bytes, backup_first=True)
                                 st.success(t("bkp_restore_from").format(n=len(_r['restored_files']), filename=_bk['filename']))
@@ -3041,9 +3041,9 @@ def render_admin_panel():
             _hc1, _hc2, _hc3, _hc4, _hc5, _hc6 = st.columns(6)
             _hc1.metric("Total", n_total)
             _hc2.metric("Ouverts", n_open)
-            _hc3.metric("Fermés", n_closed)
+            _hc3.metric("Closed", n_closed)
             _hc4.metric("P&L total", f"${total_pnl:+,.2f}")
-            _hc5.metric("Gagnés", wins)
+            _hc5.metric("Won", wins)
             _hc6.metric("Win rate", f"{win_rate:.0f}%")
 
             # Fetch the current prices for the unrealised P&L
@@ -3149,7 +3149,7 @@ def render_admin_panel():
                         _resp = _ur_close.urlopen(_ur_close.Request(
                             f"{_API_BASE}/dag/close-all", method="POST"), timeout=30)
                         _result = _j_close.loads(_resp.read())
-                        st.success(f"✅ {_result['closed']} position(s) fermée(s), {_result['failed']} échec(s)")
+                        st.success(f"✅ {_result['closed']} position(s) closed, {_result['failed']} failed")
                         if _result.get("details"):
                             for d in _result["details"]:
                                 st.caption(f"• {d['symbol']} @ ${d['close_price']:,.2f} → P&L ${d['pnl']:+,.2f}")
@@ -3183,12 +3183,12 @@ def render_admin_panel():
                 pass
 
         except Exception as _he:
-            st.error(f"Erreur lecture historique V4 : {_he}")
+            st.error(f"Error reading the V4 history: {_he}")
 
     elif _atab == "decisions":  # AI decision history
         st.markdown(
             '<h4><i class="fas fa-brain" style="margin-right:7px;color:#9c27b0;"></i>'
-            ' Historique des Décisions</h4>',
+            ' Decision History</h4>',
             unsafe_allow_html=True,
         )
         st.caption(t("decisions_caption_cycle"))
@@ -3246,7 +3246,7 @@ def render_admin_panel():
                                 st.caption(f"Trade: `{trade_link}`")
                             st.caption(f"TS: {ts}")
         except Exception as _de:
-            st.error(f"Erreur chargement décisions : {_de}")
+            st.error(f"Error loading the decisions: {_de}")
 
     # Self-contained tabs - each one handles its own rendering and persistence
     if _atab == "carry_cfg":
@@ -3455,7 +3455,7 @@ def main():
             from dashboard.multi_asset import render_asset_tabs
 
             def _render_for_asset(asset: str):
-                """Render complet pour un actif donné — V4 uniquement."""
+                """Full render for one asset - V4 only."""
                 _tr = _get_recent_trades(200, asset=asset)
                 _pf = _get_portfolio(asset=asset)
                 render_portfolio(_pf)
@@ -3464,11 +3464,11 @@ def main():
                 render_live_logs(key=asset.replace('/', '_'), asset=asset)
 
             def _render_portfolio_first():
-                """Portefeuille global — affiché en tête de la vue Global."""
+                """Global portfolio - shown at the top of the Global view."""
                 render_portfolio(portfolio)
 
             def _render_global():
-                """Vue consolidée : PnL tous actifs."""
+                """Consolidated view: PnL across all assets."""
                 st.markdown("---")
                 _tr_all = _get_recent_trades(500)
                 render_trades_list_sortable(_tr_all)

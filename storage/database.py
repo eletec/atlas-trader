@@ -227,14 +227,14 @@ DDL_STATEMENTS = [
 
 
 def init_db(db_path: str | Path | None = None) -> None:
-    """Crée la DB et les tables si elles n'existent pas."""
+    """Create the DB and the tables when they do not exist."""
     global _DB_PATH
     if db_path:
         # S8: prevents directory traversal
         _allowed_root = Path(__file__).resolve().parent
         resolved = Path(db_path).resolve()
         if not str(resolved).startswith(str(_allowed_root)):
-            raise ValueError(f"Chemin de DB non autorisé: {db_path!r}")
+            raise ValueError(f"Unauthorised DB path: {db_path!r}")
         _DB_PATH = resolved
 
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -249,12 +249,12 @@ def init_db(db_path: str | Path | None = None) -> None:
         # V1 -> V2 migrations: add the missing columns without breaking what exists
         _migrate_v2(conn)
         conn.commit()
-    logger.info(f"Base de données initialisée : {_DB_PATH}")
+    logger.info(f"Database initialised: {_DB_PATH}")
     _start_sqlite_log_writer()
 
 
 def _migrate_v2(conn) -> None:
-    """Migrations idempotentes V1 → V2 — ajoute les colonnes manquantes."""
+    """Idempotent V1 -> V2 migrations - add the missing columns."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(decisions)")}
     migrations = [
         ("asset",             "ALTER TABLE decisions ADD COLUMN asset TEXT NOT NULL DEFAULT 'BTC/USDT'"),
@@ -269,9 +269,9 @@ def _migrate_v2(conn) -> None:
         if col not in existing:
             try:
                 conn.execute(stmt)
-                logger.info(f"Migration DB: colonne '{col}' ajoutée à decisions")
+                logger.info(f"DB migration: column '{col}' added to decisions")
             except Exception as exc:
-                logger.warning(f"Migration '{col}' ignorée: {exc}")
+                logger.warning(f"Migration '{col}' skipped: {exc}")
 
     # Cleanup: orphaned SELL rows (result_24h IS NULL) are exit
     # signals, not real shorts. Close them cleanly (P&L=0).
@@ -281,14 +281,14 @@ def _migrate_v2(conn) -> None:
             "UPDATE decisions SET result_24h = 0.0 WHERE action = 'SELL' AND result_24h IS NULL"
         ).rowcount
         if n > 0:
-            logger.info(f"Nettoyage DB: {n} ligne(s) SELL orpheline(s) clôturée(s) (result_24h=0)")
+            logger.info(f"DB cleanup: {n} orphaned SELL row(s) closed (result_24h=0)")
     except Exception as exc:
-        logger.warning(f"Nettoyage SELL orphelins ignoré: {exc}")
+        logger.warning(f"Orphan SELL cleanup skipped: {exc}")
 
 
 @contextmanager
 def get_connection():
-    """Gestionnaire de contexte pour la connexion SQLite thread-safe."""
+    """Context manager for the thread-safe SQLite connection."""
     with _lock:
         conn = sqlite3.connect(_DB_PATH, timeout=10, check_same_thread=False)
         conn.row_factory = sqlite3.Row
@@ -303,7 +303,7 @@ def get_connection():
 # ===========================================================
 
 def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -> None:
-    """Enregistre une décision de trading dans SQLite."""
+    """Store a trading decision in SQLite."""
     decision = state.get("decision") or {}
     mirofish = state.get("mirofish_result") or {}
 
@@ -421,7 +421,7 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
 
 
 def update_decision_result(cycle_id: str, result_24h: float) -> None:
-    """Met à jour le P&L 24h après la décision (post-mortem)."""
+    """Update the 24h P&L after the decision (post-mortem)."""
     with get_connection() as conn:
         conn.execute(
             "UPDATE decisions SET result_24h = ? WHERE cycle_id = ?",
@@ -431,7 +431,7 @@ def update_decision_result(cycle_id: str, result_24h: float) -> None:
 
 
 def mark_reflection_done(cycle_id: str) -> None:
-    """Marque la réflexion LLM comme complète pour éviter les doublons."""
+    """Mark the LLM reflection as complete to avoid duplicates."""
     with get_connection() as conn:
         conn.execute(
             "UPDATE decisions SET reflection_done = 1 WHERE cycle_id = ?",
@@ -490,7 +490,7 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
         f"size=${size_usd:.0f} qty={qty:.6f} │ "
         f"SL={sl:.2f} TP={tp:.2f} │ "
         f"P&L={pnl:+.2f}$ ({pnl_pct:+.2f}%) │ "
-        f"durée={hold_str} │ raison={reason} │ score={score:.0f}"
+        f"duration={hold_str} │ reason={reason} │ score={score:.0f}"
     )
 
 
@@ -509,7 +509,7 @@ def get_open_positions() -> list[dict]:
 
 
 def count_open_positions(asset: str | None = None) -> int:
-    """Compte les positions BUY actuellement ouvertes. Filtré par actif si précisé."""
+    """Count the currently open BUY positions. Filtered per asset when specified."""
     with get_connection() as conn:
         if asset:
             row = conn.execute(
@@ -524,7 +524,7 @@ def count_open_positions(asset: str | None = None) -> int:
 
 
 def get_last_action_minutes_ago(asset: str, action: str) -> float | None:
-    """Retourne le nombre de minutes depuis la dernière action pour cet actif, ou None si aucune."""
+    """Return the minutes since the last action for this asset, or None when there is none."""
     with get_connection() as conn:
         row = conn.execute(
             "SELECT timestamp FROM decisions WHERE asset = ? AND action = ? ORDER BY timestamp DESC LIMIT 1",
@@ -570,7 +570,7 @@ def get_closed_trade_stats(asset: str | None = None, min_trades: int = 5) -> dic
 
 
 def get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
-    """Retourne les N dernières décisions, filtré par actif si précisé."""
+    """Return the last N decisions, filtered per asset when specified."""
     try:
         with get_connection() as conn:
             if asset:
@@ -588,7 +588,7 @@ def get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
 
 
 def count_trades(asset: str | None = None) -> int:
-    """Nombre total de trades BUY/SELL dans la table decisions (sans limite)."""
+    """Total number of BUY/SELL trades in the decisions table (no limit)."""
     with get_connection() as conn:
         if asset:
             row = conn.execute(
@@ -624,7 +624,7 @@ def count_trades(asset: str | None = None) -> int:
 
 
 def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
-    """P3: retourne les n derniers BUY/SELL (sans HOLD) — filtre SQL, pas Python."""
+    """P3: return the last n BUY/SELL rows (no HOLD) - filtered in SQL, not Python."""
     with get_connection() as conn:
         if asset:
             rows = conn.execute(
@@ -884,7 +884,7 @@ def get_pending_postmortems(delay_hours: int = 24) -> list[dict]:
 
 
 def get_pnl_history() -> list[dict]:
-    """Retourne l'historique des P&L pour le dashboard."""
+    """Return the P&L history for the dashboard."""
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -1079,7 +1079,7 @@ def log_flux_metric(
     items_count: int = 0,
     error_message: str | None = None
 ) -> None:
-    """Enregistre une métrique de flux dans SQLite."""
+    """Store a flux metric in SQLite."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -1095,7 +1095,7 @@ def log_flux_metric(
             )
             conn.commit()
     except Exception as exc:
-        logger.warning(f"Impossible d'enregistrer la métrique flux {flux_name}: {exc}")
+        logger.warning(f"Cannot store the flux metric {flux_name}: {exc}")
 
 
 # ===========================================================
@@ -1107,7 +1107,7 @@ _LOG_QUEUE: "queue.SimpleQueue[logging.LogRecord | None]" = None  # type: ignore
 
 
 def _start_sqlite_log_writer() -> None:
-    """Démarre le thread unique d'écriture SQLite des logs (appelé une seule fois)."""
+    """Start the single SQLite log-writer thread (called once)."""
     import queue as _queue
     global _LOG_QUEUE
     if _LOG_QUEUE is not None:
@@ -1168,7 +1168,7 @@ def log_timesfm_forecast(
     signal: str,
     confidence: float,
 ) -> None:
-    """Persiste une prédiction TimesFM pour évaluation ultérieure."""
+    """Store a TimesFM prediction for later evaluation."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -1361,7 +1361,7 @@ def log_kronos_forecast(
     signal: str,
     confidence: float,
 ) -> None:
-    """Persiste une prédiction Kronos pour évaluation post-mortem."""
+    """Store a Kronos prediction for post-mortem evaluation."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -1567,7 +1567,7 @@ def log_shadow_decision(
     decision: dict,
     config_snapshot: str = "{}",
 ) -> None:
-    """Insère une décision shadow pour un profil donné."""
+    """Insert a shadow decision for a given profile."""
     action = decision.get("action", "HOLD")
     if action == "HOLD":
         return  # no log for HOLDs (saves space)
@@ -1597,7 +1597,7 @@ def log_shadow_decision(
 
 
 def get_shadow_open_positions_for_profile(profile_name: str) -> list[dict]:
-    """Retourne les positions BUY shadow ouvertes pour un profil."""
+    """Return the open shadow BUY positions for a profile."""
     try:
         with get_connection() as conn:
             rows = conn.execute(
@@ -1616,7 +1616,7 @@ def get_shadow_open_positions_for_profile(profile_name: str) -> list[dict]:
 
 
 def close_shadow_position(shadow_id: int, close_price: float) -> None:
-    """Clôture une position shadow en calculant le P&L."""
+    """Close a shadow position and compute the P&L."""
     try:
         with get_connection() as conn:
             row = conn.execute(
@@ -1644,7 +1644,7 @@ def close_shadow_position(shadow_id: int, close_price: float) -> None:
 
 
 def get_shadow_pending_postmortems(delay_hours: int = 24) -> list[dict]:
-    """Retourne les shadow decisions ouvertes depuis > delay_hours."""
+    """Return the shadow decisions open for more than delay_hours."""
     cutoff = datetime.utcnow().replace(microsecond=0).isoformat()
     try:
         with get_connection() as conn:
@@ -1663,7 +1663,7 @@ def get_shadow_pending_postmortems(delay_hours: int = 24) -> list[dict]:
 
 
 def update_shadow_result(shadow_id: int, result_24h: float) -> None:
-    """Met à jour le P&L 24h d'une shadow decision."""
+    """Update the 24h P&L of a shadow decision."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -1847,7 +1847,7 @@ def get_shadow_virtual_capital(profile_name: str) -> float:
 
 
 def get_shadow_recent_decisions(n: int = 20) -> list[dict]:
-    """Retourne les N dernières décisions shadow, tous profils confondus."""
+    """Return the last N shadow decisions across all profiles."""
     try:
         with get_connection() as conn:
             rows = conn.execute(
@@ -1996,7 +1996,7 @@ def save_meta_analysis(
     asset: str | None = None,
     run_trigger: str = "auto",
 ) -> None:
-    """Persiste une méta-analyse LLM dans la table meta_analyses."""
+    """Store an LLM meta-analysis in the meta_analyses table."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -2021,7 +2021,7 @@ def save_meta_analysis(
 
 
 def get_last_meta_analysis(asset: str | None = None, limit: int = 3) -> list[dict]:
-    """Retourne les N dernières méta-analyses (globales ou par actif)."""
+    """Return the last N meta-analyses (global or per asset)."""
     try:
         with get_connection() as conn:
             if asset:
@@ -2068,7 +2068,7 @@ def write_v2_state(
     capital: float | None = None,
     model_fit_at: str | None = None,
 ) -> None:
-    """Upsert de l'état V2 courant (1 seule ligne id=1)."""
+    """Upsert the current V2 state (a single row, id=1)."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -2113,7 +2113,7 @@ def append_v2_equity(
     action: str | None = None,
     close_price: float | None = None,
 ) -> None:
-    """Ajoute un point à la courbe equity V2."""
+    """Append a point to the V2 equity curve."""
     try:
         with get_connection() as conn:
             conn.execute(
@@ -2153,7 +2153,7 @@ def get_v2_assets_summary() -> list[dict]:
 
 
 def get_v2_state() -> dict | None:
-    """Lit l'état V2 courant."""
+    """Read the current V2 state."""
     try:
         with get_connection() as conn:
             row = conn.execute("SELECT * FROM v2_state WHERE id = 1").fetchone()
@@ -2163,7 +2163,7 @@ def get_v2_state() -> dict | None:
 
 
 def get_v2_equity_curve(n: int = 2000, asset: str = "BTC/USDT") -> list[dict]:
-    """Lit les N derniers points equity V2."""
+    """Read the last N V2 equity points."""
     try:
         with get_connection() as conn:
             rows = conn.execute(
@@ -2177,7 +2177,7 @@ def get_v2_equity_curve(n: int = 2000, asset: str = "BTC/USDT") -> list[dict]:
 
 
 def get_v2_recent_trades(n: int = 50, asset: str = "BTC/USDT") -> list[dict]:
-    """Retourne les N dernières entrées en position V2."""
+    """Return the last N V2 position entries."""
     try:
         with get_connection() as conn:
             rows = conn.execute(

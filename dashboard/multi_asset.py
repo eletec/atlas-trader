@@ -22,7 +22,7 @@ _API_BASE = _os.environ.get("V4_API_URL", "http://host.docker.internal:8000")
 # ---------------------------------------------------------------------------
 
 def _active_assets() -> list[str]:
-    """Retourne les actifs carry actifs depuis carry_assets.yaml (V7, plus de DAGs)."""
+    """Return the active carry assets from carry_assets.yaml (V7, no more DAGs)."""
     try:
         from v7.core.asset_config import get_active_assets as _cfg_active
         assets = _cfg_active()
@@ -34,7 +34,7 @@ def _active_assets() -> list[str]:
 
 
 def _asset_icon(asset: str) -> str:
-    """Picto de l'actif : logo local (upload) > logo git (images/assets/) > cercle coloré fallback."""
+    """Asset icon: local logo (upload) > git logo (images/assets/) > coloured circle fallback."""
     from pathlib import Path as _IPath
     import base64 as _b64
 
@@ -63,7 +63,7 @@ def _asset_icon(asset: str) -> str:
 
 
 def _img_b64(path) -> str:
-    """Encode une image en data URI base64."""
+    """Encode an image as a base64 data URI."""
     import base64 as _b64
     ext = path.suffix.lower()
     mime = "image/svg+xml" if ext == ".svg" else ("image/webp" if ext == ".webp" else "image/png")
@@ -73,7 +73,7 @@ def _img_b64(path) -> str:
 
 
 def _fallback_icon_html(asset: str) -> str:
-    """Cercle coloré avec les initiales du token."""
+    """Coloured circle with the token initials."""
     ticker = asset.split("/")[0]
     initial = ticker[:2].upper() if len(ticker) > 1 else ticker[0].upper()
     hue = (sum(ord(c) * (i + 1) for i, c in enumerate(ticker)) * 37) % 360
@@ -90,7 +90,7 @@ def _action_badge(action: str) -> str:
 
 
 def _score_bar(score: float, theme: str = "dark") -> str:
-    """Mini barre de progression HTML pour le score."""
+    """Mini HTML progress bar for the score."""
     color = "#27ae60" if score >= 60 else ("#e74c3c" if score < 40 else "#f39c12")
     track = "#e0e0e0" if theme == "light" else "#333"
     return (
@@ -225,7 +225,7 @@ def render_global_overview() -> None:
             score = max(5, min(50, int(20 + funding * 200)))
             signal_display = "flat"
             trade_str = f"funding {funding:.4f}%"
-            trend = f"hors [min=0.0050%]" if funding < 0.005 else "—"
+            trend = f"outside [min=0.0050%]" if funding < 0.005 else "—"
         else:
             score = 50
             signal_display = "flat"
@@ -272,7 +272,7 @@ def render_global_overview() -> None:
 
 @st.cache_data(ttl=15)
 def _fetch_v4_prices() -> dict[str, dict]:
-    """Récupère les prix live depuis l'API V4 (WebSocket Binance)."""
+    """Fetch the live prices from the V4 API (Binance WebSocket)."""
     try:
         import urllib.request, json
         req = urllib.request.Request(f"{_API_BASE}/prices/snapshot")
@@ -283,7 +283,7 @@ def _fetch_v4_prices() -> dict[str, dict]:
 
 
 def render_global_live_prices() -> None:
-    """Grille de prix live — polling AJAX toutes les 3s, pas de refresh page."""
+    """Live price grid - AJAX polling every 3s, no page refresh."""
     import streamlit as st
     import json as _json
     import traceback as _tb
@@ -454,7 +454,7 @@ poll();
 
 
 def _fmt_price(price: float | None) -> str:
-    """Formate un prix pour affichage."""
+    """Format a price for display."""
     if price is None:
         return "—"
     if price >= 1000:
@@ -586,7 +586,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
   if (wasC) nav.classList.add('c');
 
   nav.innerHTML =
-    '<div id="ant" title="Réduire / Agrandir">&#9776;</div>' +
+    '<div id="ant" title="Collapse / Expand">&#9776;</div>' +
     '<div id="atlas-sidenav-scroll">' +
     ITEMS.map(function(it) {{
       if (it.section) {{

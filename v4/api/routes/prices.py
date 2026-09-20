@@ -32,7 +32,7 @@ logger = logging.getLogger("v4.api.routes.prices")
 # ------------------------------------------------------------------
 
 class PriceStore:
-    """Stocke le dernier prix connu pour chaque symbole."""
+    """Store the last known price for every symbol."""
 
     _instance: "PriceStore | None" = None
 
@@ -100,7 +100,7 @@ async def _get_rest_exchange():
 
 
 async def _poll_all_rest() -> None:
-    """Polling REST consolidé : itère tous les actifs en boucle (économie mémoire ×24)."""
+    """Consolidated REST polling: iterates every asset in a loop (saves 24x memory)."""
     exchange = await _get_rest_exchange()
     loop = asyncio.get_running_loop()
     logger.info("Consolidated REST poller started (%d symbols)", len(_active_symbols))
@@ -125,7 +125,7 @@ async def _poll_all_rest() -> None:
 
 
 def ensure_ticker(symbol: str) -> None:
-    """Ajoute un symbole au poller consolidé (plus de tâche par actif)."""
+    """Add a symbol to the consolidated poller (no more one task per asset)."""
     global _poller_task
     _active_symbols.add(symbol)
     if _poller_task is None or _poller_task.done():
@@ -189,7 +189,7 @@ async def price_stream(symbols: str = "BTC/USDT"):
 
 @router.get("/snapshot")
 async def price_snapshot(symbols: str = ""):
-    """Retourne le dernier prix connu pour chaque symbole (pas SSE)."""
+    """Return the last known price for every symbol (not SSE)."""
     store = PriceStore.instance()
     if symbols:
         sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]

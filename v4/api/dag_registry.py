@@ -137,7 +137,7 @@ class DAGRegistry:
     # Public API
     # ------------------------------------------------------------------
 
-    def run_once(self, dag_spec: "DAGSpec") -> dict[str, NodeRunResult]:
+    def run_once(self, dag_spec: "DAGSpec") -> dict[str, NodeRunResult]:  # noqa: F821
         """Run a DAG once and return the results. Without persistence."""
         _emit_log("INFO", dag_spec.dag_id, f"▶ {dag_spec.asset} — starting")
         executor = self._build_executor(dag_spec)
@@ -150,7 +150,7 @@ class DAGRegistry:
         _emit_log("INFO", dag_spec.dag_id, f"✓ Complete: {done}/{len(results)} OK, {errors} errors")
         return results
 
-    def schedule(self, dag_spec: "DAGSpec", cycle_s: float) -> str:
+    def schedule(self, dag_spec: "DAGSpec", cycle_s: float) -> str:  # noqa: F821
         """Start a DAG in a loop. Returns dag_id."""
         dag_id = dag_spec.dag_id
 

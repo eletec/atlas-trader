@@ -73,7 +73,7 @@ class Node(ABC):
         self.node_id = node_id
         self.params: dict[str, Any] = params or {}
         self.meta: NodeMeta = meta or NodeMeta()
-        self.ai_plugin: AIPlugin | None = None
+        self.ai_plugin: "AIPlugin | None" = None  # noqa: F821  (TYPE_CHECKING-only import)
         self.ai_blend_weight: float = 0.0
         self.status: NodeStatus = NodeStatus.IDLE
         self._last_outputs: dict[str, Any] = {}

@@ -1103,7 +1103,9 @@ def log_flux_metric(
 # ===========================================================
 
 # Single queue - only ONE thread writes to SQLite (avoids deadlocks and thread explosion)
-_LOG_QUEUE: "queue.SimpleQueue[logging.LogRecord | None]" = None  # type: ignore[assignment]
+# `queue` is imported locally by the writer thread below; this is an annotation only
+# and the module has `from __future__ import annotations`, so it is never evaluated.
+_LOG_QUEUE: "queue.SimpleQueue[logging.LogRecord | None]" = None  # noqa: F821
 
 
 def _start_sqlite_log_writer() -> None:
@@ -1754,12 +1756,11 @@ def get_shadow_comparison_stats() -> list[dict]:
                 evaluated = baseline_row["evaluated"] or 0
                 wins = baseline_row["wins"] or 0
                 total_pnl = round(baseline_row["total_pnl"], 2)
-                # Baseline: real capital from the portfolio
-                try:
-                    real_pf = get_portfolio()
-                    real_capital = float(real_pf.get("current_value", _SHADOW_INITIAL_CAPITAL))
-                except Exception:
-                    real_capital = _SHADOW_INITIAL_CAPITAL + total_pnl
+                # Baseline: capital committed. `get_portfolio()` used to be called
+                # here inside this try/except, but no such function is defined
+                # anywhere in the tree - the NameError was swallowed and the
+                # fallback always ran, so the branch was dead.
+                real_capital = _SHADOW_INITIAL_CAPITAL + total_pnl
                 stats.insert(0, {
                     "profile": "baseline",
                     "total_trades": baseline_row["total_trades"],

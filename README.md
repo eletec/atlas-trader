@@ -271,12 +271,11 @@ step 3, parameters frozen, causal universe:
 ```
 Traded windows  : 5/10 (50% coverage)
 OOS median      : +0.022%/quarter  ~ +0.09%/yr
-OOS worst/best  : -0.015% / +0.376%
-Total Trading   : $54.99 over 3 years ($12,000 of capital)
+OOS worst/best  : -0.015% / +0.370%
+Total Trading   : $55.48 over 3 years ($12,000 of capital)
 Total Staking   : $629.50                      <- 11x the trading
 
-BULL  : 2 windows, median +0.233%
-RANGE : 3 windows, median -0.015%
+RANGE : 5 windows, median +0.022%
 
 Verdict: Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)
 ```
@@ -290,9 +289,12 @@ Two things a reader should not skim past:
   `Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)` instead of
   the "GO for real capital" it used to print for any positive median.
 
-Only 2 of 10 windows fell in a BULL regime, and those carry the return (+0.233%
-per quarter median). The strategy is a **regime bet**, not an all-weather one —
-and even the bull quarters annualise to well under the 5% hurdle.
+An earlier run of this table segmented two windows as BULL and credited the return
+to those. That split came from the regime classifier reading daily bars while the
+strategy now reads 8h bars; on the same resolution the traded windows all classify
+as RANGE. The share shifted, the P&L did not — +0.022% per quarter either way,
+still ~55x below the hurdle. It is worth knowing that a regime label here is an
+artefact of the bar size the classifier is handed.
 
 ### Limits, stated plainly
 

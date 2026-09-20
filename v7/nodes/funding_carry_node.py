@@ -28,13 +28,13 @@ class FundingCarryState:
     symbol: str
     position_open: bool = False
     entry_capital: float = 0.0
-    entry_spot: float = 0.0          # prix spot à l'ouverture
-    entry_perp: float = 0.0          # prix perp à l'ouverture
+    entry_spot: float = 0.0          # spot price at entry
+    entry_perp: float = 0.0          # perp price at entry
     entry_time: str = ""             # ISO timestamp d'ouverture (time-stop)
     negative_since: Optional[str] = None  # ISO timestamp
     total_funding_received: float = 0.0
     n_payments: int = 0
-    staking_earned: float = 0.0      # rendement staking USDT sur capital inactif
+    staking_earned: float = 0.0      # USDT staking yield on idle capital
     last_funding_rate: float = 0.0
     last_signal: str = "flat"
     last_update: str = ""
@@ -59,18 +59,18 @@ class FundingCarryNode:
         fraction: float = 0.50,
         min_funding: float = 0.00005,
         max_funding: float = 0.003,
-        exit_after_hours: int = 72,    # sortie funding négatif après 72h (Grok)
+        exit_after_hours: int = 72,    # exit on negative funding after 72h (Grok)
         kelly_fraction: float = 0.35,  # fractional Kelly 35% (Grok)
-        max_hold_days: int = 14,        # time-stop : sortie forcée après N jours
+        max_hold_days: int = 14,        # time-stop: forced exit after N days
         stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
-        cooldown_hours: int = 24,       # anti-churn : pas de réouverture avant N h après clôture
+        cooldown_hours: int = 24,       # anti-churn: do not reopen within N hours of closing
         exchange_name: str = "binance",  # binance | bybit | okx | kraken
         fee_bps: float = 10.0,       # frais spot Binance standard (0.1% = 10bps)
         slippage_bps: float = 2.0,
         params: dict | None = None,
         meta: object = None,  # DAG framework NodeMeta
     ):
-        # Si appelé via DAG framework (params dict), extraire les valeurs
+        # If called through the DAG framework (params dict), extract the values
         if params is not None:
             symbol = params.get("symbol", symbol)
             capital = params.get("capital", capital)
@@ -99,7 +99,7 @@ class FundingCarryNode:
         self.fee_bps = fee_bps
         self.slippage_bps = slippage_bps
         
-        # Filtre de regime : volatilite 30j minimum pour entrer (via params DAG ou defaut)
+        # Regime filter: 30d volatility is the minimum to enter (via DAG params or default)
         self.min_volatility_30d = float(self.params.get("min_volatility_30d", 0.02))
         
         # Hurdle economique (configurable via grid search)
@@ -107,9 +107,9 @@ class FundingCarryNode:
         self.economic_hurdle = float(self.params.get("economic_hurdle", 0.05))
         
         self.state = FundingCarryState(symbol=symbol)
-        self._funding_rate_history: list[float] = []  # MA 7j (~21 valeurs)
+        self._funding_rate_history: list[float] = []  # 7d moving average (~21 samples)
         
-        # Restaurer l'état depuis la DB (survit aux restart)
+        # Restore state from the DB (survives restarts)
         # Sauf en mode backtest (pas de DB live)
         backtest = params.get("_backtest", False) if params else False
         if not backtest:
@@ -132,27 +132,27 @@ class FundingCarryNode:
                 pos = carry_pos[0]
                 self.state.position_open = True
                 self.state.entry_capital = float(pos.get("size_usd", 0))
-                # Restaurer le prix d'entrée spot (stocké dans entry_price)
+                # Restore the spot entry price (stored in entry_price)
                 self.state.entry_spot = float(pos.get("entry_price", 0) or 0)
-                # Restaurer le perp depuis context_json si disponible
+                # Restore the perp price from context_json when available
                 ctx_raw = pos.get("context_json")
                 if ctx_raw:
                     try:
                         ctx = _json.loads(ctx_raw) if isinstance(ctx_raw, str) else ctx_raw
-                        # Restaurer le funding accumulé (persisté par run_carry_cycle.py HOLD)
+                        # Restore accumulated funding (persisted by run_carry_cycle.py on HOLD)
                         self.state.total_funding_received = float(ctx.get("total_funding_received", 0) or 0)
                         self.state.n_payments = int(ctx.get("n_payments", 0) or 0)
-                        # Le context_json contient le decision dict complet
+                        # context_json holds the full decision dict
                         # entry_price = spot, on cherche le perp dans carry_* ou on l'estime
                         if ctx.get("carry_signal") == "open_carry":
-                            # Le perp était proche du spot à l'ouverture (basis ~0)
+                            # The perp was close to spot at entry (basis ~0)
                             self.state.entry_perp = self.state.entry_spot
                     except Exception:
                         self.state.entry_perp = self.state.entry_spot
                 else:
-                    # Pas de contexte : estimer perp ≈ spot (le basis est généralement faible)
+                    # No context: estimate perp ~ spot (the basis is usually small)
                     self.state.entry_perp = self.state.entry_spot
-                # Restaurer le timestamp d'ouverture (pour le time-stop)
+                # Restore the entry timestamp (for the time-stop)
                 ts = pos.get("timestamp", "")
                 if ts:
                     self.state.entry_time = ts
@@ -167,16 +167,16 @@ class FundingCarryNode:
     def _get_funding_interval(self) -> float:
         """Retourne l'intervalle de funding en heures depuis Binance (3 audits, 20/07/2026).
         Fallback: 8h si l'API est injoignable ou si backtest."""
-        # Backtest: pas d'appel CCXT, utiliser le standard 8h
+        # Backtest: no CCXT call, use the standard 8h
         if self.params.get("_backtest", False):
             return 8.0
-        # Cache simple (l'intervalle ne change pas en cours d'exécution)
+        # Simple cache (the interval does not change at runtime)
         if hasattr(self, "_cached_funding_interval"):
             return self._cached_funding_interval
         try:
             import ccxt
             exchange = ccxt.binance({"enableRateLimit": True})
-            # Utiliser fetch_funding_rate() qui est plus léger que load_markets()
+            # Use fetch_funding_rate(), which is lighter than load_markets()
             market = exchange.market(self.symbol)
             info = market.get("info", {}) if market else {}
             interval = float(info.get("fundingIntervalHours", 8) or 8)
@@ -193,7 +193,7 @@ class FundingCarryNode:
         (3 audits, 20/07/2026)"""
         if not self._funding_rate_history or len(self._funding_rate_history) < 5:
             return True  # pas assez d'historique → laisse passer
-        # Utiliser l'historique disponible (jusqu'à 21 échantillons = 7 jours)
+        # Use the available history (up to 21 samples = 7 days)
         sorted_rates = sorted(self._funding_rate_history)
         threshold_idx = int(len(sorted_rates) * (1 - pct))
         if threshold_idx >= len(sorted_rates):
@@ -381,10 +381,10 @@ class FundingCarryNode:
         """
         t0 = time.time()
         
-        # Le noeud est lie a UN SEUL actif : self.symbol fait foi.
+        # The node is bound to ONE asset: self.symbol is authoritative.
         # L'etat interne (position ouverte, capital engage, historique de funding)
-        # n'est pas reinitialise entre deux appels — les appelants instancient
-        # donc un noeud par actif (run_carry_cycle, backtests).
+        # state is not reset between calls - so callers instantiate
+        # one node per asset (run_carry_cycle, backtests).
         
         spot_price = float(inputs.get("spot_price", 0))
         funding_rate = float(inputs.get("funding_rate", 0))
@@ -406,7 +406,7 @@ class FundingCarryNode:
         self.state.last_funding_rate = funding_rate
         self.state.last_update = datetime.now().isoformat()
         
-        # Maintenir l'historique du funding pour la MA 7j et le percentile (max 270 valeurs = 90j)
+        # Keep the funding history for the 7d MA and the percentile (max 270 samples = 90d)
         self._funding_rate_history.append(funding_rate)
         if len(self._funding_rate_history) > 270:
             self._funding_rate_history = self._funding_rate_history[-270:]
@@ -421,14 +421,14 @@ class FundingCarryNode:
         unrealized_pct = 0.0
         economic_hurdle = self.economic_hurdle  # scoped for both open/close branches
         
-        # Annualiser — utilise l'intervalle réel de Binance (3 audits, 20/07/2026)
+        # Annualise - uses Binance's real interval (3 audits, 2026-07-20)
         funding_interval_h = self._get_funding_interval()
         periods_per_year = (24 / funding_interval_h) * 365
         annual_funding = funding_rate * periods_per_year
         
-        # Basis : filtre de qualite d'entree uniquement.
-        # Le basis N'EST PAS annualise dans le rendement attendu (pas de garantie de
-        # convergence, et un basis negatif ne doit pas annuler le funding).
+        # Basis: entry-quality filter only.
+        # The basis is NOT annualised into the expected return (there is no convergence
+        # guarantee, and a negative basis must not cancel the funding yield).
         # Voir plus bas : expected_return = annual_funding seul.
         if perp_price > 0:
             basis_pct = (perp_price - spot_price) / spot_price
@@ -436,51 +436,51 @@ class FundingCarryNode:
             basis_pct = 0.0
         
         if not self.state.position_open:
-            # ── Staking sur capital inactif ──
+            # -- Staking on idle capital --
             staking_annual = self._staking_annual_rate()  # carry_assets.yaml (global)
             idle_capital = self.capital * self.fraction
-            staking_8h = idle_capital * staking_annual / (365 * 3)  # 3 périodes de 8h/jour
+            staking_8h = idle_capital * staking_annual / (365 * 3)  # 3 funding periods of 8h per day
             self.state.staking_earned += staking_8h
             
-            # ── Opportunité d'ouverture ──
-            # Cooldown anti-churn : ne pas rouvrir un actif fermé récemment
+            # -- Entry opportunity --
+            # Anti-churn cooldown: do not reopen a recently closed asset
             _close_age_h = self._last_close_age_hours()
             if _close_age_h is not None and _close_age_h < self.cooldown_hours:
                 reason = f"cooldown {self.cooldown_hours}h après clôture ({_close_age_h:.1f}h)"
                 confidence = 0.1
-            # Filtre 1 : funding instantané dans la plage
+            # Filter 1: instantaneous funding within range
             elif funding_rate >= self.min_funding and funding_rate <= self.max_funding:
-                # Filtre 2 : funding MA 7j positif (évite les spikes isolés)
+                # Filter 2: positive 7d funding MA (avoids isolated spikes)
                 if funding_ma_7d <= 0:
                     reason = f"funding MA 7j={funding_ma_7d*100:.4f}% ≤ 0 → attente"
                     confidence = 0.2
-                # Filtre 3 : basis pas trop défavorable
+                # Filter 3: basis not too unfavourable
                 elif basis_pct < -0.003:
                     reason = f"basis défavorable ({basis_pct*100:.4f}%)"
                     confidence = 0.3
                 else:
                     # ── Rendement attendu (22/07/2026) ──
-                    # Le funding est annualisé, le basis est un filtre de qualité d'entrée.
-                    # Le basis N'EST PAS annualisé dans le rendement — il n'y a pas de
-                    # garantie de convergence, et un basis négatif ne doit pas annuler
-                    # le rendement du funding (GPT Round 2: expected_basis_return = 0).
-                    expected_return = annual_funding  # rendement du funding uniquement
+                    # Funding is annualised; the basis is an entry-quality filter only.
+                    # The basis is NOT annualised into the return - there is no convergence
+                    # guarantee, and a negative basis must not cancel the funding
+                    # yield (GPT round 2: expected_basis_return = 0).
+                    expected_return = annual_funding  # funding return only
                     
-                    # ── Economic hurdle = SOFR (coût d'opportunité pur) ──
-                    # Les primes de risque (exchange, stablecoin, operational) sont
-                    # couvertes par le safety_cap et le stress_loss_pct, pas par le hurdle.
+                    # -- Economic hurdle = SOFR (pure opportunity cost) --
+                    # The risk premia (exchange, stablecoin, operational) are covered
+                    # by safety_cap and stress_loss_pct, not by the hurdle.
                     # Grid search V7.3: 25/26 actifs preferent 5% vs 7%.
                     
-                    # ── Coûts annualisés (déduits du rendement, pas du hurdle) ──
+                    # -- Annualised costs (deducted from the return, not from the hurdle) --
                     round_trip_cost = 0.0048   # 48bps (40 fees + 8 slippage)
-                    # Le coût annualisé dépend du time-stop réel : un hold court
-                    # rend les frais prohibitifs (48bps amortis sur peu de jours).
+                    # The annualised cost depends on the real time-stop: a short hold
+                    # makes the fees prohibitive (48bps amortised over very few days).
                     # Ex: max_hold_days=14 → 12.5%/an de frais ; 60j → 2.9%/an.
                     estimated_hold = max(self.max_hold_days, 1)
                     annualized_cost = round_trip_cost * 365 / estimated_hold
                     net_expected_return = expected_return - annualized_cost
                     
-                    # ── Percentile filter (relatif, séparé du hurdle éco) ──
+                    # -- Percentile filter (relative, separate from the economic hurdle) --
                     percentile_ok = True
                     if len(self._funding_rate_history) >= 30:
                         annualized_hist = sorted([r * periods_per_year for r in self._funding_rate_history])
@@ -489,7 +489,7 @@ class FundingCarryNode:
                     
                     if net_expected_return > economic_hurdle and percentile_ok:
                             # ── Risk budgeting (GPT 5.5 + 3 audits) ──
-                            # ── Risk budgeting — stress loss par actif (depuis config ou fallback) ──
+                            # -- Risk budgeting - per-asset stress loss (from config or fallback) --
                             try:
                                 from v7.core.asset_config import get_asset_params
                                 _cfg = get_asset_params(self.symbol)
@@ -508,7 +508,7 @@ class FundingCarryNode:
                             score = max(0, net_return) / stress_loss_pct if stress_loss_pct > 0 else 0
                             raw_size = self.capital * self.fraction * min(score, 0.25)
 
-                            # ── Safety caps (depuis config ou fallback) ──
+                            # -- Safety caps (from config or fallback) --
                             try:
                                 _cfg = get_asset_params(self.symbol)
                                 max_size = float(_cfg.get("safety_cap", 200))
@@ -565,13 +565,13 @@ class FundingCarryNode:
                 reason = f"funding={funding_rate*100:.4f}% hors [min={self.min_funding*100:.4f}%, max={self.max_funding*100:.2f}%]"
         else:
             # ── Position ouverte ──
-            # Calculer P&L latent (basis uniquement, le delta est couvert)
+            # Compute unrealised P&L (basis only; the delta is hedged)
             if self.state.entry_spot > 0 and spot_price > 0:
                 # Short perp: on perd si perp monte vs spot, on gagne si perp baisse vs spot
                 basis_entry = (self.state.entry_perp - self.state.entry_spot) / self.state.entry_spot
                 basis_now = (perp_price - spot_price) / spot_price if perp_price > 0 else 0
                 # LONG spot + SHORT perp → gain when basis CONTRACTS (Round 4 fix)
-                unrealized_pct = basis_entry - basis_now  # positif = gain, négatif = perte
+                unrealized_pct = basis_entry - basis_now  # positive = gain, negative = loss
                 unrealized_usd = unrealized_pct * self.state.entry_capital
                 
                 # Stop-loss : basis loss > 5% → close
@@ -582,8 +582,8 @@ class FundingCarryNode:
                     confidence = 0.95
                     logger.warning("[%s] %s", self.node_id, reason)
                 
-                # ── Sortie économique (3 audits, 20/07/2026) ──
-                # Remplace le time-stop strict de 14j.
+                # -- Economic exit (3 audits, 2026-07-20) --
+                # Replaces the strict 14d time-stop.
                 # ZONES : HEALTHY (<14j), REVIEW (14-30j), DERISK (30-60j), CLOSE (>60j)
                 if signal != "close_carry" and self.state.entry_time:
                     try:
@@ -597,7 +597,7 @@ class FundingCarryNode:
                             confidence = 0.85
                             logger.warning("[%s] %s", self.node_id, reason)
                         elif days_held > 30:
-                            # DERISK: fermer si le forward funding ne justifie plus la position
+                            # DERISK: close when forward funding no longer justifies the position
                             forward_funding = funding_rate * periods_per_year
                             exit_cost_annual = 0.0048 * (365 / max(days_held, 1))  # 48bps round-trip amortis
                             if forward_funding < economic_hurdle + exit_cost_annual:
@@ -627,7 +627,7 @@ class FundingCarryNode:
                 # En paper, on ne ferme pas automatiquement mais on alerte fortement
             
             if signal == "close_carry":
-                pass  # déjà géré ci-dessus
+                pass  # already handled above
             elif funding_rate > 0:
                 # Recevoir funding
                 payment = self.state.entry_capital * funding_rate
@@ -637,7 +637,7 @@ class FundingCarryNode:
                 reason = f"carry actif | funding reçu={self.state.total_funding_received:.4f} ({self.state.n_payments} paiements)"
                 confidence = 0.70
             elif funding_rate < 0:
-                # Funding négatif → timer
+                # Negative funding -> timer
                 now = datetime.now()
                 if self.state.negative_since is None:
                     self.state.negative_since = now.isoformat()
@@ -665,27 +665,27 @@ class FundingCarryNode:
         
         # ── Output ──
         # Construire un "decision" compatible PaperTrader.
-        # Pour les trades carry : PAS de SL/TP spot (sémantiquement faux pour du delta-neutre).
-        # Le PositionMonitor utilise max_loss_pct unifié (-5%) pour la sortie.
-        # Le DAG gère le basis SL et le time-stop.
-        # Score arrondi 0-100 pour affichage dashboard
+        # For carry trades: NO spot SL/TP (semantically wrong for a delta-neutral book).
+        # PositionMonitor uses the unified max_loss_pct (-5%) for the exit.
+        # The DAG handles the basis stop-loss and the time-stop.
+        # Score rounded to 0-100 for the dashboard display
         _display_score = round(min(score, 0.25) / 0.25 * 100) if signal == "open_carry" else 0
         decision = {
             "action": "flat",
             "size_usd": round(size_usd, 2),
             "entry_price": spot_price,
-            "stop_loss": 0,       # pas de SL spot pour le carry
-            "take_profit": 0,     # pas de TP spot pour le carry
+            "stop_loss": 0,       # no spot stop-loss on carry
+            "take_profit": 0,     # no spot take-profit on carry
             "atr": 0,
-            "strategy_type": "funding_carry",  # marqueur pour downstream
+            "strategy_type": "funding_carry",  # marker for downstream consumers
             "carry_signal": signal,
             "carry_expected_return": round(expected_return, 4),
             "carry_annual_pct": round(annual_funding * 100, 2),
-            "score": _display_score,  # pour affichage dashboard
+            "score": _display_score,  # for the dashboard display
         }
         if signal == "open_carry":
             decision["action"] = "carry"
-            # Two-leg accounting : stocker les prix d'entrée pour le calcul de basis P&L
+            # Two-leg accounting: store the entry prices to compute the basis P&L
             decision["entry_perp_price"] = perp_price if perp_price > 0 else spot_price
             decision["entry_basis"] = round(basis_pct, 6)
         elif signal == "close_carry":
@@ -744,7 +744,7 @@ if __name__ == "__main__":
     })
     print(f"Signal: {result2['signal']} | Funding reçu: {result2['total_funding_received']:.6f}")
     
-    # Simuler funding négatif
+    # Simulate negative funding
     node.state.negative_since = (datetime.now() - timedelta(hours=50)).isoformat()
     result3 = node.run({
         "spot_price": 66800,

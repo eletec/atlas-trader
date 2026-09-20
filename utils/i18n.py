@@ -664,7 +664,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     # ----------------------------------------------------------
     # FLUX MANAGER
     # ----------------------------------------------------------
-    # Descriptions des flux (partiellement en français dans FLUX_DEFINITIONS)
+    # Flux descriptions (partly French inside FLUX_DEFINITIONS)
     "col_asset": {
         "fr": "Actif", "en": "Asset",
         "de": "Vermögenswert", "es": "Activo",
@@ -1418,7 +1418,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "zh": "资金费 carry 回测 — {symbol}，{days} 天…",
     },
 
-    # ── Contrôles divers ─────────────────────────────────────────────────
+    # -- Misc controls --
     "carry_apply_optimized_btn": {
         "fr": "📊 Appliquer optimisés", "en": "📊 Apply optimized",
         "de": "📊 Optimierte anwenden", "es": "📊 Aplicar optimizados",
@@ -1494,5 +1494,5 @@ def t(key: str, lang: str | None = None) -> str:
         return key
     if effective_lang in entry:
         return entry[effective_lang]
-    # Fallback explicite : EN → FR → clé
+    # Explicit fallback: EN -> FR -> key
     return entry.get("en") or entry.get("fr") or key

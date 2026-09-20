@@ -48,7 +48,7 @@ __all__ = [
     "FundingCarryNode",
 ]
 
-# Registre global des types de nœuds — utilisé par le DAGExecutor pour instancier depuis JSON
+## Global registry of node types - used by the DAGExecutor to instantiate from JSON
 _registry_classes = [
     AssetDef, LoadMultiTF, ComputeFeatures, Normalize,
     CrossTFArb,

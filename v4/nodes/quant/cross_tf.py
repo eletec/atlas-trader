@@ -86,7 +86,7 @@ class CrossTFArb(Node):
         ohlcv_5m: pd.DataFrame = inputs.get("ohlcv_5m")
         ohlcv_1h: pd.DataFrame = inputs.get("ohlcv_1h")
 
-        # ── Validation des entrées ──
+        # -- Input validation --
         if ohlcv_5m is None or not hasattr(ohlcv_5m, "iloc") or len(ohlcv_5m) < 20:
             return {"signal": "flat", "confidence": 0.0, "tf_divergence": 0.0,
                     "reason": "insufficient_5m_data"}
@@ -94,7 +94,7 @@ class CrossTFArb(Node):
             return {"signal": "flat", "confidence": 0.0, "tf_divergence": 0.0,
                     "reason": "insufficient_1h_data"}
 
-        # ── Paramètres ──
+        # -- Parameters --
         mode = self.params.get("mode", "divergence")
         mom_n_5m = int(self.params.get("momentum_5m", 6))      # 30 min
         mom_n_1h = int(self.params.get("momentum_1h", 4))      # 4h
@@ -103,11 +103,11 @@ class CrossTFArb(Node):
         volume_filter = bool(self.params.get("volume_filter", True))
         atr_filter = bool(self.params.get("atr_filter", True))
 
-        # ── Calcul des momentums ──
-        mom_5m = self._momentum(ohlcv_5m, mom_n_5m)  # % sur 30 min
-        mom_1h = self._momentum(ohlcv_1h, mom_n_1h)  # % sur 4h
+        # -- Momentum computation --
+        mom_5m = self._momentum(ohlcv_5m, mom_n_5m)  # % over 30 min
+        mom_1h = self._momentum(ohlcv_1h, mom_n_1h)  # % over 4h
 
-        # ── Divergence = 5m - 1h : positive = 5m plus bullish que 1h ──
+        # -- Divergence = 5m - 1h: positive means 5m is more bullish than 1h --
         divergence = mom_5m - mom_1h  # en points de %
 
         # ── Filtre volume 5m ──
@@ -119,7 +119,7 @@ class CrossTFArb(Node):
             if not vol_ok:
                 logger.debug("CrossTF: volume 5m faible (%.0f < 0.5×MA %.0f)", vol_recent, vol_ma)
 
-        # ── Filtre ATR (range réelle > ATR/3) ──
+        # -- ATR filter (real range > ATR/3) --
         atr_ok = True
         if atr_filter and len(ohlcv_5m) >= 15:
             tr_5m = pd.concat([
@@ -133,7 +133,7 @@ class CrossTFArb(Node):
             if not atr_ok:
                 logger.debug("CrossTF: range 5m faible (%.4f < ATR/3=%.4f)", current_range, atr_14 / 3.0)
 
-        # ── Décision selon le mode ──
+        # -- Decision depending on the mode --
         signal = "flat"
         confidence = 0.0
 
@@ -144,7 +144,7 @@ class CrossTFArb(Node):
             abs_div = abs(divergence)
 
             if mom_5m < -threshold and mom_1h > -threshold * 0.3 and vol_ok and atr_ok:
-                # 5m clairement bearish, 1h pas encore → short
+                # 5m clearly bearish, 1h not yet -> short
                 signal = "short"
                 confidence = min(abs_div / strong_threshold, 1.0)
                 logger.info(
@@ -152,7 +152,7 @@ class CrossTFArb(Node):
                     mom_5m, mom_1h, divergence, confidence,
                 )
             elif mom_5m > threshold and mom_1h < threshold * 0.3 and vol_ok and atr_ok:
-                # 5m clairement bullish, 1h pas encore → long
+                # 5m clearly bullish, 1h not yet -> long
                 signal = "long"
                 confidence = min(abs_div / strong_threshold, 1.0)
                 logger.info(
@@ -161,7 +161,7 @@ class CrossTFArb(Node):
                 )
 
         elif mode == "confirmation":
-            # Les 2 TFs doivent être alignés pour un signal fort
+            # Both timeframes must align for a strong signal
             if mom_5m > threshold and mom_1h > threshold * 0.5:
                 signal = "long"
                 confidence = min((mom_5m + mom_1h) / (2 * strong_threshold), 1.0)
@@ -170,7 +170,7 @@ class CrossTFArb(Node):
                 confidence = min(abs(mom_5m + mom_1h) / (2 * strong_threshold), 1.0)
 
         elif mode == "reversal":
-            # 5m a changé de direction, 1h pas encore → signal de sortie/contre-trade
+            # 5m changed direction, 1h not yet -> exit/counter-trade signal
             mom_5m_prev = self._momentum(ohlcv_5m.iloc[:-mom_n_5m], mom_n_5m) if len(ohlcv_5m) > mom_n_5m * 2 else 0.0
             reversed_up = mom_5m > threshold and mom_5m_prev < -threshold * 0.5
             reversed_dn = mom_5m < -threshold and mom_5m_prev > threshold * 0.5
@@ -184,7 +184,7 @@ class CrossTFArb(Node):
                 confidence = 0.6
                 logger.info("CrossTF REVERSAL SHORT: 5m flipped bearish (prev=%.2f now=%.2f)", mom_5m_prev, mom_5m)
 
-        # ── Normaliser la divergence dans [-1, 1] ──
+        # -- Normalise the divergence into [-1, 1] --
         tf_divergence = float(np.clip(divergence / (strong_threshold * 2), -1.0, 1.0))
 
         return {

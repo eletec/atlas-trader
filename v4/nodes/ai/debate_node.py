@@ -172,7 +172,7 @@ class DebateNode(Node):
                 "bull_argument": "", "bear_argument": "", "verdict": "Debate skipped",
             }
 
-        # ── Mode async : fire-and-forget, retour immédiat ──
+        # -- Async mode: fire-and-forget, returns immediately --
         async_mode = bool(self.params.get("async_mode", True))
         dag_id = self.params.get("dag_id", "unknown")
         cache_key = f"debate_{dag_id}_{self.node_id}"
@@ -225,7 +225,7 @@ class DebateNode(Node):
         api_key = (_os_dk.environ.get("DEEPSEEK_API_KEY", "") or _os_dk.environ.get("DEEPSEEK_KEY", "")
                     or _llm_cfg.get("deepseek_api_key", "") or _llm_cfg.get("api_key", ""))
 
-        # ── Construire le prompt commun ──
+        # -- Build the shared prompt --
         reflections = inputs.get("lessons") or inputs.get("reflections", "")
         market_data = json.dumps({k: v for k, v in inputs.items()
                                    if k not in ("lessons", "reflections")}, default=str)

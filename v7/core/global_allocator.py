@@ -22,7 +22,7 @@ logger = logging.getLogger("v7.core.global_allocator")
 # ── Global limits ────────────────────────────────────────────────────────────
 MAX_TOTAL_EXPOSURE_PCT = 0.40      # 40% of total capital in carry
 MAX_SIMULTANEOUS_POSITIONS = 4     # max 4 simultaneous carries
-TOTAL_CAPITAL = 14_000             # 7 × $2,000
+TOTAL_CAPITAL = 14_000             # 7 x $2,000
 
 # ── Per-asset safety caps (same as FundingCarryNode) ─────────────────────────
 # ── Per-asset safety caps (loaded from config or defaults) ──────────────────

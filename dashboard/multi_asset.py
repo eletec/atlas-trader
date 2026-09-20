@@ -40,7 +40,7 @@ def _asset_icon(asset: str) -> str:
 
     ticker = asset.split("/")[0]
 
-    # 1) Logo uploadé dans /app/data/logos/ (icon_url dans la config)
+    # 1) Logo uploaded to /app/data/logos/ (icon_url in the config)
     try:
         from v7.core.asset_config import get_asset_params
         params = get_asset_params(asset)
@@ -52,13 +52,13 @@ def _asset_icon(asset: str) -> str:
     except Exception:
         pass
 
-    # 2) Logo git-tracked dans images/assets/{TICKER}.svg
+    # 2) Git-tracked logo in images/assets/{TICKER}.svg
     for ext in (".svg", ".png", ".webp", ".jpg"):
         git_path = _IPath("/app/src/images/assets") / f"{ticker}{ext}"
         if git_path.exists():
             return _img_b64(git_path)
 
-    # 3) Fallback cercle coloré
+    # 3) Coloured circle fallback
     return _fallback_icon_html(asset)
 
 
@@ -104,7 +104,7 @@ def _score_bar(score: float, theme: str = "dark") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Composant 1 : Vue globale (données live des DAGs actifs)
+# Component 1: global view (live data from the active DAGs)
 # ---------------------------------------------------------------------------
 
 _ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}
@@ -193,8 +193,8 @@ def render_global_overview() -> None:
         funding = st_info.get("funding_rate")
         cycle_signal = st_info.get("signal", "flat")
         
-        # Score : vrai score stratégie (risk budget, stocké dans context_json)
-        # pour les positions ouvertes ; heuristique net_return/funding sinon.
+        # Score: the real strategy score (risk budget, stored in context_json)
+        # for open positions; the net_return/funding heuristic otherwise.
         if has_position:
             score = None
             _ctx_raw = pos.get("context_json")
@@ -321,7 +321,7 @@ def render_global_live_prices() -> None:
     except Exception:
         pass
 
-    # Construire les cartes HTML avec data-attrs pour le JS
+    # Build the HTML cards with data attributes for the JS
     cards = ""
     pos_data = {}  # sym → {action, entry, size}
     for asset in dag_assets:
@@ -681,17 +681,17 @@ def render_asset_tabs(
         render_fn(assets[0] if assets else "BTC/USDT")
         return
 
-    # Double espace entre icone et texte pour le split → "🌐  Global", "₿  BTC/USDT"
+    # Double space between icon and text for the split
     labels = ["🌐  Global"] + [f"{_asset_icon(a)}  {a}" for a in assets]
-    # Clés URL-safe (ex: "BTC_USDT")
+    # URL-safe keys (e.g. 'BTC_USDT')
     keys   = ["Global"] + [a.replace("/", "_") for a in assets]
 
-    # Sélection lue depuis l'URL (persistée, pas de localStorage Streamlit)
+    # Selection read from the URL (persisted, no Streamlit localStorage)
     selected_key = st.query_params.get("_asset", "Global")
     if selected_key not in keys:
         selected_key = "Global"
 
-    # Items pour le JS [{key, icon, text}, ...]
+    # Items for the JS [{key, icon, text}, ...]
     items = []
     for k, lbl in zip(keys, labels):
         parts = lbl.split("  ", 1)
@@ -699,7 +699,7 @@ def render_asset_tabs(
 
     _inject_custom_sidenav(items, selected_key, theme=st.query_params.get("theme", "dark"))
 
-    # Rendu de la vue sélectionnée
+    # Render the selected view
     if selected_key == "Global":
         if pre_global_fn is not None:
             pre_global_fn()

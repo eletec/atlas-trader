@@ -31,17 +31,17 @@ logger = logging.getLogger("zeitgeist.auth")
 _USERS_FILE = Path(__file__).parent.parent / "config" / "users.yaml"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Store de sessions SQLite (survit aux redémarrages Streamlit et aux multi-workers)
+# SQLite session store (survives Streamlit restarts and multi-worker mode)
 # ─────────────────────────────────────────────────────────────────────────────
 import os as _os
 import shutil as _shutil
 _SESSION_DB = Path(__file__).parent.parent / "storage" / "atlas_sessions.db"
-# Forcer un chemin writable dans Docker (mount read-only /app/src)
+# Force a writable path inside Docker (/app/src is mounted read-only)
 _DATA_DIR = _os.environ.get("V4_DATA_DIR", "/app/data")
 if str(_SESSION_DB).startswith("/app/src/"):
     _SESSION_DB = Path(_DATA_DIR) / "atlas_sessions.db"
 
-# users.yaml → /app/data/ pour écriture (Docker mount read-only sur /app/src)
+# users.yaml -> /app/data/ for writing (/app/src is a read-only Docker mount)
 _RUNTIME_USERS = Path(_DATA_DIR) / "users.yaml"
 if str(_USERS_FILE).startswith("/app/src/"):
     # Bootstrap : copier du git-tracked vers /app/data/ au premier lancement
@@ -50,7 +50,7 @@ if str(_USERS_FILE).startswith("/app/src/"):
         if _USERS_FILE.is_file():
             _shutil.copy2(_USERS_FILE, _RUNTIME_USERS)
         else:
-            # Fichier absent ou dossier vide → créer un fichier vierge
+            # File missing or empty directory -> create a blank file
             _RUNTIME_USERS.write_text("users: {}\nsettings:\n  guest_mode: true\n")
     _USERS_FILE = _RUNTIME_USERS
 _SESSION_LOCK = threading.Lock()
@@ -167,7 +167,7 @@ def get_session(cm=None) -> dict | None:
     if st.session_state.get("_auth_session"):
         return st.session_state["_auth_session"]
 
-    # 2. _sid dans l'URL → session SQLite (survit au rechargement de page)
+    # 2. _sid in the URL -> SQLite session (survives a page reload)
     try:
         sid = st.query_params.get("_sid", "")
         if sid:
@@ -208,7 +208,7 @@ def render_auth(cm=None) -> None:
     Gère : premier lancement, login, TOTP setup, TOTP verify.
     Cookie manager supprimé (incompatible Streamlit ≥1.35) — session via _sid URL.
     """
-    # Kill-switch global: si active, ne jamais rendre de blocs d'auth.
+    # Global kill-switch: when active, never render auth blocks.
     if st.session_state.get("_suppress_auth_ui", False):
         return
 
@@ -217,8 +217,8 @@ def render_auth(cm=None) -> None:
     settings: dict = cfg.get("settings") or {}
     expiry_days = int(settings.get("cookie_expiry_days", 7))
 
-    # Garde-fou: si l'utilisateur est deja authentifie, ne jamais afficher
-    # les formulaires d'auth/login/2FA meme si render_auth() est appelee.
+    # Safety guard: when the user is already authenticated, never show
+    # the auth/login/2FA forms even if render_auth() is called.
     current = get_session()
     if current and (has_role(current, "back") or has_role(current, "front")):
         st.session_state.pop("_auth_step", None)
@@ -226,7 +226,7 @@ def render_auth(cm=None) -> None:
         st.session_state.pop("_auth_totp_new_secret", None)
         return
 
-    # 1. Premier lancement : aucun compte
+    # 1. First run: no account yet
     has_users = any(u.get("password_hash") for u in users.values())
     if not has_users:
         _render_first_setup(cfg)
@@ -274,7 +274,7 @@ def render_auth(cm=None) -> None:
             _centered_close()
             return
 
-        # Connexion réussie — réinitialise les compteurs
+        # Successful login - reset the counters
         st.session_state.pop("_login_fails", None)
         st.session_state.pop("_login_lockout_until", None)
 
@@ -286,8 +286,8 @@ def render_auth(cm=None) -> None:
             st.session_state["_auth_step"] = (
                 "totp_setup" if not user.get("totp_secret") else "totp_verify"
             )
-            # Vider le slot parent (titre + info + formulaire login) avant le rerun
-            # pour éviter que le formulaire login apparaisse à côté du formulaire TOTP.
+            # Clear the parent slot (title + info + login form) before the rerun
+            # so the login form does not appear next to the TOTP form.
             _outer = st.session_state.get("_auth_slot")
             if _outer is not None:
                 try:
@@ -297,7 +297,7 @@ def render_auth(cm=None) -> None:
             st.rerun()
             return
 
-        # Utilisateur front-only → connexion directe sans 2FA
+        # Front-only user -> direct login without 2FA
         _centered_close()
         _finalize_login(username, roles, expiry_days)
 
@@ -401,8 +401,8 @@ def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
             st.session_state.pop("_auth_totp_new_secret", None)
             st.session_state.pop("_auth_step", None)
             roles = users[username].get("roles", [])
-            _setup_slot.empty()  # efface le formulaire AVANT le rerun → zéro bloc fantôme
-            # Effacer aussi le slot parent (titre + info)
+            _setup_slot.empty()  # clears the form BEFORE the rerun -> no ghost block
+            # Also clear the parent slot (title + info)
             _outer = st.session_state.pop("_auth_slot", None)
             if _outer is not None:
                 try:
@@ -434,9 +434,9 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
 
     users = cfg.get("users") or {}
 
-    # st.empty() : tout le formulaire TOTP est rendu dans ce slot.
-    # Sur validation réussie → _totp_slot.empty() efface le slot AVANT st.rerun().
-    # Le prochain run démarre avec un DOM vierge → zéro bloc fantôme.
+    # st.empty(): the whole TOTP form is rendered inside this slot.
+    # On successful validation -> _totp_slot.empty() clears the slot BEFORE st.rerun().
+    # The next run starts from a clean DOM -> no ghost block.
     _totp_slot = st.empty()
     with _totp_slot.container():
         st.markdown(f"### 🔐 {t('totp_verify_title')}")
@@ -457,7 +457,7 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
 
     if back:
         _totp_slot.empty()
-        # Effacer aussi le slot parent (titre + info + formulaire)
+        # Also clear the parent slot (title + info + form)
         _outer = st.session_state.pop("_auth_slot", None)
         if _outer is not None:
             try:
@@ -473,7 +473,7 @@ def _render_totp_verify(username: str, cfg: dict, expiry_days: int) -> None:
         if pyotp.TOTP(user["totp_secret"]).verify(code, valid_window=1):
             st.session_state.pop("_auth_step", None)
             roles = user.get("roles", [])
-            # Effacer le slot TOTP ET le slot parent atomiquement
+            # Clear the TOTP slot AND the parent slot atomically
             _totp_slot.empty()
             _outer = st.session_state.pop("_auth_slot", None)
             if _outer is not None:
@@ -504,8 +504,8 @@ def _finalize_login(username: str, roles: list[str], expiry_days: int = 7) -> No
 
 
 def _centered_open(width: int = 440) -> None:
-    # Evite les wrappers HTML ouverts/fermés sur rerun qui peuvent laisser
-    # des artefacts visuels dans Streamlit (bloc auth persistant).
+    # Avoids HTML wrappers left open/closed across a rerun, which can leave
+    # visual artefacts in Streamlit (a persistent auth block).
     st.markdown("")
 
 
@@ -532,7 +532,7 @@ def render_users_admin() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Paramètres globaux ──────────────────────────────────────────────────
+    # -- Global settings --
     st.markdown(f"**{t('usr_session_settings')}**")
     col1, col2 = st.columns(2)
     with col1:
@@ -646,7 +646,7 @@ def render_users_admin() -> None:
             st.success(t("usr_created_ok").format(uname=new_username))
             st.rerun()
 
-    # Sauvegarder les modifications (rôles, settings)
+    # Save the changes (roles, settings)
     st.markdown("---")
     if st.button(t("auth_save_changes"), type="primary", use_container_width=True):
         cfg["users"] = users

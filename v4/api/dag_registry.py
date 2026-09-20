@@ -23,7 +23,7 @@ from v4.core.node import Node, NodeRunResult
 
 logger = logging.getLogger("v4.api.dag_registry")
 
-# Buffer circulaire de logs (partagé entre tous les DAGs)
+## Circular log buffer (shared across all DAGs)
 _LOG_BUFFER: deque[dict] = deque(maxlen=200)
 _LOG_LOCK = threading.Lock()
 
@@ -41,7 +41,7 @@ def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
         _LOG_BUFFER.append(entry)
     logger.info("[%s] %s%s: %s", dag_id, f"{node_id} " if node_id else "", level, message)
 
-    # Persistance en DB (best-effort, ne doit pas bloquer le DAG)
+    # DB persistence (best-effort, must not block the DAG)
     try:
         import sqlite3
         db_path = "/app/data/v4.db"
@@ -58,7 +58,7 @@ def _emit_log(level: str, dag_id: str, message: str, node_id: str = "") -> None:
             )
             conn.commit()
     except Exception:
-        pass  # silencieux — les logs mémoire restent disponibles
+        pass  # silent - the in-memory logs remain available
 
 
 def get_logs(n: int = 50) -> list[dict]:
@@ -98,7 +98,7 @@ class DAGRegistry:
         return cls._instance
 
     # ------------------------------------------------------------------
-    # Construction d'un DAGExecutor depuis un DAGSpec
+    # Build a DAGExecutor from a DAGSpec
     # ------------------------------------------------------------------
 
     def _build_executor(self, dag_spec: "DAGSpec") -> DAGExecutor:  # noqa: F821
@@ -210,7 +210,7 @@ class DAGRegistry:
             return list(self._dags.values())
 
     # ------------------------------------------------------------------
-    # Boucle interne
+    # Inner loop
     # ------------------------------------------------------------------
 
     def _loop(self, dag_id: str, cycle_s: float) -> None:
@@ -244,7 +244,7 @@ class DAGRegistry:
 
 
 # ------------------------------------------------------------------
-# Helper : résumé de nœud pour les logs
+## Helper: node summary for the logs
 # ------------------------------------------------------------------
 
 def _summarize_node(nid: str, r: "NodeRunResult") -> str:
@@ -300,7 +300,7 @@ def _summarize_node(nid: str, r: "NodeRunResult") -> str:
             rv = str(rv.iloc[0]) if len(rv) > 0 else "?"
         parts.append(f"regime={rv}")
     if "response" in out:
-        # AI analysis déplacée dans le BO — ne plus logger le placeholder
+        # AI analysis moved to the back-office - stop logging the placeholder
         resp = str(out["response"])[:60]
         if resp and "⏳" not in resp and "pending" not in str(out.get("parsed", {})):
             parts.append("AI: " + resp)

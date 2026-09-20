@@ -34,7 +34,7 @@ class DAGSpec(BaseModel):
     asset: str = ""
     nodes: list[NodeSpec]
     edges: list[EdgeSpec]
-    cycle_s: float | None = None     # None = one-shot, >0 = boucle auto
+    cycle_s: float | None = None     # None = one-shot, >0 = auto loop
 
 
 class RunDAGRequest(BaseModel):
@@ -47,7 +47,7 @@ class ScheduleDAGRequest(BaseModel):
 
 
 # ------------------------------------------------------------------
-# Résultats
+## Results
 # ------------------------------------------------------------------
 
 class NodeResultOut(BaseModel):

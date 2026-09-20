@@ -23,14 +23,14 @@ def _fmt_utc_local(dt_utc: datetime) -> str:
     local_dt = dt_utc.replace(tzinfo=timezone.utc).astimezone(local_tz)
     return f"{dt_utc.strftime('%d/%m/%Y %H:%M')} UTC ({local_dt.strftime('%H:%M')} local)"
 
-# Garantir que /app (ou le parent du dossier courant) est en tête du sys.path
-# pour éviter les conflits avec des packages "utils" de dépendances tierces
+# Make sure /app (or the parent of the current folder) is first on sys.path
+# to avoid clashes with third-party 'utils' packages
 _APP_ROOT = str(Path(__file__).resolve().parent.parent)
 if _APP_ROOT not in sys.path:
     sys.path.insert(0, _APP_ROOT)
 
 
-# Logo 34×34 extrait de atlas.ico (base64 PNG ~3KB — aucune dépendance fichier)
+# 34x34 logo extracted from atlas.ico (base64 PNG ~3KB - no file dependency)
 _LOGO_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAACIAAAAiCAYAAAA6RwvCAAAJfklEQVR4nH2YC5DVVR3HP+f//9/3"
     "vfuQpzxCxFxEFAQRxZyaUsSYfKSOoYVZOk2TiTWNFRDOmKbYNGONUxPqMBNiNYqhOY1KoC4KDpKA"
@@ -109,13 +109,13 @@ def _inject_theme_css():
     """Injecte les overrides CSS selon le thème choisi."""
     theme = _get_theme()
 
-    # Font Awesome 6 (icônes modernes unicouleur)
+    # Font Awesome 6 (modern monochrome icons)
     st.markdown(
         '<link rel="stylesheet" '
         'href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" '
         'integrity="sha512-Avb2QiuDEEvB4bZJYdft2mNjVShBftLdPG8FJ0V7irTLQ8Uo0qcPxh4Plq7G5tGm0rU+1SPhVotteLpBERwTkw==" '
         'crossorigin="anonymous">',
-        # S6: SRI hash protège contre le remplacement de la CDN
+        # S6: the SRI hash protects against CDN substitution
         unsafe_allow_html=True,
     )
 
@@ -635,8 +635,8 @@ def _inject_theme_css():
     </style>
     """, unsafe_allow_html=True)
 
-    # CSS global pour les tooltips Streamlit (rendus dans body via portal React)
-    # Toujours injecté — couleurs adaptées au thème courant
+    # Global CSS for Streamlit tooltips (rendered into body via a React portal)
+    # Always injected - colours adapted to the current theme
     if theme == "light":
         _t_bg, _t_fg, _t_bdr, _t_sh = "#ffffff", "#31333F", "#dee2e6", "rgba(0,0,0,0.14)"
         _t_icon_fg   = "#6c757d"   # couleur du ? au repos
@@ -745,7 +745,7 @@ def _init_session():
 
 
 # ===========================================================
-# CHARGEMENT DES DONNÉES
+## DATA LOADING
 # ===========================================================
 
 @st.cache_data(ttl=20)
@@ -778,7 +778,7 @@ def _get_recent_decisions(n: int = 50, asset: str | None = None) -> list[dict]:
                         "reason": msg,
                     })
                 return results
-            # Fallback : ancienne table decisions (V1)
+            # Fallback: the old decisions table (V1)
             from storage.database import get_recent_decisions as _legacy
             return _legacy(n, asset=asset)
     except Exception:
@@ -832,13 +832,13 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     """Retourne les trades récents : V4 DB (prioritaire) + V3 DB fallback."""
     trades: list[dict] = []
 
-    # 1) Trades V4 depuis la DB (persistant, pas dépendant du cycle)
+    # 1) V4 trades from the DB (persistent, not tied to the cycle)
     try:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
-        # NB: variable de boucle nommee `tr` et non `t` — `t` est la fonction i18n
+        # NB: the loop variable is named 'tr', not 't' - 't' is the i18n function
         for tr in v4_trades:
-            # Extraire le contexte carry (funding, score, etc.)
+            # Extract the carry context (funding, score, etc.)
             _score = 0
             _total_funding = 0.0
             _n_payments = 0
@@ -882,7 +882,7 @@ def _get_portfolio(asset: str | None = None) -> dict:
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
                  "live_mode": False, "exposure": 0, "exposure_pct": 0}
 
-    # V4 : positions ouvertes + PnL cumulé depuis la DB
+    # V4: open positions + cumulative PnL from the DB
     try:
         from storage.paper_trader import get_v4_trades
         all_trades = get_v4_trades(n=500, symbol=asset)
@@ -976,7 +976,7 @@ def _force_run_background(asset: str, log_q) -> None:
 
         _log("✅ <b>Cycle démarré</b> — lecture des premiers logs…")
 
-        # Laisser le cycle démarrer, puis afficher les logues récents du carry
+        # Let the cycle start, then show the recent carry logs
         _time.sleep(8)
         try:
             with urllib.request.urlopen(f"{_API_BASE}/dag/logs?n=40", timeout=10) as resp:
@@ -1020,7 +1020,7 @@ def _force_run_dialog(asset: str):
 
     _KEY = "_frd_state"
 
-    # ── Première entrée ── acquérir le lock et démarrer le thread ──────────
+    # -- First entry: acquire the lock and start the thread --
     if _KEY not in st.session_state:
         if not try_acquire(owner="dashboard-force"):
             from utils.cycle_lock import lock_info
@@ -1069,12 +1069,12 @@ def _force_run_dialog(asset: str):
     except _queue.Empty:
         pass
 
-    # ── Afficher les logs accumulés ──────────────────────────────────────────
+    # -- Show the accumulated logs --
     log_c = st.container()
     for msg in s["logs"]:
         log_c.markdown(msg, unsafe_allow_html=True)
 
-    # ── Terminé ou encore en cours ───────────────────────────────────────────
+    # -- Finished, or still running --
     if s["final"] is not None:
         is_error, msg = s["final"]
         st.divider()
@@ -1124,7 +1124,7 @@ def render_header():
     if _action == "force_run":
         st.query_params.pop("_action", None)
         if st.session_state.get("admin_authenticated"):
-            # Le cycle carry couvre tous les actifs activés (carry_assets.yaml)
+            # The carry cycle covers every enabled asset (carry_assets.yaml)
             st.session_state["_force_run_asset"] = "ALL"
         # else: silently ignore — unauthenticated users cannot trigger a cycle
 
@@ -1135,14 +1135,14 @@ def render_header():
     adm   = "1" if show_admin else "0"
     _sid = st.query_params.get("_sid", "") or st.session_state.get("_session_id", "")
     sid_q = f"&_sid={_sid}" if _sid else ""
-    # Garder _sid dans les URLs pour conserver la session après refresh/navigation
+    # Keep _sid in the URLs to preserve the session across refresh/navigation
     m_open  = f"lang={lang_param}&theme={theme}&admin={adm}&menu=1{sid_q}"
     m_close = f"lang={lang_param}&theme={theme}&admin={adm}&menu=0{sid_q}"
     base    = f"lang={lang_param}&theme={theme}&admin={adm}&menu=0{sid_q}"
     u_refresh  = f"?_action=refresh&{base}"
     u_force    = f"?_action=force_run&{base}"
     u_hamburger = f"?{m_close if menu_open else m_open}"
-    # menu items (chaque clic ferme le menu)
+    # menu items (each click closes the menu)
     u_admin    = f"?lang={lang_param}&theme={theme}&admin=1&menu=0{sid_q}"
     u_logout   = f"?_action=logout&{base}"
     u_t_light  = f"?lang={lang_param}&theme=light&admin={adm}&menu=0{sid_q}"
@@ -1170,13 +1170,13 @@ def render_header():
         nav_bdr = "rgba(128,128,128,0.3)"; dd_bg = "#1e2128"; dd_sep = "rgba(255,255,255,0.1)"
 
     # ─ Cycle running? ─────────────────────────────────────────────────────
-    # _cycle_locked : un cycle est ACTIF en ce moment (lock posé)
-    # _daemon_alive : daemon vivant (heartbeat < 30 min) mais pas forcément en train de cycler
+    # _cycle_locked: a cycle is ACTIVE right now (lock held)
+    # _daemon_alive: daemon alive (heartbeat < 30 min) but not necessarily cycling
     from utils.cycle_lock import is_locked as _cycle_is_locked
     _cycle_locked = _cycle_is_locked()
     _daemon_alive = _cycle_locked
     if not _daemon_alive:
-        # V2 : vérifier l'ancienneté de v2_state.updated_at (< 30 min = daemon actif)
+        # V2: check how old v2_state.updated_at is (< 30 min = daemon active)
         try:
             from storage.database import get_v2_state as _hb_v2s
             _v2st = _hb_v2s()
@@ -1227,7 +1227,7 @@ def render_header():
     admin_label = f"{admin_icon}&nbsp; {t('hbg_admin')}"
     admin_bg    = f"background:rgba(255,75,75,0.18);" if show_admin else ""
 
-    # ─ Dropdown HTML (rendu seulement si menu_open) ─────────────────────────
+    # -- HTML dropdown (rendered only when menu_open) --
     dropdown_html = ""
     if menu_open:
         _pill_light  = pill(u_t_light,  f'<i class="fas fa-sun"></i> {t("theme_light")}',      theme == "light")
@@ -1269,7 +1269,7 @@ def render_header():
 </div>"""
 
     # ─ Rendu final ──────────────────────────────────────────────────────────
-    # Auto-refresh toutes les 15s quand un cycle tourne → arrêt auto quand fini
+    # Auto-refresh every 15s while a cycle runs -> stops automatically when done
     st.markdown(f"""
 <style>
 header[data-testid="stHeader"]{{display:none!important;}}
@@ -1423,7 +1423,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    # ── Récupération du contexte ────────────────────────────────────────────────
+    # -- Fetch the context --
     ctx: dict = {}
     raw_ctx = trade.get("decision_context")
     if raw_ctx:
@@ -1445,7 +1445,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
     )
 
     # ── Tab Formule ─────────────────────────────────────────────────────────────
-    # Montre la décomposition exacte : score = Σ composante × poids
+    # Shows the exact breakdown: score = sum(component x weight)
     with tab_formula:
         eff_w = ctx.get("effective_weights") or {}
         dec   = ctx.get("decision") or {}
@@ -1490,7 +1490,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-            # Détail des agents dans la composante "agents"
+            # Per-agent detail inside the 'agents' component
             agents_comp = eff_w.get("agents", {})
             agent_weights_in_comp = agents_comp.get("agent_weights", {})
             agent_detail_scores   = agents_comp.get("detail", {})
@@ -1570,7 +1570,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         else:
             st.caption(t("agent_scores_unavailable"))
 
-    # ── Tab Marché ──────────────────────────────────────────────────────────────
+    # -- Market tab --
     with tab_mkt:
         mkt = ctx.get("market") or {}
         rgm = ctx.get("regime") or {}
@@ -1595,7 +1595,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         else:
             st.caption(t("market_indicators_unavailable"))
 
-    # ── Tab Décision ────────────────────────────────────────────────────────────
+    # -- Decision tab --
     with tab_dec:
         dec   = ctx.get("decision") or {}
         s_val = dec.get("score") if dec.get("score") is not None else score
@@ -1629,7 +1629,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         else:
             st.caption(t("ai_explanation_unavailable"))
 
-        # ── Débat Bull/Bear (si disponible dans decision_context) ──────────────
+        # -- Bull/Bear debate (when available in decision_context) --
         _synth_ctx = (ctx.get("agents") or {}).get("synthesis") or {}
         _dlg_sig_detail  = _synth_ctx.get("signal_detail")
         _dlg_debate_win  = _synth_ctx.get("debate_winner")
@@ -1692,7 +1692,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
 
     df = pd.DataFrame(history)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    # V4 trades n'ont pas result_24h — utiliser 0 par défaut
+    # V4 trades have no result_24h - default to 0
     if "result_24h" in df.columns:
         df["cumulative_pnl"] = df["result_24h"].fillna(0).cumsum()
     else:
@@ -1718,7 +1718,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
             name=t("chart_btc_price"),
             yaxis="y2", opacity=0.6
         ))
-    # Marqueurs BUY/SELL avec contexte de décision en tooltip
+    # BUY/SELL markers with the decision context in a tooltip
     if "action" in df.columns:
         buys = df[df["action"] == "BUY"]
         sells = df[df["action"] == "SELL"]
@@ -1770,7 +1770,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
                 macd,         # [6]
                 agents_txt,   # [7]
                 reasoning,    # [8]
-                hist_idx,     # [9] ← index dans history[] pour le dialog
+                hist_idx,     # [9] <- index in history[] for the dialog
             ]
 
         _hover_buy = (
@@ -1829,7 +1829,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
         fig, use_container_width=True, key=key,
         on_select="rerun", selection_mode=["points"],
     )
-    # Ouvrir le dialog si un marqueur BUY/SELL est cliqué
+    # Open the dialog when a BUY/SELL marker is clicked
     try:
         pts = (event.selection or {}).get("points") or []
     except Exception:
@@ -1876,7 +1876,7 @@ def render_trades_list_sortable(trades: list[dict]):
     col_pnl    = t("col_pnl")
     col_score  = t("col_score")
 
-    # Prix live pour P&L latent
+    # Live prices for the unrealised P&L
     live_prices: dict[str, float] = {}
     try:
         import urllib.request as _ur, json as _js
@@ -1949,7 +1949,7 @@ def render_trades_list_sortable(trades: list[dict]):
         else:
             pnl_str = f'<span style="color:#e74c3c;font-weight:600;">${pnl_val:+,.2f}</span>'
 
-        # Funding (CARRY ouvert — collecte réelle, statique)
+        # Funding (open CARRY - actually collected, static)
         funding_str = "—"
         # Progression (P&L latent — live via JS)
         progress_str = "—"
@@ -1975,10 +1975,10 @@ def render_trades_list_sortable(trades: list[dict]):
                 except Exception:
                     days_held = 0
                 if total_funding > 0:
-                    funding_str = f'<span style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}j)</span>'
+                    funding_str = f'<span style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}d)</span>'
                 else:
                     funding_str = f'<span style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}j · wait funding</span>'
-                # P&L latent réel (basis + funding) rempli par le JS via /v7/carry-pnl
+                # Real unrealised P&L (basis + funding), filled in by the JS via /v7/carry-pnl
                 progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
             elif entry_price > 0 and current_price > 0 and size_usd > 0:
                 if action in ("SELL", "SHORT"):
@@ -2011,7 +2011,7 @@ def render_trades_list_sortable(trades: list[dict]):
         tds = "".join(f'<td style="{td_style}">{c}</td>' for c in cells)
         rows_html += f'<tr style="background:{bg};">{tds}</tr>'
 
-    # ── Ligne de synthèse ─────────────────────────────────────────────────
+    # -- Summary row --
     _sum_realized = 0.0
     _sum_unrealized = 0.0
     _sum_funding = 0.0
@@ -2019,7 +2019,7 @@ def render_trades_list_sortable(trades: list[dict]):
     _n_open = 0
     _has_carry = False
     for trade in trades:
-        # P&L fermé
+        # Closed P&L
         try:
             pnl = float(trade.get("result_24h") or 0)
         except (ValueError, TypeError):
@@ -2028,15 +2028,15 @@ def render_trades_list_sortable(trades: list[dict]):
             _sum_realized += pnl
             _n_closed += 1
         else:
-            # P&L latent (ouvert) — même calcul que la colonne Progression
+            # Unrealised P&L (open) - same computation as the Progression column
             entry_price = trade.get("entry_price", 0) or 0
             size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
             current_price = live_prices.get(trade.get("asset", ""), 0)
             act = trade.get("action", "")
             tfund = float(trade.get("total_funding_received", 0) or 0)
             if act == "CARRY":
-                # Funding réel collecté (statique) + P&L latent ≈ funding (proxy serveur,
-                # remplacé par le JS via /v7/carry-pnl avec basis+funding réel)
+                # Actually collected funding (static) + unrealised P&L ~ funding (server proxy,
+                # replaced by the JS via /v7/carry-pnl with the real basis+funding)
                 _has_carry = True
                 _sum_funding += tfund
                 _sum_unrealized += tfund
@@ -2050,7 +2050,7 @@ def render_trades_list_sortable(trades: list[dict]):
 
     _total_pnl = _sum_realized + _sum_unrealized
     _sum_color = "#2ecc71" if _total_pnl >= 0 else "#e74c3c"
-    # Calcul du % latent total
+    # Compute the total unrealised %
     _total_size = sum(
         (t.get("position_size_usd") or t.get("position_size") or 0)
         for t in trades if t.get("result_24h") is None
@@ -2261,7 +2261,7 @@ def _apply_optimized_params(cfg: dict) -> int:
         for opt_key, real_key in [("_optimized_stress_loss_pct", "stress_loss_pct"),
                                    ("_optimized_safety_cap", "safety_cap"),
                                    ("_optimized_max_hold_days", "max_hold_days")]:
-            # Note: min_funding N'EST PAS appliqué — trop sensible, le défaut 0.005% est meilleur
+            # Note: min_funding is NOT applied - too sensitive, the 0.005% default works better
             if opt_key in p:
                 val = p[opt_key]
                 if real_key == "safety_cap":
@@ -2308,7 +2308,7 @@ def _carry_logo_md(sym: str, params: dict) -> str:
     ticker = sym.split("/")[0]
     size = 18
 
-    # 1) Logo uploadé
+    # 1) Uploaded logo
     logo_file = params.get("icon_url", "")
     if logo_file:
         logo_path = _P("/app/data/logos") / logo_file
@@ -2336,7 +2336,7 @@ def _render_carry_config():
     st.markdown(f"### {t('tab_carry_cfg')}")
     st.caption(t("carry_cfg_subtitle"))
 
-    # Afficher un message persistent (évite qu'il disparaisse au rerun)
+    # Show a persistent message (so it does not vanish on rerun)
     msg = st.session_state.pop("_carry_msg", None)
     if msg:
         st.success(msg)
@@ -2360,7 +2360,7 @@ def _render_carry_config():
     else:
         st.caption(t("carry_optimize_prerequisite"))
 
-    # ── 4 boutons sur une ligne ──
+    # -- 4 buttons on a single row --
     col_b1, col_b2, col_b3, col_b4 = st.columns(4)
     with col_b1:
         if st.button(t("carry_scan_btn"), help=t("carry_scan_help"), use_container_width=True):
@@ -2434,8 +2434,8 @@ def _render_carry_config():
             ) / 100
 
         if st.button(t("carry_save_global_btn"), key="save_global"):
-            # Fusion et non remplacement : un dict reconstruit effaçait les clés
-            # non exposées ici (staking_annual notamment).
+            # Merge rather than replace: a rebuilt dict used to erase the keys
+            # not exposed here (staking_annual in particular).
             cfg["global"] = {
                 **cfg.get("global", {}),
                 "total_capital": new_total,
@@ -2460,7 +2460,7 @@ def _render_carry_config():
         st.warning(t("carry_no_assets"))
         return
 
-    # Collapse/Expand all (à droite)
+    # Collapse/Expand all (on the right)
     col_spacer, col_exp2, col_exp1 = st.columns([6, 1, 1])
     with col_exp1:
         if st.button(t("carry_expand_all"), key="expand_all"):
@@ -2476,7 +2476,7 @@ def _render_carry_config():
         params = assets.get(sym, {})
         enabled = params.get("enabled", False)
         icon = "🟢" if enabled else "⚫"
-        # Logo Markdown pour la barre d'expander (HTML ne marche pas dans les labels)
+        # Markdown logo for the expander bar (HTML does not work in labels)
         logo_md = _carry_logo_md(sym, params)
         ticker = sym.split("/")[0]
         # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
@@ -2511,7 +2511,7 @@ def _render_carry_config():
                 new_logo_file = st.file_uploader(t("carry_logo"), type=["png","svg","jpg","webp"], key=f"logo_{sym}",
                                                 help=t("carry_logo_help"), label_visibility="collapsed")
 
-            # Détecter les changements (logo file traité séparément)
+            # Detect changes (the logo file is handled separately)
             logo_changed = new_logo_file is not None
             if (new_enabled != enabled or new_locked != params.get("locked", False) or
                 new_capital != params.get("capital", 2000) or
@@ -2523,7 +2523,7 @@ def _render_carry_config():
                 new_exit_h != params.get("exit_after_hours", 72) or
                 logo_changed):
                 if st.button(f"{t('carry_save_asset_btn')} {sym}", key=f"save_{sym}"):
-                    # Sauvegarder le logo
+                    # Save the logo
                     logo_filename = params.get("icon_url", "")
                     if logo_changed and new_logo_file is not None:
                         logos_dir = Path("/app/data/logos")
@@ -2551,7 +2551,7 @@ def _render_carry_config():
                     st.success(t("carry_save_asset_ok").format(sym=sym))
                     st.rerun()
 
-    # ── Résumé ──
+    # -- Summary --
     st.markdown("---")
     active_count = sum(1 for s in all_symbols if assets.get(s, {}).get("enabled", False))
     st.metric(t("carry_active_count"), f"{active_count}/{len(all_symbols)}")
@@ -2564,7 +2564,7 @@ def _render_backtest_v4():
     # ── Funding Carry Backtest ──
     st.caption(t("backtest_carry_caption"))
     
-    # Charger les actifs depuis carry_assets.yaml
+    # Load the assets from carry_assets.yaml
     get_asset_params = None
     try:
         from v7.core.asset_config import get_active_assets, get_asset_params
@@ -2577,7 +2577,7 @@ def _render_backtest_v4():
     symbol = st.selectbox(t("col_asset"), _bt_assets)
     days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
     
-    # Défauts issus de carry_assets.yaml (source unique), pas de constantes en dur
+    # Defaults come from carry_assets.yaml (single source), no hardcoded constants
     _btp: dict = {}
     try:
         if get_asset_params:
@@ -2611,8 +2611,8 @@ def _render_backtest_v4():
                 if result.stderr:
                     output += "\n\n[stderr]\n" + result.stderr[-500:]
                 st.code(output[-4000:] if len(output) > 4000 else output)
-                # Mettre en avant le TRADING : le « Total » inclut le staking,
-                # qui n'est pas une performance de stratégie
+                # Highlight TRADING: the 'Total' includes staking,
+                # which is not a strategy performance
                 for line in output.split("\n"):
                     if any(kw in line for kw in ("TRADING (la stratégie)", "AUCUN TRADE", "Sharpe moyen")):
                         st.text(line.strip())
@@ -2671,7 +2671,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
                      help=t("clear_btn_help"),
                      use_container_width=True):
             st.info(t("logs_memory_caption"), icon="ℹ️")
-    # DB-backed logs — uniquement si V4 logs sont vides (pas de doublon)
+    # DB-backed logs - only when the V4 logs are empty (no duplication)
     if not v4_logs:
         try:
             from storage.database import get_connection
@@ -2679,7 +2679,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
                 if asset:
                     _slug = asset.replace("/", "")
                     _pat1, _pat2 = f"%{asset}%", f"%{_slug}%"
-                    # V7: dag_logs en priorité, fallback sur logs
+                    # V7: dag_logs first, logs as fallback
                     total_rows = conn.execute(
                         "SELECT COUNT(*) FROM dag_logs WHERE message LIKE ? OR message LIKE ?",
                         (_pat1, _pat2),
@@ -2770,12 +2770,12 @@ def render_live_logs(key: str = "global", asset: str | None = None):
 # INTERFACE ADMIN
 # ===========================================================
 
-# render_admin_login() remplacé par dashboard.auth.render_auth(cm)
+## render_admin_login() replaced by dashboard.auth.render_auth(cm)
 
 
 def render_admin_panel():
     """Panneau admin complet — monitoring et configuration de la stratégie carry."""
-    # Verrou: aucune UI d'auth ne doit se rendre pendant l'affichage admin.
+    # Guard: no auth UI may render while the admin view is displayed.
     st.session_state["_suppress_auth_ui"] = True
     st.session_state.pop("_auth_step", None)
     st.session_state.pop("_auth_pending_user", None)
@@ -2795,7 +2795,7 @@ def render_admin_panel():
         ('<i class="fas fa-history"></i>',         "historique", "History"),
         ('<i class="fas fa-brain"></i>',           "decisions",   "Decisions"),
         ('<i class="fas fa-flask"></i>',           "backtest",   "Backtest"),
-        # ── Système ───────────────────────────────────────────────
+        # -- System --
         (None, None,      "Système"),
         ('<i class="fas fa-user"></i>',            "users",      "Users"),
         ('<i class="fas fa-floppy-disk"></i>',     "backup",     "Backup"),
@@ -2817,7 +2817,7 @@ def render_admin_panel():
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
-        # sauvegarde gérée dans render_users_admin
+        # backup handled in render_users_admin
 
     elif _atab == "backup":  # Sauvegarde / Restauration
         st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)
@@ -2873,7 +2873,7 @@ def render_admin_panel():
             if not _backups:
                 st.caption(t("bkp_no_backups"))
             else:
-                for _bk in _backups[:10]:  # max 10 affichées
+                for _bk in _backups[:10]:  # at most 10 shown
                     _bcol1, _bcol2, _bcol3 = st.columns([4, 1, 1])
                     with _bcol1:
                         st.caption(f"🗂 `{_bk['filename']}` — {_bk['mtime'].strftime('%d/%m/%Y %H:%M')} UTC — {_bk['size_kb']} Ko")
@@ -2899,7 +2899,7 @@ def render_admin_panel():
     elif _atab == "backtest":  # Backtest
         _render_backtest_v4()
 
-    elif _atab == "reset":  # Purge des données
+    elif _atab == "reset":  # data purge
         st.markdown(
             f'<h4><i class="fas fa-trash-alt" style="margin-right:7px;color:#e74c3c;"></i>'
             f' Reset Paper Trading</h4>',
@@ -2932,7 +2932,7 @@ def render_admin_panel():
             except Exception as e:
                 st.error(f"DB error: {e}")
 
-            # 2) Effacer les logs DAG (carry cycle logs)
+            # 2) Clear the DAG logs (carry cycle logs)
             try:
                 from storage.database import get_connection
                 with get_connection() as conn:
@@ -2942,7 +2942,7 @@ def render_admin_panel():
             except Exception:
                 pass
 
-            # 3) Vider le cache Streamlit
+            # 3) Clear the Streamlit cache
             st.cache_data.clear()
             st.success("✅ Dashboard cache cleared. New data will appear on next cycle.")
             time.sleep(1)
@@ -2979,7 +2979,7 @@ def render_admin_panel():
                     key="hist_status",
                 )
 
-            # Récupérer les trades
+            # Fetch the trades
             all_trades = get_v4_trades(n=2000)
             if not all_trades:
                 st.info(t("no_transactions"))
@@ -3015,7 +3015,7 @@ def render_admin_panel():
             _hc5.metric("Gagnés", wins)
             _hc6.metric("Win rate", f"{win_rate:.0f}%")
 
-            # Récupérer les prix actuels pour le P&L latent
+            # Fetch the current prices for the unrealised P&L
             live_prices: dict[str, float] = {}
             try:
                 import urllib.request, json as _j
@@ -3031,7 +3031,7 @@ def render_admin_panel():
             st.markdown("---")
 
             # Tableau
-            # Tableau HTML (thème-aware, pas de fond blanc)
+            # HTML table (theme-aware, no white background)
             theme = _get_theme()
             if theme == "light":
                 tbl_bg, tbl_fg, head_bg, border = "#ffffff", "#212529", "#f1f3f5", "#dee2e6"
@@ -3056,7 +3056,7 @@ def render_admin_panel():
                 action = (tr.get("action") or "").upper()
                 action_color = "#2ecc71" if action == "LONG" else ("#e74c3c" if action == "SHORT" else tbl_fg)
                 
-                # Progression (P&L latent pour trades ouverts)
+                # Progression (unrealised P&L for open trades)
                 progress_str = "—"
                 entry_price = float(tr.get("entry_price", 0) or 0)
                 size_usd = float(tr.get("size_usd", 0) or 0)
@@ -3106,7 +3106,7 @@ def render_admin_panel():
             _h_csv = _h_df.to_csv(index=False).encode("utf-8")
             st.download_button(t("export_csv_btn"), _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
 
-            # ── Bouton fermeture manuelle de toutes les positions ──────────
+            # -- Manual close-all button --
             st.markdown("---")
             st.markdown(f"#### ⚠️ {t('emergency_close_title')}")
             st.caption(t("emergency_close_caption"))
@@ -3128,7 +3128,7 @@ def render_admin_panel():
             else:
                 st.info(t("no_open_positions"))
 
-            # Réflexions (leçons apprises)
+            # Reflections (lessons learned)
             try:
                 with _hget_conn() as _hconn:
                     _hconn.execute("""
@@ -3144,7 +3144,7 @@ def render_admin_panel():
                     ).fetchall()
                 if _ref_rows:
                     st.markdown("---")
-                    st.markdown("#### 🧠 Leçons apprises (ReflectionNode)")
+                    st.markdown("#### 🧠 Lessons learned (ReflectionNode)")
                     for r in _ref_rows:
                         emoji = "✅" if (r[2] or 0) > 0 else "❌"
                         st.caption(f"{emoji} {r[0]} {r[1]}: {r[3]} (${r[2]:+.2f})")
@@ -3154,7 +3154,7 @@ def render_admin_panel():
         except Exception as _he:
             st.error(f"Erreur lecture historique V4 : {_he}")
 
-    elif _atab == "decisions":  # 🧠 Historique des décisions IA
+    elif _atab == "decisions":  # AI decision history
         st.markdown(
             '<h4><i class="fas fa-brain" style="margin-right:7px;color:#9c27b0;"></i>'
             ' Historique des Décisions</h4>',
@@ -3217,7 +3217,7 @@ def render_admin_panel():
         except Exception as _de:
             st.error(f"Erreur chargement décisions : {_de}")
 
-    # Onglets autonomes — chacun gère son affichage et sa persistance
+    # Self-contained tabs - each one handles its own rendering and persistence
     if _atab == "carry_cfg":
         _render_carry_config()
         return
@@ -3254,7 +3254,7 @@ def render_admin_panel():
                 if carry_pos:
                     rows = []
                     for p in carry_pos:
-                        # context_json peut être une string JSON ou un dict
+                        # context_json may be a JSON string or a dict
                         ctx = p.get("context_json", {})
                         if isinstance(ctx, str):
                             try:
@@ -3357,12 +3357,12 @@ def main():
     _init_session()
 
     # ── Authentification ──────────────────────────────────────────────────────
-    # Stratégie : session_state + _sid URL param (SQLite store).
-    # La session est créée dans _finalize_login() et éteinte via logout().
+    # Strategy: session_state + the _sid URL param (SQLite store).
+    # The session is created in _finalize_login() and torn down by logout().
     from dashboard.auth import get_session, has_role, render_auth, logout, load_users_config
     session = get_session()
-    # Robustesse F5 : si session valide mais _sid absent de l'URL (ex: navigation sans _sid),
-    # le remettre immédiatement pour que le prochain F5 fonctionne aussi.
+    # F5 robustness: if the session is valid but _sid is missing from the URL
+    # (e.g. navigation without _sid), put it back at once so the next F5 works too.
     if session:
         _sid_in_state = st.session_state.get("_session_id", "")
         if _sid_in_state and not st.query_params.get("_sid"):
@@ -3371,7 +3371,7 @@ def main():
     st.session_state["username"] = session.get("username", "") if session else ""
     st.session_state["_suppress_auth_ui"] = bool(session)
     if has_role(session, "back"):
-        # Empêche l'affichage résiduel des écrans TOTP après authentification réussie.
+        # Prevents residual TOTP screens after a successful authentication.
         st.session_state.pop("_auth_step", None)
         st.session_state.pop("_auth_pending_user", None)
         st.session_state.pop("_auth_totp_new_secret", None)
@@ -3379,7 +3379,7 @@ def main():
     users_cfg = load_users_config()
     guest_mode = users_cfg.get("settings", {}).get("guest_mode", True)
 
-    # localStorage JS — permet de retrouver la session même si _sid disparaît de l'URL.
+    # JS localStorage - recovers the session even when _sid disappears from the URL.
     _inject_session_persistence_js(bool(session))
 
     _inject_theme_css()
@@ -3390,10 +3390,10 @@ def main():
     if show_admin:
         # ── VUE ADMINISTRATION ──
         if not has_role(session, "back"):
-            # Tout le contenu d'auth est dans UN seul slot effaçable.
+            # All the auth content lives in a SINGLE clearable slot.
             # _render_totp_verify / _render_totp_setup appellent
-            # st.session_state["_auth_slot"].empty() avant st.rerun()
-            # pour vider atomiquement titre + info + formulaire → zéro artefact.
+            # use st.session_state['_auth_slot'].empty() before st.rerun()
+            # to clear title + info + form atomically -> no artefact.
             _auth_slot = st.empty()
             st.session_state["_auth_slot"] = _auth_slot
             with _auth_slot.container():
@@ -3411,14 +3411,14 @@ def main():
     else:
         # ── VUE DASHBOARD ──
         if not guest_mode and not has_role(session, "front"):
-            # Front protégé
+            # Protected front office
             render_auth()
         else:
-            # Auto-refresh géré via JS dans la navbar (window.location.reload toutes 90s)
-            # → pas de rerun Streamlit, pas d'effet grisé
+            # Auto-refresh handled by JS in the navbar (window.location.reload every 90s)
+            # -> no Streamlit rerun, no greyed-out effect
 
             last_cycle = _get_last_cycle()
-            portfolio  = _get_portfolio()          # consolidé (vue globale)
+            portfolio  = _get_portfolio()          # consolidated (global view)
             _get_pnl_history()
 
             from dashboard.multi_asset import render_asset_tabs
@@ -3446,7 +3446,7 @@ def main():
 
             render_asset_tabs(_render_for_asset, global_fn=_render_global, pre_global_fn=_render_portfolio_first)
 
-            # ── Live price poller (met à jour les colonnes Progression sans reload) ──
+            # -- Live price poller (updates the Progression columns without a reload) --
             _inject_live_trade_prices_js()
 
             st.markdown(

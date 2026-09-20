@@ -48,8 +48,8 @@ class DAGExecutor:
         executor.add_node(my_node)
         executor.add_edge("load_1", "ohlcv_5m", "feat_1", "ohlcv")
         executor.validate()
-        results = executor.run_once()          # exécution one-shot
-        executor.run_loop()                    # boucle daemon (bloquant)
+        results = executor.run_once()          # one-shot execution
+        executor.run_loop()                    # daemon loop (blocking)
     """
 
     def __init__(self, asset: str = "", dag_name: str = "") -> None:
@@ -122,7 +122,7 @@ class DAGExecutor:
         for edge in self._edges:
             src = self._nodes[edge.source_node]
             tgt = self._nodes[edge.target_node]
-            # Si le schéma est vide → nœud dynamique (accepte/produit n'importe quel port)
+            # An empty schema -> dynamic node (accepts/produces any port)
             src_ports = src.output_schema()
             tgt_ports = tgt.input_schema()
             if src_ports and edge.source_port not in src_ports:
@@ -135,7 +135,7 @@ class DAGExecutor:
                 )
 
     # ------------------------------------------------------------------
-    # Résolution de l'ordre topologique
+    # Topological order resolution
     # ------------------------------------------------------------------
 
     def _topological_order(self) -> list[str]:
@@ -159,7 +159,7 @@ class DAGExecutor:
         return order
 
     # ------------------------------------------------------------------
-    # Exécution
+    # Execution
     # ------------------------------------------------------------------
 
     def run_once(self) -> dict[str, NodeRunResult]:
@@ -175,7 +175,7 @@ class DAGExecutor:
         for node_id in order:
             node = self._nodes[node_id]
 
-            # Nœuds asynchrones : skip dans run_once (gérés par _run_async_node)
+            # Async nodes: skipped in run_once (handled by _run_async_node)
             if node.meta.cycle_interval_s is not None:
                 continue
 
@@ -185,18 +185,18 @@ class DAGExecutor:
 
             if result.status in (NodeStatus.DONE, NodeStatus.BYPASSED):
                 resolved[node_id] = result.outputs
-                # Publie dans le ContextStore (clé = node_id.port)
+                # Publish into the ContextStore (key = node_id.port)
                 for port, value in result.outputs.items():
                     self._context_store.set(
                         f"{node_id}.{port}", value, source=node_id
                     )
-                # Si le nœud définit un output_key global, le publie aussi
+                # When the node defines a global output_key, publish that too
                 output_key = node.params.get("output_key")
                 if output_key and result.outputs:
                     first_val = next(iter(result.outputs.values()))
                     self._context_store.set(output_key, first_val, source=node_id)
             else:
-                # Nœud en erreur : les suivants reçoivent des inputs vides
+                # Node failed: downstream nodes receive empty inputs
                 resolved[node_id] = {}
 
         return results
@@ -218,7 +218,7 @@ class DAGExecutor:
             if edge.source_port in source_outputs:
                 inputs[edge.target_port] = source_outputs[edge.source_port]
             else:
-                # Fallback : lire depuis le ContextStore (valeur d'une lane async)
+                # Fallback: read from the ContextStore (value from an async lane)
                 ctx_value = self._context_store.get(
                     f"{edge.source_node}.{edge.source_port}"
                 )
@@ -226,7 +226,7 @@ class DAGExecutor:
         return inputs
 
     # ------------------------------------------------------------------
-    # Nœuds asynchrones (lanes à cycle propre)
+    # Async nodes (lanes with their own cycle)
     # ------------------------------------------------------------------
 
     def start_async_nodes(self) -> None:

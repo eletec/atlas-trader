@@ -35,7 +35,7 @@ class LoadMultiTF(Node):
 
     @staticmethod
     def input_schema() -> dict[str, str]:
-        # Accepte symbol depuis un nœud AssetDef si branché
+        # Accepts the symbol from an AssetDef node when wired
         return {"symbol": "str"}
 
     @staticmethod

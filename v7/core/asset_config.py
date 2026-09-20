@@ -23,15 +23,15 @@ import yaml
 
 logger = logging.getLogger("v7.core.asset_config")
 
-# Chemin runtime (writable, persistant) — utilisé DANS le container uniquement
+# Runtime path (writable, persistent) - used INSIDE the container only
 _APP_DATA = Path(os.environ.get("V7_DATA_DIR", "/app/data"))
 _RUNTIME_PATH = _APP_DATA / "carry_assets.yaml"
-# Chemin git-tracked (read-only dans le container)
+# Git-tracked path (read-only inside the container)
 _GIT_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
-# Le dépôt est monté dans le container sur /app/src : marqueur fiable du container.
-# Hors container (ex. Windows), « /app/data » se résout en « C:\app\data » et un
-# fichier périmé à cet endroit écraserait silencieusement la config du dépôt —
-# les backtests locaux valideraient alors une autre stratégie que le live.
+# The repo is mounted into the container at /app/src: a reliable container marker.
+# Outside the container (e.g. Windows), '/app/data' resolves to 'C:\app\data' and a
+# stale file there would silently override the repo config -
+# local backtests would then validate a different strategy than live.
 _IN_CONTAINER = Path("/app/src").exists()
 _CACHE: dict | None = None
 
@@ -63,7 +63,7 @@ def _bootstrap_config() -> Path:
         logger.info("Bootstrapped carry_assets.yaml → %s", runtime)
         return runtime
     logger.warning("No carry_assets.yaml found — using empty config")
-    return _GIT_PATH  # fallback (n'existe pas, mais load_config gère)
+    return _GIT_PATH  # fallback (this path does not exist, but load_config handles it)
 
 
 def load_config() -> dict:
@@ -145,9 +145,9 @@ def update_asset_params(symbol: str, params: dict) -> None:
 
 
 # ── Normalisation des symboles ────────────────────────────────────────────────
-# Les backtests acceptent des symboles saisis librement en CLI (BTC, btcusdt,
-# BTC/USDT, BTC/USDT:USDT). Sans normalisation, un symbole court fait échouer le
-# fetch spot et le backtest retombait silencieusement sur un P&L fictif.
+# Backtests accept freely typed CLI symbols (BTC, btcusdt,
+# BTC/USDT, BTC/USDT:USDT). Without normalisation a short symbol makes the
+# spot fetch fail and the backtest silently fell back to fabricated P&L.
 _QUOTES = ("USDT", "USDC", "BUSD", "FDUSD")
 
 
@@ -159,12 +159,12 @@ def normalize_symbol(raw: str) -> str:
     s = (raw or "").strip().upper().replace(" ", "")
     if not s:
         return ""
-    if ":" in s:  # retire le suffixe perp « :USDT »
+    if ":" in s:  # strip the perp suffix ':USDT'
         s = s.split(":", 1)[0]
     if "/" in s:
         base, _, quote = s.partition("/")
         return f"{base}/{quote or 'USDT'}"
-    for quote in _QUOTES:  # retire un quote collé : « BTCUSDT » → « BTC/USDT »
+    for quote in _QUOTES:  # strip an attached quote: 'BTCUSDT' -> 'BTC/USDT'
         if s.endswith(quote) and len(s) > len(quote):
             return f"{s[:-len(quote)]}/{quote}"
     return f"{s}/USDT"

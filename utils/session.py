@@ -56,7 +56,7 @@ _ASSET_PROFILE: dict[str, str] = {
     "SOL/USDT": "crypto",
     "XAU/USD":  "xau",
     "XAG/USD":  "xau",
-    "WTI/USD":  "xau",   # commodity hours similaires à l'or (Globex Mon-Fri)
+    "WTI/USD":  "xau",   # commodity hours similar to gold (Globex Mon-Fri)
     "EUR/USD":  "forex",
     "GBP/USD":  "forex",
     "USD/JPY":  "forex",
@@ -180,7 +180,7 @@ class MarketSession:
             return "🟢 London/NY"
         if 17 <= h < 22:
             return "🟠 NY"
-        # h = 0-7 ou 22-24 : fenêtre existe mais session calme
+        # h = 0-7 or 22-24: the window exists but the session is quiet
         if w.open_utc in self._no_trade_opens:
             return "⚫ hors session"  # forex : no-trade explicite
         return "🌙 calme"  # xau/xag : monitoring actif, volume faible

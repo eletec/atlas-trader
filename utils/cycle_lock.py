@@ -82,7 +82,7 @@ def is_locked(asset: str | None = None) -> bool:
     (V2 utilise des locks par actif : atlas_cycle_BTC_USDT.lock, etc.)
     """
     if asset is None:
-        # Chercher tout lock actif parmi les actifs V2
+        # Look for any active lock among the V2 assets
         import glob as _glob
         for lf in _glob.glob(str(_LOCK_DIR / "atlas_cycle_*.lock")):
             try:

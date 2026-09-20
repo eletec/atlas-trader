@@ -32,7 +32,7 @@ app = FastAPI(
     description="API de trading algorithmique — moteur DAG + plugins IA",
 )
 
-# CORS : permet le dashboard Streamlit en local/dev
+## CORS: allows the Streamlit dashboard in local/dev
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -65,7 +65,7 @@ async def _auto_schedule_carry():
     import threading
     logger = logging.getLogger("v4.api.main")
     
-    # 0) Initialiser la DB (tables logs, dag_logs, etc.) avant tout accès dashboard
+    # 0) Initialise the DB (logs tables, dag_logs, etc.) before any dashboard access
     try:
         from storage.database import init_db
         init_db()
@@ -73,7 +73,7 @@ async def _auto_schedule_carry():
     except Exception as exc:
         logger.warning("DB init failed (non-bloquant): %s", exc)
     
-    # 1) Carry cycle — thread background toutes les 8h
+    # 1) Carry cycle - background thread every 8h
     def _carry_loop():
         import time
         from v7.run_carry_cycle import run_cycle
@@ -89,7 +89,7 @@ async def _auto_schedule_carry():
     t.start()
     logger.info("V7 Carry cycle scheduled (28800s)")
 
-    # 2) Tickers prix (REST polling avec fallback WS) — staggered start
+    # 2) Price tickers (REST polling with a WS fallback) - staggered start
     try:
         from v4.api.routes.prices import ensure_ticker
         from v7.core.asset_config import get_active_assets
@@ -99,7 +99,7 @@ async def _auto_schedule_carry():
         for i, sym in enumerate(active):
             ensure_ticker(sym)
             if i < len(active) - 1:
-                await asyncio.sleep(0.3)  # stagger pour éviter rate-limit Binance
+                await asyncio.sleep(0.3)  # stagger to avoid Binance rate limits
         logger.info("Price tickers started (%d assets)", len(active))
     except Exception as exc:
         logger.warning(f"Price tickers failed to start: {exc}")

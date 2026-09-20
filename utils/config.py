@@ -14,12 +14,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Permet de surcharger le fichier settings via variable d'environnement
-# Ex: SETTINGS_FILE=/app/config/settings.gx10.yaml dans docker-compose.yml
+# Lets you override the settings file through an environment variable
+# e.g. SETTINGS_FILE=/app/config/settings.gx10.yaml in docker-compose.yml
 _SETTINGS_PATH = Path(os.environ.get("SETTINGS_FILE", "config/settings.yaml"))
 
-# Rediriger vers /app/data/ pour écriture (Docker mount read-only sur /app/src/config)
-# Détection : /app/data existe uniquement dans le conteneur Docker (volume v4_storage)
+# Redirect to /app/data/ for writing (/app/src/config is a read-only Docker mount)
+# Detection: /app/data only exists inside the Docker container (v4_storage volume)
 if Path("/app/data").is_dir() and str(_SETTINGS_PATH).startswith("config/"):
     _RUNTIME_SETTINGS = Path("/app/data") / "settings.yaml"
     _RUNTIME_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,7 @@ def save_settings(settings: dict, path: str | Path | None = None) -> None:
     p = Path(path) if path else _SETTINGS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
 
-    # Lire le fichier courant sur disque et merger — préserve les clés non touchées
+    # Read the current file from disk and merge - preserves untouched keys
     if p.exists():
         try:
             on_disk = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
@@ -82,14 +82,14 @@ def save_settings(settings: dict, path: str | Path | None = None) -> None:
               sort_keys=False, width=120)
     content = buf.getvalue()
 
-    # Tentative d'écriture directe (sans passer par os.access qui peut mentir sur bind-mounts)
+    # Try a direct write (avoid os.access, which can lie on bind-mounts)
     try:
         p.write_text(content, encoding="utf-8")
         return
     except PermissionError:
         pass
 
-    # Écriture échoue → tenter chmod self-service (ne fonctionne que si on est owner ou root)
+    # Write failed -> attempt a self-service chmod (works only as owner or root)
     try:
         p.chmod(p.stat().st_mode | _stat.S_IWUSR | _stat.S_IWGRP | _stat.S_IWOTH)
         p.write_text(content, encoding="utf-8")
@@ -129,7 +129,7 @@ def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
     asset_file = _ASSETS_DIR / f"{slug}.yaml"
 
     if not asset_file.exists():
-        # Pas de config spécifique → on utilise le global tel quel
+        # No asset-specific config -> use the global one as-is
         return global_cfg
 
     try:
@@ -144,7 +144,7 @@ def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
     except Exception:
         asset_cfg = {}
 
-    # Merge profond : asset_cfg surcharge global_cfg clé par clé
+    # Deep merge: asset_cfg overrides global_cfg key by key
     merged = _deep_merge(copy.deepcopy(global_cfg), asset_cfg)
     return merged
 
@@ -152,10 +152,10 @@ def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
 def save_asset_config(asset: str, cfg: dict) -> None:
     """Sauvegarde la config d'un actif dans config/assets/{slug}.yaml."""
     import stat
-    # Utiliser le chemin absolu basé sur le fichier settings pour rester cohérent
+    # Use the absolute path derived from the settings file to stay consistent
     assets_dir = _SETTINGS_PATH.parent / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
-    # Fix permissions du dossier si nécessaire
+    # Fix the folder permissions when needed
     try:
         if not os.access(assets_dir, os.W_OK):
             assets_dir.chmod(assets_dir.stat().st_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
@@ -163,7 +163,7 @@ def save_asset_config(asset: str, cfg: dict) -> None:
         pass
     slug = _asset_slug(asset)
     path = assets_dir / f"{slug}.yaml"
-    # Fix permissions du fichier si nécessaire
+    # Fix the file permissions when needed
     if path.exists() and not os.access(path, os.W_OK):
         try:
             path.chmod(path.stat().st_mode | stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH)
@@ -195,17 +195,17 @@ def export_config_zip() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         # carry_assets.yaml — LA config de la strategie carry (source unique de verite).
-        # Sans elle, la sauvegarde ne protegeait rien d'utile.
+        # Without it the backup protected nothing useful.
         carry_path = _carry_config_path()
         if carry_path.exists():
             zf.write(carry_path, arcname="carry_assets.yaml")
 
-        # settings.yaml (ou le fichier actif via SETTINGS_FILE)
+        # settings.yaml (or the active file via SETTINGS_FILE)
         settings_path = _SETTINGS_PATH
         if settings_path.exists():
             zf.write(settings_path, arcname="settings.yaml")
 
-        # Tous les fichiers config/assets/*.yaml
+        # Every file in config/assets/*.yaml
         assets_dir = _SETTINGS_PATH.parent / "assets"
         if assets_dir.is_dir():
             for asset_file in sorted(assets_dir.glob("*.yaml")):
@@ -247,13 +247,13 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
         if not names:
             raise ValueError("ZIP vide — aucun fichier à restaurer.")
 
-        # Vérification de sécurité : pas de path traversal
+        # Safety check: no path traversal
         for name in names:
             clean = Path(name).as_posix()
             if ".." in clean or clean.startswith("/"):
                 raise ValueError(f"Chemin non autorisé dans le ZIP : {name!r}")
 
-        # Sauvegarde préalable (optionnelle mais activée par défaut)
+        # Prior backup (optional but enabled by default)
         if backup_first:
             try:
                 backup_bytes = export_config_zip()
@@ -273,12 +273,12 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
         assets_dir.mkdir(parents=True, exist_ok=True)
 
         for name in names:
-            # Seuls carry_assets.yaml, settings.yaml et assets/*.yaml sont acceptes
+            # Only carry_assets.yaml, settings.yaml and assets/*.yaml are accepted
             p = Path(name)
             if p.name == "carry_assets.yaml" and len(p.parts) == 1:
                 dest = _carry_config_path()
             elif p.name == "settings.yaml" and len(p.parts) == 1:
-                # Restaurer vers le fichier actif (SETTINGS_FILE), pas settings.yaml hardcode
+                # Restore into the active file (SETTINGS_FILE), not a hardcoded settings.yaml
                 dest = _SETTINGS_PATH
             elif len(p.parts) == 2 and p.parts[0] == "assets" and p.suffix == ".yaml":
                 dest = assets_dir / p.name
@@ -288,9 +288,9 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
 
             try:
                 content = zf.read(name)
-                # Validation YAML basique avant d'écraser
+                # Basic YAML validation before overwriting
                 yaml.safe_load(content)
-                # Correction permissions si nécessaire
+                # Fix permissions when needed
                 if dest.exists() and not os.access(dest, os.W_OK):
                     try:
                         dest.chmod(dest.stat().st_mode | stat.S_IRUSR | stat.S_IWUSR)
@@ -358,7 +358,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
         if key in base and isinstance(base[key], dict) and isinstance(val, dict):
             _deep_merge(base[key], val)
         elif key in base and isinstance(base[key], dict) and not isinstance(val, (dict, list)):
-            # Scalaire tente d'écraser un dict — ignorer (ex: exchange: "binance" vs exchange: {...})
+            # A scalar tries to override a dict - ignore (e.g. exchange: 'binance' vs exchange: {...})
             pass
         else:
             base[key] = val
@@ -385,7 +385,7 @@ def save_settings(settings: dict, path: str | Path | None = None) -> None:
     import stat
     p = Path(path) if path else _SETTINGS_PATH
     p.parent.mkdir(parents=True, exist_ok=True)
-    # Auto-correction des permissions si le fichier existe mais n'est pas writable
+    # Auto-fix permissions when the file exists but is not writable
     if p.exists() and not os.access(p, os.W_OK):
         try:
             current_mode = p.stat().st_mode
@@ -410,7 +410,7 @@ def verify_admin_password(password: str, settings: dict) -> bool:
     """Vérifie le mot de passe admin."""
     stored = settings.get("admin", {}).get("password_hash", "")
     if not stored:
-        # Premier lancement : hashage automatique depuis .env
+        # First run: hash it automatically from .env
         env_pass = os.getenv("ADMIN_PASSWORD", "changeme")
         return password == env_pass
     return hash_password(password) == stored

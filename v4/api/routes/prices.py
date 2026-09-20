@@ -28,7 +28,7 @@ logger = logging.getLogger("v4.api.routes.prices")
 
 
 # ------------------------------------------------------------------
-# PriceStore — cache en mémoire, mis à jour par le ticker WS
+## PriceStore - in-memory cache, kept up to date by the WS ticker
 # ------------------------------------------------------------------
 
 class PriceStore:
@@ -49,7 +49,7 @@ class PriceStore:
     def update(self, symbol: str, price: float, ts: float | None = None) -> None:
         record = {"symbol": symbol, "price": price, "ts": ts or time.time()}
         self._prices[symbol] = record
-        # Notifie tous les listeners SSE
+        # Notify every SSE listener
         dead = []
         for q in self._listeners:
             try:
@@ -78,14 +78,14 @@ class PriceStore:
 
 
 # ------------------------------------------------------------------
-# Consolidated price poller — 1 task pour tous les actifs (pas 48)
+## Consolidated price poller - 1 task for all assets (not 48)
 # ------------------------------------------------------------------
 
 _ws_tasks: dict[str, asyncio.Task] = {}
 _poller_task: asyncio.Task | None = None
 _active_symbols: set[str] = set()
 
-# Shared REST exchange — une seule instance
+## Shared REST exchange - a single instance
 _rest_exchange = None
 _rest_exchange_lock = asyncio.Lock()
 
@@ -119,8 +119,8 @@ async def _poll_all_rest() -> None:
                     failures[symbol] = 0
             except Exception:
                 failures[symbol] = failures.get(symbol, 0) + 1
-            await asyncio.sleep(0.1)  # 100ms entre chaque symbole (pas de rate-limit)
-        # Pause entre les cycles : 3s / nombre d'actifs ≈ 3s de fraîcheur
+            await asyncio.sleep(0.1)  # 100ms between each symbol (no rate limit)
+        # Pause between cycles: 3s / number of assets ~ 3s of freshness
         await asyncio.sleep(3.0)
 
 
@@ -139,17 +139,17 @@ def ensure_ticker(symbol: str) -> None:
 async def _sse_generator(symbols: list[str]) -> AsyncGenerator[str, None]:
     store = PriceStore.instance()
 
-    # Démarrer les tickers
+    # Start the tickers
     for sym in symbols:
         ensure_ticker(sym)
 
-    # Envoyer le snapshot initial pour chaque symbole connu
+    # Send the initial snapshot for every known symbol
     for sym in symbols:
         rec = store.get(sym)
         if rec:
             yield f"event: price\ndata: {json.dumps(rec)}\n\n"
 
-    # S'abonner aux mises à jour en continu
+    # Subscribe to the continuous updates
     q = store.subscribe()
     try:
         while True:
@@ -158,7 +158,7 @@ async def _sse_generator(symbols: list[str]) -> AsyncGenerator[str, None]:
                 if record["symbol"] in symbols:
                     yield f"event: price\ndata: {json.dumps(record)}\n\n"
             except asyncio.TimeoutError:
-                # Keepalive : commentaire SSE pour garder la connexion ouverte
+                # Keepalive: SSE comment to keep the connection open
                 yield ": keepalive\n\n"
     except (GeneratorExit, asyncio.CancelledError):
         pass

@@ -35,9 +35,9 @@ class NodeMeta:
     x: float = 0.0
     y: float = 0.0
     label: str = ""
-    group: str = ""                  # nom de la lane (cosmétique uniquement)
-    bypass: bool = False             # si True : passe input → output sans traitement
-    cycle_interval_s: float | None = None  # None = synchrone, >0 = async périodique
+    group: str = ""                  # lane name (cosmetic only)
+    bypass: bool = False             # when True: passes input -> output without processing
+    cycle_interval_s: float | None = None  # None = synchronous, >0 = periodic async
 
 
 @dataclass
@@ -79,7 +79,7 @@ class Node(ABC):
         self._last_outputs: dict[str, Any] = {}
 
     # ------------------------------------------------------------------
-    # À implémenter dans chaque nœud concret
+    # To be implemented in every concrete node
     # ------------------------------------------------------------------
 
     @property
@@ -111,7 +111,7 @@ class Node(ABC):
 
         if self.meta.bypass:
             self.status = NodeStatus.BYPASSED
-            # Passe le premier input directement en output
+            # Passes the first input straight through to the output
             passthrough = next(iter(inputs.values()), None)
             first_out = next(iter(self.output_schema().keys()), "output")
             outputs = {first_out: passthrough}
@@ -127,7 +127,7 @@ class Node(ABC):
             self.status = NodeStatus.RUNNING
             outputs = self.run(inputs)
 
-            # Blend IA si plugin connecté
+            # AI blend when a plugin is connected
             if self.ai_plugin and self.ai_blend_weight > 0:
                 outputs = self._apply_ai_blend(inputs, outputs)
 

@@ -9,7 +9,7 @@ NODE_REGISTRY: dict[str, type] = {
     "DebateNode": DebateNode,
 }
 
-# Injecter les nœuds V5 si le module existe
+## Inject the V5 nodes when the module exists
 try:
     from v5.nodes import NODE_REGISTRY as _V5_REGISTRY
     NODE_REGISTRY.update(_V5_REGISTRY)

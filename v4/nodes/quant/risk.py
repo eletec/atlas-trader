@@ -53,7 +53,7 @@ class RiskATR(Node):
         ohlcv_1h: pd.DataFrame = inputs["ohlcv_1h"]
         capital: float = float(inputs.get("capital") or self.params.get("capital", 10_000.0))
 
-        # ── Paramètres : priorité DAG → settings.yaml → défaut ──
+        # -- Parameters: DAG first -> settings.yaml -> default --
         symbol = self.params.get("symbol", "")
         _cfg = load_v4_config(symbol, "risk", {
             "capital": 10_000, "max_fraction": 0.02, "risk_pct": 1.0,
@@ -69,7 +69,7 @@ class RiskATR(Node):
         if signal == "flat" or ohlcv_1h is None or ohlcv_1h.empty:
             return {"decision": {"action": "flat", "reason": "signal_flat"}}
 
-        # ATR 1h (fenêtre 14)
+        # 1h ATR (14-period window)
         high = ohlcv_1h["high"]
         low  = ohlcv_1h["low"]
         close = ohlcv_1h["close"]
@@ -82,41 +82,41 @@ class RiskATR(Node):
 
         entry_price = float(close.iloc[-1])
 
-        # ── Sizing contextuel basé sur le risque ──
+        # -- Contextual sizing based on risk --
         # Risque max par trade = risk_pct% du capital
         max_risk_usd = capital * (risk_pct / 100.0)
         # Risque unitaire = distance SL / prix (en %)
         if entry_price > 0 and atr > 0:
-            risk_per_unit = (sl_mult * atr) / entry_price  # % de perte si SL touché
+            risk_per_unit = (sl_mult * atr) / entry_price  # % loss if the stop is hit
         else:
             risk_per_unit = 0.01  # fallback 1%
-        # Taille basée sur le risque : risquer max_risk_usd sur la distance SL
+        # Risk-based size: risk at most max_risk_usd over the stop distance
         risk_based_size = max_risk_usd / risk_per_unit if risk_per_unit > 0 else capital * fraction
-        # Plafond fraction du capital (seule limite, le risque est déjà géré par risk_based_size)
+        # Capital fraction cap (the only limit; risk is already handled by risk_based_size)
         size_usd = min(risk_based_size, capital * fraction)
-        # Minimum $10 pour éviter les trades insignifiants
+        # $10 minimum to avoid insignificant trades
         size_usd = max(size_usd, 10.0)
 
-        # ── V6: Kelly Sizing (Half-Kelly pour crypto) ──
+        # -- V6: Kelly sizing (half-Kelly for crypto) --
         kelly_enabled = bool(self.params.get("use_kelly", True))
         if kelly_enabled:
-            # Estimer edge et variance depuis le signal
+            # Estimate the edge and variance from the signal
             prob_up = float(inputs.get("prob_up", 0.5))
             confidence = abs(prob_up - 0.5) * 2.0  # 0-1
-            # Kelly f* = edge / variance, avec edge = confiance × (win_rate_estimate - 0.5)
-            # Simplifié : f* ≈ (2×prob_up - 1) si long, (1 - 2×prob_up) si short
+            # Kelly f* = edge / variance, with edge = confidence x (win_rate_estimate - 0.5)
+            # Simplified: f* ~ (2 x prob_up - 1) if long, (1 - 2 x prob_up) if short
             if signal == "long":
                 kelly_f = max(0, 2 * prob_up - 1)  # ex: prob_up=0.60 → f*=0.20
             else:
                 kelly_f = max(0, 1 - 2 * prob_up)  # ex: prob_up=0.40 → f*=0.20
-            # Half-Kelly (plus conservateur, recommandé pour crypto)
+            # Half-Kelly (more conservative, recommended for crypto)
             kelly_fraction = float(self.params.get("kelly_fraction", 0.5))
             kelly_f *= kelly_fraction
-            # Appliquer Kelly au sizing : size × (1 + kelly_f × confidence)
+            # Apply Kelly to the sizing: size x (1 + kelly_f x confidence)
             kelly_mult = 1.0 + kelly_f * confidence
-            kelly_mult = min(kelly_mult, 2.0)  # cap à 2× le sizing de base
+            kelly_mult = min(kelly_mult, 2.0)  # cap at 2x the base sizing
             size_usd *= kelly_mult
-            size_usd = min(size_usd, capital * fraction)  # respecter le plafond
+            size_usd = min(size_usd, capital * fraction)  # respect the cap
             size_usd = max(size_usd, 10.0)
 
         if signal == "long":

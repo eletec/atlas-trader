@@ -6,7 +6,7 @@ sur Binance, avec filtres de liquidité et gestion des contrats à multiplicateu
 
 Usage:
     python -m v7.core.carry_scanner              # affiche la liste
-    python -m v7.core.carry_scanner --save       # met à jour carry_assets.yaml
+    python -m v7.core.carry_scanner --save       # updates carry_assets.yaml
 """
 
 from __future__ import annotations
@@ -20,23 +20,23 @@ import yaml
 
 logger = logging.getLogger("v7.core.carry_scanner")
 
-# ── Seuils de liquidité ──
+# -- Liquidity thresholds --
 MIN_SPOT_VOLUME_24H_USD = 5_000_000    # $5M volume spot minimum
 MIN_PERP_VOLUME_24H_USD = 10_000_000   # $10M volume perp minimum
 MIN_OPEN_INTEREST_USD    = 2_000_000   # $2M open interest minimum
 MAX_SPREAD_BPS           = 15           # spread max 0.15%
 MIN_FUNDING_HISTORY_DAYS = 90           # au moins 90j d'historique de funding
 
-# ── Actifs exclus (stablecoins, wrapped, tokens problématiques) ──
+# -- Excluded assets (stablecoins, wrapped, problematic tokens) --
 EXCLUDED_BASES = {
     "USDC", "USDT", "DAI", "TUSD", "BUSD", "USDP", "FDUSD",  # stablecoins
     "WBTC", "WETH", "WBETH",  # wrapped (suivre l'original)
-    "USTC", "LUNC",  # effondrés
+    "USTC", "LUNC",  # collapsed
 }
 
 # ── Multiplier contracts ──
 # Binance utilise des symboles comme 1000PEPEUSDT, 1000SHIBUSDT, etc.
-# Le champ contractSize donne la taille réelle du contrat.
+# The contractSize field gives the real contract size.
 MULTIPLIER_PREFIXES = [
     ("1000000", 1_000_000.0),
     ("1000",    1_000.0),
@@ -79,7 +79,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     spot_ex = ccxt.binance({"enableRateLimit": True})
     perp_ex = ccxt.binanceusdm({"enableRateLimit": True})
 
-    # ── 1. Charger la structure des marchés (exchangeInfo) ──
+    # -- 1. Load the market structure (exchangeInfo) --
     logger.info("Chargement des marchés Spot...")
     try:
         spot_markets = spot_ex.load_markets()
@@ -94,7 +94,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
         logger.error("Échec chargement marchés Perp: %s", e)
         return []
 
-    # Indexer les marchés spot USDT actifs
+    # Index the active USDT spot markets
     spot_usdt: dict[str, dict] = {}
     for market in spot_markets.values():
         if (market.get("spot") and market.get("active")
@@ -104,7 +104,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     logger.info("Spot USDT actifs: %d paires", len(spot_usdt))
     spot_bases = set(spot_usdt.keys())
 
-    # ── 2. Intersection Spot ∩ Perp (sans volumes) ──
+    # -- 2. Spot intersected with Perp (without volumes) --
     candidates: list[dict[str, Any]] = []
     for market in perp_markets.values():
         if not (market.get("swap") and market.get("active")
@@ -135,7 +135,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     if not candidates:
         return []
 
-    # ── 3. Récupérer les volumes/ spreads via fetch_tickers ──
+    # -- 3. Fetch volumes and spreads via fetch_tickers --
     spot_symbols = [c["spot_symbol"] for c in candidates]
     perp_symbols = [c["perp_symbol"] for c in candidates]
 
@@ -144,7 +144,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
 
     logger.info("Récupération des tickers spot (%d symboles)...", len(spot_symbols))
     try:
-        # Binance limite ~100 symboles par appel, on découpe
+        # Binance caps at ~100 symbols per call, so we chunk the requests
         for i in range(0, len(spot_symbols), 80):
             chunk = spot_symbols[i:i+80]
             tickers = spot_ex.fetch_tickers(chunk)
@@ -161,7 +161,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
     except Exception as e:
         logger.warning("Échec tickers perp: %s — on continue sans filtre volume", e)
 
-    # ── 4. Appliquer les filtres ──
+    # -- 4. Apply the filters --
     results: list[dict[str, Any]] = []
     for c in candidates:
         spot_t = spot_tickers.get(c["spot_symbol"], {})
@@ -188,7 +188,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
         except (ValueError, TypeError):
             open_interest = 0.0
 
-        # Si pas de données ticker (API down), on inclut quand même
+        # When there is no ticker data (API down), include the asset anyway
         if spot_t and spot_vol_24h < min_spot_vol:
             continue
         if perp_t and perp_vol_24h < min_perp_vol:
@@ -208,7 +208,7 @@ def scan_carry_universe(*, save: bool = False, optimize: bool = False,
             "perp_id": c["perp_id"],
         })
 
-    # Trier par volume spot décroissant
+    # Sort by descending spot volume
     results.sort(key=lambda r: r["spot_volume_24h_usd"], reverse=True)
 
     logger.info("Univers carry éligible: %d actifs (filtré depuis %d candidats)",
@@ -253,20 +253,20 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
         vol_share = spot_vol / total_spot_vol if total_spot_vol > 0 else 1.0 / len(assets)
         opt["_optimized_capital"] = max(500, min(5000, int(14000 * vol_share)))
 
-        # ── 2. Stress loss basé sur la volatilité 30j ──
+        # -- 2. Stress loss based on 30d volatility --
         try:
             ohlcv = perp_ex.fetch_ohlcv(perp_sym, "1d", limit=30)
             if ohlcv and len(ohlcv) >= 7:
                 closes = [c[4] for c in ohlcv if c[4] is not None]
                 if len(closes) >= 7:
                     returns = np.diff(np.log(closes))
-                    vol_30d = float(np.std(returns) * np.sqrt(365) * 100)  # volatilité annualisée %
+                    vol_30d = float(np.std(returns) * np.sqrt(365) * 100)  # annualised volatility %
                     opt["_optimized_stress_loss_pct"] = round(max(0.03, min(0.25, vol_30d / 100)), 2)
                     opt["_optimized_volatility_30d_pct"] = round(vol_30d, 1)
         except Exception as e:
             logger.debug("Volatilité %s: %s", sym, e)
 
-        # ── 3. Min funding basé sur l'historique ──
+        # -- 3. Minimum funding based on the history --
         try:
             funding_rates = perp_ex.fetch_funding_rate_history(perp_id, limit=90)
             if funding_rates and len(funding_rates) >= 10:
@@ -283,15 +283,15 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
         except Exception as e:
             logger.debug("Funding %s: %s", sym, e)
 
-        # ── 4. Safety cap basé sur l'open interest ──
+        # -- 4. Safety cap based on open interest --
         oi = asset.get("open_interest_usd", 0)
         oi_share = oi / total_oi if total_oi > 0 else 1.0 / len(assets)
         opt["_optimized_safety_cap"] = max(50, min(500, int(opt.get("_optimized_capital", 2000) * max(0.05, oi_share))))
 
-        # ── 5. Max hold days basé sur la persistance du funding ──
+        # -- 5. Max hold days based on funding persistence --
         try:
             if funding_rates and len(funding_rates) >= 30:
-                # Compter les séquences consécutives de funding positif
+                # Count consecutive runs of positive funding
                 signs = [1 if float(f["fundingRate"]) > 0 else 0 for f in funding_rates]
                 max_streak = 0
                 current_streak = 0
@@ -307,12 +307,12 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
             pass
 
         optimized[sym] = opt
-        # Flag de viabilité : volatilité + backtest (si disponible)
+        # Viability flag: volatility + backtest (when available)
         vol_ok = opt.get("_optimized_volatility_30d_pct", 0) < 200
         stress_ok = opt.get("_optimized_stress_loss_pct", 1) < 0.30
         opt["_optimized_viable"] = vol_ok and stress_ok
 
-    # ── Intégrer les résultats du backtest (source de vérité ultime) ──
+    # -- Fold in the backtest results (ultimate source of truth) --
     try:
         import json as _json
         bt_path = Path("/app/data/backtest_results.json")
@@ -325,7 +325,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
                 trades = bt_r.get("trades", -1)
                 max_dd = bt_r.get("max_dd_pct", 0)
                 sharpe = bt_r.get("sharpe", 0)
-                # Backtest-validé : au moins 1 trade, MaxDD > -50%, Sharpe >= 0 si >5 trades
+                # Backtest-validated: at least 1 trade, MaxDD > -50%, Sharpe >= 0 when >5 trades
                 bt_viable = trades > 0 and max_dd > -50
                 if trades > 5 and sharpe < 0:
                     bt_viable = False  # sous-performance persistante
@@ -345,7 +345,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
 def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -> None:
     """Met à jour carry_assets.yaml avec les actifs scannés (préserve les params existants)."""
     config_path = Path(__file__).resolve().parent.parent.parent / "config" / "carry_assets.yaml"
-    # Priorité runtime writable
+    # Writable runtime path takes priority
     data_path = Path("/app/data") / "carry_assets.yaml"
     if data_path.exists():
         config_path = data_path
@@ -359,17 +359,17 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
     existing_assets = existing.get("assets", {})
     global_cfg = existing.get("global", {})
 
-    # Calculer les paramètres optimisés si demandé
+    # Compute the optimised parameters when requested
     optimized_params: dict = {}
     if optimize:
         logger.info("Calcul des paramètres optimisés...")
         optimized_params = compute_optimized_params(assets)
 
-    # Fusion : nouveaux actifs ajoutés avec defaults, existants préservés
+    # Merge: new assets added with defaults, existing ones preserved
     new_assets: dict = {}
     # Niveau 1 (top 15 par volume) → capital standard
     tier1_capital = 2000
-    # Niveau 2 (16-30) → capital réduit
+    # Tier 2 (16-30) -> reduced capital
     tier2_capital = 1000
     # Niveau 3 (meme coins, 31+) → capital minimal
     tier3_capital = 500
@@ -380,15 +380,15 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
         sym = asset["symbol"]
         base = sym.split("/")[0]
 
-        # Préserver les params existants si déjà configurés
+        # Preserve the existing params when already configured
         if sym in existing_assets:
             new_assets[sym] = dict(existing_assets[sym])
-            # Fusionner les params optimisés (sauf si l'actif est verrouillé)
+            # Merge the optimised params (unless the asset is locked)
             if sym in optimized_params and not existing_assets[sym].get("locked", False):
                 new_assets[sym].update(optimized_params[sym])
             continue
 
-        # Déterminer le tier
+        # Determine the tier
         if base in meme_coins or i >= 30:
             capital = tier3_capital
             fraction = 0.30
@@ -400,7 +400,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
             fraction = 0.50
 
         new_assets[sym] = {
-            "enabled": False,  # activation explicite requise (stratégie de conviction)
+            "enabled": False,  # explicit opt-in required (conviction strategy)
             "capital": capital,
             "fraction": fraction,
             "safety_cap": int(capital * 0.10),
@@ -410,7 +410,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
             "max_funding": 0.003,
             "exit_after_hours": 72,
             "leverage": 1.0,
-            "icon_url": "",  # à remplir manuellement avec le logo officiel
+            "icon_url": "",  # to be filled in manually with the official logo
             "_scanner_spot_vol_24h": asset["spot_volume_24h_usd"],
             "_scanner_perp_vol_24h": asset["perp_volume_24h_usd"],
             "_scanner_oi": asset["open_interest_usd"],
@@ -418,7 +418,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
             "_scanner_contract_size": asset["contract_size"],
             "_scanner_last_scan": None,
         }
-        # Fusionner les params optimisés (ne modifie pas les valeurs actuelles)
+        # Merge the optimised params (does not overwrite current values)
         if sym in optimized_params:
             new_assets[sym].update(optimized_params[sym])
 

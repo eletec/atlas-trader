@@ -131,7 +131,7 @@ def get_carry_pnl():
             if sym and sym not in symbols_seen:
                 symbols_seen.add(sym)
                 try:
-                    # Gérer les contrats ×1000 (SHIB→1000SHIB, PEPE→1000PEPE...)
+                    # Handle x1000 contracts (SHIB->1000SHIB, PEPE->1000PEPE...)
                     MULTIPLIER_MAP = {"PEPE": "1000PEPE", "SHIB": "1000SHIB",
                                       "BONK": "1000BONK", "FLOKI": "1000FLOKI",
                                       "LUNC": "1000LUNC"}
@@ -139,7 +139,7 @@ def get_carry_pnl():
                     sym_perp = f"{MULTIPLIER_MAP.get(base, base)}/USDT:USDT"
                     ticker = exchange.fetch_ticker(sym_perp)
                     raw = float(ticker.get("last", 0))
-                    # Contrat ×1000 : normaliser au prix par token
+                    # x1000 contract: normalise to the per-token price
                     perp_prices[sym] = raw / 1000.0 if base in MULTIPLIER_MAP else raw
                 except Exception:
                     perp_prices[sym] = spot_prices.get(sym, 0)
@@ -159,7 +159,7 @@ def get_carry_pnl():
         spot = spot_prices.get(symbol, 0)
         perp = perp_prices.get(symbol, spot)
 
-        # Spot P&L (pour référence)
+        # Spot P&L (for reference)
         spot_pnl = 0.0
         if entry_spot > 0 and spot > 0:
             if action in ("short", "carry"):
@@ -167,7 +167,7 @@ def get_carry_pnl():
             else:
                 spot_pnl = (spot - entry_spot) / entry_spot * size_usd
 
-        # Basis P&L (le vrai P&L pour le carry)
+        # Basis P&L (the real P&L for carry)
         basis_pnl = 0.0
         entry_perp = entry_spot  # fallback
         if action == "carry":
@@ -184,7 +184,7 @@ def get_carry_pnl():
                 basis_now = (perp - spot) / spot
                 basis_pnl = (basis_now - basis_entry) * size_usd
 
-        # P&L réel = basis P&L pour carry, spot P&L pour les autres
+        # Real P&L = basis P&L for carry, spot P&L for everything else
         real_pnl = basis_pnl if action == "carry" else spot_pnl
         total_pnl += real_pnl
 
@@ -209,7 +209,7 @@ def get_carry_pnl():
     }
 
 
-# ── FastAPI endpoint (si utilisé dans l'API) ──
+# -- FastAPI endpoint (when used inside the API) --
 try:
     from fastapi import APIRouter
     from fastapi.responses import HTMLResponse

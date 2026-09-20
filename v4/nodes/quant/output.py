@@ -44,7 +44,7 @@ class PaperTrader(Node):
         return {"trade_result": "dict"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        # testnet est un invariant — jamais overridé à False depuis l'UI
+        # testnet is an invariant - never overridden to False from the UI
         testnet = True  # noqa: non configurable
 
         decision: dict = inputs.get("decision", {})
@@ -62,7 +62,7 @@ class PaperTrader(Node):
                 if not open_positions:
                     logger.info("PaperTrader [%s] close_carry: no open position", symbol)
                     return {"trade_result": {"status": "no_position", "symbol": symbol}}
-                # Fermer la première position ouverte (ou toutes)
+                # Close the first open position (or all of them)
                 closed = []
                 for pos in open_positions:
                     trade_id = pos["trade_id"]
@@ -77,7 +77,7 @@ class PaperTrader(Node):
                             close_price = float(ticker.get("last", 0))
                         except Exception:
                             close_price = float(pos.get("entry_price", 0))
-                    # Calculer le P&L
+                    # Compute the P&L
                     pos_action = pos.get("action", "long")
                     entry = float(pos.get("entry_price", 0))
                     size = float(pos.get("size_usd", 0))
@@ -97,8 +97,8 @@ class PaperTrader(Node):
                 logger.warning("PaperTrader [%s] close_carry: storage.paper_trader unavailable", symbol)
                 return {"trade_result": {"status": "error", "symbol": symbol, "reason": "storage unavailable"}}
 
-        # ── Limite de positions simultanées (pyramiding control) ──
-        # Priorité : input AssetDef > params DAG > défaut 1
+        # -- Concurrent position limit (pyramiding control) --
+        # Priority: AssetDef input > DAG params > default 1
         max_positions = int(inputs.get("max_positions") or self.params.get("max_positions", 1))
         if max_positions > 0:
             try:
@@ -141,7 +141,7 @@ class PaperTrader(Node):
                 atr=atr,
                 testnet=testnet,
                 dag_id=dag_id,
-                context=decision,  # traçabilité complète du contexte de décision
+                context=decision,  # full traceability of the decision context
             )
             return {"trade_result": {"status": "opened", "trade_id": trade_id, "symbol": symbol,
                                       "action": action, "entry_price": entry_price}}
@@ -246,14 +246,14 @@ class RecordDecision(Node):
         decision = inputs.get("decision", {})
         trade_result = inputs.get("trade_result", {})
         table    = self.params.get("table", "shadow_decisions")
-        # Sécurité : valider le nom de table (whitelist alphanum + underscore)
+        # Safety: validate the table name (alphanumeric + underscore whitelist)
         import re as _re
         if not _re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table):
             raise ValueError(f"Invalid table name: {table!r}")
         db_path  = self.params.get("db_path", "/app/data/v4.db")
         symbol   = self.params.get("symbol", decision.get("symbol", ""))
         dag_id   = self.params.get("dag_id", "")
-        # Récupérer le trade_id depuis le résultat PaperTrader (lien trade↔décision)
+        # Fetch the trade_id from the PaperTrader result (trade to decision link)
         trade_id = trade_result.get("trade_id", "") or decision.get("trade_id", "")
 
         try:
@@ -263,11 +263,11 @@ class RecordDecision(Node):
                     "(id INTEGER PRIMARY KEY AUTOINCREMENT, "
                     " ts REAL, symbol TEXT, dag_id TEXT, trade_id TEXT, data TEXT)"
                 )
-                # Ajouter les colonnes manquantes si la table existe déjà (migration)
+                # Add the missing columns when the table already exists (migration)
                 try:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN symbol TEXT")
                 except sqlite3.OperationalError:
-                    pass  # colonne existe déjà
+                    pass  # column already exists
                 try:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN dag_id TEXT")
                 except sqlite3.OperationalError:

@@ -62,7 +62,7 @@ def setup_logging(
 
     logging.config.dictConfig(config)
 
-    # Ajout du handler SQLite si la DB est disponible
+    # Add the SQLite handler when the DB is available
     if enable_sqlite:
         try:
             from storage.database import SQLiteLogHandler, init_db

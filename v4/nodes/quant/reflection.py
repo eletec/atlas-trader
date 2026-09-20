@@ -76,7 +76,7 @@ class ReflectionNode(Node):
         max_lessons = int(self.params.get("max_lessons", 5))
         min_pnl_abs = float(self.params.get("min_pnl_abs", 1.0))
 
-        # ── Récupérer les trades fermés sans réflexion ──
+        # -- Fetch the closed trades that have no reflection yet --
         all_trades = get_v4_trades(n=100)
         closed_trades = [t for t in all_trades if t.get("status") == "closed" and t.get("pnl_usd", 0) != 0]
 
@@ -97,7 +97,7 @@ class ReflectionNode(Node):
                     entry = float(trade.get("entry_price", 0))
                     pnl = float(trade.get("pnl_usd", 0))
 
-                    # Déjà réfléchi ?
+                    # Already reflected on?
                     existing = conn.execute(
                         "SELECT 1 FROM v4_reflections WHERE trade_id=?",
                         (trade_id,),
@@ -108,7 +108,7 @@ class ReflectionNode(Node):
                     if abs(pnl) < min_pnl_abs:
                         continue
 
-                    # ── Générer la leçon (heuristique, pas d'appel LLM) ──
+                    # -- Generate the lesson (heuristic, no LLM call) --
                     lesson = self._generate_lesson(symbol, action, entry, pnl, trade)
                     if not lesson:
                         continue
@@ -130,14 +130,14 @@ class ReflectionNode(Node):
 
                 conn.commit()
 
-                # ── Récupérer les leçons récentes pour le contexte AI ──
+                # -- Fetch the recent lessons for the AI context --
                 rows = conn.execute(
                     """SELECT symbol, action, pnl_usd, lesson FROM v4_reflections
                        ORDER BY created_at DESC LIMIT ?""",
                     (max_lessons,),
                 ).fetchall()
 
-                # ── PnL récent cumulé ──
+                # -- Recent cumulative PnL --
                 pnl_row = conn.execute(
                     """SELECT COALESCE(SUM(pnl_usd), 0) FROM v4_reflections
                        WHERE created_at > datetime('now', '-7 days')"""
@@ -149,7 +149,7 @@ class ReflectionNode(Node):
 
         recent_pnl = float(pnl_row[0]) if pnl_row else 0.0
 
-        # ── Formater les leçons pour le prompt AI ──
+        # -- Format the lessons for the AI prompt --
         if rows:
             lesson_lines = []
             for r in rows:

@@ -7,7 +7,7 @@ et enregistre les décisions dans le PaperTrader.
 
 Usage:
     python v7/run_carry_cycle.py              # un cycle (manuel)
-    python v7/run_carry_cycle.py --daemon     # boucle infinie toutes les 8h (cron-like)
+    python v7/run_carry_cycle.py --daemon     # infinite loop every 8h (cron-like)
 
 Planification recommandée :
     # crontab -e
@@ -61,7 +61,7 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
         else:
             return
         conn = sqlite3.connect(db_path, timeout=10)
-        # dag_logs — pour le dashboard V7 (multi_asset.py)
+        # dag_logs - for the V7 dashboard (multi_asset.py)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS dag_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +79,7 @@ def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
         conn.commit()
         conn.close()
     except Exception:
-        pass  # silencieux — le log DB est optionnel
+        pass  # silent - the DB log is optional
 
 
 def run_cycle(
@@ -96,10 +96,10 @@ def run_cycle(
     from v7.core.asset_config import get_active_assets, reload_config
 
     if assets is None:
-        # Recharger la config à CHAQUE cycle : activer/désactiver un actif dans
-        # le dashboard (carry_assets.yaml) doit prendre effet sans redémarrer
-        # le container. Sans ce reload, le cache du process gardait la liste
-        # figée au premier import.
+        # Reload the config on EVERY cycle: enabling/disabling an asset in
+        # the dashboard (carry_assets.yaml) must take effect without restarting
+        # the container. Without this reload the process cache kept the list
+        # frozen at first import.
         reload_config()
         assets = get_active_assets() or ASSETS
     
@@ -129,7 +129,7 @@ def run_cycle(
         pfx = sym.split("/")[0].lower()[:3]
         dag_id = f"v7_{sym.split('/')[0].lower()}"
         try:
-            # ── Paramètres par actif depuis carry_assets.yaml (fallback si absent) ──
+            # -- Per-asset parameters from carry_assets.yaml (fallback when absent) --
             from v7.core.asset_config import get_asset_params
             _cfg = get_asset_params(sym)
             node = FundingCarryNode(
@@ -180,7 +180,7 @@ def run_cycle(
                 logger.info("  🔴 %-12s CLOSE | %s", sym, log_msg)
                 _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
             elif result.get("position_open"):
-                # Position active — receiving funding → mettre à jour le context_json dans la DB
+                # Active position - receiving funding -> update context_json in the DB
                 log_msg = f"[{sym}] HOLD | funding received | {reason}"
                 _log_to_db("INFO", dag_id, f"{pfx}_carry", log_msg)
                 try:
@@ -189,7 +189,7 @@ def run_cycle(
                     if db_path.startswith("sqlite:///"):
                         db_path = db_path[10:]
                     conn = sqlite3.connect(db_path, timeout=10)
-                    # Lire et mettre à jour le context_json avec les dernières valeurs
+                    # Read and update context_json with the latest values
                     rows = conn.execute(
                         "SELECT trade_id, context_json FROM v4_trades WHERE symbol=? AND status='open' AND action='carry'",
                         (sym,),
@@ -217,7 +217,7 @@ def run_cycle(
                 logger.debug("  ➖ %-12s flat  | %s", sym, reason)
                 _log_to_db("DEBUG", dag_id, f"{pfx}_carry", log_msg)
 
-            # ── Enregistrer la décision dans le PaperTrader ──
+            # -- Record the decision in the PaperTrader --
             if not dry_run and signal in ("open_carry", "close_carry"):
                 decision = result.get("decision", {})
                 if decision.get("action") in ("carry", "close_carry"):
@@ -304,11 +304,11 @@ def daemon_loop(interval_hours: float = 8.0):
         if stop_flag:
             break
         
-        # Attendre jusqu'au prochain cycle (aligné sur les heures paires)
+        # Wait until the next cycle (aligned on even hours)
         next_cycle = datetime.now() + timedelta(hours=interval_hours)
         logger.info("Next cycle at %s (%.1fh)", next_cycle.strftime("%H:%M"), interval_hours)
         
-        # Sleep par tranches de 60s pour pouvoir s'arrêter proprement
+        # Sleep in 60s slices so we can shut down cleanly
         sleep_seconds = interval_hours * 3600
         while sleep_seconds > 0 and not stop_flag:
             time.sleep(min(60, sleep_seconds))

@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("walkforward")
 
-# ── Charger les actifs ──
+# -- Load the assets --
 try:
     from v7.core.asset_config import get_active_assets, get_all_assets, normalize_symbol
     SYMBOLS = get_active_assets()
@@ -184,8 +184,8 @@ class WFWindow:
     train_end: str
     test_start: str
     test_end: str
-    regime: str                     # régime majoritaire sur la fenêtre test
-    n_assets_available: int         # actifs avec ≥6 mois d'historique
+    regime: str                     # majority regime over the test window
+    n_assets_available: int         # assets with at least 6 months of history
     n_assets_traded: int            # actifs ayant ouvert ≥1 trade
     total_trading_pnl: float
     total_capital: float
@@ -286,7 +286,7 @@ def run_walkforward(
                 df_perp["perp_price"] = df_perp["perp_price"] / contract_mult
             price_data[sym] = {"spot": df_spot, "perp": df_perp}
         else:
-            # Sans prix réels, le backtest retombait sur 1000 $ : P&L 100% fictif.
+            # Without real prices the backtest fell back to $1000: 100% fabricated P&L.
             logger.error("%s: prix spot/perp indisponibles — actif exclu du backtest", sym)
             funding_data.pop(sym, None)
             continue
@@ -330,7 +330,7 @@ def run_walkforward(
         test_start = pd.Timestamp(wc["test_start"])
         test_end = pd.Timestamp(wc["test_end"])
         
-        # ── Causal universe: actifs disponibles à test_start ──
+        # -- Causal universe: assets available at test_start --
         available = [s for s in funding_data 
                     if is_asset_available_at(s, test_start, funding_data)]
         
@@ -361,7 +361,7 @@ def run_walkforward(
                 continue
             
             # Run FundingCarryNode directly on sliced data (no re-fetch!)
-            # Paramètres lus depuis carry_assets.yaml pour refléter la stratégie live.
+            # Params read from carry_assets.yaml so the run mirrors the live strategy.
             try:
                 from v7.core.asset_config import get_asset_params
                 _cfg = get_asset_params(sym)
@@ -387,7 +387,7 @@ def run_walkforward(
             for ts, row in test_data.iterrows():
                 fr = float(row["funding_rate"])
                 # Real spot/perp prices (DeepSeek audit, 25/07/2026: basis P&L must be modeled)
-                # Aucun prix par défaut : sans prix réel on ne simule pas (pas de P&L fictif).
+                # No default price: without a real price we do not simulate (no fabricated P&L).
                 spot_price = None
                 perp_price = None
                 sym_prices = price_data.get(sym, {})
@@ -549,7 +549,7 @@ def main():
         quick=args.quick,
     )
     
-    # ── Afficher les résultats ──
+    # -- Display the results --
     print("\n" + "=" * 80)
     print("RÉSULTATS OOS (Out-Of-Sample)")
     print("=" * 80)
@@ -580,10 +580,10 @@ def main():
               f"${w.total_trading_pnl:>8,.2f}   {w.trading_return_pct:>+.3f}%")
     
     print("\n" + "=" * 80)
-    # Une fenêtre sans aucun trade ne dit RIEN sur l'edge : elle ne doit ni
-    # gonfler le "% positive" ni déclencher un feu vert. Le verdict compare
-    # désormais la médiane annualisée au hurdle de la stratégie (5%/an) et
-    # vérifie la couverture réelle (fenêtres ayant tradé / fenêtres totales).
+    # A window with no trade at all says NOTHING about the edge: it must neither
+    # inflate '% positive' nor trigger a green light. The verdict now compares
+    # the annualised median against the strategy hurdle (5%/yr) and
+    # checks the actual coverage (traded windows / total windows).
     _n_traded = ps['n_oos_windows']
     _n_total = ps['n_windows']
     _coverage = (_n_traded / _n_total * 100) if _n_total else 0.0

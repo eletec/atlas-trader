@@ -15,7 +15,7 @@ from typing import Any
 
 logger = logging.getLogger("zeitgeist.db")
 
-# Chemin de la DB (configurable) : priorité DATABASE_URL, sinon /app/data/zeitgeist.db, sinon dossier du module
+# DB path (configurable): DATABASE_URL first, then /app/data/zeitgeist.db, then the module folder
 import os
 
 _DB_URL = os.environ.get("DATABASE_URL", "")
@@ -26,10 +26,10 @@ elif _DB_URL:
 else:
     _DB_PATH = Path(__file__).resolve().parent / "zeitgeist.db"
 
-# Forcer un chemin writable si on est dans /app/src (Docker read-only mount)
+# Force a writable path when running inside /app/src (read-only Docker mount)
 if str(_DB_PATH).startswith("/app/src/"):
     _DB_PATH = Path("/app/data/zeitgeist.db")
-_lock = threading.RLock()  # RLock (réentrant) — évite le deadlock si logger appelle get_connection()
+_lock = threading.RLock()  # RLock (reentrant) - avoids a deadlock if the logger calls get_connection()
 
 
 # ===========================================================
@@ -133,8 +133,8 @@ DDL_STATEMENTS = [
         UNIQUE(cycle_id, profile_name)
     )
     """,
-    # Index pour les requêtes fréquentes
-    # ── Méta-analyses LLM (patterns d'échec) ──
+    # Indexes for the frequent queries
+    # -- LLM meta-analyses (failure patterns) --
     """
     CREATE TABLE IF NOT EXISTS meta_analyses (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,7 +177,7 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_shadow_profile ON shadow_decisions(profile_name, timestamp DESC)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_cycle ON shadow_decisions(cycle_id)",
     "CREATE INDEX IF NOT EXISTS idx_meta_ts ON meta_analyses(timestamp DESC)",
-    # ── V2 quant state (une seule ligne mise à jour à chaque barre) ──────────
+    # -- V2 quant state (a single row updated on every bar) --
     """
     CREATE TABLE IF NOT EXISTS v2_state (
         id              INTEGER PRIMARY KEY DEFAULT 1,
@@ -198,7 +198,7 @@ DDL_STATEMENTS = [
         model_fit_at    TEXT        -- timestamp dernier ré-entraînement
     )
     """,
-    # ── V2 equity curve (une ligne par barre traitée) ─────────────────────────
+    # -- V2 equity curve (one row per processed bar) --
     """
     CREATE TABLE IF NOT EXISTS v2_equity (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,7 +210,7 @@ DDL_STATEMENTS = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_v2_equity_ts ON v2_equity(ts DESC)",
-    # ── V7 Carry cycle logs (compatibilité dashboard) ─────────────────────────
+    # -- V7 carry cycle logs (dashboard compatibility) --
     """
     CREATE TABLE IF NOT EXISTS dag_logs (
         id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,7 +230,7 @@ def init_db(db_path: str | Path | None = None) -> None:
     """Crée la DB et les tables si elles n'existent pas."""
     global _DB_PATH
     if db_path:
-        # S8: empêche la traversée de répertoire
+        # S8: prevents directory traversal
         _allowed_root = Path(__file__).resolve().parent
         resolved = Path(db_path).resolve()
         if not str(resolved).startswith(str(_allowed_root)):
@@ -239,14 +239,14 @@ def init_db(db_path: str | Path | None = None) -> None:
 
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(_DB_PATH, timeout=10) as conn:
-        # P2: WAL mode — lectures concurrentes pendant une écriture
+        # P2: WAL mode - concurrent reads during a write
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=5000")
         for stmt in DDL_STATEMENTS:
             conn.execute(stmt)
-        # Migrations V1 → V2 : ajouter les colonnes manquantes sans casser l'existant
+        # V1 -> V2 migrations: add the missing columns without breaking what exists
         _migrate_v2(conn)
         conn.commit()
     logger.info(f"Base de données initialisée : {_DB_PATH}")
@@ -273,9 +273,9 @@ def _migrate_v2(conn) -> None:
             except Exception as exc:
                 logger.warning(f"Migration '{col}' ignorée: {exc}")
 
-    # Nettoyage : les lignes SELL orphelines (result_24h IS NULL) sont des signaux
-    # de sortie, pas des shorts réels. On les clôture proprement (P&L=0).
-    # Système long-only spot — les SELL ne sont jamais des positions ouvertes.
+    # Cleanup: orphaned SELL rows (result_24h IS NULL) are exit
+    # signals, not real shorts. Close them cleanly (P&L=0).
+    # Spot long-only system - SELLs are never open positions.
     try:
         n = conn.execute(
             "UPDATE decisions SET result_24h = 0.0 WHERE action = 'SELL' AND result_24h IS NULL"
@@ -299,7 +299,7 @@ def get_connection():
 
 
 # ===========================================================
-# DÉCISIONS
+## DECISIONS
 # ===========================================================
 
 def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -> None:
@@ -307,12 +307,12 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
     decision = state.get("decision") or {}
     mirofish = state.get("mirofish_result") or {}
 
-    # Construire le contexte de décision complet pour audit/replay
+    # Build the full decision context for audit/replay
     market_ind = state.get("market_indicators") or {}
     agent_analyses = state.get("agent_analyses") or {}
     score_breakdown = state.get("score_breakdown") or {}
     decision_context = {
-        # Prix et indicateurs techniques au moment de la décision
+        # Prices and technical indicators at decision time
         "market": {
             "price":        market_ind.get("price"),
             "rsi_14":       market_ind.get("rsi_14"),
@@ -326,13 +326,13 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
             "ma_50":        market_ind.get("ma_50"),
             "above_ma50":   market_ind.get("above_ma50"),
         },
-        # Score et signal de chaque agent
+        # Score and signal of every agent
         "agents": {
             name: {
                 "score":   a.get("score"),
                 "signal":  a.get("signal"),
-                "summary": a.get("summary", "")[:500],  # tronqué à 500 chars
-                # Champs supplémentaires pour la synthèse (débat + signal 5-niveaux)
+                "summary": a.get("summary", "")[:500],  # truncated to 500 chars
+                # Extra fields for the synthesis (debate + 5-level signal)
                 **(
                     {
                         "signal_detail": a.get("signal_detail"),
@@ -347,7 +347,7 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
             for name, a in agent_analyses.items()
             if isinstance(a, dict)
         },
-        # Poids effectifs utilisés (après alpha_combination éventuel)
+        # Effective weights used (after any alpha_combination)
         "effective_weights": score_breakdown.get("breakdown", {}),
         # Scores composants
         "scores": {
@@ -356,13 +356,13 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
             "contrarian": score_breakdown.get("contrarian_score"),
             "agents_raw": score_breakdown.get("agent_scores"),
         },
-        # Régime de marché
+        # Market regime
         "regime": {
             "state":              score_breakdown.get("regime"),
             "hmm_prob":           score_breakdown.get("hmm_prob"),
             "direction_pressure": score_breakdown.get("direction_pressure"),
         },
-        # Reasoning de la décision
+        # Decision reasoning
         "decision": {
             "action":         decision.get("action"),
             "score":          state.get("global_score"),
@@ -392,15 +392,15 @@ def log_decision(cycle_id: str, state: dict, trade_result: dict | None = None) -
                 decision.get("sl_price"),
                 decision.get("tp_price"),
                 decision.get("position_size_usd"),
-                json.dumps(score_breakdown),  # scores bruts pour replay
-                json.dumps(decision_context),  # contexte complet pour audit
+                json.dumps(score_breakdown),  # raw scores for replay
+                json.dumps(decision_context),  # full context for audit
                 state.get("llm_tokens_used", 0),
                 state.get("cycle_duration_ms", 0),
                 json.dumps(state.get("errors", [])),
             )
         )
 
-        # Enregistrer la simulation MiroFish liée
+        # Store the associated MiroFish simulation
         if mirofish:
             conn.execute(
                 """
@@ -472,7 +472,7 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
 
     # ── Audit log complet de la transaction ───────────────────────────────
     pnl_pct = (close_price - entry) / entry * 100 if entry > 0 else 0
-    # Durée de la position
+    # Position duration
     try:
         from datetime import datetime as _dt
         open_ts = _dt.fromisoformat(row["timestamp"].replace("Z", "+00:00").replace("+00:00", ""))
@@ -603,8 +603,8 @@ def count_trades(asset: str | None = None) -> int:
     if n > 0:
         return n
 
-    # Fallback V2: les décisions live V2 sont historisées dans v2_decisions
-    # avec action {long, short, flat}.
+    # V2 fallback: live V2 decisions are stored in v2_decisions
+    # with action {long, short, flat}.
     with get_connection() as conn:
         try:
             if asset:
@@ -640,8 +640,8 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     if trades:
         return trades
 
-    # Fallback V2: mapper v2_decisions vers le schéma historique attendu
-    # par le dashboard (timestamp/action/entry_price/SL/TP/result_24h/score).
+    # V2 fallback: map v2_decisions onto the legacy schema expected
+    # by the dashboard (timestamp/action/entry_price/SL/TP/result_24h/score).
     with get_connection() as conn:
         try:
             if asset:
@@ -947,7 +947,7 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
                 (cutoff, f"-{days} days"),
             ).fetchall()
 
-    # Agréger par agent
+    # Aggregate per agent
     from collections import defaultdict
     buckets: dict[str, list] = defaultdict(list)  # agent -> [(agent_score, result_24h)]
 
@@ -965,7 +965,7 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
         except Exception:
             continue
 
-    # Charger les poids actuels depuis settings.yaml
+    # Load the current weights from settings.yaml
     try:
         from utils.config import load_settings
         cfg_agents = load_settings().get("agents", {})
@@ -978,7 +978,7 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
             continue
 
         signal_count = len(pairs)
-        # Direction correcte : agent bullish (>50) et résultat >0, ou agent bearish (<50) et résultat <0
+        # Correct direction: bullish agent (>50) with a result >0, or bearish agent (<50) with a result <0
         correct = [
             1 for s, r in pairs
             if (s > 50 and r > 0) or (s < 50 and r < 0)
@@ -992,10 +992,10 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
         win_scores = [s for s, r in pairs if (s > 50 and r > 0) or (s < 50 and r < 0)]
         avg_score_wins = sum(win_scores) / len(win_scores) if win_scores else avg_score
 
-        # Brier score : MSE entre probabilité agent (score/100) et outcome binaire
+        # Brier score: MSE between the agent probability (score/100) and the binary outcome
         brier = sum((s / 100 - (1 if r > 0 else 0)) ** 2 for s, r in pairs) / signal_count
 
-        # P&L moyen quand l'agent recommandait BUY (score > 50)
+        # Average P&L when the agent recommended BUY (score > 50)
         buy_signals = [(s, r) for s, r in pairs if s > 50]
         avg_pnl_on_buy = sum(r for _, r in buy_signals) / len(buy_signals) if buy_signals else 0.0
 
@@ -1069,7 +1069,7 @@ def get_agent_scores_history(asset: str | None = None, hours: int = 24) -> list[
 
 
 # ===========================================================
-# MÉTRIQUES DE FLUX
+## FLUX METRICS
 # ===========================================================
 
 def log_flux_metric(
@@ -1099,10 +1099,10 @@ def log_flux_metric(
 
 
 # ===========================================================
-# LOGS DANS SQLite (handler optionnel)
+## SQLITE LOGS (optional handler)
 # ===========================================================
 
-# File d'attente unique — UN seul thread écrit dans SQLite (évite deadlock + explosion de threads)
+# Single queue - only ONE thread writes to SQLite (avoids deadlocks and thread explosion)
 _LOG_QUEUE: "queue.SimpleQueue[logging.LogRecord | None]" = None  # type: ignore[assignment]
 
 
@@ -1136,7 +1136,7 @@ def _start_sqlite_log_writer() -> None:
                     )
                     conn.commit()
             except Exception:
-                pass  # Ne jamais crasher à cause du logging
+                pass  # Never crash because of logging
 
     _t = threading.Thread(target=_writer, daemon=True, name="sqlite-log-writer")
     _t.start()
@@ -1157,7 +1157,7 @@ class SQLiteLogHandler(logging.Handler):
 
 
 # ===========================================================
-# TIMESFM FORECASTS — tracking & évaluation
+## TIMESFM FORECASTS - tracking and evaluation
 # ===========================================================
 
 def log_timesfm_forecast(
@@ -1219,7 +1219,7 @@ def evaluate_timesfm_forecasts() -> int:
 
     try:
         with get_connection() as conn:
-            # Forecasts non encore évalués
+            # Forecasts not yet evaluated
             rows = conn.execute(
                 """
                 SELECT id, timestamp, asset, horizon_candles, current_price,
@@ -1237,9 +1237,9 @@ def evaluate_timesfm_forecasts() -> int:
                 target_time = fc_time + __import__("datetime").timedelta(minutes=horizon_minutes)
 
                 if now < target_time:
-                    continue  # pas encore arrivé à échéance
+                    continue  # not yet due
 
-                # Récupérer le prix réel à l'échéance
+                # Fetch the real price at maturity
                 try:
                     ohlcv = exchange.fetch_ohlcv(
                         row["asset"], "15m",
@@ -1316,7 +1316,7 @@ def get_timesfm_stats() -> dict:
                 "avg_latency_ms": int(row["avg_latency_ms"]) if row["avg_latency_ms"] is not None else None,
             }
 
-            # Dernières prédictions évaluées
+            # Latest evaluated predictions
             recent = conn.execute(
                 """
                 SELECT timestamp, current_price, predicted_price, pct_change,
@@ -1329,7 +1329,7 @@ def get_timesfm_stats() -> dict:
             ).fetchall()
             stats["recent"] = [dict(r) for r in recent]
 
-            # Dernières prédictions en attente
+            # Latest pending predictions
             pending = conn.execute(
                 """
                 SELECT timestamp, current_price, predicted_price, pct_change,
@@ -1428,9 +1428,9 @@ def evaluate_kronos_forecasts() -> int:
                 target_time = fc_time + __import__("datetime").timedelta(minutes=horizon_minutes)
 
                 if now < target_time:
-                    continue  # pas encore arrivé à échéance
+                    continue  # not yet due
 
-                # Récupérer le prix réel à l'échéance (fallback Yahoo pour non-crypto)
+                # Fetch the real price at maturity (Yahoo fallback for non-crypto)
                 try:
                     asset_sym = row["asset"]
                     _YF_MAP = {
@@ -1570,7 +1570,7 @@ def log_shadow_decision(
     """Insère une décision shadow pour un profil donné."""
     action = decision.get("action", "HOLD")
     if action == "HOLD":
-        return  # pas de log pour les HOLD (économie d'espace)
+        return  # no log for HOLDs (saves space)
 
     try:
         with get_connection() as conn:
@@ -1730,7 +1730,7 @@ def get_shadow_comparison_stats() -> list[dict]:
                     "last_trade": row["last_trade"],
                 })
 
-            # ── Stats du profil baseline (depuis decisions) ──
+            # -- Baseline profile stats (from decisions) --
             baseline_row = conn.execute(
                 """
                 SELECT
@@ -1754,7 +1754,7 @@ def get_shadow_comparison_stats() -> list[dict]:
                 evaluated = baseline_row["evaluated"] or 0
                 wins = baseline_row["wins"] or 0
                 total_pnl = round(baseline_row["total_pnl"], 2)
-                # Baseline: capital réel depuis le portefeuille
+                # Baseline: real capital from the portfolio
                 try:
                     real_pf = get_portfolio()
                     real_capital = float(real_pf.get("current_value", _SHADOW_INITIAL_CAPITAL))
@@ -1782,14 +1782,14 @@ def get_shadow_comparison_stats() -> list[dict]:
     except Exception as exc:
         logger.warning(f"Shadow stats error: {exc}")
 
-    # Ajouter les profils sans trades pour qu'ils apparaissent dans le tableau
-    # NOTE: load_profiles (comparison.shadow_runner) supprimé — V1 legacy
+    # Add the profiles with no trades so they show up in the table
+    # NOTE: load_profiles (comparison.shadow_runner) removed - V1 legacy
     try:
         all_profiles = {}  # was: from comparison.shadow_runner import load_profiles
         existing = {s["profile"] for s in stats}
         for name, cfg in all_profiles.items():
             if cfg.get("active", False):
-                continue  # baseline déjà inclus
+                continue  # baseline already included
             if name not in existing:
                 stats.append({
                     "profile": name,
@@ -1807,7 +1807,7 @@ def get_shadow_comparison_stats() -> list[dict]:
     return stats
 
 
-_SHADOW_INITIAL_CAPITAL = 10_000.0  # capital de départ de chaque profil shadow
+_SHADOW_INITIAL_CAPITAL = 10_000.0  # starting capital of each shadow profile
 
 
 def get_shadow_virtual_capital(profile_name: str) -> float:
@@ -1818,7 +1818,7 @@ def get_shadow_virtual_capital(profile_name: str) -> float:
     """
     try:
         with get_connection() as conn:
-            # Somme des P&L évalués
+            # Sum of the evaluated P&L
             row = conn.execute(
                 """
                 SELECT COALESCE(SUM(result_24h), 0) as realized_pnl
@@ -1829,7 +1829,7 @@ def get_shadow_virtual_capital(profile_name: str) -> float:
             ).fetchone()
             realized = float(row["realized_pnl"]) if row else 0.0
 
-            # Somme des positions ouvertes (capital engagé)
+            # Sum of the open positions (committed capital)
             open_row = conn.execute(
                 """
                 SELECT COALESCE(SUM(position_size), 0) as engaged
@@ -1891,7 +1891,7 @@ def get_shadow_pnl_series() -> dict[str, list[dict]]:
                     "cumulative_pnl": round(prev_cum + row["result_24h"], 2),
                 })
 
-            # Ajouter baseline depuis decisions
+            # Add the baseline from decisions
             baseline_rows = conn.execute(
                 """
                 SELECT timestamp, result_24h
@@ -1916,7 +1916,7 @@ def get_shadow_pnl_series() -> dict[str, list[dict]]:
 
 
 # ===========================================================
-# MÉTA-ANALYSE LLM — patterns d'échec
+## LLM META-ANALYSIS - failure patterns
 # ===========================================================
 
 def get_decisions_for_meta(
@@ -1971,7 +1971,7 @@ def get_decisions_for_meta(
             "score":      row["score"],
             "result":     round(float(row["result_24h"]), 2),
         }
-        # Extraire les scores depuis le breakdown stocké
+        # Extract the scores from the stored breakdown
         try:
             ws = _json.loads(row["weights_snapshot"] or "{}")
             # Format decision_engine breakdown: agents.detail, mirofish.score, etc.
@@ -1979,7 +1979,7 @@ def get_decisions_for_meta(
             entry["market_score"]  = ws.get("market",   {}).get("score") or ws.get("market_score")
             entry["ctr_score"]     = ws.get("contrarian", {}).get("score") or ws.get("contrarian_score")
             entry["regime"]        = ws.get("regime")
-            # Per-agent scores (deux formats possibles)
+            # Per-agent scores (two possible formats)
             agent_detail = ws.get("agents", {}).get("detail") or ws.get("agent_scores") or {}
             entry["agents"]        = {k: round(float(v), 0) for k, v in agent_detail.items() if v is not None}
         except Exception:
@@ -2049,7 +2049,7 @@ def get_last_meta_analysis(asset: str | None = None, limit: int = 3) -> list[dic
 
 
 # ===========================================================
-# V2 QUANT — état live + courbe equity
+## V2 QUANT - live state + equity curve
 # ===========================================================
 
 def write_v2_state(
@@ -2276,7 +2276,7 @@ def get_v2_cumulative_pnl(asset: str | None = None, assets: list[str] | None = N
             delta = cap - prev_by_asset[a]
             prev_by_asset[a] = cap
 
-            # Ignore les resets/restarts (sauts brutaux non-trade)
+            # Ignore resets/restarts (abrupt non-trade jumps)
             if abs(delta) > reset_jump_abs:
                 continue
             total += delta

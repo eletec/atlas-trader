@@ -91,7 +91,7 @@ def persist_trade(
         return trade_id
     except Exception as exc:
         logger.warning("persist_trade failed: %s", exc)
-        return trade_id  # retourne l'ID même si la persistence échoue
+        return trade_id  # return the ID even when persistence fails
 
 
 def get_v4_trades(n: int = 200, symbol: str | None = None) -> list[dict]:

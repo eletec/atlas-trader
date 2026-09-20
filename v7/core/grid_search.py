@@ -27,15 +27,15 @@ from v7.core.asset_config import get_active_assets, get_all_assets, normalize_sy
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("grid_search")
 
-# Grille de paramètres — Pass 1 (coarse) + Pass 2 (fine autour du meilleur)
-# NOTE (GPT audit, 25/07/2026): economic_hurdle n'est PAS optimisé — c'est un calcul
-# de coût du capital (SOFR + primes), pas un paramètre de trading. Le grid search
-# optimise uniquement les paramètres qui relèvent de la stratégie.
+## Parameter grid - pass 1 (coarse) + pass 2 (fine around the best)
+## NOTE (GPT audit, 2026-07-25): economic_hurdle is NOT optimised - it is a
+## cost-of-capital calculation (SOFR + premia), not a trading parameter. The
+## grid search only optimises the parameters that belong to the strategy.
 COARSE_GRID = {
     "min_funding":    [0.0001, 0.0002, 0.0003, 0.0005],  # 0.01% → 0.05%/8h (11% → 55%/an)
-    "max_hold_days":  [30, 45, 60],                   # aligné avec les zones (DERISK/CLOSE)
+    "max_hold_days":  [30, 45, 60],                   # aligned with the zones (DERISK/CLOSE)
     "fraction":       [0.30, 0.50],
-    # economic_hurdle n'est plus dans la grille — fixé à 0.05 (coût du capital)
+    # economic_hurdle is no longer in the grid - fixed at 0.05 (cost of capital)
 }
 
 def refine_grid(best_params: dict) -> dict[str, list]:
@@ -48,10 +48,10 @@ def refine_grid(best_params: dict) -> dict[str, list]:
         "min_funding":    sorted(set([max(0.00005, mf * 0.5), mf, min(0.001, mf * 2)])),
         "max_hold_days":  sorted(set([max(7, hold - 10), hold, min(90, hold + 15)])),
         "fraction":       sorted(set([max(0.10, round(frac - 0.15, 2)), frac, min(1.0, round(frac + 0.15, 2))])),
-        # economic_hurdle retiré — n'est pas un paramètre à optimiser
+        # economic_hurdle removed - it is not a parameter to optimise
     }
 
-# Métrique à optimiser : "sharpe", "pnl", "sortino", "calmar"
+## Metric to optimise: 'sharpe', 'pnl', 'sortino', 'calmar'
 OBJECTIVE = "sharpe"
 
 
@@ -93,14 +93,14 @@ def grid_search_symbol(symbol: str, days: int, capital: float, passes: int = 2) 
             if score > best_score or (score == best_score and pnl > best_pnl):
                 best_score = score
                 pass_best = r
-                r["params"] = params  # injecter les params dans le resultat
+                r["params"] = params  # inject the params into the result
 
         if pass_best:
             logger.info("%s pass %d: best Sharpe=%.2f PnL=$%.2f trades=%d params=%s",
                         symbol, pn, pass_best.get("sharpe", 0), pass_best.get("pnl", 0),
                         pass_best.get("trades", 0), pass_best.get("params", {}))
             best_result = pass_best
-            # Raffiner la grille pour le prochain passage
+            # Refine the grid for the next pass
             if pn < passes:
                 grid = refine_grid(pass_best.get("params", {}))
         else:
@@ -158,7 +158,7 @@ def main():
     with open(args.output, "w") as f:
         yaml.dump(all_results, f, allow_unicode=True, default_flow_style=False)
 
-    # Résumé
+    # Summary
     print(f"\n{'='*80}")
     print(f"Grid search termine — {len(symbols)} actifs, {args.passes} passes — {elapsed:.0f}s")
     print(f"Résultats : {args.output}")

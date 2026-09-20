@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 logger = logging.getLogger("v4.core.async_tasks")
 
-# Pool partagé — max 10 workers pour éviter de saturer l'API LLM
+## Shared pool - max 10 workers to avoid saturating the LLM API
 _pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="ai_async_")
 _cache: dict[str, dict[str, Any]] = {}
 _cache_lock = threading.Lock()
@@ -41,11 +41,11 @@ def dispatch(key: str, fn: Callable[[], dict[str, Any]]) -> None:
                 _pending.pop(key, None)
 
     with _pending_lock:
-        # Ne pas relancer si déjà en cours
+        # Do not restart when already running
         if key in _pending:
             if not _pending[key].done():
                 logger.info("Async task %s still pending, skipping dispatch", key)
-                return  # déjà en cours, laisser finir
+                return  # already running, let it finish
         future = _pool.submit(_run_and_store)
         _pending[key] = future
         logger.info("Async task %s dispatched (pending=%d)", key, len(_pending))

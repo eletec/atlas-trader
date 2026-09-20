@@ -83,7 +83,7 @@ class DirectionGate(Node):
             return {"signal": "flat", "blocked": False, "reason": "", "score": 0.0}
 
         # ═══════════════════════════════════════════════════════════════
-        # MODE FUSION — scoring pondéré multi-facteurs
+        # FUSION MODE - weighted multi-factor scoring
         # ═══════════════════════════════════════════════════════════════
         if bool(self.params.get("fusion", False)):
             w_xgb     = float(self.params.get("w_xgb", 0.50))
@@ -108,15 +108,15 @@ class DirectionGate(Node):
             elif trend == "bearish":
                 score -= w_trend
 
-            # ── Débat IA (10%) — lu depuis le cache async (pas d'edge car cyclique) ──
+            # -- AI debate (10%) - read from the async cache (no edge, it is cyclical) --
             debate_signal = inputs.get("debate_signal", "")
             debate_conf = float(inputs.get("debate_conf", 0.0))
-            # Si pas connecté, tenter de lire le cache async directement
+            # When not connected, try to read the async cache directly
             if not debate_signal:
                 try:
                     from v4.core.async_tasks import get_result
                     dag_id = self.params.get("dag_id", "")
-                    # Déduire le node_id du débat depuis la convention {pfx}_debate
+                    # Derive the debate node_id from the {pfx}_debate convention
                     debate_node = self.node_id.replace("_gate", "_debate") if self.node_id.endswith("_gate") else ""
                     if debate_node:
                         cache_key = f"debate_{dag_id}_{debate_node}"
@@ -146,14 +146,14 @@ class DirectionGate(Node):
                 if r == "TREND":
                     score += w_regime * 0.5
                 elif r == "CHOP":
-                    # CHOP = ne pas trader (block all new trades)
+                    # CHOP = do not trade (block all new trades)
                     return {"signal": "flat", "blocked": True,
                             "reason": f"regime=CHOP (no new trades)", "score": 0.0}
 
             # ── Regime-aware threshold adaptation ──
             _threshold = threshold
             if isinstance(regime, str) and regime.upper() == "RANGE":
-                _threshold = threshold + 0.10  # plus sélectif en range
+                _threshold = threshold + 0.10  # more selective in a range
 
             score = max(-1.0, min(1.0, score))
 
@@ -168,16 +168,16 @@ class DirectionGate(Node):
                         "reason": f"fusion={score:.2f} < ±{_threshold}", "score": round(score, 4)}
 
         # ═══════════════════════════════════════════════════════════════
-        # MODE VETO — comportement existant (inchangé)
+        # VETO MODE - existing behaviour (unchanged)
         # ═══════════════════════════════════════════════════════════════
         allow_long   = bool(self.params.get("allow_long", True))
         allow_short  = bool(self.params.get("allow_short", True))
         invert_trend = bool(self.params.get("invert_trend", False))
 
-        # ── Mode 1 : trend connecté (prioritaire) ─────────────────────────
+        # -- Mode 1: trend connected (takes priority) --
         if trend:
             if invert_trend:
-                # Marché baissier : seul SHORT est autorisé si trend=bearish
+                # Bearish market: only SHORT is allowed when trend=bearish
                 if trend == "bearish" and signal == "long":
                     return {"signal": "flat", "blocked": True, "score": 0.0,
                             "reason": f"trend_veto: trend={trend}, signal={signal} blocked (invert)"}
@@ -185,7 +185,7 @@ class DirectionGate(Node):
                     return {"signal": "flat", "blocked": True, "score": 0.0,
                             "reason": f"trend_veto: trend={trend}, signal={signal} blocked (invert)"}
             else:
-                # Mode standard : bloquer signal contraire à la tendance
+                # Standard mode: block a signal that goes against the trend
                 if trend == "bullish" and signal == "short":
                     return {"signal": "flat", "blocked": True, "score": 0.0,
                             "reason": f"trend_veto: 4h bullish → SHORT bloqué"}

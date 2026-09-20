@@ -92,20 +92,20 @@ class SignalXGB(Node):
         # ── Feature engineering ──
         df = features_all.copy()
 
-        # Ajouter les lags
+        # Add the lags
         for lag in range(1, n_lags + 1):
             for col in df.columns:
                 if col not in ("close", "regime"):
                     df[f"{col}_lag{lag}"] = df[col].shift(lag)
 
-        # Colonnes numériques uniquement
+        # Numeric columns only
         df = df.select_dtypes(include=[np.number])
         df = df.dropna()
 
         if len(df) < 100:
             return {"signal": "flat", "prob_up": 0.5, "prob_dn": 0.5, "confidence": 0.0}
 
-        # ── Réentraînement ──
+        # -- Retraining --
         self._cycle_count += 1
         need_retrain = (self._model is None or
                         self._cycle_count % retrain_cycle == 0 or
@@ -154,12 +154,12 @@ class SignalXGB(Node):
                 if self._model is None:
                     return {"signal": "flat", "prob_up": 0.5, "prob_dn": 0.5, "confidence": 0.0}
 
-        # ── Prédiction ──
+        # -- Prediction --
         if self._model is None:
             return {"signal": "flat", "prob_up": 0.5, "prob_dn": 0.5, "confidence": 0.0}
 
         last_row = df.iloc[-1:].select_dtypes(include=[np.number])
-        # Aligner les colonnes avec l'entraînement
+        # Align the columns with the training set
         expected_features = self._model.get_booster().feature_names
         if expected_features:
             for f in expected_features:
@@ -170,7 +170,7 @@ class SignalXGB(Node):
         proba = self._model.predict_proba(last_row.values)[0]
         prob_up = float(proba[1]) if len(proba) > 1 else float(proba[0])
         prob_dn = 1.0 - prob_up
-        confidence = abs(prob_up - 0.5) * 2.0  # 0 = incertain, 1 = très confiant
+        confidence = abs(prob_up - 0.5) * 2.0  # 0 = uncertain, 1 = very confident
 
         if prob_up >= p_up_thresh:
             signal = "long"

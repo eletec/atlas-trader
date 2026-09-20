@@ -90,7 +90,7 @@ class ContextStore:
             self._slots.clear()
 
 
-# Registre global : un store par asset + un store global pour les lanes transverses
+## Global registry: one store per asset + a global store for cross-cutting lanes
 class ContextRegistry:
     """
     Registre singleton de tous les ContextStore actifs.

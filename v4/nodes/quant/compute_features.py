@@ -41,7 +41,7 @@ class ComputeFeatures(Node):
 
         ohlcv: pd.DataFrame = inputs["ohlcv"]
         features = compute_features(ohlcv)
-        # Préserver la colonne close pour les nœuds aval (SignalLogReg)
+        # Preserve the close column for downstream nodes (SignalLogReg)
         features["close"] = ohlcv["close"]
         return {"features": features}
 
@@ -81,7 +81,7 @@ class Normalize(Node):
         from quant.normalization import normalize_features
 
         features: pd.DataFrame = inputs["features"]
-        # Priorité : norm_window > window (compat DAG legacy) > défaut 500
+        # Priority: norm_window > window (legacy DAG compatibility) > default 500
         norm_window = int(
             self.params.get("norm_window")
             or self.params.get("window", 500)

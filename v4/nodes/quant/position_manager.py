@@ -84,7 +84,7 @@ class PositionManager(Node):
         atr_period = int(self.params.get("atr_period", _cfg["atr_period"]))
         lookback = int(self.params.get("chandelier_lookback", _cfg["chandelier_lookback"]))
         ohlcv_5m = inputs.get("ohlcv_5m")
-        ohlcv_1h = inputs.get("ohlcv_1h")  # utilisé pour ATR + chandelier (timeframe plus large)
+        ohlcv_1h = inputs.get("ohlcv_1h")  # used for ATR + chandelier (wider timeframe)
 
         from storage.paper_trader import get_open_positions, close_position, update_stop_loss
 
@@ -92,7 +92,7 @@ class PositionManager(Node):
         if not positions:
             return {"closed": [], "open_positions": []}
 
-        # Utiliser 1h pour l'ATR (plus représentatif), fallback 5m
+        # Use 1h for the ATR (more representative), 5m as fallback
         ohlcv_atr = ohlcv_1h if ohlcv_1h is not None and hasattr(ohlcv_1h, "iloc") and len(ohlcv_1h) >= atr_period else ohlcv_5m
         ohlcv_ch = ohlcv_1h if ohlcv_1h is not None and hasattr(ohlcv_1h, "iloc") and len(ohlcv_1h) >= lookback else ohlcv_5m
 
@@ -104,13 +104,13 @@ class PositionManager(Node):
             logger.warning("PositionManager: pas assez d'OHLCV pour ATR")
             return {"closed": [], "open_positions": positions}
 
-        # ATR sur timeframe 1h
+        # ATR on the 1h timeframe
         recent_atr = ohlcv_atr.iloc[-atr_period:]
         atr = float((recent_atr["high"] - recent_atr["low"]).mean()) if len(recent_atr) >= 2 else 1.0
         if atr <= 0:
             atr = 1.0
 
-        # ── Volatility-adaptive : élargir SL en haute volatilité ──
+        # -- Volatility-adaptive: widen the stop in high volatility --
         vol_factor = 1.0
         vol_lookback = int(self.params.get("vol_lookback", 50))
         vol_threshold = float(self.params.get("vol_threshold", 1.5))
@@ -122,14 +122,14 @@ class PositionManager(Node):
                 vol_factor = vol_multiplier
                 logger.info("High volatility: ATR=%.2f > %.1fx MA(%.2f) → SL x%.1f", atr, vol_threshold, atr_ma, vol_factor)
 
-        # Appliquer le facteur de volatilité aux paramètres de sortie
+        # Apply the volatility factor to the exit parameters
         min_atr_dist = float(self.params.get("min_atr_dist", 0.5))
         _exit_mult = atr_mult * vol_factor
-        # Trailing : utiliser un multiplicateur plus serré (min_atr_dist ou trail_mult)
+        # Trailing: use a tighter multiplier (min_atr_dist or trail_mult)
         _trail_mult = float(self.params.get("trail_mult", min_atr_dist))
         _min_dist = min_atr_dist * vol_factor
 
-        # Prix actuels (5m pour détection intra-barre)
+        # Current prices (5m for intra-bar detection)
         current_high = float(ohlcv_5m["high"].iloc[-1])
         current_low = float(ohlcv_5m["low"].iloc[-1])
         current_close = float(ohlcv_5m["close"].iloc[-1])
@@ -143,7 +143,7 @@ class PositionManager(Node):
             entry = float(pos.get("entry_price", 0))
             current_sl = float(pos.get("stop_loss", 0))
 
-            # ── Calcul du nouveau SL selon la stratégie ──
+            # -- Compute the new stop according to the strategy --
             if strategy == "chandelier":
                 new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, _exit_mult)
             else:
@@ -154,29 +154,29 @@ class PositionManager(Node):
                 symbol, trade_id, action, entry, current_sl, new_sl, atr, vol_factor,
             )
 
-            # Le SL ne doit jamais reculer (LONG: monte, SHORT: descend)
-            # + breathing room basé sur le PRIX ACTUEL (pas l'entrée)
+            # The stop must never move backwards (LONG: up, SHORT: down)
+            # + breathing room based on the CURRENT PRICE (not the entry)
             if action == "long":
-                # SL monte seulement, jamais descendre
+                # The stop only moves up, never down
                 new_sl = max(new_sl, current_sl) if current_sl > 0 else max(new_sl, 0.01)
                 # Breathing room : SL au plus proche = current_price - min_dist*ATR
-                # (empêche le SL de coller au prix et de se faire whipsaw)
+                # (stops the stop from hugging the price and getting whipsawed)
                 new_sl = min(new_sl, current_close - _min_dist * atr)
                 hit_raw = current_sl > 0 and current_low <= current_sl
             else:
-                # SL descend seulement (tightening pour shorts), jamais monter
+                # The stop only moves down (tightening for shorts), never up
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
                 # Breathing room : SL au plus proche = current_price + min_dist*ATR
-                # (le SL reste au-dessus du prix actuel)
+                # (the stop stays above the current price)
                 new_sl = max(new_sl, current_close + _min_dist * atr)
                 hit_raw = current_sl > 0 and current_high >= current_sl
 
-            # ── Multi-TF : modulateur adaptatif du SL (remplace l'ancien bloqueur) ──
-            # Le 1h trend ne bloque PLUS la sortie. Il ajuste l'agressivité du trailing :
-            #   - confirmé (short+bearish, long+bullish) → SL ×0.7 (serré, protège le profit)
-            #   - neutre                                     → SL ×1.0
-            #   - opposé  (short+bullish, long+bearish)     → SL ×1.5 (large, laisse respirer)
+            # -- Multi-TF: adaptive stop modulator (replaces the old blocker) --
+            # The 1h trend NO LONGER blocks the exit. It tunes how aggressive the trailing is:
+            #   - confirmed (short+bearish, long+bullish) -> stop x0.7 (tight, protects profit)
+            #   - neutral                                  -> stop x1.0
+            #   - opposing (short+bullish, long+bearish)   -> stop x1.5 (wide, lets it breathe)
             use_multi_tf = bool(self.params.get("use_multi_tf", True))
             hit = hit_raw
             _tf_mult = 1.0
@@ -196,13 +196,13 @@ class PositionManager(Node):
                         _tf_mult = 0.7; _tf_label = "confirmed"
                     else:
                         _tf_mult = 1.5; _tf_label = "opposed"
-                # Recalculer le SL avec le modulateur de tendance
+                # Recompute the stop with the trend modulator
                 _trail_adj = _trail_mult * _tf_mult
                 if strategy == "chandelier":
                     new_sl = self._calc_chandelier_sl(ohlcv_ch, action, atr, lookback, _exit_mult * _tf_mult)
                 else:
                     new_sl = self._calc_trailing_sl(current_close, action, atr, _trail_adj)
-                # Ré-appliquer les contraintes de non-régression avec le nouveau SL
+                # Re-apply the non-regression constraints with the new stop
                 if action == "long":
                     new_sl = max(new_sl, current_sl) if current_sl > 0 else max(new_sl, 0.01)
                     new_sl = min(new_sl, current_close - _min_dist * atr)
@@ -212,7 +212,7 @@ class PositionManager(Node):
                     new_sl = max(new_sl, current_close + _min_dist * atr)
                 logger.info("posmgr multi-TF: trend_1h=%s action=%s → SL×%.1f (%s)", trend_1h, action, _tf_mult, _tf_label)
 
-            # ── Time-stop : fermer les positions dormantes (>48h, <0.5% profit) ──
+            # -- Time-stop: close dormant positions (>48h, <0.5% profit) --
             if not hit:
                 ts_str = pos.get("timestamp", "")
                 if ts_str:
@@ -228,7 +228,7 @@ class PositionManager(Node):
                                 unreal_pnl_pct = (entry - current_close) / entry * 100
                             if unreal_pnl_pct < min_profit_pct:
                                 hit = True
-                                new_sl = current_close  # sortie au marché
+                                new_sl = current_close  # exit at market
                                 logger.info(
                                     "posmgr time-stop: %s open %.1fh, pnl=%.2f%% < %.1f%% → CLOSE",
                                     trade_id, age.total_seconds()/3600, unreal_pnl_pct, min_profit_pct,
@@ -236,11 +236,11 @@ class PositionManager(Node):
                     except (ValueError, OSError):
                         pass
 
-            # ── Percent giveback : tracker le gain max ──
+            # -- Percent giveback: track the peak gain --
             giveback_pct = float(self.params.get("giveback_pct", 0.0))
             if giveback_pct > 0 and not hit:
                 if action == "long":
-                    max_favorable = max(entry, current_close)  # simplifié: best = max(entry, current)
+                    max_favorable = max(entry, current_close)  # simplified: best = max(entry, current)
                     giveback_sl = max_favorable - (max_favorable - entry) * (giveback_pct / 100.0)
                     if current_low <= giveback_sl and current_sl > 0:
                         hit = True
@@ -255,19 +255,19 @@ class PositionManager(Node):
                         logger.info("posmgr giveback: gave back %.1f%% → CLOSE", giveback_pct)
 
             if hit:
-                # Prix de clôture : SL touché → prix du SL, sinon → prix actuel
+                # Close price: stop hit -> the stop price, otherwise -> the current price
                 if hit_raw:
                     close_price = current_sl
                 elif new_sl and new_sl != current_close:
-                    close_price = new_sl   # giveback SL ou autre SL calculé
+                    close_price = new_sl   # giveback stop or another computed stop
                 else:
-                    close_price = current_close  # time-stop → marché
+                    close_price = current_close  # time-stop -> market
                 if action == "long":
                     pnl = (close_price - entry) / entry * float(pos.get("size_usd", 0))
                 else:
                     pnl = (entry - close_price) / entry * float(pos.get("size_usd", 0))
 
-                # Raison détaillée pour les logs
+                # Detailed reason for the logs
                 reason_parts = [strategy]
                 if use_multi_tf and _tf_label != "neutral":
                     reason_parts.append(f"tf_{_tf_label}")
@@ -291,7 +291,7 @@ class PositionManager(Node):
                     strategy, trade_id, action, entry, close_price, pnl,
                 )
             else:
-                # Mise à jour du SL si amélioré
+                # Update the stop when improved
                 if (action == "long" and new_sl > current_sl) or \
                    (action == "short" and (new_sl < current_sl or current_sl == 0)):
                     ok = update_stop_loss(trade_id, round(new_sl, 4))

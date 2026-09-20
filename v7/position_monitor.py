@@ -25,11 +25,11 @@ logger = logging.getLogger("v7.position_monitor")
 # ── Configuration ──────────────────────────────────────────────────────────
 CHECK_INTERVAL_S = 60
 PRICE_CACHE_TTL_S = 30
-MAX_HOLD_DAYS_DEFAULT = 10       # time-stop par défaut si l'actif n'est pas configuré (non-carry)
+MAX_HOLD_DAYS_DEFAULT = 10       # default time-stop when the asset is not configured (non-carry)
 MAX_LOSS_PCT_DEFAULT = -0.05     # perte max par position (-5%)
 PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
-TOTAL_CAPITAL_DEFAULT = 14_000   # fallback si carry_assets.yaml est illisible
-PAYBACK_DAYS_MAX_DEFAULT = 30    # sortie économique carry si payback > 30j
+TOTAL_CAPITAL_DEFAULT = 14_000   # fallback when carry_assets.yaml cannot be read
+PAYBACK_DAYS_MAX_DEFAULT = 30    # carry economic exit when payback > 30d
 
 
 class PositionMonitor:
@@ -44,7 +44,7 @@ class PositionMonitor:
         self._perp_cache: dict[str, tuple[float, float]] = {}   # symbol → (perp_price, timestamp)
         self._lock = threading.Lock()
         self._kill_switch_triggered = False
-        self._circuit_breaker = False  # Tier 0: bloque nouvelles entrées
+        self._circuit_breaker = False  # Tier 0: blocks new entries
 
     @property
     def circuit_breaker_active(self) -> bool:
@@ -115,7 +115,7 @@ class PositionMonitor:
     def _loop(self) -> None:
         """Boucle principale : vérifie les positions toutes les N secondes."""
         logger.info("PositionMonitor loop started")
-        # Petit délai initial pour laisser l'API démarrer
+        # Small initial delay to let the API start
         time.sleep(10)
 
         while self._stop_event and not self._stop_event.is_set():
@@ -152,7 +152,7 @@ class PositionMonitor:
         now = datetime.now(timezone.utc)
         closed_count = 0
 
-        # ── Phase 1 : Calculer le P&L total pour le kill-switch ──────────
+        # -- Phase 1: compute the total P&L for the kill-switch --
         total_unrealized = 0.0
         total_size = 0.0
         pos_data: list[dict] = []
@@ -174,7 +174,7 @@ class PositionMonitor:
             if current_price <= 0:
                 continue
 
-            # P&L réel : basis P&L pour carry, spot P&L pour les autres
+            # Real P&L: basis P&L for carry, spot P&L for everything else
             if action == "carry":
                 carry_econ = self._compute_carry_economics(
                     {"symbol": symbol, "entry_price": entry_price, "size_usd": size_usd,
@@ -200,12 +200,12 @@ class PositionMonitor:
         if not pos_data:
             return
 
-        # ── Phase 0 : Circuit breaker (Tier 0) — bloque nouvelles entrées ──
+        # -- Phase 0: circuit breaker (tier 0) - blocks new entries --
         stale_data = False
         with self._lock:
             cache_ages = [time.time() - v[1] for v in self._price_cache.values() if v[1] > 0]
         max_cache_age = max(cache_ages) if cache_ages else 0
-        if max_cache_age > 300:  # 5 minutes sans prix frais
+        if max_cache_age > 300:  # 5 minutes without fresh prices
             stale_data = True
             logger.warning("TIER 0 CIRCUIT BREAKER: stale prices (%.0fs) → NO NEW RISK", max_cache_age)
             self._circuit_breaker = True
@@ -216,19 +216,19 @@ class PositionMonitor:
         # ── Phase 2 : Kill-switch multi-tier ─────────────────────────────
         total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
         
-        # Tier 1: Operational — données périmées
+        # Tier 1: operational - stale data
         if stale_data:
             logger.error("KILL-SWITCH TIER 1 (OPERATIONAL): stale prices (%.0fs)", max_cache_age)
         
-        # Tier 2: Market — P&L extrême (>10% capital)
+        # Tier 2: market - extreme P&L (>10% of capital)
         market_stress = abs(total_unrealized) > total_capital * 0.10
         
         # Tier 3: Portfolio drawdown (-20%)
         portfolio_dd = total_pnl_pct < -(max_portfolio_dd_pct * 100)
         
-        # Tier 4: Pertes de basis corrélées (3 audits, 20/07/2026)
-        # L'ancienne règle "≥3 positions perdantes" déclenchait sur un simple
-        # élargissement banal du basis. La nouvelle vérifie la corrélation des pertes.
+        # Tier 4: correlated basis losses (3 audits, 2026-07-20)
+        # The old '3 or more losing positions' rule fired on a mere
+        # routine basis widening. The new one checks the correlation of the losses.
         carry_losses = [pd for pd in pos_data
                         if pd["action"] == "carry" and pd["unrealized"] < 0]
         losing_count = len(carry_losses)
@@ -257,7 +257,7 @@ class PositionMonitor:
             for pd in pos_data:
                 try:
                     if pd["action"] == "carry":
-                        # P&L carry réel (basis+funding) — pas le spot directionnel
+                        # Real carry P&L (basis+funding) - not the directional spot P&L
                         pnl = pd["unrealized"]
                     elif pd["action"] in ("short",):
                         pnl = (pd["entry_price"] - pd["current_price"]) / pd["entry_price"] * pd["size_usd"]
@@ -274,32 +274,32 @@ class PositionMonitor:
             return
 
         # ── Kill-switch reset policy (3 audits, 20/07/2026) ──
-        # Tier 1 (OPERATIONAL): auto-reset quand les données redeviennent fraîches
+        # Tier 1 (OPERATIONAL): auto-reset once the data is fresh again
         # Tier 2+ (MARKET/PORTFOLIO_DD/CORRELATED_LOSS): reset MANUEL requis
-        # → pas d'auto-reset, le flag reste jusqu'à redémarrage ou intervention
+        # -> no auto-reset, the flag stays until a restart or manual intervention
         if self._kill_switch_triggered and kill_tier == "OPERATIONAL":
             if not stale_data:
                 self._kill_switch_triggered = False
                 logger.info("KILL-SWITCH TIER 1 auto-reset: data restored")
-        # Tier 2+ : pas d'auto-reset. Nécessite redémarrage du container ou
-        # appel API /dag/reset-kill-switch pour réarmer.
+        # Tier 2+: no auto-reset. Requires a container restart or
+        # a call to the /dag/reset-kill-switch API to re-arm.
 
-        # ── Phase 3 : Vérifications par position ──────────────────────────
+        # -- Phase 3: per-position checks --
         for pd in pos_data:
             should_close = False
             close_price = pd["current_price"]
             reason = ""
             is_carry = pd["action"] == "carry"
 
-            # 3a) Perte max unifiée (remplace basis SL + time-stop fixe)
-            # Pour tout type de trade : si perte latente > |max_loss_pct| → fermer
+            # 3a) Unified max loss (replaces the basis stop + the fixed time-stop)
+            # For any trade type: when the unrealised loss > |max_loss_pct| -> close
             loss_pct = (pd["unrealized"] / pd["size_usd"] * 100) if pd["size_usd"] > 0 else 0
             if loss_pct < (max_loss_pct * 100):  # ex: -5% < -5% → trigger
                 should_close = True
                 reason = f"MAX LOSS: {loss_pct:+.2f}% < {max_loss_pct*100:.0f}% (entry={pd['entry_price']:.2f} price={pd['current_price']:.2f})"
                 logger.info("PositionMonitor: %s %s loss=%.2f%% → CLOSE", pd["symbol"], pd["trade_id"], loss_pct)
 
-            # 3b) SL/TP prix (non-carry uniquement)
+            # 3b) Price SL/TP (non-carry only)
             if not should_close and not is_carry:
                 if pd["sl_price"] > 0:
                     if pd["action"] == "short":
@@ -325,8 +325,8 @@ class PositionMonitor:
                             close_price = pd["tp_price"]
                             reason = f"TP hit @ {pd['tp_price']:.2f}"
 
-            # 3c) Pour les trades carry : sortie économique (payback_days)
-            #     Pour les autres : time-stop calendaire
+            # 3c) For carry trades: economic exit (payback_days)
+            #     For the others: calendar time-stop
             if not should_close and pd["ts_str"]:
                 try:
                     opened_at = datetime.fromisoformat(pd["ts_str"].replace("Z", "+00:00"))
@@ -353,7 +353,7 @@ class PositionMonitor:
                             else:
                                 logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)
                     else:
-                        # Time-stop classique pour non-carry — seuil propre à l'actif
+                        # Classic time-stop for non-carry - an asset-specific threshold
                         _mhd = self._max_hold_days_for(pd["symbol"])
                         if days_held > _mhd:
                             should_close = True
@@ -373,10 +373,10 @@ class PositionMonitor:
                 elif margin_alert == "MARGIN_WARNING":
                     logger.warning("PositionMonitor: %s margin buffer low — monitor closely", pd["trade_id"])
 
-            # 3e) Exécuter la clôture
+            # 3e) Execute the close
             if should_close:
                 if pd["action"] == "carry":
-                    # P&L carry réel (basis+funding) — delta-neutre, pas le spot directionnel
+                    # Real carry P&L (basis+funding) - delta-neutral, not the directional spot P&L
                     pnl = pd["unrealized"]
                 elif pd["action"] in ("short",):
                     pnl = (pd["entry_price"] - close_price) / pd["entry_price"] * pd["size_usd"]
@@ -429,7 +429,7 @@ class PositionMonitor:
             symbol_perp = f"{MULTIPLIER_MAP.get(base, base)}/USDT:USDT"
             ticker = exchange.fetch_ticker(symbol_perp)
             raw = float(ticker.get("last", 0))
-            # Contrat ×1000 : le prix du contrat vaut ×1000 le prix spot du token
+            # x1000 contract: the contract price is 1000x the token spot price
             return raw / 1000.0 if base in MULTIPLIER_MAP else raw
         except Exception as exc:
             logger.debug("PositionMonitor: fetch perp %s failed: %s", symbol, exc)
@@ -448,17 +448,17 @@ class PositionMonitor:
             size_usd = pd["size_usd"]
             current_spot = pd["current_price"]
 
-            # Récupérer le prix perp (obligatoire pour le carry)
+            # Fetch the perp price (mandatory for carry)
             current_perp = self._get_cached_perp(symbol)
             if current_perp <= 0:
                 # Pas de fallback spot ! (3 audits, 20/07/2026)
-                # Si le perp est indisponible, le basis est INCONNU.
-                # Remplacer par le spot masquerait le risque (basis=0 artificiel).
+                # When the perp is unavailable the basis is UNKNOWN.
+                # Substituting spot would hide the risk (an artificial basis=0).
                 result["data_degraded"] = True
                 logger.warning("PositionMonitor: perp price missing for %s → carry economics UNKNOWN", symbol)
                 return result
 
-            # Récupérer entry_perp depuis le context_json
+            # Fetch entry_perp from context_json
             entry_perp = None
             try:
                 import json as _j
@@ -474,7 +474,7 @@ class PositionMonitor:
                 logger.warning("PositionMonitor: entry_perp missing for %s → carry economics UNKNOWN", symbol)
                 return result
 
-            # Calculer le basis (spot - perp) / spot
+            # Compute the basis (spot - perp) / spot
             basis_entry = (entry_spot - entry_perp) / entry_spot if entry_spot > 0 else 0
             basis_now = (current_spot - current_perp) / current_spot if current_spot > 0 else 0
 
@@ -484,21 +484,21 @@ class PositionMonitor:
             basis_pnl = (basis_entry - basis_now) * size_usd
             result["basis_pnl"] = round(basis_pnl, 4)
 
-            # Funding estimé (approximation : ~0.01%/8h moyen récent)
-            # En pratique, on devrait lire le funding réel depuis la DB/state
-            daily_funding_est = size_usd * 0.0001 * 3  # 0.01% × 3 fois/jour
+            # Estimated funding (approximation: ~0.01%/8h recent average)
+            # In practice the real funding should be read from the DB/state
+            daily_funding_est = size_usd * 0.0001 * 3  # 0.01% x 3 times per day
             result["funding_est"] = round(daily_funding_est, 6)
 
             # Net carry P&L
-            result["net_carry_pnl"] = round(basis_pnl, 4)  # + funding (négligeable en daily)
+            result["net_carry_pnl"] = round(basis_pnl, 4)  # + funding (negligible on a daily horizon)
 
-            # Payback days : combien de jours de funding pour rembourser la perte basis
+            # Payback days: how many days of funding are needed to repay the basis loss
             if basis_pnl < 0 and daily_funding_est > 0:
                 result["payback_days"] = abs(basis_pnl) / daily_funding_est
             elif basis_pnl >= 0:
-                result["payback_days"] = 0  # pas de perte à rembourser
+                result["payback_days"] = 0  # no loss to repay
             else:
-                result["payback_days"] = 999  # funding nul ou négatif → impossible à rembourser
+                result["payback_days"] = 999  # zero or negative funding -> impossible to repay
 
         except Exception as e:
             result["data_degraded"] = True
@@ -545,7 +545,7 @@ class PositionMonitor:
             coin = symbol.split("/")[0].upper() if "/" in symbol else symbol.upper()
 
             # ── Leverage assumptions ──
-            # Lu depuis carry_assets.yaml (BTC/ETH 2x, SOL/BNB 1.5x, majors alts 1x)
+            # Read from carry_assets.yaml (BTC/ETH 2x, SOL/BNB 1.5x, major alts 1x)
             leverage = self._leverage_for(symbol, coin)
 
             # Maintenance margin rate (Binance standard: ~0.5%–2.5% depending on notional)
@@ -557,7 +557,7 @@ class PositionMonitor:
             maintenance_margin = notional * maint_margin_rate
 
             # For a SHORT position: liquidation when price rises
-            # liquidation_price = entry_price × (1 + 1/leverage - maint_margin_rate)
+            # liquidation_price = entry_price x (1 + 1/leverage - maint_margin_rate)
             # Simplified: the short loses (current_price - entry_price) × quantity
             # When loss > initial_margin - maintenance_margin → liquidation
             price_increase_pct = (current_price - entry_price) / entry_price
@@ -595,7 +595,7 @@ class PositionMonitor:
                         pd.get("symbol", "?"), e)
             return "OK"  # fail open — don't close on a calculation error
 
-    # ── Price fetching (avec cache courte durée) ───────────────────────────
+    # -- Price fetching (with a short-lived cache) --
 
     def _get_cached_price(self, symbol: str) -> float:
         """Retourne le prix spot actuel, avec cache 30s pour éviter de spammer l'exchange."""
@@ -605,7 +605,7 @@ class PositionMonitor:
             if cached and (now - cached[1]) < PRICE_CACHE_TTL_S:
                 return cached[0]
 
-        # Fetch depuis CCXT
+        # Fetch from CCXT
         price = self._fetch_spot(symbol)
         if price > 0:
             with self._lock:

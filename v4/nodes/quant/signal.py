@@ -83,11 +83,11 @@ class SignalLogReg(Node):
 
         # Cible directionnelle
         # make_target_direction attend un ohlcv — on reconstruit depuis features_all
-        # si la colonne close n'est pas disponible, on ne peut pas prédire
+        # when the close column is unavailable we cannot predict
         if "close" not in features_all.columns:
             return {"signal": "flat", "prob_up": 0.5, "reason": "no_close_column"}
 
-        # S'assurer que close est une Series (pas un DataFrame en cas de colonnes dupliquées)
+        # Make sure close is a Series (not a DataFrame when columns are duplicated)
         close_series = features_all["close"]
         if isinstance(close_series, pd.DataFrame):
             close_series = close_series.iloc[:, 0]

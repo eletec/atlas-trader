@@ -44,7 +44,7 @@ class LLMNode(Node):
 
     @staticmethod
     def input_schema() -> dict[str, str]:
-        # Inputs dynamiques — tout ce qui est connecté est accepté
+        # Dynamic inputs - everything connected is accepted
         return {}
 
     @staticmethod
@@ -54,7 +54,7 @@ class LLMNode(Node):
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         from v4.nodes.config_loader import load_v4_config
 
-        # ── Mode async : fire-and-forget, retour immédiat ──
+        # -- Async mode: fire-and-forget, returns immediately --
         async_mode = bool(self.params.get("async_mode", True))
         dag_id = self.params.get("dag_id", "unknown")
         cache_key = f"llm_{dag_id}_{self.node_id}"
@@ -62,22 +62,22 @@ class LLMNode(Node):
         if async_mode:
             from v4.core.async_tasks import dispatch, get_result, is_pending
 
-            # Récupérer le résultat du cycle précédent (sera None au 1er cycle)
+            # Fetch the previous cycle's result (None on the first cycle)
             cached = get_result(cache_key)
             import logging
             _logger = logging.getLogger("v4.nodes.ai.llm_node")
             _logger.info("LLMNode [%s] cache_key=%s cached=%s", self.node_id, cache_key,
                          "HIT" if cached else "MISS")
 
-            # Lancer le nouvel appel en arrière-plan (capture les inputs actuels)
-            _inputs_snapshot = dict(inputs)  # copie pour le thread
+            # Start the new call in the background (captures the current inputs)
+            _inputs_snapshot = dict(inputs)  # copy for the thread
             _params_snapshot = dict(self.params)
             _node_id = self.node_id
 
             def _async_call():
-                # Ré-exécuter run() en mode sync pour ce snapshot
+                # Re-run run() in sync mode for this snapshot
                 import copy
-                # On évite la récursion infinie : on appelle directement le code sync
+                # Avoid infinite recursion by calling the sync code directly
                 return self._run_sync(_inputs_snapshot)
 
             dispatch(cache_key, _async_call)
@@ -88,7 +88,7 @@ class LLMNode(Node):
                 cached["_pending_next"] = is_pending(cache_key)
                 return cached
             else:
-                # Premier cycle : pas encore de résultat
+                # First cycle: no result yet
                 _logger.info("LLMNode [%s] returning placeholder (cached=%s, has_error=%s)",
                             self.node_id, cached is not None,
                             "error" in (cached or {}))
@@ -109,7 +109,7 @@ class LLMNode(Node):
         """Exécution synchrone du LLM (utilisée par async mode en background)."""
         from v4.nodes.config_loader import load_v4_config
 
-        # ── Modèle : priorité DAG params → settings.yaml (BO) → défaut DeepSeek ──
+        # -- Model: DAG params first -> settings.yaml (back-office) -> DeepSeek default --
         # Support dual config: "deep" (BO, reasoning) vs "fast" (DAG, quick analysis)
         _llm_cfg = load_v4_config(None, "llm", {
             "provider": "deepseek", "model": "deepseek-v4-pro",
@@ -131,8 +131,8 @@ class LLMNode(Node):
         ollama_url    = self.params.get("ollama_url", _llm_cfg.get("ollama_url", "http://atlas-v4-ollama:11434"))
         timeout_s     = int(self.params.get("timeout_s", 60))
 
-        # Substitution des placeholders dans le user_prompt
-        # Injecter les leçons de reflection si présentes
+        # Substitute the placeholders in the user_prompt
+        # Inject the reflection lessons when present
         reflections = inputs.get("lessons") or inputs.get("reflections", "")
         if reflections:
             formatted_prompt = user_prompt.replace("{reflections}", str(reflections))
@@ -140,12 +140,12 @@ class LLMNode(Node):
             formatted_prompt = user_prompt.replace("{reflections}", "")
 
         try:
-            # Éviter conflit si 'inputs' est déjà une clé dans le dict
+            # Avoid a clash when 'inputs' is already a key in the dict
             _fmt_inputs = dict(inputs)
             _fmt_inputs.pop("inputs", None)  # on le passe explicitement
             formatted_prompt = formatted_prompt.format(**_fmt_inputs, inputs=json.dumps(inputs, default=str))
         except (KeyError, ValueError):
-            # Remplacer chaque placeholder manquant par "N/A" au lieu de laisser {key}
+            # Replace every missing placeholder with 'N/A' instead of leaving {key}
             import re as _re
             def _safe_replace(m):
                 key = m.group(1)
@@ -169,7 +169,7 @@ class LLMNode(Node):
         t0 = time.time()
         try:
             if provider == "ollama":
-                # Ollama local (pas de clé API)
+                # Local Ollama (no API key)
                 import urllib.request
                 payload = {
                     "model": model,
@@ -188,7 +188,7 @@ class LLMNode(Node):
                 response_text = body.get("response", "")
             else:
                 # DeepSeek / OpenAI-compatible via litellm
-                # Lire la clé API : param DAG > env > settings.yaml > secrets.yaml > fast_api_key
+                # Read the API key: DAG param > env > settings.yaml > secrets.yaml > fast_api_key
                 import os as _os_key
                 api_key = self.params.get("api_key", "") or ""
                 if not api_key:
@@ -197,10 +197,10 @@ class LLMNode(Node):
                     api_key = _llm_cfg.get("deepseek_api_key", "") or ""
                 if not api_key:
                     api_key = _llm_cfg.get("api_key", "") or ""
-                # Si mode rapide, chercher aussi fast_api_key (provider différent possible)
+                # In fast mode also look for fast_api_key (a different provider is possible)
                 if not api_key and use_fast:
                     api_key = _llm_cfg.get("fast_api_key", "") or ""
-                # Chercher aussi dans secrets.yaml (séparé de settings.yaml pour sécurité)
+                # Also look inside secrets.yaml (kept separate from settings.yaml for security)
                 if not api_key:
                     try:
                         import yaml as _yaml
@@ -210,7 +210,7 @@ class LLMNode(Node):
                                     _secrets = _yaml.safe_load(_sf) or {}
                                 _sec_llm = _secrets.get("llm", {})
                                 api_key = _sec_llm.get("deepseek_api_key", "") or _sec_llm.get("api_key", "")
-                                # En mode rapide, chercher fast_api_key dans secrets aussi
+                                # In fast mode, look for fast_api_key in secrets too
                                 if not api_key and use_fast:
                                     api_key = _sec_llm.get("fast_api_key", "")
                                 if api_key:
@@ -233,7 +233,7 @@ class LLMNode(Node):
                 )
                 if api_key:
                     kwargs["api_key"] = api_key
-                    # Fallback env var pour les providers qui en ont besoin
+                    # Env var fallback for the providers that need it
                     import os as _os
                     _os.environ.setdefault("DEEPSEEK_API_KEY", api_key)
                 try:
@@ -241,7 +241,7 @@ class LLMNode(Node):
                     response_text = resp_obj.choices[0].message.content if resp_obj.choices else ""
                 except Exception as _litellm_exc:
                     _err_msg = str(_litellm_exc)
-                    # Fallback: si auth échoue, tenter Ollama local
+                    # Fallback: when auth fails, try the local Ollama
                     if "auth" in _err_msg.lower() or "key" in _err_msg.lower() or "401" in _err_msg or "403" in _err_msg:
                         import logging as _logging
                         _llm_log = _logging.getLogger("v4.nodes.ai.llm_node")
@@ -286,7 +286,7 @@ class LLMNode(Node):
         # Tentative de parse JSON
         parsed = None
         raw = response.strip()
-        # Extraire le premier bloc JSON (entre ```json ... ``` ou { ... })
+        # Extract the first JSON block (between ```json ... ``` or { ... })
         if "```json" in raw:
             raw = raw.split("```json", 1)[1].split("```", 1)[0].strip()
         elif "```" in raw:
@@ -294,7 +294,7 @@ class LLMNode(Node):
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            # Essayer de trouver le premier { ... }
+            # Try to find the first { ... }
             start = raw.find("{")
             end = raw.rfind("}")
             if start >= 0 and end > start:

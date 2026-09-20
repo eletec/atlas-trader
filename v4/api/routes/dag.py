@@ -84,7 +84,7 @@ async def schedule_dag(body: ScheduleDAGRequest):
         logger.exception("Erreur schedule_dag")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    # Persister dans le store (source de vérité = canvas)
+    # Persist into the store (the canvas is the source of truth)
     try:
         from v4.api.dag_store import upsert
         body.dag.cycle_s = body.cycle_s
@@ -115,7 +115,7 @@ async def reload_dags_from_config():
     from v4.api.dag_registry import DAGRegistry
     from v4.api.dag_store import load_all, get_defaults, save_all
     
-    # Vider le cache asset_config pour recharger la derniere version
+    # Clear the asset_config cache to reload the latest version
     try:
         from v7.core.asset_config import reload_config
         reload_config()
@@ -124,19 +124,19 @@ async def reload_dags_from_config():
     
     registry = DAGRegistry.instance()
     
-    # 1) DAGs souhaités (depuis carry_assets.yaml)
+    # 1) Desired DAGs (from carry_assets.yaml)
     desired = get_defaults()  # V7_DAGS — lit get_active_assets()
     desired_ids = {d.dag_id for d in desired}
     desired_map = {d.dag_id: d for d in desired}
     
-    # 2) DAGs actuels (persistés + running)
+    # 2) Current DAGs (persisted + running)
     persisted = load_all()
     persisted_ids = {d.dag_id for d in persisted}
     running_ids = {e.dag_id for e in registry.status()}
     
     added, removed, restarted = [], [], []
     
-    # Ajouter les nouveaux
+    # Add the new ones
     for dag_id in desired_ids - running_ids:
         if dag_id in desired_map:
             try:
@@ -147,7 +147,7 @@ async def reload_dags_from_config():
             except Exception as exc:
                 logger.warning("Reload: failed to add %s: %s", dag_id, exc)
     
-    # Retirer les DAGs qui ne sont plus dans la config
+    # Remove the DAGs that are no longer in the config
     for dag_id in running_ids - desired_ids:
         try:
             registry.remove(dag_id)
@@ -156,7 +156,7 @@ async def reload_dags_from_config():
         except Exception as exc:
             logger.warning("Reload: failed to remove %s: %s", dag_id, exc)
     
-    # Sauvegarder la nouvelle liste
+    # Save the new list
     save_all(list(desired))
     
     return {
@@ -175,7 +175,7 @@ async def restart_demo_dags():
 
     registry = DAGRegistry.instance()
     
-    # Charger depuis le store (source de vérité)
+    # Load from the store (source of truth)
     dags = load_all()
     if not dags:
         dags = get_defaults()
@@ -257,7 +257,7 @@ async def dag_logs(n: int = 50):
     mem_logs = get_logs(n)
     if len(mem_logs) >= n:
         return mem_logs
-    # Fallback: compléter depuis la DB
+    # Fallback: fill in from the DB
     try:
         import sqlite3
         db_path = "/app/data/v4.db"
@@ -286,7 +286,7 @@ async def decisions_history(symbol: str = "", dag_id: str = "", n: int = 100):
             conditions = []
             params = []
             if symbol:
-                # Chercher le symbole dans le message (ex: "[BTC/USDT]")
+                # Look for the symbol in the message (e.g. '[BTC/USDT]')
                 conditions.append("message LIKE ?")
                 params.append(f"%[{symbol}]%")
             if dag_id:

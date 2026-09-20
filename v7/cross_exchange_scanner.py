@@ -35,12 +35,12 @@ logger = logging.getLogger("cross_exchange")
 class CrossExchangeOpportunity:
     """Une opportunité d'arbitrage de funding entre deux exchanges."""
     symbol: str                    # ex: "BTC/USDT"
-    exchange_long: str             # exchange où shorter (recevoir le funding)
-    exchange_short: str            # exchange où longer (payer le funding)
-    funding_long: float            # funding rate sur exchange_long
-    funding_short: float           # funding rate sur exchange_short
-    spread_bps: float              # écart en bps (100 = 1%)
-    annual_spread_pct: float       # spread annualisé
+    exchange_long: str             # exchange where we short (to receive the funding)
+    exchange_short: str            # exchange where we go long (to pay the funding)
+    funding_long: float            # funding rate on exchange_long
+    funding_short: float           # funding rate on exchange_short
+    spread_bps: float              # spread in bps (100 = 1%)
+    annual_spread_pct: float       # annualised spread
     spot_long: float               # prix spot exchange_long
     spot_short: float              # prix spot exchange_short
     viable: bool                   # spread > frais round-trip ?
@@ -63,7 +63,7 @@ def fetch_funding_rates(exchange_name: str, symbols: list[str]) -> dict[str, flo
     """Récupère les funding rates pour une liste de symboles sur un exchange."""
     try:
         ex = get_exchange(exchange_name)
-        # Construire les symboles format exchange
+        # Build the exchange-formatted symbols
         if exchange_name == "binance":
             syms = [f"{s.split('/')[0]}/USDT:USDT" for s in symbols]
         elif exchange_name == "bybit":
@@ -104,7 +104,7 @@ def scan_cross_exchange(
     symbols: list[str] | None = None,
     exchanges: list[str] | None = None,
     min_spread_bps: float = 0.5,    # spread minimum en bps (0.5 = 0.005%)
-    fees_roundtrip_bps: float = 48,  # frais estimés round-trip
+    fees_roundtrip_bps: float = 48,  # estimated round-trip fees
 ) -> list[CrossExchangeOpportunity]:
     """Scanne les opportunités de carry cross-exchange.
 
@@ -153,17 +153,17 @@ def scan_cross_exchange(
                 if fr_a == 0 and fr_b == 0:
                     continue
                 
-                # Spread: différence de funding rate
+                # Spread: the funding rate difference
                 spread = abs(fr_a - fr_b)
                 spread_bps = spread * 10000  # convertir en bps
                 
                 if spread_bps < min_spread_bps:
                     continue
                 
-                # Déterminer quel exchange shorter (funding plus élevé = on reçoit plus)
+                # Decide which exchange to short (higher funding = we receive more)
                 if fr_a >= fr_b:
-                    ex_short = ex_a  # shorter ici (recevoir le funding élevé)
-                    ex_long = ex_b   # longer ici (payer le funding bas)
+                    ex_short = ex_a  # short here (receive the high funding)
+                    ex_long = ex_b   # go long here (pay the low funding)
                     fr_short = fr_a
                     fr_long = fr_b
                 else:
@@ -176,8 +176,8 @@ def scan_cross_exchange(
                 periods_per_year = 365 * 3  # 8h
                 annual_spread = (fr_short - fr_long) * periods_per_year * 100
                 
-                # Frais cross-exchange : spot buy + perp short sur A, reverse sur B
-                # Plus de jambes → frais plus élevés
+                # Cross-exchange fees: spot buy + perp short on A, the reverse on B
+                # More legs -> higher fees
                 viable = spread_bps > fees_roundtrip_bps
                 
                 spot_short = all_spot.get(ex_short, {}).get(sym, 0)
@@ -196,7 +196,7 @@ def scan_cross_exchange(
                     viable=viable,
                 ))
     
-    # Trier par spread décroissant
+    # Sort by descending spread
     opportunities.sort(key=lambda o: o.spread_bps, reverse=True)
     
     return opportunities

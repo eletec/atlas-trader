@@ -23,12 +23,12 @@ DEFAULT_TIMEOUT_S = 10.0
 @dataclass
 class AIOutput:
     """Résultat d'un plugin IA."""
-    value: Any                          # scalaire, dict, ou string selon le plugin
-    rationale: str = ""                 # explication lisible (affichée dans le dashboard)
-    confidence: float = 1.0            # [0, 1] — confiance du modèle dans sa réponse
-    model_used: str = ""               # nom du modèle utilisé
+    value: Any                          # scalar, dict or string depending on the plugin
+    rationale: str = ""                 # human-readable explanation (shown in the dashboard)
+    confidence: float = 1.0            # [0, 1] - the model's confidence in its answer
+    model_used: str = ""               # name of the model used
     tokens_used: int = 0
-    fallback_used: bool = False        # True si la valeur est un fallback, pas un vrai résultat
+    fallback_used: bool = False        # True when the value is a fallback, not a real result
 
 
 class AIPlugin(ABC):
@@ -129,14 +129,14 @@ class AIPlugin(ABC):
 
         result = dict(quant_outputs)
 
-        # Blend uniquement si l'output IA est un scalaire numérique
+        # Blend only when the AI output is a numeric scalar
         if isinstance(ai_output.value, (int, float)):
             for key, val in result.items():
                 if isinstance(val, (int, float)):
                     result[key] = (1 - weight) * val + weight * ai_output.value
-                    break  # blend sur le premier scalaire seulement
+                    break  # blend only over the first scalar
 
-        # Ajoute le rationale comme metadata
+        # Add the rationale as metadata
         result["_ai_rationale"] = ai_output.rationale
         result["_ai_model"] = ai_output.model_used
         result["_ai_fallback"] = ai_output.fallback_used

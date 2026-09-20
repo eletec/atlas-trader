@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# Désactiver les appels DB dans le GlobalAllocator pour le backtest
+## Disable DB calls in the GlobalAllocator for the backtest
 os.environ["V7_BACKTEST"] = "1"
 
 import numpy as np
@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backtest_v7_node")
 
-# ── Charger les actifs depuis la config ──
+# -- Load the assets from the config --
 try:
     from v7.core.asset_config import get_active_assets, get_all_assets, normalize_symbol
     SYMBOLS = get_active_assets()
@@ -110,7 +110,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
     """Backtest un actif avec le vrai FundingCarryNode + prix reels."""
     from v7.nodes.funding_carry_node import FundingCarryNode
 
-    # 1) Charger les donnees
+    # 1) Load the data
     spot_df = fetch_prices(symbol, days, is_perp=False)
     perp_df = fetch_prices(symbol, days, is_perp=True)
     funding_df = fetch_funding_history(symbol, days)
@@ -118,8 +118,8 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
     if funding_df.empty:
         return {"symbol": symbol, "error": "no funding data"}
 
-    # 2) Fusionner prix + funding sur les dates
-    # Interpoler les prix spot/perp aux timestamps de funding (forward fill)
+    # 2) Merge prices + funding on the dates
+    # Interpolate the spot/perp prices onto the funding timestamps (forward fill)
     if not spot_df.empty and not perp_df.empty:
         combined = funding_df.join(spot_df.rename(columns={"spot_price": "spot_raw"}), how="left")
         combined = combined.join(perp_df.rename(columns={"perp_price": "perp_raw"}), how="left")
@@ -128,8 +128,8 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         if combined["spot_price"].isna().any() or combined["perp_price"].isna().any():
             return {"symbol": symbol, "error": "prix spot/perp non alignables sur le funding"}
     else:
-        # ANCIEN COMPORTEMENT (bug) : fallback silencieux à 1000 $ → le backtest
-        # ne modélisait plus aucun risque de prix et affichait un P&L fictif.
+        # OLD BEHAVIOUR (bug): a silent $1000 fallback meant the backtest
+        # no longer modelled any price risk and displayed fabricated P&L.
         logger.error("Prix spot/perp indisponibles pour %s — backtest refusé", symbol)
         return {
             "symbol": symbol,
@@ -139,8 +139,8 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
     if combined.empty:
         return {"symbol": symbol, "error": "no merged data"}
 
-    # 3) Initialiser le noeud (params override pour grid search)
-    # Paramètres lus depuis carry_assets.yaml pour refléter la stratégie live.
+    # 3) Initialise the node (params override for the grid search)
+    # Params read from carry_assets.yaml so the run mirrors the live strategy.
     ov = params_override or {}
     try:
         from v7.core.asset_config import get_asset_params
@@ -160,7 +160,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         params={"_backtest": True},
     )
 
-    # 4) Boucle de backtest avec NAV tracking (Round 5, 25/07/2026)
+    # 4) Backtest loop with NAV tracking (round 5, 2026-07-25)
     # BUGFIX: unrealized_pnl_pct from node is already ×100 (percent), backtest must ÷100
     trades: list[dict] = []
     total_funding = 0.0
@@ -175,7 +175,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         perp_price = float(row["perp_price"])
         max_funding_seen = max(max_funding_seen, fr)
         
-        # Ajuster le prix perp pour les contrats à multiplicateur (1000PEPE, etc.)
+        # Adjust the perp price for multiplier contracts (1000PEPE, etc.)
         base = symbol.split("/")[0]
         MULT = {"PEPE": 1000, "SHIB": 1000, "BONK": 1000, "FLOKI": 1000, "LUNC": 1000}
         contract_mult = MULT.get(base, 1)
@@ -201,7 +201,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         if not position_open and signal == "flat" and reason and not no_trade_reason:
             no_trade_reason = reason[:120]
 
-        # Frais: 4 jambes × 12bps = 48bps round-trip (GPT audit, 25/07/2026)
+        # Fees: 4 legs x 12bps = 48bps round-trip (GPT audit, 2026-07-25)
         #   Open:  long spot (12bps) + short perp (12bps) = 24bps
         #   Close: sell spot (12bps) + buy back perp (12bps) = 24bps
         cost_this_step = 0.0
@@ -226,7 +226,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         total_nav = trading_nav + staking_now
         nav_history.append((ts, trading_nav, total_nav))
 
-    # 5) Métriques (Round 5, 25/07/2026 — GPT audit: staking separated, unrealized % fix)
+    # 5) Metrics (round 5, 2026-07-25 - GPT audit: staking separated, unrealised % fix)
     staking = node.state.staking_earned
     trading_pnl = total_funding - total_fees  # P&L from actual trading activity (ex-staking, ex-unrealized)
     total_pnl = trading_pnl + staking  # includes staking for reference, but trading_pnl is the real metric
@@ -290,7 +290,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
         "days": days,
         "capital_utilisation_pct": round(capital_utilisation, 1),
         "no_trade_reason": no_trade_reason if len(trades) == 0 else "",
-        "params": params_override or {},  # pour le grid search
+        "params": params_override or {},  # for the grid search
         "trade_breakdown": trade_breakdown,  # per-trade P&L audit
     }
 
@@ -338,7 +338,7 @@ def main():
 
     elapsed = time.time() - t0
 
-    # ── Sauvegarder les résultats en JSON pour l'optimiseur ──
+    # -- Save the results as JSON for the optimiser --
     try:
         import json as _json
         out_path = Path("/app/data/backtest_results.json")

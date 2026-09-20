@@ -18,7 +18,7 @@ from v4.core.node import Node, NodeMeta, NodeStatus
 
 
 # ------------------------------------------------------------------
-# Nœuds factices pour les tests
+## Dummy nodes for the tests
 # ------------------------------------------------------------------
 
 class AddOneNode(Node):
@@ -119,7 +119,7 @@ class TestNode:
         node = AddOneNode("add_1", meta=NodeMeta(bypass=True))
         result = node.execute({"value": 99.0})
         assert result.status == NodeStatus.BYPASSED
-        # La valeur d'input est passée directement en output
+        # The input value is passed straight through to the output
         assert result.outputs.get("result") == 99.0
 
     def test_to_dict(self):
@@ -155,7 +155,7 @@ class TestAIPlugin:
                 return "Slow"
 
             def run(self, context: dict) -> AIOutput:
-                time.sleep(5)  # plus long que le timeout
+                time.sleep(5)  # longer than the timeout
                 return AIOutput(value=1.0)
 
         plugin = SlowPlugin(timeout_s=0.1, fallback_value=-1.0)
@@ -194,7 +194,7 @@ class TestContextStore:
     def test_stale(self):
         store = ContextStore(asset="TEST")
         store.set("old_value", 1.0)
-        # max_age_s=0 → immédiatement stale
+        # max_age_s=0 -> immediately stale
         assert store.get("old_value", fallback=0.0, max_age_s=0.0) == 0.0
 
     def test_snapshot(self):
@@ -276,6 +276,6 @@ class TestDAGExecutor:
         executor.validate()
         executor.run_once()
         store = ContextRegistry.get_store("TEST")
-        # Le résultat du nœud mul doit être dans le ContextStore
+        # The mul node result must be in the ContextStore
         val = store.get("mul.result")
         assert val == pytest.approx(33.0)

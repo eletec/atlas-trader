@@ -34,6 +34,27 @@ from v7.core.carry_accounting import (
 # needs 30, so live ran without it while the backtest ran with it.
 FUNDING_WINDOW = 270
 
+
+def _iso_to_ms(value: Any) -> Optional[int]:
+    """Milliseconds since the epoch for an ISO timestamp, a ms value, or None.
+
+    A naive timestamp is read as local time (`astimezone()` on a naive datetime
+    attaches the local offset), which is how `entry_time` is written. Treating it
+    as UTC instead would put a 2h skew between the entry and the settlements, and
+    an 8h period boundary is close enough for that to misfile a payment.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.astimezone()
+    return int(dt.timestamp() * 1000)
+
 logger = logging.getLogger("funding_carry_node")
 
 
@@ -62,10 +83,12 @@ class FundingCarryState:
     n_negative_payments: int = 0
     fees_paid: float = 0.0           # entry legs, then exit legs on close
     closed: bool = False
-    # Funding period already booked (ISO, floored to the settlement boundary).
-    # Without it a manual /carry/run or a restart cycle books the same payment
-    # a second time while the backtest books it once.
-    last_funding_ts: Optional[str] = None
+    # Settlement time (ms, UTC) of the last funding period this node processed.
+    # Not reset when a position opens: it records what the node has already SEEN,
+    # and the credited payment is decided by comparing the settlement against
+    # ``entry_time``. Without it a manual /carry/run or a restart cycle books the
+    # same payment twice while the backtest books it once.
+    last_funding_ts_ms: Optional[int] = None
     funding_history: list[float] = field(default_factory=list)   # one row per period
     staking_earned: float = 0.0      # USDT staking yield on idle capital
     last_funding_rate: float = 0.0
@@ -85,7 +108,7 @@ class FundingCarryState:
             "n_negative_payments": self.n_negative_payments,
             "negative_since": self.negative_since,
             "funding_history": self.funding_history[-FUNDING_WINDOW:],
-            "last_funding_ts": self.last_funding_ts,
+            "last_funding_ts_ms": self.last_funding_ts_ms,
             "closed": self.closed,
         }
 
@@ -109,7 +132,10 @@ class FundingCarryState:
         self.n_payments = int(data.get("n_payments", 0) or 0)
         self.n_negative_payments = int(data.get("n_negative_payments", 0) or 0)
         self.negative_since = data.get("negative_since") or None
-        self.last_funding_ts = data.get("last_funding_ts") or None
+        # Accept both shapes: the field was an ISO string before the settlement
+        # timestamps became milliseconds.
+        self.last_funding_ts_ms = _iso_to_ms(
+            data.get("last_funding_ts_ms", data.get("last_funding_ts")))
         self.closed = bool(data.get("closed", False))
         history = data.get("funding_history") or []
         if history:
@@ -209,34 +235,20 @@ class FundingCarryNode:
         """True when the node runs inside the backtester (no live DB access)."""
         return bool(self.params.get("_backtest", False))
 
-    def _funding_period_key(self, explicit: Optional[str] = None) -> Optional[str]:
-        """The funding period the current rate belongs to, or None in a backtest.
+    def _settlement_ms(self, explicit: Optional[str] = None) -> Optional[int]:
+        """Settlement time (ms, UTC) of the period this cycle is looking at.
 
-        Preferred form: the settlement timestamp the exchange reports, passed in by
-        the caller. It is the real period boundary, so it is correct for 4h and 8h
-        contracts alike and survives a clock that is off or a cycle that runs late.
+        Returns None in a backtest, where the simulated bars already supply exactly
+        one row per period and there is nothing to deduplicate.
 
-        Fallback: floor the clock onto the 8h boundary. Binance settles at fixed
-        boundaries and the fetched rate is the one settled most recently, so every
-        cycle inside one period lands on the same key and the second books nothing.
+        There is deliberately NO clock-derived fallback. The previous version floored
+        the wall clock onto an 8h boundary when the caller gave no timestamp, which
+        turned a failed fetch into "this period is booked" and lost the settlement
+        for good.
         """
         if self._is_backtest():
             return None  # one row per period by construction
-        if explicit:
-            try:
-                dt = datetime.fromisoformat(str(explicit).replace("Z", "+00:00"))
-            except (ValueError, TypeError):
-                dt = None
-            if dt is not None:
-                if dt.tzinfo is not None:
-                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-                return dt.isoformat(timespec="seconds")
-        dt = self._now()
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-        step = max(int(self.params.get("funding_interval_hours", 8)), 1)
-        return dt.replace(hour=(dt.hour // step) * step, minute=0,
-                          second=0, microsecond=0).isoformat(timespec="seconds")
+        return _iso_to_ms(explicit)
 
     def _seed_funding_history(self) -> None:
         """Make the rolling funding window real, from the state then the exchange.
@@ -473,12 +485,19 @@ class FundingCarryNode:
         try:
             exchange = self._get_exchange()
             symbol_perp = self._perp_symbol(self.symbol)
-            rates = exchange.fetch_funding_rates([symbol_perp])
-            row = rates.get(symbol_perp) if rates else None
-            if not row:
+            # The HISTORY endpoint, not fetch_funding_rates(). That one pairs the
+            # rate of one period with the time of the next: in ccxt's binance.py,
+            # `fundingRate = contract['lastFundingRate']` and
+            # `fundingTimestamp = contract['nextFundingTime']`. So the pair it
+            # returns is not a settlement, and using it credited the previous
+            # period to a position opened after it. This endpoint returns
+            # fundingTime and fundingRate for settlements that actually happened.
+            rows = exchange.fetch_funding_rate_history(symbol_perp, limit=2)
+            if not rows:
                 return None
-            ts = row.get("fundingTimestamp") or row.get("timestamp")
-            rate = row.get("fundingRate")
+            latest = rows[-1]
+            ts = latest.get("timestamp")
+            rate = latest.get("fundingRate")
             if ts is None or rate is None:
                 return None
             return (datetime.fromtimestamp(int(ts) / 1000, tz=timezone.utc),
@@ -635,8 +654,20 @@ class FundingCarryNode:
         # never exceed one sample and the "7-day MA" would just be the current
         # rate. Backfill it from the exchange when it is too short.
         self._seed_funding_history()
-        self._funding_rate_history.append(funding_rate)
-        self._funding_rate_history = self._funding_rate_history[-FUNDING_WINDOW:]
+        # One settlement per period, looked at once. `settlement_ms` is the
+        # exchange's own timestamp for the period that just settled, and None in a
+        # backtest. "New" means the node has not seen it before, which is what keeps
+        # the rolling window free of duplicates when a restart or a manual
+        # /carry/run replays the same period.
+        settlement_ms = self._settlement_ms(inputs.get("funding_ts"))
+        is_new_settlement = (settlement_ms is None
+                             or self.state.last_funding_ts_ms is None
+                             or settlement_ms > self.state.last_funding_ts_ms)
+        if is_new_settlement:
+            self._funding_rate_history.append(funding_rate)
+            self._funding_rate_history = self._funding_rate_history[-FUNDING_WINDOW:]
+            if settlement_ms is not None:
+                self.state.last_funding_ts_ms = settlement_ms
         # One series, persisted. `state.funding_history` and `_funding_rate_history`
         # were two variables holding the same idea and only the first was written
         # to the database, so the window never survived a cycle.
@@ -796,7 +827,6 @@ class FundingCarryNode:
                                         self.state.n_payments = 0
                                         self.state.n_negative_payments = 0
                                         self.state.negative_since = None
-                                        self.state.last_funding_ts = None
                                         self.state.closed = False
                                         self.state.fees_paid = entry_fee_usd(size_usd, LEG_FEE_BPS_DEFAULT)
                                         signal = "open_carry"
@@ -880,18 +910,26 @@ class FundingCarryNode:
                            self.node_id, unrealized_pct * 100)
                 # In paper mode we do not close automatically but raise a strong alert
             
-            # Funding settles once per period. Two cycles inside one period — a
-            # manual POST /carry/run, or the startup cycle right after a restart —
-            # would both book the same payment, while the backtest books it exactly
-            # once. The key is None in a backtest, so this guards only the live path.
-            period_key = self._funding_period_key(inputs.get("funding_ts"))
-            already_booked = period_key is not None and period_key == self.state.last_funding_ts
+            # A settlement is credited only if the position existed when it settled
+            # AND the node has not booked it already. `fetch_current_funding()`
+            # reported `lastFundingRate` together with `nextFundingTime`, so the
+            # earlier version could credit the 08:00 payment to a position opened at
+            # 08:05 — the book was not standing when that payment was made.
+            entry_ms = _iso_to_ms(self.state.entry_time)
+            held_through = (settlement_ms is None
+                            or entry_ms is None
+                            or settlement_ms > entry_ms)
 
             if signal == "close_carry":
                 pass  # already handled above
-            elif already_booked:
+            elif not held_through:
                 signal = "flat"
-                reason = (f"carry active | period {period_key} already booked "
+                reason = (f"carry active | settlement {settlement_ms} predates the "
+                          f"entry — not credited")
+                confidence = 0.70
+            elif not is_new_settlement:
+                signal = "flat"
+                reason = (f"carry active | settlement {settlement_ms} already booked "
                           f"({self.state.n_payments} payments, funding="
                           f"{self.state.total_funding_received:+.4f})")
                 confidence = 0.70
@@ -901,8 +939,6 @@ class FundingCarryNode:
                 payment = funding_payment_usd(self.state.entry_capital, funding_rate)
                 self.state.total_funding_received += payment
                 self.state.n_payments += 1
-                if period_key is not None:
-                    self.state.last_funding_ts = period_key
                 if funding_rate < 0:
                     self.state.n_negative_payments += 1
                     now = self._now()

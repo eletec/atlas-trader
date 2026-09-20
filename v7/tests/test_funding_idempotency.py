@@ -14,7 +14,7 @@ live seed provided 21, so live silently ran without a filter the backtest applie
 from __future__ import annotations
 
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -63,102 +63,116 @@ def open_position(node: FundingCarryNode) -> None:
 INPUTS = {"symbol": "BTC/USDT", "spot_price": 100.0, "perp_price": 100.0,
           "funding_rate": 0.0002}
 
+S08 = "2026-09-20T08:00:00+00:00"
+S16 = "2026-09-20T16:00:00+00:00"
 
-class TestFundingPeriodKey:
-    def test_is_none_in_a_backtest(self):
-        """One row per period by construction — nothing to guard."""
+
+def ms(iso: str) -> int:
+    return int(datetime.fromisoformat(iso).timestamp() * 1000)
+
+
+class TestSettlementTime:
+    def test_none_in_a_backtest(self):
+        """One row per period by construction — nothing to deduplicate."""
         node = FundingCarryNode(node_id="t_bt", symbol="BTC/USDT", capital=1000.0,
                                 params={"_backtest": True})
-        assert node._funding_period_key() is None
+        assert node._settlement_ms(S08) is None
 
-    def test_floors_onto_the_settlement_boundary(self, monkeypatch):
-        node = live_node(monkeypatch)
-        for hour, minute, expected in (
-            (9, 0, "2026-09-20T08:00:00"),
-            (10, 30, "2026-09-20T08:00:00"),
-            (8, 0, "2026-09-20T08:00:00"),
-            (16, 0, "2026-09-20T16:00:00"),
-            (17, 45, "2026-09-20T16:00:00"),
-            (0, 5, "2026-09-20T00:00:00"),
-        ):
-            node._sim_now = datetime(2026, 9, 20, hour, minute, 0)
-            assert node._funding_period_key() == expected
+    def test_there_is_no_clock_fallback(self, monkeypatch):
+        """A missing settlement must never be invented from the wall clock.
 
-    def test_interval_is_configurable(self, monkeypatch):
-        """4h-funding contracts settle twice as often."""
-        node = FundingCarryNode(node_id="t4", symbol="BTC/USDT", capital=1000.0,
-                                params={"_backtest": True,
-                                        "funding_interval_hours": 4})
-        monkeypatch.setattr(node, "_is_backtest", lambda: False)
-        node._sim_now = datetime(2026, 9, 20, 10, 30, 0)
-        assert node._funding_period_key() == "2026-09-20T08:00:00"
-
-    def test_a_real_settlement_timestamp_wins_over_the_clock(self, monkeypatch):
-        """The exchange's own period boundary is authoritative.
-
-        It is correct for 4h and 8h contracts alike, and it cannot be shifted by a
-        cycle that runs early, late, or after a restart.
+        The previous version floored the clock onto an 8h boundary when the caller
+        gave no timestamp, which turned a failed fetch into "this period is
+        booked" — and the real settlement was then never counted.
         """
         node = live_node(monkeypatch)
         node._sim_now = datetime(2026, 9, 20, 10, 30, 0)
-        assert (node._funding_period_key("2026-09-20T08:00:00+00:00")
-                == "2026-09-20T08:00:00")
-        # a 4h contract settles at 08:00 AND 12:00; flooring the clock would merge
-        # the two into one bucket and lose a payment
-        assert (node._funding_period_key("2026-09-20T12:00:00+00:00")
-                == "2026-09-20T12:00:00")
+        assert node._settlement_ms(None) is None
+        assert node._settlement_ms("") is None
+        assert node._settlement_ms("not-a-timestamp") is None
 
-    def test_a_malformed_settlement_falls_back_to_the_clock(self, monkeypatch):
+    def test_real_timestamps_become_milliseconds(self, monkeypatch):
         node = live_node(monkeypatch)
-        node._sim_now = datetime(2026, 9, 20, 10, 30, 0)
-        assert node._funding_period_key("not-a-timestamp") == "2026-09-20T08:00:00"
+        assert node._settlement_ms(S08) == ms(S08)
 
-    def test_a_reported_settlement_books_under_its_own_timestamp(self, monkeypatch):
+    def test_a_four_hour_contract_is_not_merged_with_its_neighbour(self, monkeypatch):
+        """4h contracts settle six times a day; a floored clock would collide."""
         node = live_node(monkeypatch)
-        open_position(node)
-        node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 0, 0),
-                  "funding_ts": "2026-09-20T08:00:00+00:00"})
-        assert node.state.last_funding_ts == "2026-09-20T08:00:00"
+        assert node._settlement_ms("2026-09-20T12:00:00+00:00") > node._settlement_ms(S08)
 
 
-class TestOneBookingPerPeriod:
-    def test_two_cycles_in_one_period_book_one_payment(self, monkeypatch):
+class TestOneBookingPerSettlement:
+    def test_two_cycles_on_one_settlement_book_one_payment(self, monkeypatch):
         node = live_node(monkeypatch)
         open_position(node)
+        run = {**INPUTS, "funding_ts": S08}
 
-        node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 0, 0)})
+        node.run({**run, "now": datetime(2026, 9, 20, 9, 0, 0)})
         assert node.state.n_payments == 1
         booked = node.state.total_funding_received
+        assert node.state.last_funding_ts_ms == ms(S08)
 
         # a manual re-run, or the startup cycle after a restart
-        node.run({**INPUTS, "now": datetime(2026, 9, 20, 10, 30, 0)})
+        node.run({**run, "now": datetime(2026, 9, 20, 10, 30, 0)})
         assert node.state.n_payments == 1, "the same settlement was booked twice"
         assert node.state.total_funding_received == pytest.approx(booked)
 
-        # the next settlement is a new period and must be booked
-        node.run({**INPUTS, "now": datetime(2026, 9, 20, 17, 0, 0)})
+    def test_the_next_settlement_is_booked(self, monkeypatch):
+        node = live_node(monkeypatch)
+        open_position(node)
+        node.run({**INPUTS, "funding_ts": S08, "now": datetime(2026, 9, 20, 9, 0, 0)})
+        node.run({**INPUTS, "funding_ts": S16, "now": datetime(2026, 9, 20, 17, 0, 0)})
         assert node.state.n_payments == 2
-        assert node.state.total_funding_received == pytest.approx(booked * 2)
+
+    def test_a_settlement_before_the_entry_is_not_credited(self, monkeypatch):
+        """The reason this changed at all. `fetch_funding_rates` returns
+        `lastFundingRate` paired with `nextFundingTime`, so the 08:00 payment could
+        be credited to a position opened at 08:05 — the book was not standing when
+        that payment was made."""
+        node = live_node(monkeypatch)
+        open_position(node)
+        node.state.entry_time = "2026-09-20T08:05:00+00:00"
+        node.run({**INPUTS, "funding_ts": S08, "now": datetime(2026, 9, 20, 9, 0, 0)})
+        assert node.state.n_payments == 0
+        assert node.state.total_funding_received == 0.0
+
+    def test_a_settlement_after_the_entry_is_credited(self, monkeypatch):
+        node = live_node(monkeypatch)
+        open_position(node)
+        node.state.entry_time = "2026-09-20T08:05:00+00:00"
+        node.run({**INPUTS, "funding_ts": S16, "now": datetime(2026, 9, 20, 17, 0, 0)})
+        assert node.state.n_payments == 1
 
     def test_the_skipped_cycle_still_reports_holding(self, monkeypatch):
         node = live_node(monkeypatch)
         open_position(node)
-        node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 0, 0)})
-        r = node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 30, 0)})
+        node.run({**INPUTS, "funding_ts": S08, "now": datetime(2026, 9, 20, 9, 0, 0)})
+        r = node.run({**INPUTS, "funding_ts": S08,
+                      "now": datetime(2026, 9, 20, 9, 30, 0)})
         assert r["signal"] == "flat"
         assert r["position_open"] is True
         assert "already booked" in r["reason"]
 
+    def test_the_rolling_window_does_not_repeat_a_settlement(self, monkeypatch):
+        """The history is appended before the booking decision, so a replayed
+        period used to duplicate inside the 7-day MA and the percentile filter."""
+        node = live_node(monkeypatch)
+        open_position(node)
+        run = {**INPUTS, "funding_ts": S08}
+        node.run({**run, "now": datetime(2026, 9, 20, 9, 0, 0)})
+        length = len(node.state.funding_history)
+        node.run({**run, "now": datetime(2026, 9, 20, 10, 0, 0)})
+        assert len(node.state.funding_history) == length
+        assert len(node._funding_rate_history) == length
+
     def test_the_marker_survives_a_restart(self, monkeypatch):
         node = live_node(monkeypatch)
         open_position(node)
-        node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 0, 0)})
-        assert node.state.last_funding_ts == "2026-09-20T08:00:00"
+        node.run({**INPUTS, "funding_ts": S08, "now": datetime(2026, 9, 20, 9, 0, 0)})
 
-        # the cycle rebuilds the node from the persisted context_json
         restarted = FundingCarryState(symbol="BTC/USDT")
         assert restarted.load_position_dict(node.state.to_dict()) is True
-        assert restarted.last_funding_ts == "2026-09-20T08:00:00"
+        assert restarted.last_funding_ts_ms == ms(S08)
 
     def test_a_backtest_books_every_bar(self, monkeypatch):
         """The guard must not touch the simulated path: one row, one payment."""

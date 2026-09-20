@@ -155,26 +155,34 @@ closed P&L was −$4.25, not −$22.69.
 
 **This is the most important section of this README.**
 
-All the figures in this section were produced on 20 Sep 2026, **after** the
-simulated-clock fix described in §11. Before that fix the backtester never told
-the strategy what date it was simulating, so no time-based exit could ever fire
-and every published figure was inflated by funding collected on positions that
-were never closed. The numbers below replace them.
+All the figures in this section were produced on 20 Sep 2026, **after** three
+classes of defect were fixed: the simulated clock (§11), the accounting model, and
+the data pipeline. Before that, the backtester never told the strategy what date it
+was simulating (so no time-based exit could ever fire), the node and the backtest
+each ran their own fee and funding maths (so funding was counted unsigned and the
+basis was dropped on close), and the history was truncated to 333 days and joined
+on a price the strategy could not have seen yet. The numbers below replace them.
+
+If you are comparing this section against an earlier copy of this README, the
+**conclusions are unchanged** — the horizon of this work is what the market pays,
+and fixing the engine did not create an edge.
 
 ### A 1-year backtest on the 6 active assets
 
-`backtest_v7_node.py --symbol ACTIVE --days 365`, real spot/perp/funding data:
+`backtest_v7_node.py --symbol` over the active universe, `--days 365`, 8h candles,
+full paginated funding history, real spot/perp/funding data:
 
 ```
-Portfolio: 6 assets | 2 traded, 4 never entered
+Portfolio: 6 assets | 2 traded, 4 never entered | capital $12,000
 
-  TRADING (the strategy) : $   -0.89   (-0.01%)
-  Staking (idle capital) : $  269.35   (+2.24%)   <- simulated, NOT trading
-  Mean Sharpe (traded)   : -1.18 | Capital utilisation: 1.4%
+  TRADING (the strategy) : $   -2.52   (-0.02%)
+  Staking (idle capital) : $  284.55   (+2.37%)   <- simulated, NOT trading
+  Mean Sharpe (traded)   : -1.30 | Worst max drawdown: -0.07% | Fees: $2.88
 ```
 
-Four of the six never entered at all. The two that did (XRP, BNB) traded **once
-each** over the full year and lost, in both cases, almost exactly their own fees.
+Four of the six never entered at all. The two that did (XRP, BNB) traded once and
+twice respectively over the full year and lost, in every case, almost exactly
+their own fees.
 
 ### Why: the entry gate sits above the market
 
@@ -247,15 +255,15 @@ step 3, parameters frozen, causal universe:
 
 ```
 Traded windows  : 5/10 (50% coverage)
-OOS median      : +0.036%/quarter  ~ +0.15%/yr
-OOS worst/best  : -0.008% / +0.346%
-Total Trading   : $56.47 over 3 years ($12,000 of capital)
-Total Staking   : $624.80                      <- 11x the trading
+OOS median      : +0.022%/quarter  ~ +0.09%/yr
+OOS worst/best  : -0.015% / +0.376%
+Total Trading   : $54.99 over 3 years ($12,000 of capital)
+Total Staking   : $629.50                      <- 11x the trading
 
-BULL  : 2 windows, median +0.225%
-RANGE : 3 windows, median -0.007%
+BULL  : 2 windows, median +0.233%
+RANGE : 3 windows, median -0.015%
 
-Verdict: Paper trading only — OOS return +0.15%/yr below the hurdle (5%/yr)
+Verdict: Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)
 ```
 
 Two things a reader should not skim past:
@@ -263,11 +271,11 @@ Two things a reader should not skim past:
 - **Half the windows never traded at all.** A window with zero trades proves
   nothing about the edge — it is not evidence of profitability, and the tool now
   reports it as 50% coverage rather than folding it into a "% positive" figure.
-- **+0.15%/yr is ~33x below the hurdle.** The tool's own verdict logic reports
-  `Paper trading only — OOS return +0.15%/yr below the hurdle (5%/yr)` instead of
+- **+0.09%/yr is ~55x below the hurdle.** The tool's own verdict logic reports
+  `Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)` instead of
   the "GO for real capital" it used to print for any positive median.
 
-Only 2 of 10 windows fell in a BULL regime, and those carry the return (+0.225%
+Only 2 of 10 windows fell in a BULL regime, and those carry the return (+0.233%
 per quarter median). The strategy is a **regime bet**, not an all-weather one —
 and even the bull quarters annualise to well under the 5% hurdle.
 
@@ -484,12 +492,17 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 - `capital_utilisation` is mislabelled: it counts periods where the NAV moved
   (`abs() > 1e-10`), not time spent in a position. An asset held 9% of the year
   reports 2.3% because its funding is zero on most periods.
-- **The funding history is truncated.** `fetch_funding_rate_history(limit=1000)`
-  returns the *first* 1000 records from `since` — 333 days, not 365 — so a
-  "--days 365" run silently stops about a month early. Paginating is a one-line
-  fix that has not been applied.
-- The no-trade diagnostic prints the funding of the **first** period of the
-  series, not the maximum reached.
+- The no-trade diagnostic prints the funding of the period that produced the last
+  rejection, not the maximum reached over the series.
+- The API has no authentication. It is bound to loopback (`127.0.0.1:8000`, with
+  nginx proxying `/api/`), so it is not reachable from outside the host — but
+  anything that can already reach the host can call `POST /carry/run`,
+  `POST /carry/reload-config` and `POST /dag/reset-kill-switch`. Add auth before
+  putting it anywhere else.
+- The exit zones scale with `max_hold_days`, but the *entry* gate's DERISK test
+  uses the instantaneous funding rate of one period rather than its 7-day mean,
+  so a single noisy period can close a position. The entry side already uses the
+  mean; the exit should too.
 - OKX publishes only ~3 months of public funding history, so no venue effect can
   be established against it without forward recording. A Binance↔OKX arbitrage
   scanner in this repository cannot be backtested.
@@ -526,6 +539,14 @@ Kept because the failure modes are instructive:
 | 20 Sep 2026 | **The backtest had no clock.** `node.run()` received symbol/spot/funding/perp but no timestamp, while every time-based decision read `datetime.now()`. A 365-day backtest runs in ~5 real seconds, so `days_held` stayed at 0 | ZONE CLOSE (>60 d), ZONE DERISK (>30 d), the 72 h negative-funding timer and the anti-churn cooldown **could never fire**. Only the −5% basis stop could close anything. 14 of 18 positions were still open at day 343, and the reported "trading P&L" was unrealised funding on positions that were never closed: +$29.74 became **+$0.83** once exits worked, and a live Sharpe of +4.49 became **−0.33** | `_now()` in the node — returns the caller's simulated timestamp when one is injected, the wall clock otherwise. Injected by both backtesters. Proven by a deterministic harness that opens at T0 and advances in 5/20/35/65/90-day steps |
 | 20 Sep 2026 | The backtest read the production database: `_last_close_age_hours()` and the anti-duplicate check both queried live `v4_trades` | A backtest could inherit a real cooldown, or be forced to `position_open=True` on an asset the live system happened to hold | Both guarded by `params["_backtest"]` |
 | 20 Sep 2026 | Universe scan reported `BANK/USDT` at +44%/yr, driven by a perp/spot ratio reaching **3.29** | The gain came entirely from the basis term (+211%/yr), not funding, and the result swung from +218% to +11% between neighbouring parameters — one price dislocation, not an edge | Asset discarded. Lesson recorded: daily-close basis is untrustworthy on thin alts |
+| 20 Sep 2026 | **Funding was only ever counted when positive.** The node accrued `funding_rate` inside an `elif funding_rate >= 0` branch; a negative period started the 72 h timer and added nothing | `trading_pnl = total_funding − total_fees` was systematically optimistic: the strategy could be *paying* funding and the books still showed a receipt | Funding is now signed. A negative period is a payment the book makes |
+| 20 Sep 2026 | **The basis was never realised.** On close the node set `position_open = False` and `unrealized_pnl_pct` fell back to 0 without converting to cash | The entire P&L leg that a market-neutral book exists for — the spot/perp spread reconverging — was dropped at every close, in the live path as well as the backtest | `_realize_close()` realises the basis and charges the exit legs, **idempotently** (a `closed` flag), so a double call cannot double-count |
+| 20 Sep 2026 | **Three exit branches closed the position before it could be realised.** The basis stop-loss and the two economic stops each set `position_open = False`, then the realise block tested `and self.state.position_open` | Every trade closed by a stop reported `realized = $0.00`. The accounting was right and unreachable | Those branches now only raise the signal; one block owns the close |
+| 20 Sep 2026 | **The node and the backtest each had their own accounting.** The node charged entry legs on open; the backtest charged 24 bps per side on top and saturated funding with `max()` | Fees counted twice, funding unsigned, and no two reports agreed. A 90-day run decomposed to a residual that grew with the trade count | The node owns the accounting and consumers accumulate it. Verified: `trading_pnl == funding + basis_pnl − fees` exactly |
+| 20 Sep 2026 | **The backtest read prices it could not have had.** Daily candles (index 00:00, `close` at 23:59) were forward-filled onto the 08:00 and 16:00 funding stamps | A decision taken at 08:00 read that day's closing price — 16 hours of look-ahead in every entry and every mark | 8h candles matching the funding period, index shifted one bar so a stamp only sees a closed bar; warm-up stamps with no known price are dropped rather than back-filled |
+| 20 Sep 2026 | **The funding history was truncated to 333 days.** One call with `limit=1000` at three periods per day covers 333 days; a 3-year run fetched the same three years as a 1-year run | Every "3-year" walk-forward was a 333-day walk-forward repeated over 10 windows, and the report said otherwise | Paginated. The 3-year walk-forward now loads **3,915 periods per asset** (2023-02-23 → 2026-09-20) |
+| 20 Sep 2026 | **`max_hold_days` set no holding period.** The exits were hardcoded at 14/30/60 days, so the parameter only affected the entry gate's fee amortisation | A grid search over the holding period varied the gate and never the exit it was named after. Setting it to 5 still held for 60 days | Zones scale from `max_hold_days`: forced exit at `max_hold_days`, derisk at half, review at a quarter |
+| 20 Sep 2026 | **Walk-forward Sharpe and drawdown were literals.** `portfolio_sharpe=0.0, max_dd_pct=0.0` | Every window of every walk-forward report showed a Sharpe of zero and a drawdown of zero | Computed from the window's own equity curve |
 
 ---
 

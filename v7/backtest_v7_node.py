@@ -55,6 +55,18 @@ def _perp_symbol(symbol: str) -> str:
     return f"{base_perp}/USDT:USDT"
 
 
+def _row_timestamp(row) -> int:
+    """The ms timestamp of a history row, whichever shape the endpoint returns.
+
+    OHLCV rows are arrays ([ts, open, high, low, close, volume]); funding rows are
+    dicts ({timestamp, fundingRate}). Reading `row[0]` on a dict raises KeyError: 0,
+    which is how the funding pagination silently returned nothing on the first try.
+    """
+    if isinstance(row, dict):
+        return int(row.get("timestamp") or row.get("fundingTime") or 0)
+    return int(row[0])
+
+
 def _paginate(fetch_page, since: int, limit: int = 1000, max_rows: int = 40_000) -> list:
     """Walk a paginated ccxt history call forward until it runs dry.
 
@@ -71,7 +83,10 @@ def _paginate(fetch_page, since: int, limit: int = 1000, max_rows: int = 40_000)
         rows.extend(batch)
         if len(batch) < limit:
             break
-        cursor = batch[-1][0] + 1
+        next_cursor = _row_timestamp(batch[-1]) + 1
+        if next_cursor <= cursor:  # no forward progress: stop rather than loop
+            break
+        cursor = next_cursor
     return rows
 
 

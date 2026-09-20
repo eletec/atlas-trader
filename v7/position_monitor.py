@@ -8,7 +8,7 @@ Independent thread alongside the carry cycle. Every 60 seconds:
   4. Apply the time-stop (max_hold_days elapsed — NON-carry positions;
      carry positions use the 30/60/90-day economic zones)
   5. Apply the per-position max loss (max_loss_pct, unifies SL + time-stop)
-  6. Global kill-switch: close everything when total P&L < -max_portfolio_dd_pct
+  6. Global kill-switch: close everything when the portfolio P&L breaches -20%
   7. Close the positions that reached their exit condition
 """
 
@@ -30,6 +30,22 @@ MAX_LOSS_PCT_DEFAULT = -0.05     # max loss per position (-5%)
 PORTFOLIO_DD_PCT_DEFAULT = -0.20 # kill-switch global (-20%)
 TOTAL_CAPITAL_DEFAULT = 14_000   # fallback when carry_assets.yaml cannot be read
 PAYBACK_DAYS_MAX_DEFAULT = 30    # carry economic exit when payback > 30d
+
+
+def portfolio_dd_breached(total_pnl_pct: float, max_portfolio_dd_pct: float) -> bool:
+    """True when the portfolio P&L has breached the drawdown kill-switch level.
+
+    ``max_portfolio_dd_pct`` is negative by convention (-0.20 = -20%), like
+    MAX_LOSS_PCT_DEFAULT above. Its magnitude is used so the comparison stays
+    correct whichever sign the constant carries.
+
+    Regression note: the earlier version negated the already-negative constant
+    (`total_pnl_pct < -(max_portfolio_dd_pct * 100)`), which evaluated to
+    "P&L < +20%" — true for every possible portfolio state. The first monitor
+    pass with any open position therefore closed the whole book and latched the
+    kill-switch permanently. See v7/tests/test_position_monitor.py.
+    """
+    return total_pnl_pct < -abs(max_portfolio_dd_pct) * 100
 
 
 class PositionMonitor:
@@ -129,7 +145,7 @@ class PositionMonitor:
         """Check every open position and close those that must be closed.
 
         Order of the checks:
-          1. Global kill-switch (total P&L < -max_portfolio_dd_pct)
+          1. Global kill-switch (portfolio P&L below the drawdown limit, -20%)
           2. Per-position max loss (unrealized P&L < max_loss_pct)
           3. Price SL/TP (except carry)
           4. Time-stop
@@ -224,7 +240,7 @@ class PositionMonitor:
         market_stress = abs(total_unrealized) > total_capital * 0.10
         
         # Tier 3: Portfolio drawdown (-20%)
-        portfolio_dd = total_pnl_pct < -(max_portfolio_dd_pct * 100)
+        portfolio_dd = portfolio_dd_breached(total_pnl_pct, max_portfolio_dd_pct)
         
         # Tier 4: correlated basis losses (3 audits, 2026-07-20)
         # The old '3 or more losing positions' rule fired on a mere

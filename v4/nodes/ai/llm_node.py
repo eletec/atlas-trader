@@ -1,8 +1,8 @@
 """
-v4/nodes/ai/llm_node.py — Nœud LLMNode
+v4/nodes/ai/llm_node.py — LLMNode
 
-Nœud IA paramétrable — envoie un prompt à Ollama (ou autre backend)
-et retourne la réponse. Inputs arbitraires injectés dans le prompt
+Configurable AI node — sends a prompt to Ollama (or another backend)
+and returns the answer. Arbitrary inputs injected into the prompt
 via {input_key} placeholders.
 """
 from __future__ import annotations
@@ -16,26 +16,26 @@ from v4.core.node import Node
 
 class LLMNode(Node):
     """
-    Nœud LLM générique. Le prompt utilise des {placeholders} qui sont
-    remplacés par les valeurs des inputs au moment de l'exécution.
+    Generic LLM node. The prompt uses {placeholders} which are
+    replaced by the input values at execution time.
 
-    Inputs  : arbitraires (tout ce qui est connecté est injecté dans le prompt)
+    Inputs  : arbitrary (everything connected is injected into the prompt)
 
     Outputs :
-        response     (str — réponse brute du LLM)
-        parsed       (dict/Any — tentative de parse JSON de la réponse)
-        tokens_used  (int — nombre de tokens consommés)
-        model        (str — modèle utilisé)
+        response     (str — raw LLM answer)
+        parsed       (dict/Any — attempt to parse the answer as JSON)
+        tokens_used  (int — number of tokens consumed)
+        model        (str — model used)
         duration_ms  (float)
 
     Params :
-        system_prompt  : str  — prompt système (défaut: "You are a trading assistant.")
-        user_prompt    : str  — prompt utilisateur avec {placeholders}
-        model          : str  — modèle Ollama (défaut: "phi4:latest")
-        temperature    : float — température (défaut 0.3)
-        max_tokens     : int  — max tokens (défaut 512)
-        ollama_url     : str  — URL du serveur Ollama (défaut: http://atlas-v4-ollama:11434)
-        timeout_s      : int  — timeout en secondes (défaut 60)
+        system_prompt  : str  — system prompt (default: "You are a trading assistant.")
+        user_prompt    : str  — user prompt with {placeholders}
+        model          : str  — Ollama model (default: "phi4:latest")
+        temperature    : float — temperature (default 0.3)
+        max_tokens     : int  — max tokens (default 512)
+        ollama_url     : str  — Ollama server URL (default: http://atlas-v4-ollama:11434)
+        timeout_s      : int  — timeout in seconds (default 60)
     """
 
     @property
@@ -93,7 +93,7 @@ class LLMNode(Node):
                             self.node_id, cached is not None,
                             "error" in (cached or {}))
                 return {
-                    "response": "⏳ Analyse en cours...",
+                    "response": "⏳ Analysis in progress...",
                     "parsed": {"status": "pending", "message": "The AI is analysing the market; result on the next cycle."},
                     "tokens_used": 0,
                     "model": self.params.get("model", "?"),
@@ -142,7 +142,7 @@ class LLMNode(Node):
         try:
             # Avoid a clash when 'inputs' is already a key in the dict
             _fmt_inputs = dict(inputs)
-            _fmt_inputs.pop("inputs", None)  # on le passe explicitement
+            _fmt_inputs.pop("inputs", None)  # passed explicitly
             formatted_prompt = formatted_prompt.format(**_fmt_inputs, inputs=json.dumps(inputs, default=str))
         except (KeyError, ValueError):
             # Replace every missing placeholder with 'N/A' instead of leaving {key}
@@ -283,7 +283,7 @@ class LLMNode(Node):
         tokens_eval = 0
         tokens_prompt = 0
 
-        # Tentative de parse JSON
+        # Attempt to parse JSON
         parsed = None
         raw = response.strip()
         # Extract the first JSON block (between ```json ... ``` or { ... })

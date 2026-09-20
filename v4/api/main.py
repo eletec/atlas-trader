@@ -1,13 +1,13 @@
 """
-v4/api/main.py — Point d'entrée FastAPI pour Atlas V4.
+v4/api/main.py — FastAPI entry point for Atlas V4.
 
-Routes :
-  POST /dag/run           — exécute un DAG une fois
-  POST /dag/schedule      — démarre un DAG en boucle (async)
-  DELETE /dag/{dag_id}    — arrête un DAG schedulé
-  GET  /dag/status        — statut de tous les DAGs actifs
-  GET  /dag/{dag_id}/status — statut d'un DAG spécifique
-  GET  /prices/stream     — flux SSE des prix en temps réel
+Routes:
+  POST /dag/run           — runs a DAG once
+  POST /dag/schedule      — starts a DAG in a loop (async)
+  DELETE /dag/{dag_id}    — stops a scheduled DAG
+  GET  /dag/status        — status of every active DAG
+  GET  /dag/{dag_id}/status — status of a specific DAG
+  GET  /prices/stream     — SSE stream of real-time prices
   GET  /health            — healthcheck
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ logging.basicConfig(
 app = FastAPI(
     title="Atlas Trader V4",
     version="4.0.0",
-    description="API de trading algorithmique — moteur DAG + plugins IA",
+    description="Algorithmic trading API — DAG engine + AI plugins",
 )
 
 ## CORS: allows the Streamlit dashboard in local/dev
@@ -43,7 +43,7 @@ app.add_middleware(
         "http://192.168.1.80:8502",
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],  # restreint : pas de PUT/PATCH/OPTIONS inutiles
+    allow_methods=["GET", "POST", "DELETE"],  # restricted: no needless PUT/PATCH/OPTIONS
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
@@ -57,10 +57,10 @@ app.include_router(live_pnl_router, prefix="/v7", tags=["v7"])
 
 @app.on_event("startup")
 async def _auto_schedule_carry():
-    """Démarre le cycle Funding Carry V7 au boot (DeepSeek/GPT audit, 25/07/2026).
+    """Start the V7 Funding Carry cycle at boot (DeepSeek/GPT audit, 25/07/2026).
     
-    Remplace l'ancien système de 29 DAGs par un script unique.
-    Le PositionMonitor et les tickers prix restent actifs.
+    Replaces the old 29-DAG system with a single script.
+    The PositionMonitor and the price tickers stay active.
     """
     import threading
     logger = logging.getLogger("v4.api.main")
@@ -71,7 +71,7 @@ async def _auto_schedule_carry():
         init_db()
         logger.info("Database initialized")
     except Exception as exc:
-        logger.warning("DB init failed (non-bloquant): %s", exc)
+        logger.warning("DB init failed (non-blocking): %s", exc)
     
     # 1) Carry cycle - background thread every 8h
     def _carry_loop():
@@ -104,7 +104,7 @@ async def _auto_schedule_carry():
     except Exception as exc:
         logger.warning(f"Price tickers failed to start: {exc}")
 
-    # 3) Position Monitor — surveillance continue des SL/TP/time-stop
+    # 3) Position Monitor — continuous SL/TP/time-stop monitoring
     try:
         from v7.position_monitor import start_monitor
         start_monitor()
@@ -120,11 +120,11 @@ async def health() -> dict:
 
 @app.post("/carry/run")
 async def carry_run() -> dict:
-    """Déclenche un cycle Funding Carry immédiatement (non bloquant).
+    """Trigger a Funding Carry cycle immediately (non-blocking).
 
-    Le cycle tourne dans un thread daemon ; son avancement est visible via
-    `/dag/logs` (onglet Live Monitor du dashboard). L'anti-concurrence
-    (flock) empêche tout chevauchement avec le cycle périodique de 8h.
+    The cycle runs in a daemon thread; its progress is visible via
+    `/dag/logs` (Live Monitor tab of the dashboard). The anti-concurrency
+    flock prevents any overlap with the 8h periodic cycle.
     """
     import threading
 
@@ -142,12 +142,12 @@ async def carry_run() -> dict:
 
 @app.post("/carry/reload-config")
 async def carry_reload_config() -> dict:
-    """Recharge carry_assets.yaml côté API.
+    """Reload carry_assets.yaml on the API side.
 
-    Le dashboard écrit ce fichier, mais le process API en garde une copie en
-    cache : activer/désactiver un actif n'avait donc aucun effet avant un
-    redémarrage du container. Cet endpoint vide le cache, remonte la nouvelle
-    liste d'actifs et démarre les tickers prix des actifs ajoutés.
+    The dashboard writes this file, but the API process keeps a cached copy:
+    enabling/disabling an asset therefore had no effect until the container
+    was restarted. This endpoint clears the cache, reloads the new asset
+    list and starts the price tickers for the added assets.
     """
     from v7.core.asset_config import reload_config, get_active_assets
 

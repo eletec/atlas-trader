@@ -1,9 +1,9 @@
 """
-v4/nodes/quant/asset_def.py — Nœud AssetDef
+v4/nodes/quant/asset_def.py — AssetDef node
 
-Super-paramètre d'un canvas : définit un actif et expose tous ses champs
-en ports de sortie. Les nœuds en aval (LoadMultiTF, RiskATR, AssetTemperature...)
-se branchent sur ces ports — changer l'actif reconfigure tout le canvas.
+Super-parameter of a canvas: defines an asset and exposes all its fields
+as output ports. The downstream nodes (LoadMultiTF, RiskATR, AssetTemperature...)
+connect to these ports — changing the asset reconfigures the whole canvas.
 """
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from v4.core.node import Node
 
 class AssetDef(Node):
     """
-    Nœud source qui expose la définition complète d'un actif.
+    Source node that exposes the full definition of an asset.
 
-    Pas d'inputs — nœud racine du canvas.
+    No inputs — root node of the canvas.
 
     Outputs :
         symbol    (str)
@@ -26,7 +26,7 @@ class AssetDef(Node):
         fee_rate  (float)
         keywords  (list[str])
 
-    Params (tous les champs du registre assets.json) :
+    Params (all the fields of the assets.json registry):
         symbol        : "BTC/USDT"
         exchange      : "binance"
         market_type   : "futures" | "spot"
@@ -45,7 +45,7 @@ class AssetDef(Node):
 
     @staticmethod
     def input_schema() -> dict[str, str]:
-        return {}  # nœud racine — pas d'inputs
+        return {}  # root node — no inputs
 
     @staticmethod
     def output_schema() -> dict[str, str]:

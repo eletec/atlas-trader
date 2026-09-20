@@ -1,11 +1,11 @@
 """
-v4/core/async_tasks.py — Dispatcher de tâches IA en arrière-plan.
+v4/core/async_tasks.py — Background dispatcher for AI tasks.
 
-Permet aux nœuds IA (LLMNode, DebateNode) de lancer leurs appels
-en mode fire-and-forget. Le cycle DAG n'attend pas la réponse —
-le résultat est stocké et disponible au cycle suivant.
+Lets the AI nodes (LLMNode, DebateNode) start their calls
+in fire-and-forget mode. The DAG cycle does not wait for the answer —
+the result is stored and available on the next cycle.
 
-Thread-safe. Utilise ThreadPoolExecutor.
+Thread-safe. Uses a ThreadPoolExecutor.
 """
 from __future__ import annotations
 

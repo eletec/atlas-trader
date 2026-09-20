@@ -1,8 +1,8 @@
 """
-v4/nodes/quant/output.py — Nœuds PaperTrader + AlertOnly + RecordDecision
+v4/nodes/quant/output.py — PaperTrader + AlertOnly + RecordDecision nodes
 
-Wrappers V4 des nœuds de sortie.
-PaperTrader délègue à storage.paper_trader (V3) sans le modifier.
+V4 wrappers for the output nodes.
+PaperTrader delegates to storage.paper_trader (V3) without modifying it.
 """
 from __future__ import annotations
 
@@ -16,19 +16,19 @@ logger = logging.getLogger("v4.nodes.quant.output")
 
 class PaperTrader(Node):
     """
-    Exécute la décision en paper trading (testnet ou DB locale).
+    Executes the decision in paper trading (testnet or local DB).
 
     Inputs  :
-        decision  (dict  — sortie de RiskATR)
-        symbol    (str   — optionnel, surchargé par params)
+        decision  (dict  — output of RiskATR)
+        symbol    (str   — optional, overridden by params)
 
     Outputs :
         trade_result (dict — {status, trade_id, pnl_usd})
 
     Params :
-        symbol    : str   — paire ex. "BTC/USDT"
-        capital   : float — capital total en USD
-        testnet   : bool  — toujours True par défaut (invariant de sécurité)
+        symbol    : str   — pair e.g. "BTC/USDT"
+        capital   : float — total capital in USD
+        testnet   : bool  — always True by default (safety invariant)
     """
 
     @property
@@ -45,7 +45,7 @@ class PaperTrader(Node):
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         # testnet is an invariant - never overridden to False from the UI
-        testnet = True  # noqa: non configurable
+        testnet = True  # noqa: not configurable
 
         decision: dict = inputs.get("decision", {})
         symbol: str    = inputs.get("symbol") or self.params.get("symbol", "BTC/USDT")
@@ -54,7 +54,7 @@ class PaperTrader(Node):
         if action == "flat":
             return {"trade_result": {"status": "flat", "symbol": symbol}}
 
-        # ── Actions de fermeture (close_carry, close, close_long, close_short) ──
+        # ── Close actions (close_carry, close, close_long, close_short) ──
         if action in ("close_carry", "close", "close_long", "close_short"):
             try:
                 from storage.paper_trader import get_open_positions, close_position
@@ -112,7 +112,7 @@ class PaperTrader(Node):
                     return {"trade_result": {"status": "skipped", "symbol": symbol,
                                               "reason": f"max_positions={max_positions} reached ({open_count} open)"}}
             except Exception:
-                pass  # si la DB n'est pas dispo, on continue sans limite
+                pass  # when the DB is unavailable, continue without a limit
 
         entry_price = decision.get("entry_price", 0)
         stop_loss   = decision.get("stop_loss", 0)
@@ -126,7 +126,7 @@ class PaperTrader(Node):
             symbol, action, entry_price, stop_loss, take_profit, size_usd,
         )
 
-        # Persistance en BDD via storage/paper_trader.py
+        # Persistence in the DB via storage/paper_trader.py
         dag_id = self.params.get("dag_id", "demo_v4")
         try:
             from storage.paper_trader import persist_trade
@@ -152,14 +152,14 @@ class PaperTrader(Node):
 
 class AlertOnly(Node):
     """
-    Publie une alerte (Telegram / Discord / log) sans exécuter de trade.
+    Publishes an alert (Telegram / Discord / log) without executing a trade.
 
     Inputs  : decision (dict)
-    Outputs : (aucun — nœud terminal)
+    Outputs : (none — terminal node)
 
     Params :
         channel : "log" | "telegram" | "discord"
-        prefix  : str — préfixe du message (ex: "[BTC] ")
+        prefix  : str — message prefix (e.g. "[BTC] ")
     """
 
     @property
@@ -215,15 +215,15 @@ class AlertOnly(Node):
 
 class RecordDecision(Node):
     """
-    Enregistre la décision dans SQLite sans exécuter de trade.
-    Utile pour comparer des stratégies en shadow mode.
+    Records the decision in SQLite without executing a trade.
+    Useful to compare strategies in shadow mode.
 
     Inputs  : decision (dict)
     Params  : 
-        table      (str — nom de la table, défaut "shadow_decisions")
-        db_path    (str — chemin DB)
-        symbol     (str — actif concerné)
-        dag_id     (str — DAG parent)
+        table      (str — table name, default "shadow_decisions")
+        db_path    (str — DB path)
+        symbol     (str — asset concerned)
+        dag_id     (str — parent DAG)
     """
 
     @property

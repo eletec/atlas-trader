@@ -1,8 +1,8 @@
 """
-v4/nodes/quant/signal.py — Nœud SignalLogReg
+v4/nodes/quant/signal.py — SignalLogReg node
 
-Wrapper V4 autour de quant.signal_model.SignalModel + quant.strategy.decide.
-Entraîne le modèle sur l'historique et prédit P(up) sur la dernière barre.
+V4 wrapper around quant.signal_model.SignalModel + quant.strategy.decide.
+Trains the model on the history and predicts P(up) on the last bar.
 """
 from __future__ import annotations
 
@@ -15,24 +15,24 @@ from v4.core.node import Node
 
 class SignalLogReg(Node):
     """
-    Entraîne un LogReg (+ Platt calibration optionnelle) sur l'historique
-    et prédit P(up) sur la dernière barre.
+    Trains a LogReg (+ optional Platt calibration) on the history
+    and predicts P(up) on the last bar.
 
     Inputs  :
-        features_all  (DataFrame — brut + norm concaténé)
+        features_all  (DataFrame — raw + norm concatenated)
         regime        (str — "TREND" | "RANGE" | "PANIC")
 
     Outputs :
         signal        (str  — "long" | "short" | "flat")
-        prob_up       (float — P(hausse) ∈ [0, 1])
-        reason        (str  — raison de la décision)
+        prob_up       (float — P(up) ∈ [0, 1])
+        reason        (str  — reason for the decision)
 
     Params :
-        calibrate       : bool  — Platt calibration (défaut True)
-        train_fraction  : float — fraction entraînement (défaut 0.70)
-        horizon_bars    : int   — horizon cible en barres (défaut 48 = 4h à 5m)
-        p_up_threshold  : float — seuil LONG (défaut 0.55)
-        p_dn_threshold  : float — seuil SHORT (défaut 0.45)
+        calibrate       : bool  — Platt calibration (default True)
+        train_fraction  : float — training fraction (default 0.70)
+        horizon_bars    : int   — target horizon in bars (default 48 = 4h at 5m)
+        p_up_threshold  : float — LONG threshold (default 0.55)
+        p_dn_threshold  : float — SHORT threshold (default 0.45)
     """
 
     @property
@@ -81,8 +81,8 @@ class SignalLogReg(Node):
         split = int(len(features_all) * train_fraction)
         train_idx = features_all.index[:split]
 
-        # Cible directionnelle
-        # make_target_direction attend un ohlcv — on reconstruit depuis features_all
+        # Directional target
+        # make_target_direction expects an ohlcv — we rebuild it from features_all
         # when the close column is unavailable we cannot predict
         if "close" not in features_all.columns:
             return {"signal": "flat", "prob_up": 0.5, "reason": "no_close_column"}

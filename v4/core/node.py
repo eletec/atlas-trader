@@ -1,12 +1,12 @@
 """
-v4/core/node.py — Interface de base pour tous les nœuds du DAG V4.
+v4/core/node.py — Base interface for all nodes of the V4 DAG.
 
-Chaque nœud expose deux plans indépendants :
-  - Plan QUANT  : run(inputs) → outputs  (synchrone, toujours actif)
-  - Plan IA     : ai_run(context) → AIOutput  (asynchrone, optionnel, timeout + fallback)
+Each node exposes two independent planes:
+  - QUANT plane : run(inputs) → outputs  (synchronous, always active)
+  - AI plane    : ai_run(context) → AIOutput  (asynchronous, optional, timeout + fallback)
 
-Un nœud ne connaît pas ses voisins — il reçoit des inputs nommés et produit des outputs nommés.
-La résolution des dépendances est gérée par le DAGExecutor.
+A node does not know its neighbours — it receives named inputs and produces named outputs.
+Dependency resolution is handled by the DAGExecutor.
 """
 from __future__ import annotations
 
@@ -52,16 +52,16 @@ class NodeRunResult:
 
 class Node(ABC):
     """
-    Interface de base de tous les nœuds V4.
+    Base interface of all V4 nodes.
 
-    Sous-classer et implémenter :
+    Subclass and implement:
       - input_schema()  : dict {port_name: type_str}
       - output_schema() : dict {port_name: type_str}
-      - run(inputs)     : dict des outputs
+      - run(inputs)     : dict of the outputs
 
     Optionnel :
-      - ai_plugin       : instance AIPlugin branchée sur ce nœud
-      - ai_blend_weight : poids de l'output IA dans le blend final (0.0 = IA ignorée)
+      - ai_plugin       : AIPlugin instance attached to this node
+      - ai_blend_weight : weight of the AI output in the final blend (0.0 = AI ignored)
     """
 
     def __init__(
@@ -95,14 +95,14 @@ class Node(ABC):
     @staticmethod
     @abstractmethod
     def output_schema() -> dict[str, str]:
-        """Port de sortie → type produit. Ex: {'features': 'DataFrame'}."""
+        """Output port → produced type. E.g. {'features': 'DataFrame'}."""
 
     @abstractmethod
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Synchronous execution. Receives the resolved inputs, returns the outputs."""
 
     # ------------------------------------------------------------------
-    # Logique commune (bypass, AI blend, statut)
+    # Shared logic (bypass, AI blend, status)
     # ------------------------------------------------------------------
 
     def execute(self, inputs: dict[str, Any]) -> NodeRunResult:

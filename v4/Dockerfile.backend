@@ -12,13 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY v4/requirements.backend.txt /tmp/
 RUN pip install --no-cache-dir -r /tmp/requirements.backend.txt
 
-# Code source V4 + modules V3 wrappés (montés en volume en dev)
+# V4 source + wrapped V3 modules (mounted as a volume in dev)
 COPY . /app/src
 
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
-# Utiliser malloc système (glibc) au lieu de pymalloc — évite la fragmentation
-# pymalloc garde les arènes allouées (128-256 MB chacune) même vides
+# Use the system allocator (glibc) instead of pymalloc — avoids fragmentation
+# pymalloc keeps allocated arenas (128-256 MB each) even when empty
 ENV PYTHONMALLOC=malloc
 
 EXPOSE 8000

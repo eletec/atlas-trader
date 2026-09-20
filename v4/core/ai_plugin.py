@@ -1,11 +1,11 @@
 """
-v4/core/ai_plugin.py — Interface AIPlugin.
+v4/core/ai_plugin.py — AIPlugin interface.
 
-Un plugin IA se branche sur le port AI_IN d'un nœud et produit un AIOutput.
-Il est toujours optionnel et son résultat est toujours blendable ou ignorable.
+An AI plugin plugs into the AI_IN port of a node and produces an AIOutput.
+It is always optional, and its result can always be blended or ignored.
 
-Règle absolue : timeout + fallback obligatoires.
-Un plugin lent ou down ne bloque jamais le cycle quant.
+Absolute rule: timeout + fallback are mandatory.
+A slow or down plugin never blocks the quant cycle.
 """
 from __future__ import annotations
 
@@ -33,13 +33,13 @@ class AIOutput:
 
 class AIPlugin(ABC):
     """
-    Interface de base pour tous les plugins IA.
+    Base interface for all AI plugins.
 
-    Implémenter :
+    Implement:
       - run(context) → AIOutput
 
-    Le timeout et le fallback sont gérés par la classe de base via run_with_timeout().
-    Ne pas overrider run_with_timeout() sauf besoin très spécifique.
+    The timeout and the fallback are handled by the base class via run_with_timeout().
+    Do not override run_with_timeout() unless there is a very specific need.
     """
 
     def __init__(
@@ -62,8 +62,8 @@ class AIPlugin(ABC):
     @abstractmethod
     def run(self, context: dict[str, Any]) -> AIOutput:
         """
-        Appel synchrone au modèle IA.
-        context contient : node_id, node_type, inputs, quant_outputs, params.
+        Synchronous call to the AI model.
+        context contains: node_id, node_type, inputs, quant_outputs, params.
         """
 
     def run_with_timeout(
@@ -75,8 +75,8 @@ class AIPlugin(ABC):
         params: dict[str, Any],
     ) -> AIOutput:
         """
-        Exécute run() avec timeout strict.
-        Si timeout ou erreur → retourne un AIOutput fallback, ne lève jamais.
+        Runs run() with a strict timeout.
+        On timeout or error → returns a fallback AIOutput, never raises.
         """
         import concurrent.futures
 
@@ -120,9 +120,9 @@ class AIPlugin(ABC):
         weight: float,
     ) -> dict[str, Any]:
         """
-        Blend par défaut : moyenne pondérée sur les valeurs numériques.
-        Les nœuds peuvent overrider cette méthode pour un blend personnalisé.
-        weight=0.0 → quant pur, weight=1.0 → IA pure.
+        Default blend: weighted average over the numeric values.
+        Nodes can override this method for a custom blend.
+        weight=0.0 → pure quant, weight=1.0 → pure AI.
         """
         if ai_output.fallback_used or weight == 0.0:
             return quant_outputs
@@ -154,8 +154,8 @@ class AIPlugin(ABC):
 
 class PassthroughPlugin(AIPlugin):
     """
-    Plugin no-op — retourne toujours le fallback.
-    Utilisé comme placeholder quand aucun plugin IA n'est configuré.
+    No-op plugin — always returns the fallback.
+    Used as a placeholder when no AI plugin is configured.
     """
 
     @property

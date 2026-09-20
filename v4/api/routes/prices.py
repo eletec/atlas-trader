@@ -1,16 +1,16 @@
 """
-v4/api/routes/prices.py — Route SSE pour le flux de prix en temps réel.
+v4/api/routes/prices.py — SSE route for the real-time price stream.
 
 GET /prices/stream — Server-Sent Events
-  Paramètre query: symbols (csv) ex: "BTC/USDT,ETH/USDT"
+  Query parameter: symbols (csv) e.g. "BTC/USDT,ETH/USDT"
 
-Flux d'événements :
+Event stream:
   event: price
   data: {"symbol": "BTC/USDT", "price": 67432.5, "ts": 1717430000.0}
 
-Architecture :
+Architecture:
   Binance WebSocket (ccxt.pro) → asyncio → PriceStore → SSE → EventSource
-  Le flux est partagé entre tous les clients connectés (un seul WS par symbole).
+  The stream is shared between all connected clients (a single WS per symbol).
 """
 from __future__ import annotations
 
@@ -169,7 +169,7 @@ async def _sse_generator(symbols: list[str]) -> AsyncGenerator[str, None]:
 @router.get("/stream")
 async def price_stream(symbols: str = "BTC/USDT"):
     """
-    Flux SSE des prix.
+    SSE stream of prices.
     ?symbols=BTC/USDT,ETH/USDT,SOL/USDT
     """
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]

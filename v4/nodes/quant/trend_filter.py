@@ -1,9 +1,9 @@
 """
-v4/nodes/quant/trend_filter.py — Nœud TrendFilter
+v4/nodes/quant/trend_filter.py — TrendFilter node
 
-Calcule la tendance directionnelle depuis l'OHLCV 1h (resample 4h).
-Méthode : SMA20 vs SMA50 sur barres 4h — équivalent standalone du
-trend_4h_veto de la V3, mais en nœud réutilisable.
+Computes the directional trend from the 1h OHLCV (4h resample).
+Method: SMA20 vs SMA50 on 4h bars — standalone equivalent of the
+trend_4h_veto of V3, but as a reusable node.
 """
 from __future__ import annotations
 
@@ -16,22 +16,22 @@ from v4.core.node import Node
 
 class TrendFilter(Node):
     """
-    Calcule la tendance de fond (4h) à partir de l'OHLCV 1h.
+    Computes the background trend (4h) from the 1h OHLCV.
 
     Inputs  :
         ohlcv_1h  (DataFrame — OHLCV 1h)
 
     Outputs :
         trend     (str    — "bullish" | "bearish" | "neutral")
-        sma20     (float  — valeur SMA20 4h)
-        sma50     (float  — valeur SMA50 4h)
-        slope     (float  — pente normalisée (sma20 - sma50) / sma50)
+        sma20     (float  — SMA20 4h value)
+        sma50     (float  — SMA50 4h value)
+        slope     (float  — normalised slope (sma20 - sma50) / sma50)
 
     Params :
-        timeframe_resample : str   — période de resample (défaut "4h")
-        sma_fast           : int   — SMA rapide (défaut 20)
-        sma_slow           : int   — SMA lente (défaut 50)
-        min_bars           : int   — barres 4h minimum (défaut 50)
+        timeframe_resample : str   — resample period (default "4h")
+        sma_fast           : int   — fast SMA (default 20)
+        sma_slow           : int   — slow SMA (default 50)
+        min_bars           : int   — minimum 4h bars (default 50)
     """
 
     @property

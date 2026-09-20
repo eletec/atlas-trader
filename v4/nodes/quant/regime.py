@@ -1,7 +1,7 @@
 """
-v4/nodes/quant/regime.py — Nœuds RegimeHMM + RegimePassthrough
+v4/nodes/quant/regime.py — RegimeHMM + RegimePassthrough nodes
 
-Wrappers V4 autour de quant.regime.RegimeDetector.
+V4 wrappers around quant.regime.RegimeDetector.
 """
 from __future__ import annotations
 
@@ -14,16 +14,16 @@ from v4.core.node import Node
 
 class RegimeHMM(Node):
     """
-    Détecte le régime de marché via GaussianHMM (ou fallback ADX/VoV).
+    Detects the market regime via GaussianHMM (or ADX/VoV fallback).
 
-    Inputs  : features_all (DataFrame — concaténation brut + norm)
+    Inputs  : features_all (DataFrame — raw + norm concatenation)
     Outputs : regime (str — "TREND" | "RANGE" | "PANIC")
-              regime_state (int — état HMM brut)
+              regime_state (int — raw HMM state)
 
     Params :
-        n_states        : int   — nombre d'états HMM (défaut 3)
-        use_hmm         : bool  — True = GaussianHMM, False = ADX/VoV fallback (défaut True)
-        train_fraction  : float — fraction d'entraînement (défaut 0.70)
+        n_states        : int   — number of HMM states (default 3)
+        use_hmm         : bool  — True = GaussianHMM, False = ADX/VoV fallback (default True)
+        train_fraction  : float — training fraction (default 0.70)
     """
 
     @property
@@ -59,10 +59,10 @@ class RegimeHMM(Node):
 
 class RegimePassthrough(Node):
     """
-    Nœud de remplacement à valeur fixe — utile pour simuler V2 (pas de HMM).
+    Fixed-value replacement node — useful to simulate V2 (no HMM).
 
     Params :
-        regime : "TREND" | "RANGE" | "PANIC"  (défaut "TREND")
+        regime : "TREND" | "RANGE" | "PANIC"  (default "TREND")
     """
 
     @property

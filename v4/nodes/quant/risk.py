@@ -1,8 +1,8 @@
 """
-v4/nodes/quant/risk.py — Nœud RiskATR
+v4/nodes/quant/risk.py — RiskATR node
 
-Wrapper V4 autour de quant.risk.RiskManager.
-Calcule le sizing, SL et TP à partir de l'ATR 1h.
+V4 wrapper around quant.risk.RiskManager.
+Computes the sizing, SL and TP from the 1h ATR.
 """
 from __future__ import annotations
 
@@ -16,22 +16,22 @@ from v4.nodes.config_loader import load_v4_config
 
 class RiskATR(Node):
     """
-    Calcule la position (size, SL, TP) basée sur l'ATR du timeframe 1h.
+    Computes the position (size, SL, TP) based on the 1h timeframe ATR.
 
     Inputs  :
         signal    (str   — "long" | "short" | "flat")
-        ohlcv_1h  (DataFrame — OHLCV 1h pour calcul ATR)
-        capital   (float — capital disponible en USD, optionnel si dans params)
+        ohlcv_1h  (DataFrame — 1h OHLCV for the ATR computation)
+        capital   (float — available capital in USD, optional when in params)
 
     Outputs :
         decision  (dict  — {action, size_usd, entry_price, stop_loss, take_profit, reason})
 
-    Params (priorité: DAG > settings.yaml global > settings.yaml symbole > défaut) :
-        sl_mult    : float — multiplicateur ATR pour SL
-        tp_mult    : float — multiplicateur ATR pour TP
-        fraction   : float — fraction max du capital par trade
-        capital    : float — capital en USD
-        risk_pct   : float — % du capital risqué par trade
+    Params (priority: DAG > settings.yaml global > settings.yaml symbol > default):
+        sl_mult    : float — ATR multiplier for the SL
+        tp_mult    : float — ATR multiplier for the TP
+        fraction   : float — max fraction of the capital per trade
+        capital    : float — capital in USD
+        risk_pct   : float — % of the capital risked per trade
     """
 
     @property
@@ -83,9 +83,9 @@ class RiskATR(Node):
         entry_price = float(close.iloc[-1])
 
         # -- Contextual sizing based on risk --
-        # Risque max par trade = risk_pct% du capital
+        # Max risk per trade = risk_pct% of the capital
         max_risk_usd = capital * (risk_pct / 100.0)
-        # Risque unitaire = distance SL / prix (en %)
+        # Unit risk = SL distance / price (in %)
         if entry_price > 0 and atr > 0:
             risk_per_unit = (sl_mult * atr) / entry_price  # % loss if the stop is hit
         else:
@@ -106,9 +106,9 @@ class RiskATR(Node):
             # Kelly f* = edge / variance, with edge = confidence x (win_rate_estimate - 0.5)
             # Simplified: f* ~ (2 x prob_up - 1) if long, (1 - 2 x prob_up) if short
             if signal == "long":
-                kelly_f = max(0, 2 * prob_up - 1)  # ex: prob_up=0.60 → f*=0.20
+                kelly_f = max(0, 2 * prob_up - 1)  # e.g. prob_up=0.60 → f*=0.20
             else:
-                kelly_f = max(0, 1 - 2 * prob_up)  # ex: prob_up=0.40 → f*=0.20
+                kelly_f = max(0, 1 - 2 * prob_up)  # e.g. prob_up=0.40 → f*=0.20
             # Half-Kelly (more conservative, recommended for crypto)
             kelly_fraction = float(self.params.get("kelly_fraction", 0.5))
             kelly_f *= kelly_fraction

@@ -2,7 +2,7 @@
 from v4.nodes.ai import LLMNode, DebateNode
 from v4.nodes.quant import NODE_REGISTRY as _QUANT_REGISTRY
 
-# Fusion des registres V4 + V5 (si disponible)
+# Merge of the V4 + V5 registries (when available)
 NODE_REGISTRY: dict[str, type] = {
     **_QUANT_REGISTRY,
     "LLMNode": LLMNode,

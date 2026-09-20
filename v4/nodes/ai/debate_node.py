@@ -1,17 +1,17 @@
 """
 v4/nodes/ai/debate_node.py — DebateNode (Bull vs Bear + Judge).
 
-Inspiré du pattern de débat de TradingAgents.
-Lance 2 appels LLM (bull + bear), puis un juge tranche.
+Inspired by the debate pattern of TradingAgents.
+Runs 2 LLM calls (bull + bear), then a judge decides.
 
-Inputs  : arbitraires (transmis aux 2 analystes et au juge)
+Inputs  : arbitrary (forwarded to the 2 analysts and the judge)
 
 Outputs :
     decision      : str   — "bullish" | "bearish" | "neutral"
     confidence    : float — [0, 1]
-    bull_argument : str   — résumé de l'argument bull
-    bear_argument : str   — résumé de l'argument bear
-    verdict       : str   — raison du juge (1 phrase)
+    bull_argument : str   — summary of the bull argument
+    bear_argument : str   — summary of the bear argument
+    verdict       : str   — judge's reason (1 sentence)
 """
 
 from __future__ import annotations
@@ -58,9 +58,9 @@ Respond in JSON: {"winner": "bull"|"bear"|"neutral", "verdict": "One sentence ex
 
 class DebateNode(Node):
     """
-    Débat Bull vs Bear avec juge.
+    Bull vs Bear debate with a judge.
 
-    Inputs  : arbitraires (transmis aux prompts)
+    Inputs  : arbitrary (forwarded to the prompts)
 
     Outputs :
         decision      : str   — "bullish" | "bearish" | "neutral"
@@ -70,13 +70,13 @@ class DebateNode(Node):
         verdict       : str
 
     Params :
-        provider       : str — LLM provider (défaut: ollama)
-        model          : str — modèle (défaut: phi4:latest)
-        temperature    : float (défaut: 0.4)
-        max_tokens     : int (défaut: 256)
+        provider       : str — LLM provider (default: ollama)
+        model          : str — model (default: phi4:latest)
+        temperature    : float (default: 0.4)
+        max_tokens     : int (default: 256)
         ollama_url     : str
-        timeout_s      : int (défaut: 90)
-        skip_debate    : bool — si True, passe directement (défaut: False)
+        timeout_s      : int (default: 90)
+        skip_debate    : bool — if True, skips straight through (default: False)
     """
 
     @property
@@ -236,7 +236,7 @@ class DebateNode(Node):
         prompt += f"Current market state:\n{market_data}\n\n"
         prompt += "Analyze the above and give your call in JSON."
 
-        # ── Phase 1 : Bull & Bear ──
+        # ── Phase 1: Bull & Bear ──
         t0 = time.time()
         logger.info("Debate: calling Bull analyst...")
         bull_raw = self._call_llm_raw(
@@ -256,7 +256,7 @@ class DebateNode(Node):
         logger.info("Debate: Bear raw=%.120s", bear_raw)
         logger.info("Debate: Bear → %s (conf=%.2f)", bear_result.get("call"), bear_result.get("confidence", 0))
 
-        # ── Phase 2 : Juge ──
+        # ── Phase 2: Judge ──
         judge_prompt = (
             f"Bull argument: {bull_result.get('argument', 'N/A')}\n\n"
             f"Bear argument: {bear_result.get('argument', 'N/A')}\n\n"

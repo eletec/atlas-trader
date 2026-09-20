@@ -1,15 +1,15 @@
 """
-v4/core/dag_executor.py — Exécuteur du DAG V4.
+v4/core/dag_executor.py — V4 DAG executor.
 
-Prend un DAG JSON (ou dict Python équivalent), résout l'ordre topologique,
-exécute les nœuds synchrones séquentiellement, lance les nœuds asynchrones
-dans des threads indépendants.
+Takes a JSON DAG (or an equivalent Python dict), resolves the topological order,
+runs the synchronous nodes sequentially, starts the asynchronous nodes
+in independent threads.
 
-Règles :
-  - Acyclique strict — validation avant toute exécution
-  - Ports typés — connexion incompatible = erreur à la validation, pas à l'exécution
-  - Nœud en erreur = log + skip, les nœuds en aval reçoivent un fallback
-  - Nœuds asynchrones (cycle_interval_s > 0) : thread daemon, écrivent dans ContextStore
+Rules:
+  - Strictly acyclic — validation before any execution
+  - Typed ports — incompatible connection = error at validation time, not at execution time
+  - Node in error = log + skip, downstream nodes receive a fallback
+  - Asynchronous nodes (cycle_interval_s > 0): daemon thread, they write into the ContextStore
 """
 from __future__ import annotations
 
@@ -41,9 +41,9 @@ class DAGValidationError(Exception):
 
 class DAGExecutor:
     """
-    Exécute un graphe de nœuds V4.
+    Runs a graph of V4 nodes.
 
-    Usage :
+    Usage:
         executor = DAGExecutor(asset="BTC/USDT")
         executor.add_node(my_node)
         executor.add_edge("load_1", "ohlcv_5m", "feat_1", "ohlcv")
@@ -62,7 +62,7 @@ class DAGExecutor:
         self._context_store = ContextRegistry.get_store(asset) if asset else ContextRegistry.global_store()
 
     # ------------------------------------------------------------------
-    # Construction du graphe
+    # Graph construction
     # ------------------------------------------------------------------
 
     def add_node(self, node: Node) -> None:
@@ -164,9 +164,9 @@ class DAGExecutor:
 
     def run_once(self) -> dict[str, NodeRunResult]:
         """
-        Exécute tous les nœuds synchrones dans l'ordre topologique.
-        Les nœuds asynchrones sont ignorés (ils tournent dans leurs threads).
-        Retourne un dict node_id → NodeRunResult.
+        Runs every synchronous node in topological order.
+        The asynchronous nodes are skipped (they run in their own threads).
+        Returns a dict node_id → NodeRunResult.
         """
         order = self._topological_order()
         resolved: dict[str, dict[str, Any]] = {}  # node_id → outputs
@@ -207,8 +207,8 @@ class DAGExecutor:
         resolved: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
         """
-        Construit le dict d'inputs pour un nœud en résolvant ses connexions entrantes.
-        Si une valeur n'est pas disponible dans resolved, tente le ContextStore.
+        Builds the inputs dict for a node by resolving its incoming connections.
+        If a value is not available in resolved, tries the ContextStore.
         """
         inputs: dict[str, Any] = {}
         for edge in self._edges:
@@ -274,8 +274,8 @@ class DAGExecutor:
 
     def run_loop(self, interval_s: float = 300.0) -> None:
         """
-        Boucle principale (bloquant) : exécute run_once() toutes les interval_s secondes.
-        Lance aussi les nœuds asynchrones en threads daemon.
+        Main loop (blocking): runs run_once() every interval_s seconds.
+        Also starts the asynchronous nodes in daemon threads.
         """
         self.validate()
         self.start_async_nodes()

@@ -1,9 +1,9 @@
 """
-v4/nodes/quant/load_multi_tf.py — Nœud LoadMultiTF
+v4/nodes/quant/load_multi_tf.py — LoadMultiTF node
 
-Wrapper V4 autour de quant.data_loader.fetch_history.
-Charge l'historique OHLCV 5m + 1h pour un actif donné.
-Ne modifie pas data_loader.py.
+V4 wrapper around quant.data_loader.fetch_history.
+Loads the 5m + 1h OHLCV history for a given asset.
+Does not modify data_loader.py.
 """
 from __future__ import annotations
 
@@ -16,13 +16,13 @@ from v4.core.node import Node, NodeMeta
 
 class LoadMultiTF(Node):
     """
-    Charge l'historique OHLCV multi-timeframe pour un actif.
+    Loads the multi-timeframe OHLCV history for an asset.
 
     Params :
-        symbol     : str  — ex. "BTC/USDT"
-        days_5m    : int  — jours d'historique 5m (défaut 90)
-        days_1h    : int  — jours d'historique 1h (défaut 100)
-        exchange   : str  — exchange ccxt (défaut "binance")
+        symbol     : str  — e.g. "BTC/USDT"
+        days_5m    : int  — days of 5m history (default 90)
+        days_1h    : int  — days of 1h history (default 100)
+        exchange   : str  — ccxt exchange (default "binance")
 
     Outputs :
         ohlcv_5m   : DataFrame  — OHLCV 5 minutes

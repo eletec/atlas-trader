@@ -1,12 +1,12 @@
 """
 v4/nodes/quant/regime_detector.py — Regime Detector (ADX + Choppiness).
 
-Remplace RegimePassthrough. Détecte 3 régimes :
-  - TREND : ADX > 25 et Choppiness < 61.8
-  - RANGE : ADX entre 20-25
-  - CHOP  : ADX < 20 ou Choppiness > 61.8
+Replaces RegimePassthrough. Detects 3 regimes:
+  - TREND: ADX > 25 and Choppiness < 61.8
+  - RANGE: ADX between 20-25
+  - CHOP  : ADX < 20 or Choppiness > 61.8
 
-Utilisé par DirectionGate pour adapter le seuil de fusion.
+Used by DirectionGate to adapt the fusion threshold.
 """
 from __future__ import annotations
 

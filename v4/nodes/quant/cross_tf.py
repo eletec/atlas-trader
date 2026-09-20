@@ -1,19 +1,19 @@
 """
-v4/nodes/quant/cross_tf.py — Nœud CrossTFArb (Cross-Timeframe Repricing)
+v4/nodes/quant/cross_tf.py — CrossTFArb node (Cross-Timeframe Repricing)
 
-Détecte le lag de repricing entre 5m et 1h pour capturer un edge microstructure.
-Principe : quand le timeframe rapide (5m) bouge avant le lent (1h),
+Detects the repricing lag between 5m and 1h to capture a microstructure edge.
+Principle: when the fast timeframe (5m) moves before the slow one (1h),
 a window of opportunity opens before the market corrects.
 
-Stratégies :
-  - "divergence" : 5m bearish + 1h encore bullish → short (et vice-versa)
-  - "confirmation" : les 2 TFs alignés → signal plus fort
-  - "reversal" : 5m change de direction, 1h pas encore → signal de sortie
+Strategies:
+  - "divergence": 5m bearish + 1h still bullish → short (and vice-versa)
+  - "confirmation": the 2 TFs aligned → stronger signal
+  - "reversal": 5m changes direction, 1h not yet → exit signal
 
-Sortie :
+Output:
   - signal       : str   — "long" | "short" | "flat"
-  - confidence   : float — force du signal [0, 1]
-  - tf_divergence: float — degré de désalignement 5m/1h [-1, 1]
+  - confidence   : float — signal strength [0, 1]
+  - tf_divergence: float — degree of 5m/1h misalignment [-1, 1]
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ logger = logging.getLogger("v4.nodes.quant.cross_tf")
 
 class CrossTFArb(Node):
     """
-    Détecte les opportunités de microstructure cross-timeframe.
+    Detects cross-timeframe microstructure opportunities.
 
     Inputs :
         ohlcv_5m : DataFrame — OHLCV 5 minutes
@@ -40,16 +40,16 @@ class CrossTFArb(Node):
     Outputs :
         signal        : str   — "long" | "short" | "flat"
         confidence    : float — [0, 1]
-        tf_divergence : float — mesure du lag [-1, 1]
+        tf_divergence : float — lag measure [-1, 1]
 
     Params :
-        mode           : str   — "divergence" (défaut) | "confirmation" | "reversal"
-        momentum_5m    : int   — barres pour momentum 5m (défaut: 6 = 30 min)
-        momentum_1h    : int   — barres pour momentum 1h (défaut: 4 = 4h)
-        threshold      : float — seuil de déclenchement (défaut: 0.15 = 0.15%)
-        strong_threshold: float — seuil fort (défaut: 0.40 = 0.40%)
-        volume_filter  : bool  — exiger volume 5m > moyenne (défaut: True)
-        atr_filter      : bool  — exiger range 5m > ATR/3 (défaut: True)
+        mode           : str   — "divergence" (default) | "confirmation" | "reversal"
+        momentum_5m    : int   — bars for 5m momentum (default: 6 = 30 min)
+        momentum_1h    : int   — bars for 1h momentum (default: 4 = 4h)
+        threshold      : float — trigger threshold (default: 0.15 = 0.15%)
+        strong_threshold: float — strong threshold (default: 0.40 = 0.40%)
+        volume_filter  : bool  — require 5m volume > average (default: True)
+        atr_filter      : bool  — require 5m range > ATR/3 (default: True)
     """
 
     @property
@@ -108,9 +108,9 @@ class CrossTFArb(Node):
         mom_1h = self._momentum(ohlcv_1h, mom_n_1h)  # % over 4h
 
         # -- Divergence = 5m - 1h: positive means 5m is more bullish than 1h --
-        divergence = mom_5m - mom_1h  # en points de %
+        divergence = mom_5m - mom_1h  # in % points
 
-        # ── Filtre volume 5m ──
+        # ── 5m volume filter ──
         vol_ok = True
         if volume_filter:
             vol_recent = float(ohlcv_5m["volume"].iloc[-1])
@@ -131,16 +131,16 @@ class CrossTFArb(Node):
             current_range = float(ohlcv_5m["high"].iloc[-1] - ohlcv_5m["low"].iloc[-1])
             atr_ok = current_range >= atr_14 / 3.0 if atr_14 > 0 else True
             if not atr_ok:
-                logger.debug("CrossTF: range 5m faible (%.4f < ATR/3=%.4f)", current_range, atr_14 / 3.0)
+                logger.debug("CrossTF: weak 5m range (%.4f < ATR/3=%.4f)", current_range, atr_14 / 3.0)
 
         # -- Decision depending on the mode --
         signal = "flat"
         confidence = 0.0
 
         if mode == "divergence":
-            # La 5m diverge de la 1h : la 5m lead, la 1h va suivre
-            # 5m bearish + 1h bullish (ou neutre) → short (5m anticipe baisse)
-            # 5m bullish + 1h bearish (ou neutre) → long  (5m anticipe hausse)
+            # The 5m diverges from the 1h: the 5m leads, the 1h will follow
+            # 5m bearish + 1h bullish (or neutral) → short (5m anticipates a drop)
+            # 5m bullish + 1h bearish (or neutral) → long  (5m anticipates a rise)
             abs_div = abs(divergence)
 
             if mom_5m < -threshold and mom_1h > -threshold * 0.3 and vol_ok and atr_ok:

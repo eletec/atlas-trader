@@ -1,8 +1,8 @@
 """
-v4/tests/test_core.py — Tests unitaires pour Node, AIPlugin, ContextStore, DAGExecutor.
+v4/tests/test_core.py — Unit tests for Node, AIPlugin, ContextStore, DAGExecutor.
 
-Tests sans dépendances externes (pas de ccxt, pas d'Ollama).
-Utilise des nœuds factices (DummyNode) pour valider le comportement du moteur.
+Tests without external dependencies (no ccxt, no Ollama).
+Uses dummy nodes (DummyNode) to validate the engine behaviour.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from v4.core.node import Node, NodeMeta, NodeStatus
 # ------------------------------------------------------------------
 
 class AddOneNode(Node):
-    """Reçoit value: float → retourne result: float = value + 1."""
+    """Receives value: float → returns result: float = value + 1."""
 
     @property
     def node_type(self) -> str:
@@ -41,7 +41,7 @@ class AddOneNode(Node):
 
 
 class MultiplyNode(Node):
-    """Reçoit value: float → retourne result: float = value × factor."""
+    """Receives value: float → returns result: float = value × factor."""
 
     @property
     def node_type(self) -> str:
@@ -61,7 +61,7 @@ class MultiplyNode(Node):
 
 
 class SourceNode(Node):
-    """Nœud sans input — retourne une valeur fixe."""
+    """Node without input — returns a fixed value."""
 
     @property
     def node_type(self) -> str:
@@ -80,7 +80,7 @@ class SourceNode(Node):
 
 
 class ErrorNode(Node):
-    """Nœud qui lève toujours une exception."""
+    """Node that always raises an exception."""
 
     @property
     def node_type(self) -> str:
@@ -165,7 +165,7 @@ class TestAIPlugin:
 
     def test_blend_numeric(self):
         plugin = PassthroughPlugin(fallback_value=0.0)
-        # Blend normal : quant=10, IA=20, weight=0.5 → 15
+        # Normal blend: quant=10, AI=20, weight=0.5 → 15
         ai_out = AIOutput(value=20.0, fallback_used=False)
         blended = plugin.blend({"score": 10.0}, ai_out, weight=0.5)
         assert blended["score"] == pytest.approx(15.0)
@@ -174,7 +174,7 @@ class TestAIPlugin:
         plugin = PassthroughPlugin(fallback_value=0.0)
         ai_out = AIOutput(value=999.0, fallback_used=True)
         blended = plugin.blend({"score": 10.0}, ai_out, weight=0.5)
-        assert blended["score"] == 10.0  # fallback → quant pur
+        assert blended["score"] == 10.0  # fallback → pure quant
 
 
 # ------------------------------------------------------------------
@@ -210,7 +210,7 @@ class TestContextStore:
         store_btc = ContextRegistry.get_store("BTC/USDT")
         store_eth = ContextRegistry.get_store("ETH/USDT")
         store_btc.set("price", 100000.0)
-        assert store_eth.get("price") is None  # isolation garantie
+        assert store_eth.get("price") is None  # guaranteed isolation
 
 
 # ------------------------------------------------------------------
@@ -219,7 +219,7 @@ class TestContextStore:
 
 class TestDAGExecutor:
     def _simple_dag(self) -> DAGExecutor:
-        """Source(10) → AddOne → Multiply(×3) — résultat attendu: 33"""
+        """Source(10) → AddOne → Multiply(×3) — expected result: 33"""
         executor = DAGExecutor(asset="TEST")
         executor.add_node(SourceNode("src", params={"value": 10.0}))
         executor.add_node(AddOneNode("add"))
@@ -240,7 +240,7 @@ class TestDAGExecutor:
         executor.add_node(AddOneNode("a"))
         executor.add_node(AddOneNode("b"))
         executor.add_edge("a", "result", "b", "value")
-        executor.add_edge("b", "result", "a", "value")  # cycle !
+        executor.add_edge("b", "result", "a", "value")  # cycle!
         with pytest.raises(DAGValidationError, match="cycle"):  # "DAG contains a cycle"
             executor.validate()
 

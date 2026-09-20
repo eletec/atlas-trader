@@ -1,10 +1,10 @@
 """
-v4/nodes/quant/signal_constant.py — Nœud SignalConstant
+v4/nodes/quant/signal_constant.py — SignalConstant node
 
-Émet un signal fixe configurable. Utile pour :
-  - Backtest : forcer LONG ou SHORT constant pour valider le pipeline
-  - Lane forcée : une lane SHORT-only à côté d'une lane signal normal
-  - Test / dry-run : bypasser tout le pipeline amont
+Emits a fixed, configurable signal. Useful for:
+  - Backtest: force a constant LONG or SHORT to validate the pipeline
+  - Forced lane: a SHORT-only lane next to a normal signal lane
+  - Test / dry-run: bypass the whole upstream pipeline
 """
 from __future__ import annotations
 
@@ -15,17 +15,17 @@ from v4.core.node import Node
 
 class SignalConstant(Node):
     """
-    Nœud sans entrée — émet le signal défini dans les params.
+    Node without input — emits the signal defined in the params.
 
-    Inputs  : aucun
+    Inputs  : none
 
     Outputs :
         signal  (str — "long" | "short" | "flat")
-        prob_up (float — 1.0 pour long, 0.0 pour short, 0.5 pour flat)
+        prob_up (float — 1.0 for long, 0.0 for short, 0.5 for flat)
 
     Params :
-        signal  : str — valeur du signal (défaut "flat")
-        prob_up : float — probabilité associée (défaut 0.5, auto-déduite si omis)
+        signal  : str — signal value (default "flat")
+        prob_up : float — associated probability (default 0.5, auto-derived when omitted)
     """
 
     @property

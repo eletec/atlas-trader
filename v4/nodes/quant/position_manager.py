@@ -1,15 +1,15 @@
 """
 v4/nodes/quant/position_manager.py — PositionManager node.
 
-Stratégies de sortie supportées (param `exit_strategy`) :
+Supported exit strategies (`exit_strategy` param):
 
-  - "chandelier" (défaut) : Chandelier Exit — le SL s'accroche au plus haut/bas
-    des N dernières barres, moins K×ATR. Laisse respirer le trade.
+  - "chandelier" (default): Chandelier Exit — the SL follows the highest/lowest
+    of the last N bars, minus K×ATR. Lets the trade breathe.
 
-  - "trailing" : Trailing stop — le SL suit le prix à K×ATR de distance.
-    Plus réactif, mais sort plus vite.
+  - "trailing": Trailing stop — the SL follows the price at K×ATR distance.
+    More reactive, but exits sooner.
 
-Pas de TP fixe — on laisse courir tant que la tendance est favorable.
+No fixed TP — we let it run as long as the trend is favourable.
 """
 from __future__ import annotations
 
@@ -26,15 +26,15 @@ logger = logging.getLogger("v4.nodes.quant.position_manager")
 
 class PositionManager(Node):
     """
-    Gère la sortie des positions avec stratégie configurable.
+    Manages position exits with a configurable strategy.
 
     Params :
-        symbol              : str   — paire (ex. "BTC/USDT")
-        exit_strategy       : str   — "chandelier" (défaut) ou "trailing"
-        atr_mult            : float — multiplicateur ATR (défaut: 3.0)
-        atr_period          : int   — périodes ATR (défaut: 14)
-        chandelier_lookback : int   — barres pour le chandelier (défaut: 22)
-        trail_atr           : float — alias pour atr_mult (compat)
+        symbol              : str   — pair (e.g. "BTC/USDT")
+        exit_strategy       : str   — "chandelier" (default) or "trailing"
+        atr_mult            : float — ATR multiplier (default: 3.0)
+        atr_period          : int   — ATR periods (default: 14)
+        chandelier_lookback : int   — bars for the chandelier (default: 22)
+        trail_atr           : float — alias for atr_mult (compat)
     """
 
     @property
@@ -64,8 +64,8 @@ class PositionManager(Node):
     def _calc_trailing_sl(
         self, price: float, action: str, atr: float, trail_mult: float
     ) -> float:
-        """Trailing stop : SL = prix ± trail_mult×ATR.
-        trail_mult est typiquement 0.5–1.0 (plus serré que chandelier)."""
+        """Trailing stop: SL = price ± trail_mult×ATR.
+        trail_mult is typically 0.5–1.0 (tighter than chandelier)."""
         if action == "long":
             return price - trail_mult * atr
         else:
@@ -97,7 +97,7 @@ class PositionManager(Node):
         ohlcv_ch = ohlcv_1h if ohlcv_1h is not None and hasattr(ohlcv_1h, "iloc") and len(ohlcv_1h) >= lookback else ohlcv_5m
 
         if ohlcv_5m is None or not hasattr(ohlcv_5m, "iloc") or len(ohlcv_5m) < 2:
-            logger.warning("PositionManager: pas assez d'OHLCV 5m")
+            logger.warning("PositionManager: not enough 5m OHLCV")
             return {"closed": [], "open_positions": positions}
 
         if ohlcv_atr is None or len(ohlcv_atr) < atr_period:
@@ -159,7 +159,7 @@ class PositionManager(Node):
             if action == "long":
                 # The stop only moves up, never down
                 new_sl = max(new_sl, current_sl) if current_sl > 0 else max(new_sl, 0.01)
-                # Breathing room : SL au plus proche = current_price - min_dist*ATR
+                # Breathing room: closest SL = current_price - min_dist*ATR
                 # (stops the stop from hugging the price and getting whipsawed)
                 new_sl = min(new_sl, current_close - _min_dist * atr)
                 hit_raw = current_sl > 0 and current_low <= current_sl
@@ -167,7 +167,7 @@ class PositionManager(Node):
                 # The stop only moves down (tightening for shorts), never up
                 if current_sl > 0:
                     new_sl = min(new_sl, current_sl)
-                # Breathing room : SL au plus proche = current_price + min_dist*ATR
+                # Breathing room: closest SL = current_price + min_dist*ATR
                 # (the stop stays above the current price)
                 new_sl = max(new_sl, current_close + _min_dist * atr)
                 hit_raw = current_sl > 0 and current_high >= current_sl

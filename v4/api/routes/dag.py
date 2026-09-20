@@ -1,10 +1,10 @@
 """
-v4/api/routes/dag.py — Routes CRUD pour les DAGs.
+v4/api/routes/dag.py — CRUD routes for the DAGs.
 
-POST /dag/run           — exécute une fois, retourne les résultats
-POST /dag/schedule      — démarre en boucle
-DELETE /dag/{dag_id}    — arrête un DAG schedulé
-GET  /dag/status        — statut de tous les DAGs
+POST /dag/run           — runs once, returns the results
+POST /dag/schedule      — starts in a loop
+DELETE /dag/{dag_id}    — stops a scheduled DAG
+GET  /dag/status        — status of every DAG
 GET  /dag/{dag_id}/status
 """
 from __future__ import annotations
@@ -107,10 +107,10 @@ async def stop_dag(dag_id: str):
 
 @router.post("/reload")
 async def reload_dags_from_config():
-    """Re-synchronise les DAGs avec carry_assets.yaml (actifs activés).
+    """Re-synchronise the DAGs with carry_assets.yaml (enabled assets).
     
-    Ajoute les DAGs pour les nouveaux actifs activés, retire ceux désactivés.
-    Ne nécessite pas de redémarrage complet de l'API.
+    Adds the DAGs for newly enabled assets, removes the disabled ones.
+    Does not require a full API restart.
     """
     from v4.api.dag_registry import DAGRegistry
     from v4.api.dag_store import load_all, get_defaults, save_all
@@ -125,7 +125,7 @@ async def reload_dags_from_config():
     registry = DAGRegistry.instance()
     
     # 1) Desired DAGs (from carry_assets.yaml)
-    desired = get_defaults()  # V7_DAGS — lit get_active_assets()
+    desired = get_defaults()  # V7_DAGS — reads get_active_assets()
     desired_ids = {d.dag_id for d in desired}
     desired_map = {d.dag_id: d for d in desired}
     
@@ -238,8 +238,8 @@ async def llm_results():
 
 @router.post("/reset-kill-switch")
 async def reset_kill_switch():
-    """Réarmement manuel du kill-switch après Tier 2+ (3 audits, 20/07/2026).
-    Requis après un déclenchement MARKET/PORTFOLIO_DD/CORRELATED_LOSS."""
+    """Manual re-arming of the kill-switch after Tier 2+ (3 audits, 20/07/2026).
+    Required after a MARKET/PORTFOLIO_DD/CORRELATED_LOSS trigger."""
     try:
         from v7.position_monitor import PositionMonitor
         monitor = PositionMonitor.instance()
@@ -322,9 +322,9 @@ async def close_trade_route(trade_id: str = "", close_price: float = 0):
 
 @router.post("/close-all")
 async def close_all_trades():
-    """Ferme TOUTES les positions ouvertes au prix spot actuel (via CCXT).
+    """Closes ALL open positions at the current spot price (via CCXT).
     
-    Pratique pour nettoyer les positions bloquées ou terminer une session de test.
+    Handy to clean up stuck positions or end a test session.
     """
     try:
         from storage.paper_trader import get_open_positions, close_position

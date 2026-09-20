@@ -1,12 +1,12 @@
 """
-v4/api/dag_registry.py — Registre global des DAGs actifs.
+v4/api/dag_registry.py — Global registry of active DAGs.
 
-Gère le cycle de vie des DAGExecutor en mémoire :
-  - DAGs one-shot : créés, exécutés, résultats stockés, détruits
-  - DAGs schedulés : créés, boucle dans thread daemon, statut et résultats persistés
-  - Buffer de logs circulaire (derniers 200 événements)
+Manages the lifecycle of in-memory DAGExecutors:
+  - One-shot DAGs: created, executed, results stored, destroyed
+  - Scheduled DAGs: created, loop in a daemon thread, status and results persisted
+  - Circular log buffer (last 200 events)
 
-Thread-safe. Pas de persistance sur disque (volontaire pour la V4.0).
+Thread-safe. No persistence to disk (intentional for V4.0).
 """
 from __future__ import annotations
 
@@ -134,7 +134,7 @@ class DAGRegistry:
         return executor
 
     # ------------------------------------------------------------------
-    # API publique
+    # Public API
     # ------------------------------------------------------------------
 
     def run_once(self, dag_spec: "DAGSpec") -> dict[str, NodeRunResult]:

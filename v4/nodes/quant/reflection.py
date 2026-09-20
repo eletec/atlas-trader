@@ -1,11 +1,11 @@
 """
-v4/nodes/quant/reflection.py — ReflectionNode (mémoire des trades).
+v4/nodes/quant/reflection.py — ReflectionNode (trade memory).
 
-Après chaque cycle, analyse les trades fermés récents et génère
-une leçon concise (une phrase) stockée en base. Injecte les leçons
-passées dans le contexte du LLM pour améliorer les décisions futures.
+After each cycle, analyses the recent closed trades and generates
+a concise lesson (one sentence) stored in the DB. Injects the past
+lessons into the LLM context to improve future decisions.
 
-Inspiré du mécanisme de reflection de TradingAgents.
+Inspired by the reflection mechanism of TradingAgents.
 """
 
 from __future__ import annotations
@@ -20,18 +20,18 @@ logger = logging.getLogger("v4.nodes.quant.reflection")
 
 class ReflectionNode(Node):
     """
-    Apprend des trades fermés et enrichit le contexte AI.
+    Learns from closed trades and enriches the AI context.
 
-    Inputs  : aucun (lit la DB directement)
+    Inputs  : none (reads the DB directly)
 
     Outputs :
-        lessons     : str   — leçons consolidées pour le prompt AI
-        n_reflected : int   — nombre de nouvelles réflexions générées
-        recent_pnl  : float — PnL cumulé des derniers trades
+        lessons     : str   — consolidated lessons for the AI prompt
+        n_reflected : int   — number of new reflections generated
+        recent_pnl  : float — cumulative PnL of the latest trades
 
     Params :
-        max_lessons  : int — nombre max de leçons à injecter (défaut: 5)
-        min_pnl_abs  : float — PnL min (absolu) pour générer une leçon (défaut: 1.0)
+        max_lessons  : int — max number of lessons to inject (default: 5)
+        min_pnl_abs  : float — min PnL (absolute) to generate a lesson (default: 1.0)
     """
 
     @property
@@ -175,7 +175,7 @@ class ReflectionNode(Node):
         """Generate a concise lesson without an LLM (heuristic patterns)."""
         won = pnl > 0
 
-        # Patterns communs
+        # Common patterns
         if won:
             if action == "short":
                 return f"Short {symbol} was profitable — downward momentum confirmed, trailing SL protected gains"

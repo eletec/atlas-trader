@@ -1,17 +1,17 @@
 """
-v4/nodes/quant/direction_gate.py — Nœud DirectionGate
+v4/nodes/quant/direction_gate.py — DirectionGate node
 
-Deux modes :
-  1. VETO (défaut) — bloque les signaux contraires à la tendance (binaire)
-  2. FUSION — scoring pondéré multi-facteurs (signal + trend + IA + crosstf + regime)
+Two modes:
+  1. VETO (default) — blocks signals contrary to the trend (binary)
+  2. FUSION — weighted multi-factor scoring (signal + trend + AI + crosstf + regime)
 
-Mode VETO (fusion=False) :
-  Connecté à TrendFilter → bloque SHORT si trend=bullish, LONG si trend=bearish
-  Sans TrendFilter → force LONG-only ou SHORT-only selon params
+VETO mode (fusion=False):
+  Connected to TrendFilter → blocks SHORT when trend=bullish, LONG when trend=bearish
+  Without TrendFilter → forces LONG-only or SHORT-only depending on params
 
-Mode FUSION (fusion=True) :
+FUSION mode (fusion=True):
   Combine SignalXGB, TrendFilter, DebateNode, CrossTFArb, RegimePassthrough
-  en un score continu [-1, +1]. Décision au seuil ±threshold.
+  into a continuous score [-1, +1]. Decision at the ±threshold.
 """
 from __future__ import annotations
 
@@ -22,25 +22,25 @@ from v4.core.node import Node
 
 class DirectionGate(Node):
     """
-    Gate directionnel.
+    Directional gate.
 
     Inputs (mode veto) :
         signal    (str — "long" | "short" | "flat")
         trend     (str — optionnel, "bullish" | "bearish" | "neutral")
 
-    Inputs additionnels (mode fusion) :
-        prob_up         (float — probabilité hausse XGBoost [0,1])
-        debate_signal   (str   — verdict du débat : "bullish"|"bearish"|"neutral")
-        debate_conf     (float — confiance du débat [0,1])
-        crosstf_signal  (str   — signal CrossTF : "long"|"short"|"flat")
-        crosstf_conf    (float — confiance CrossTF [0,1])
+    Additional inputs (fusion mode):
+        prob_up         (float — XGBoost probability of an up move [0,1])
+        debate_signal   (str   — debate verdict: "bullish"|"bearish"|"neutral")
+        debate_conf     (float — debate confidence [0,1])
+        crosstf_signal  (str   — CrossTF signal: "long"|"short"|"flat")
+        crosstf_conf    (float — CrossTF confidence [0,1])
         regime          (str   — "TREND" | "CHOP")
 
     Outputs :
         signal    (str — "long" | "short" | "flat")
-        blocked   (bool — True si le signal a été bloqué)
-        reason    (str — raison du blocage ou score)
-        score     (float — score fusion [-1, 1], 0 en mode veto)
+        blocked   (bool — True when the signal was blocked)
+        reason    (str — reason for the block or score)
+        score     (float — fusion score [-1, 1], 0 in veto mode)
 
     Params (mode veto) :
         allow_long   : bool
@@ -48,13 +48,13 @@ class DirectionGate(Node):
         invert_trend : bool
 
     Params (mode fusion) :
-        fusion      : bool — active le scoring pondéré (défaut False)
-        w_xgb       : float — poids XGBoost (défaut 0.50)
-        w_trend     : float — poids TrendFilter (défaut 0.25)
-        w_debate    : float — poids IA Débat (défaut 0.10)
-        w_crosstf   : float — poids CrossTF microstructure (défaut 0.10)
-        w_regime    : float — poids Régime (défaut 0.05)
-        threshold   : float — seuil de décision (défaut 0.30)
+        fusion      : bool — enables the weighted scoring (default False)
+        w_xgb       : float — XGBoost weight (default 0.50)
+        w_trend     : float — TrendFilter weight (default 0.25)
+        w_debate    : float — AI Debate weight (default 0.10)
+        w_crosstf   : float — CrossTF microstructure weight (default 0.10)
+        w_regime    : float — Regime weight (default 0.05)
+        threshold   : float — decision threshold (default 0.30)
     """
 
     @property
@@ -195,7 +195,7 @@ class DirectionGate(Node):
 
             return {"signal": signal, "blocked": False, "reason": "", "score": 0.0}
 
-        # ── Mode 2 : params allow_* (pas de trend) ────────────────────────
+        # ── Mode 2: params allow_* (no trend) ────────────────────────────
         if signal == "long" and not allow_long:
             return {"signal": "flat", "blocked": True, "score": 0.0,
                     "reason": "direction_gate: LONG disabled (allow_long=False)"}

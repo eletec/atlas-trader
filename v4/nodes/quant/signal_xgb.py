@@ -1,8 +1,8 @@
 """
-v4/nodes/quant/signal_xgb.py — Nœud SignalXGB (XGBoost).
+v4/nodes/quant/signal_xgb.py — SignalXGB node (XGBoost).
 
-Remplace SignalLogReg avec un classifier XGBoost + feature engineering avancé.
-Walk-forward : réentraînement périodique sur les données récentes.
+Replaces SignalLogReg with an XGBoost classifier + advanced feature engineering.
+Walk-forward: periodic retraining on the recent data.
 """
 from __future__ import annotations
 
@@ -19,27 +19,27 @@ logger = logging.getLogger("v4.nodes.quant.signal_xgb")
 
 class SignalXGB(Node):
     """
-    Signal directionnel basé sur XGBoost classifier.
+    Directional signal based on an XGBoost classifier.
 
     Inputs :
-        features_all  (DataFrame) — features normalisées
-        regime        (str)       — régime de marché (optionnel)
+        features_all  (DataFrame) — normalised features
+        regime        (str)       — market regime (optional)
 
     Outputs :
         signal        (str)  — "long" | "short" | "flat"
-        prob_up       (float) — probabilité hausse [0, 1]
-        prob_dn       (float) — probabilité baisse [0, 1]
-        confidence    (float) — confiance du signal [0, 1]
+        prob_up       (float) — probability of an up move [0, 1]
+        prob_dn       (float) — probability of a down move [0, 1]
+        confidence    (float) — signal confidence [0, 1]
 
-    Params (priorité: DAG > settings.yaml) :
-        p_up_threshold   : float — seuil proba LONG (défaut 0.55)
-        p_dn_threshold   : float — seuil proba SHORT (défaut 0.45)
-        train_fraction   : float — fraction entraînement (défaut 0.70)
-        horizon_bars     : int   — horizon de prédiction (défaut 48)
-        retrain_cycle    : int   — cycles entre réentraînements (défaut 120 = 10h)
-        max_depth        : int   — profondeur max XGBoost (défaut 5)
-        n_estimators     : int   — nombre d'arbres (défaut 100)
-        lag_features     : int   — nombre de lags à ajouter (défaut 3)
+    Params (priority: DAG > settings.yaml):
+        p_up_threshold   : float — LONG probability threshold (default 0.55)
+        p_dn_threshold   : float — SHORT probability threshold (default 0.45)
+        train_fraction   : float — training fraction (default 0.70)
+        horizon_bars     : int   — prediction horizon (default 48)
+        retrain_cycle    : int   — cycles between retrainings (default 120 = 10h)
+        max_depth        : int   — max XGBoost depth (default 5)
+        n_estimators     : int   — number of trees (default 100)
+        lag_features     : int   — number of lags to add (default 3)
     """
 
     _model: Any = None
@@ -120,7 +120,7 @@ class SignalXGB(Node):
                 if len(train_df) < 50:
                     return {"signal": "flat", "prob_up": 0.5, "prob_dn": 0.5, "confidence": 0.0}
 
-                # Cible : direction future
+                # Target: future direction
                 close_col = "close" if "close" in df.columns else df.columns[0]
                 future_close = df[close_col].shift(-horizon_bars)
                 target = (future_close > df[close_col]).astype(int)

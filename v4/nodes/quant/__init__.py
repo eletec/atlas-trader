@@ -1,5 +1,5 @@
 """
-v4/nodes/quant/__init__.py — Export de tous les nœuds quant V4 + V7
+v4/nodes/quant/__init__.py — Export of all V4 + V7 quant nodes
 """
 from v4.nodes.quant.asset_def import AssetDef
 from v4.nodes.quant.compute_features import ComputeFeatures, Normalize

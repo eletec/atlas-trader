@@ -1,12 +1,12 @@
 """
-v4/core/context_store.py — Mémoire partagée entre toutes les lanes d'un canvas.
+v4/core/context_store.py — Shared memory across all lanes of a canvas.
 
-Le ContextStore est un dict clé/valeur thread-safe.
-Chaque nœud écrit ses outputs à la fin de son exécution.
-Les nœuds asynchrones (Lane 2, Lane 3...) publient leurs valeurs ici.
-Les nœuds synchrones (Lane 1) lisent la dernière valeur disponible au moment de décider.
+The ContextStore is a thread-safe key/value dict.
+Each node writes its outputs at the end of its execution.
+The asynchronous nodes (Lane 2, Lane 3...) publish their values here.
+The synchronous nodes (Lane 1) read the latest available value when they decide.
 
-Un slot absent ou trop ancien retourne sa valeur fallback sans exception.
+A missing or too old slot returns its fallback value without raising.
 """
 from __future__ import annotations
 
@@ -32,9 +32,9 @@ class ContextSlot:
 
 class ContextStore:
     """
-    Mémoire partagée entre toutes les lanes d'un canvas (un store par asset).
+    Shared memory across all lanes of a canvas (one store per asset).
 
-    Usage :
+    Usage:
         store = ContextStore(asset="BTC/USDT")
         store.set("btc_temperature", -42.0, source="temperature_1")
         value = store.get("btc_temperature", fallback=0.0, max_age_s=1800)
@@ -93,8 +93,8 @@ class ContextStore:
 ## Global registry: one store per asset + a global store for cross-cutting lanes
 class ContextRegistry:
     """
-    Registre singleton de tous les ContextStore actifs.
-    Accès : ContextRegistry.get_store("BTC/USDT") ou ContextRegistry.global_store()
+    Singleton registry of all active ContextStores.
+    Access: ContextRegistry.get_store("BTC/USDT") or ContextRegistry.global_store()
     """
     _stores: dict[str, ContextStore] = {}
     _lock = threading.Lock()

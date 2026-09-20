@@ -1,5 +1,5 @@
 """
-v4/api/models.py — Pydantic models partagés entre routes.
+v4/api/models.py — Pydantic models shared between routes.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 class NodeSpec(BaseModel):
     """Definition of one node in a JSON DAG."""
     id: str
-    type: str                                  # ex: "LoadMultiTF"
+    type: str                                  # e.g. "LoadMultiTF"
     params: dict[str, Any] = Field(default_factory=dict)
     position: dict[str, float] = Field(default_factory=lambda: {"x": 0, "y": 0})
     meta: dict[str, Any] = Field(default_factory=dict)

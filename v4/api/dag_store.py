@@ -1,11 +1,11 @@
 """
-v4/api/dag_store.py — Persistance JSON des DAGs.
+v4/api/dag_store.py — JSON persistence for DAGs.
 
-Stocke les DAGSpecs dans /app/data/dags.json.
-- Au boot, charge les DAGs persistés
-- Au schedule, sauvegarde le DAG
-- Au stop, retire le DAG du store
-- Fallback: si aucun DAG n'a jamais été sauvegardé, utilise les V7 par défaut
+Stores the DAGSpecs in /app/data/dags.json.
+- On boot, loads the persisted DAGs
+- On schedule, saves the DAG
+- On stop, removes the DAG from the store
+- Fallback: if no DAG has ever been saved, uses the default V7 ones
 """
 from __future__ import annotations
 
@@ -80,11 +80,11 @@ def remove(dag_id: str) -> bool:
 
 
 def get_defaults() -> list[DAGSpec]:
-    """DAGs par défaut — DÉSACTIVÉ (remplacé par run_carry_cycle.py, 25/07/2026).
+    """Default DAGs — DISABLED (replaced by run_carry_cycle.py, 25/07/2026).
     
-    DeepSeek/GPT audit: l'infrastructure DAG est surdimensionnée pour le funding carry.
-    Un script unique cron 8h remplace les 29 DAGs. Voir v7/run_carry_cycle.py.
+    DeepSeek/GPT audit: the DAG infrastructure is oversized for funding carry.
+    A single 8h-cron script replaces the 29 DAGs. See v7/run_carry_cycle.py.
     
-    Retourne une liste vide — les DAGs ne sont plus créés automatiquement.
+    Returns an empty list — DAGs are no longer created automatically.
     """
     return []

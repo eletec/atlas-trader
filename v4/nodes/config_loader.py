@@ -1,9 +1,9 @@
 """
-v4/nodes/config_loader.py — Chargeur de configuration V4.
+v4/nodes/config_loader.py — V4 configuration loader.
 
-Chaque nœud appelle `load_v4_config(symbol, section)` pour obtenir
-ses paramètres avec la priorité :
-  paramètre DAG > settings.yaml assets/{symbol} > settings.yaml global > défaut.
+Each node calls `load_v4_config(symbol, section)` to obtain
+its parameters with the priority:
+  DAG parameter > settings.yaml assets/{symbol} > settings.yaml global > default.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _get_settings() -> dict:
     # Priority: /app/data/ (writable, persistent) > config/ (git-tracked, read-only)
     _git_settings = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
     _data_settings = Path("/app/data") / "settings.yaml"
-    # Bootstrap : copier vers /app/data/ au premier lancement
+    # Bootstrap: copy to /app/data/ on first launch
     if not _data_settings.exists() and _git_settings.exists():
         import shutil
         _data_settings.parent.mkdir(parents=True, exist_ok=True)
@@ -56,8 +56,8 @@ def _get_settings() -> dict:
 
 
 def _deep_merge(base: dict, override: dict) -> None:
-    """Fusionne override dans base (modifie base in-place, priorité override).
-    Ne remplace PAS une valeur existante par une chaîne vide ou None."""
+    """Merge override into base (modifies base in-place, override takes priority).
+    Does NOT replace an existing value with an empty string or None."""
     for key, value in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             _deep_merge(base[key], value)
@@ -69,15 +69,15 @@ def _deep_merge(base: dict, override: dict) -> None:
 
 
 def load_v4_config(symbol: str | None, section: str, defaults: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Charge les paramètres d'une section avec priorité symbole > global > défaut.
+    """Load the parameters of a section with priority symbol > global > default.
 
     Args:
-        symbol: paire ex. "BTC/USDT", ou None pour sauter les overrides symbole
-        section: clé dans settings.yaml (ex. "risk", "signal", "exit")
-        defaults: valeurs par défaut si rien dans le fichier
+        symbol: pair e.g. "BTC/USDT", or None to skip the symbol overrides
+        section: key in settings.yaml (e.g. "risk", "signal", "exit")
+        defaults: default values when nothing is in the file
 
     Returns:
-        dict fusionné avec les valeurs résolues.
+        dict merged with the resolved values.
     """
     result = dict(defaults or {})
     settings = _get_settings()

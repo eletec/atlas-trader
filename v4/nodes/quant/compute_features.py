@@ -1,8 +1,8 @@
 """
-v4/nodes/quant/compute_features.py — Nœuds ComputeFeatures + Normalize
+v4/nodes/quant/compute_features.py — ComputeFeatures + Normalize nodes
 
-Wrappers V4 autour de quant.features et quant.normalization.
-Ne modifie pas ces modules.
+V4 wrappers around quant.features and quant.normalization.
+Does not modify these modules.
 """
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ from v4.core.node import Node
 
 class ComputeFeatures(Node):
     """
-    Calcule les features techniques à partir des OHLCV.
+    Computes the technical features from the OHLCV.
 
     Inputs  : ohlcv (DataFrame 5m)
-    Outputs : features (DataFrame — colonnes brutes non normalisées)
+    Outputs : features (DataFrame — raw, non-normalised columns)
 
     Params :
-        feature_set : "full" | "light"  (défaut "full" — utilise DEFAULT_FEATURE_COLS de V3)
+        feature_set : "full" | "light"  (default "full" — uses the DEFAULT_FEATURE_COLS of V3)
     """
 
     @property
@@ -48,14 +48,14 @@ class ComputeFeatures(Node):
 
 class Normalize(Node):
     """
-    Normalise les features avec rolling quantile (méthode V3).
+    Normalises the features with a rolling quantile (V3 method).
 
-    Inputs  : features (DataFrame brut), ohlcv (optionnel — pour reconstruire si besoin)
-    Outputs : features_norm (DataFrame normalisé), features_all (brut + normalisé concaténé)
+    Inputs  : features (raw DataFrame), ohlcv (optional — to rebuild when needed)
+    Outputs : features_norm (normalised DataFrame), features_all (raw + normalised concatenated)
 
     Params :
-        norm_window : int   — fenêtre rolling en barres (défaut 30 jours × 288 barres/j = 8640)
-        method      : str   — "quantile" uniquement pour l'instant
+        norm_window : int   — rolling window in bars (default 30 days × 288 bars/d = 8640)
+        method      : str   — "quantile" only for now
     """
 
     _NORM_COLS = [

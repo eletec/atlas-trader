@@ -5,12 +5,37 @@ Interface User (lecture seule) + Interface Admin (protégée par mot de passe).
 from __future__ import annotations
 
 import html
+import os
+import shlex
+import subprocess
 import sys
 import threading
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from queue import Queue, Empty
+
+
+# ── Background backtest run ─────────────────────────────────────────────
+# A multi-asset sweep takes minutes, so it runs detached and we follow a log
+# file. The marker files live on the shared v4_storage volume.
+_BT_LOG = "/app/data/backtest_run.log"
+_BT_RC = "/app/data/backtest_run.rc"
+
+
+def _backtest_run_state() -> str:
+    """'idle' when nothing was started, 'running' or 'done'."""
+    if not os.path.exists(_BT_LOG):
+        return "idle"
+    return "done" if os.path.exists(_BT_RC) else "running"
+
+
+def _backtest_exit_code() -> int:
+    try:
+        with open(_BT_RC, encoding="utf-8", errors="replace") as fh:
+            return int((fh.read().strip() or "0"))
+    except (OSError, ValueError):
+        return 0
 
 
 def _fmt_utc_local(dt_utc: datetime) -> str:
@@ -2559,7 +2584,7 @@ def _render_carry_config():
 
 
 def _render_backtest_v4():
-    """Panneau de backtest — Funding Carry (short perp + long spot, market-neutral)."""
+    """Backtest panel — funding carry (short perp + long spot, market-neutral)."""
     st.markdown("### 🧪 Backtest")
     # ── Funding Carry Backtest ──
     st.caption(t("backtest_carry_caption"))
@@ -2586,6 +2611,7 @@ def _render_backtest_v4():
     symbol = _opt_values[_choice_label]
     _is_group = symbol in (_SCOPE_ACTIVE, _SCOPE_ALL)
 
+    _n_scope = len(_bt_assets)
     if _is_group:
         try:
             from v7.core.asset_config import get_all_assets
@@ -2622,33 +2648,60 @@ def _render_backtest_v4():
     if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
         _cli_symbol = ("ACTIVE" if symbol == _SCOPE_ACTIVE
                        else "ALL" if symbol == _SCOPE_ALL else symbol)
-        with st.spinner(t("backtest_running").format(symbol=_choice_label, days=days)):
+        _cmd = [sys.executable, "v7/backtest_v7_node.py",
+                "--symbol", _cli_symbol, "--days", str(days)]
+        # Single-asset runs honour the on-screen overrides; group runs let the
+        # script read each asset's own capital/fraction from the config.
+        if not _is_group:
+            _cmd += ["--capital", str(int(capital)),
+                     "--fraction", str(round(fraction, 4))]
+        # Detached run: a 77-asset sweep takes ~5 minutes, which is far too long
+        # to block the Streamlit script (the connection would be dropped and the
+        # whole page would appear to hang). We spawn it, write to a log file and
+        # poll that file instead.
+        for _f in (_BT_LOG, _BT_RC):
             try:
-                import subprocess, sys
-                cmd = [
-                    sys.executable, "v7/backtest_v7_node.py",
-                    "--symbol", _cli_symbol,
-                    "--days", str(days),
-                ]
-                # Single-asset runs honour the on-screen overrides; group runs let
-                # the script read each asset's own capital/fraction from the config.
-                if not _is_group:
-                    cmd += ["--capital", str(int(capital)),
-                            "--fraction", str(round(fraction, 4))]
-                _timeout = 1800 if _is_group else 300
-                result = subprocess.run(cmd, capture_output=True, text=True,
-                                        cwd="/app/src", timeout=_timeout)
-                output = result.stdout
-                if result.stderr:
-                    output += "\n\n[stderr]\n" + result.stderr[-500:]
-                st.code(output[-8000:] if len(output) > 8000 else output)
-                # Highlight TRADING: 'Total' includes staking,
-                # which is not a strategy performance
-                for line in output.split("\n"):
-                    if any(kw in line for kw in ("TRADING (the strategy)", "NO TRADE", "Mean Sharpe")):
-                        st.text(line.strip())
-            except Exception as e:
-                st.error(str(e))
+                os.remove(_f)
+            except OSError:
+                pass
+        _shell = shlex.join(_cmd) + f"; echo $? > {_BT_RC}"
+        with open(_BT_LOG, "w") as _fh:
+            _fh.write(f"$ {shlex.join(_cmd)}\n\n")
+        _fh_out = open(_BT_LOG, "a")
+        subprocess.Popen(["/bin/sh", "-c", _shell], stdout=_fh_out,
+                         stderr=subprocess.STDOUT, cwd="/app/src",
+                         start_new_session=True)
+        _fh_out.close()
+        st.session_state["_bt_started"] = time.time()
+        st.rerun()
+
+    # ── Follow the run started from this page (survives a reload) ──
+    _bt_state = _backtest_run_state()
+    if _bt_state != "idle":
+        _elapsed = time.time() - st.session_state.get("_bt_started", time.time())
+        try:
+            _log_txt = open(_BT_LOG, encoding="utf-8", errors="replace").read()
+        except OSError:
+            _log_txt = ""
+        if _bt_state == "running":
+            st.info(t("backtest_bg_running").format(elapsed=int(_elapsed)))
+            _done = sum(1 for _l in _log_txt.split("\n") if _l.startswith("  ")
+                        and "Trade=$" in _l)
+            if _done:
+                st.caption(t("backtest_bg_progress").format(done=_done, total=_n_scope))
+            st.code(_log_txt[-4000:] if len(_log_txt) > 4000 else _log_txt)
+            time.sleep(3)
+            st.rerun()
+        else:
+            _rc = _backtest_exit_code()
+            if _rc == 0:
+                st.success(t("backtest_bg_done").format(elapsed=int(_elapsed)))
+            else:
+                st.error(t("backtest_bg_error").format(rc=_rc))
+            st.code(_log_txt[-12000:] if len(_log_txt) > 12000 else _log_txt)
+            for _line in _log_txt.split("\n"):
+                if any(kw in _line for kw in ("TRADING (the strategy)", "NO TRADE", "Mean Sharpe")):
+                    st.text(_line.strip())
 
 _LOGS_PAGE_SIZE = 100
 

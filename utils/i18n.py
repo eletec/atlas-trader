@@ -1374,6 +1374,91 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "nl": "Gesimuleerd jaarlijks rendement op inactief kapitaal (positie gesloten). Toegerekend per periode van 8 uur.",
         "zh": "对闲置资金（无持仓时）模拟的年化收益，按每 8 小时计入。",
     },
+
+    # ── Backtest ──────────────────────────────────────────────────────────
+    "backtest_capital": {
+        "fr": "Capital ($)", "en": "Capital ($)", "de": "Kapital ($)",
+        "es": "Capital ($)", "it": "Capitale ($)", "pt": "Capital ($)",
+        "nl": "Kapitaal ($)", "zh": "资金 ($)",
+    },
+    "backtest_capital_help": {
+        "fr": "Capital alloué à cet actif pour le backtest. Défaut : valeur de carry_assets.yaml.",
+        "en": "Capital allocated to this asset for the backtest. Default: value from carry_assets.yaml.",
+        "de": "Für dieses Asset im Backtest alloziertes Kapital. Standard: Wert aus carry_assets.yaml.",
+        "es": "Capital asignado a este activo para el backtest. Por defecto: valor de carry_assets.yaml.",
+        "it": "Capitale assegnato a questo asset per il backtest. Predefinito: valore da carry_assets.yaml.",
+        "pt": "Capital atribuído a este ativo para o backtest. Predefinição: valor de carry_assets.yaml.",
+        "nl": "Kapitaal toegewezen aan dit asset voor de backtest. Standaard: waarde uit carry_assets.yaml.",
+        "zh": "分配给该资产用于回测的资金。默认：carry_assets.yaml 中的值。",
+    },
+    "backtest_fraction": {
+        "fr": "Fraction du capital en carry", "en": "Fraction of capital in carry",
+        "de": "Kapitalanteil im Carry", "es": "Fracción del capital en carry",
+        "it": "Frazione di capitale in carry", "pt": "Fração do capital em carry",
+        "nl": "Deel van kapitaal in carry", "zh": "投入 carry 的资金比例",
+    },
+    "backtest_fraction_help": {
+        "fr": "Part du capital immobilisée dans la position carry (défaut : valeur de carry_assets.yaml).",
+        "en": "Share of capital committed to the carry position (default: value from carry_assets.yaml).",
+        "de": "Anteil des in der Carry-Position gebundenen Kapitals (Standard: Wert aus carry_assets.yaml).",
+        "es": "Parte del capital comprometida en la posición carry (por defecto: valor de carry_assets.yaml).",
+        "it": "Quota di capitale impegnata nella posizione carry (predefinito: valore da carry_assets.yaml).",
+        "pt": "Parte do capital comprometida na posição carry (predefinição: valor de carry_assets.yaml).",
+        "nl": "Deel van het kapitaal vastgelegd in de carry-positie (standaard: waarde uit carry_assets.yaml).",
+        "zh": "投入 carry 持仓的资金占比（默认：carry_assets.yaml 中的值）。",
+    },
+    "backtest_running": {
+        "fr": "Backtest Funding Carry — {symbol} sur {days}j…",
+        "en": "Funding Carry backtest — {symbol} over {days}d…",
+        "de": "Funding-Carry-Backtest — {symbol} über {days} Tage…",
+        "es": "Backtest Funding Carry — {symbol} en {days}d…",
+        "it": "Backtest Funding Carry — {symbol} su {days}g…",
+        "pt": "Backtest Funding Carry — {symbol} em {days}d…",
+        "nl": "Funding Carry-backtest — {symbol} over {days} dagen…",
+        "zh": "资金费 carry 回测 — {symbol}，{days} 天…",
+    },
+
+    # ── Contrôles divers ─────────────────────────────────────────────────
+    "carry_apply_optimized_btn": {
+        "fr": "📊 Appliquer optimisés", "en": "📊 Apply optimized",
+        "de": "📊 Optimierte anwenden", "es": "📊 Aplicar optimizados",
+        "it": "📊 Applica ottimizzati", "pt": "📊 Aplicar otimizados",
+        "nl": "📊 Geoptimaliseerd toepassen", "zh": "📊 应用优化参数",
+    },
+    "carry_apply_optimized_help": {
+        "fr": "Copie les paramètres _optimized_* vers les paramètres réels (actifs non verrouillés).",
+        "en": "Copies the _optimized_* parameters to the live ones (unlocked assets only).",
+        "de": "Kopiert die _optimized_*-Parameter in die aktiven Parameter (nur ungesperrte Assets).",
+        "es": "Copia los parámetros _optimized_* a los reales (solo activos no bloqueados).",
+        "it": "Copia i parametri _optimized_* su quelli reali (solo asset non bloccati).",
+        "pt": "Copia os parâmetros _optimized_* para os reais (apenas ativos não bloqueados).",
+        "nl": "Kopieert de _optimized_*-parameters naar de actieve (alleen niet-vergrendelde assets).",
+        "zh": "将 _optimized_* 参数复制到实际参数（仅限未锁定的资产）。",
+    },
+    "clear_btn": {
+        "fr": "🗑️ Vider", "en": "🗑️ Clear", "de": "🗑️ Leeren",
+        "es": "🗑️ Vaciar", "it": "🗑️ Svuota", "pt": "🗑️ Limpar",
+        "nl": "🗑️ Wissen", "zh": "🗑️ 清空",
+    },
+    "clear_btn_help": {
+        "fr": "Efface les logs en mémoire (buffer circulaire automatique).",
+        "en": "Clears the in-memory logs (automatic circular buffer).",
+        "de": "Löscht die Logs im Speicher (automatischer Ringpuffer).",
+        "es": "Borra los logs en memoria (búfer circular automático).",
+        "it": "Cancella i log in memoria (buffer circolare automatico).",
+        "pt": "Limpa os logs em memória (buffer circular automático).",
+        "nl": "Wist de logs in het geheugen (automatische ringbuffer).",
+        "zh": "清除内存中的日志（自动循环缓冲）。",
+    },
+    "export_csv_btn": {
+        "fr": "⬇️ Exporter CSV", "en": "⬇️ Export CSV", "de": "⬇️ CSV exportieren",
+        "es": "⬇️ Exportar CSV", "it": "⬇️ Esporta CSV", "pt": "⬇️ Exportar CSV",
+        "nl": "⬇️ CSV exporteren", "zh": "⬇️ 导出 CSV",
+    },
+    "col_number": {
+        "fr": "Nombre", "en": "Count", "de": "Anzahl", "es": "Cantidad",
+        "it": "Quantità", "pt": "Quantidade", "nl": "Aantal", "zh": "数量",
+    },
 }
 
 _current_lang: str = "en"

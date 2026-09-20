@@ -2387,8 +2387,8 @@ def _render_carry_config():
                 except Exception as exc:
                     st.error(f"Optimization failed — {exc}")
     with col_b3:
-        if st.button("📊 Appliquer optimisés", type="secondary", use_container_width=True,
-                     help="Copie les params _optimized_* vers les params réels (actifs non verrouillés)"):
+        if st.button(t("carry_apply_optimized_btn"), type="secondary", use_container_width=True,
+                     help=t("carry_apply_optimized_help")):
             count = _apply_optimized_params(cfg)
             st.session_state["_carry_msg"] = f"📊 Paramètres optimisés appliqués à {count} actifs" if count > 0 else "📊 Aucun changement — déjà optimaux"
             st.rerun()
@@ -2565,8 +2565,9 @@ def _render_backtest_v4():
     st.caption(t("backtest_carry_caption"))
     
     # Charger les actifs depuis carry_assets.yaml
+    get_asset_params = None
     try:
-        from v7.core.asset_config import get_active_assets
+        from v7.core.asset_config import get_active_assets, get_asset_params
         _bt_assets = get_active_assets()
         if not _bt_assets:
             _bt_assets = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
@@ -2576,16 +2577,26 @@ def _render_backtest_v4():
     symbol = st.selectbox(t("col_asset"), _bt_assets)
     days = st.slider(t("backtest_days_history"), 30, 1095, 365, 30)
     
+    # Défauts issus de carry_assets.yaml (source unique), pas de constantes en dur
+    _btp: dict = {}
+    try:
+        if get_asset_params:
+            _btp = get_asset_params(symbol) or {}
+    except Exception:
+        _btp = {}
+
     col1, col2 = st.columns(2)
     with col1:
-        capital = st.number_input("Capital ($)", 100, 100000, 10000, 1000,
-                                  help="Capital alloué à cet actif pour le backtest")
+        capital = st.number_input(t("backtest_capital"), 100, 100000,
+                                  int(_btp.get("capital", 2000)), 100,
+                                  help=t("backtest_capital_help"))
     with col2:
-        fraction = st.slider("Fraction capital en carry", 0.10, 1.0, 0.50, 0.05,
-                             help="Part du capital immobilisée dans le carry")
+        fraction = st.slider(t("backtest_fraction"), 0.10, 1.0,
+                             float(_btp.get("fraction", 0.50)), 0.05,
+                             help=t("backtest_fraction_help"))
     
     if st.button(t("backtest_run_btn"), type="primary", use_container_width=True):
-        with st.spinner(f"Backtest Funding Carry — {symbol} sur {days}j (règles V7.2)..."):
+        with st.spinner(t("backtest_running").format(symbol=symbol, days=days)):
             try:
                 import subprocess, sys
                 cmd = [
@@ -2593,15 +2604,17 @@ def _render_backtest_v4():
                     "--symbol", symbol,
                     "--days", str(days),
                     "--capital", str(capital),
+                    "--fraction", str(round(fraction, 4)),
                 ]
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd="/app/src", timeout=300)
                 output = result.stdout
                 if result.stderr:
                     output += "\n\n[stderr]\n" + result.stderr[-500:]
                 st.code(output[-4000:] if len(output) > 4000 else output)
-                # Extraire les métriques clés si présentes
+                # Mettre en avant le TRADING : le « Total » inclut le staking,
+                # qui n'est pas une performance de stratégie
                 for line in output.split("\n"):
-                    if any(kw in line for kw in ["Sharpe", "PnL Total", "Win Rate", "Max DD", "Trades:"]):
+                    if any(kw in line for kw in ("TRADING (la stratégie)", "AUCUN TRADE", "Sharpe moyen")):
                         st.text(line.strip())
             except Exception as e:
                 st.error(str(e))
@@ -2654,8 +2667,8 @@ def render_live_logs(key: str = "global", asset: str | None = None):
             )
         st.markdown('<div style="margin-bottom:12px;"></div>', unsafe_allow_html=True)
     with col_del:
-        if st.button("🗑️ Vider", key=f"btn_clear_logs_{key}",
-                     help="Efface les logs V4 (buffer circulaire automatique)",
+        if st.button(t("clear_btn"), key=f"btn_clear_logs_{key}",
+                     help=t("clear_btn_help"),
                      use_container_width=True):
             st.info(t("logs_memory_caption"), icon="ℹ️")
     # DB-backed logs — uniquement si V4 logs sont vides (pas de doublon)
@@ -3091,7 +3104,7 @@ def render_admin_panel():
             import pandas as _hpd
             _h_df = _hpd.DataFrame(filtered)
             _h_csv = _h_df.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇️ Exporter CSV", _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
+            st.download_button(t("export_csv_btn"), _h_csv, file_name="v4_trades.csv", mime="text/csv", key="hist_v4_csv")
 
             # ── Bouton fermeture manuelle de toutes les positions ──────────
             st.markdown("---")
@@ -3157,7 +3170,7 @@ def render_admin_panel():
                 key="dec_symbol",
             )
         with _dcol2:
-            _dlimit = st.slider("Nombre", 10, 500, 50, 10, key="dec_limit")
+            _dlimit = st.slider(t("col_number"), 10, 500, 50, 10, key="dec_limit")
 
         try:
             _dparams = {"n": _dlimit}

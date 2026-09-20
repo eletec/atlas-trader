@@ -301,6 +301,8 @@ def main():
                         help="ALL, ACTIVE, BTC, BTC/USDT, ou BTC,ETH (séparés par virgule)")
     parser.add_argument("--days", type=int, default=365)
     parser.add_argument("--capital", type=float, default=2000)
+    parser.add_argument("--fraction", type=float, default=None,
+                        help="Part du capital immobilisée en carry (défaut : valeur de carry_assets.yaml)")
     args = parser.parse_args()
 
     if args.symbol == "ALL":
@@ -320,7 +322,8 @@ def main():
     t0 = time.time()
     for sym in symbols:
         logger.info("%s...", sym)
-        r = backtest_asset(sym, args.days, args.capital)
+        _ov = {"fraction": args.fraction} if args.fraction is not None else None
+        r = backtest_asset(sym, args.days, args.capital, params_override=_ov)
         results.append(r)
         if "error" not in r:
             tag = ""
@@ -366,11 +369,20 @@ def main():
         avg_util = 0.0
     print("\n" + "=" * 90)
     print(f"Portfolio: {len(symbols)} actifs | {len(valid)} tradés, {len(staking_only)} sans trade")
-    print(f"Trading P&L (ex-staking): ${total_trading_pnl:,.2f} ({total_trading_pnl/total_cap*100:.2f}%)")
-    print(f"Staking P&L (idle):       ${total_staking:,.2f} ({total_staking/total_cap*100:.2f}%)")
-    print(f"Total P&L:                ${total_pnl_all:,.2f} ({total_pnl_all/total_cap*100:.2f}%)")
-    print(f"Sharpe moyen (tradés): {avg_sharpe:.2f} | Capital utilisation: {avg_util:.1f}%")
-    print(f"Durée: {elapsed:.0f}s | Capital total: ${total_cap:,.0f}")
+    print()
+    print(f"  TRADING (la stratégie)    : ${total_trading_pnl:>10,.2f}   {total_trading_pnl/total_cap*100:+.2f}%")
+    print(f"  Staking (capital inactif) : ${total_staking:>10,.2f}   {total_staking/total_cap*100:+.2f}%   <-- simulé, PAS du trading")
+    print( "  " + "-" * 72)
+    print(f"  Total                     : ${total_pnl_all:>10,.2f}   {total_pnl_all/total_cap*100:+.2f}%   <-- ne pas lire comme une perf de stratégie")
+    print()
+    if not valid:
+        print("  ⚠️  AUCUN TRADE sur la période : à ces niveaux de funding, aucun actif ne")
+        print("      franchit le seuil d'entrée (min_funding). Le 'Total' ci-dessus est")
+        print("      intégralement du staking sur capital inactif.")
+    elif total_trading_pnl <= 0:
+        print("  ⚠️  La stratégie est en perte ou à l'équilibre sur la période.")
+    print(f"\n  Sharpe moyen (tradés): {avg_sharpe:.2f} | Capital utilisation: {avg_util:.1f}%")
+    print(f"  Durée: {elapsed:.0f}s | Capital total: ${total_cap:,.0f}")
     if staking_only:
         print(f"\n⚠️  {len(staking_only)} actifs sans trade (staking fictif uniquement):")
         for r in staking_only:

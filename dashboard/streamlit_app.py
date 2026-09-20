@@ -836,12 +836,13 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     try:
         from storage.paper_trader import get_v4_trades
         v4_trades = get_v4_trades(n=n, symbol=asset)
-        for t in v4_trades:
+        # NB: variable de boucle nommee `tr` et non `t` — `t` est la fonction i18n
+        for tr in v4_trades:
             # Extraire le contexte carry (funding, score, etc.)
             _score = 0
             _total_funding = 0.0
             _n_payments = 0
-            _ctx_raw = t.get("context_json")
+            _ctx_raw = tr.get("context_json")
             if _ctx_raw:
                 try:
                     import json as _json
@@ -852,16 +853,16 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
                 except Exception:
                     pass
             trades.append({
-                "id": f"{t.get('dag_id','v4')}_{t.get('symbol','')}_{t.get('trade_id','')}",
-                "timestamp": t.get("timestamp", ""),
-                "asset": t.get("symbol", ""),
-                "action": "CARRY" if t.get("action") in ("carry", "short") else ("BUY" if t.get("action") == "long" else "SELL"),
-                "entry_price": t.get("entry_price"),
-                "sl_price": t.get("stop_loss", 0),
-                "tp_price": t.get("take_profit", 0),
-                "position_size": t.get("size_usd", 0),
-                "result_24h": t.get("pnl_usd") if t.get("status") == "closed" else None,
-                "status": t.get("status", "open"),
+                "id": f"{tr.get('dag_id','v4')}_{tr.get('symbol','')}_{tr.get('trade_id','')}",
+                "timestamp": tr.get("timestamp", ""),
+                "asset": tr.get("symbol", ""),
+                "action": "CARRY" if tr.get("action") in ("carry", "short") else ("BUY" if tr.get("action") == "long" else "SELL"),
+                "entry_price": tr.get("entry_price"),
+                "sl_price": tr.get("stop_loss", 0),
+                "tp_price": tr.get("take_profit", 0),
+                "position_size": tr.get("size_usd", 0),
+                "result_24h": tr.get("pnl_usd") if tr.get("status") == "closed" else None,
+                "status": tr.get("status", "open"),
                 "source": "v4",
                 "score": _score,
                 "total_funding_received": _total_funding,
@@ -870,11 +871,10 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
     except Exception:
         pass
 
-    trades.sort(key=lambda t: str(t.get("timestamp", "")), reverse=True)
+    trades.sort(key=lambda tr: str(tr.get("timestamp", "")), reverse=True)
     return trades[:n]
 
 
-@st.cache_data(ttl=30)
 @st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
     """Portefeuille consolidé — positions ouvertes + PnL cumulé depuis la DB."""
@@ -889,11 +889,11 @@ def _get_portfolio(asset: str | None = None) -> dict:
         total_pnl = 0.0
         n_open = 0
         total_exposure = 0.0
-        for t in all_trades:
-            if t.get("status") == "open":
+        for tr in all_trades:
+            if tr.get("status") == "open":
                 n_open += 1
-                total_exposure += float(t.get("size_usd", 0) or 0)
-            pnl = t.get("pnl_usd")
+                total_exposure += float(tr.get("size_usd", 0) or 0)
+            pnl = tr.get("pnl_usd")
             if pnl is not None:
                 total_pnl += float(pnl)
         portfolio["n_trades"] = n_open

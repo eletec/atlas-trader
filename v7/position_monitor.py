@@ -506,6 +506,23 @@ class PositionMonitor:
 
         return result
 
+    @staticmethod
+    def _leverage_for(symbol: str, coin: str) -> float:
+        """Levier du short perp : carry_assets.yaml en priorite, table majors sinon.
+
+        Source unique de verite — la table codee en dur divergeait silencieusement
+        de la config si un levier y etait modifie.
+        """
+        try:
+            from v7.core.asset_config import get_asset_params
+            lev = get_asset_params(symbol).get("leverage")
+            if lev:
+                return float(lev)
+        except Exception:
+            pass
+        return {"BTC": 2.0, "ETH": 2.0, "SOL": 1.5, "BNB": 1.5,
+                "XRP": 1.0, "ADA": 1.0, "DOGE": 1.0}.get(coin, 1.0)
+
     def _check_margin_safety(self, pd: dict) -> str:
         """
         Simulate margin safety for a carry position (3 audits consensus, 20/07/2026).
@@ -528,11 +545,8 @@ class PositionMonitor:
             coin = symbol.split("/")[0].upper() if "/" in symbol else symbol.upper()
 
             # ── Leverage assumptions ──
-            # Majors (BTC, ETH): 2x leverage → 50% initial margin
-            # Mid (SOL, BNB): 1.5x → 66% initial margin  
-            # Alts (XRP, ADA, DOGE): 1x → 100% initial margin (no leverage)
-            leverage = {"BTC": 2.0, "ETH": 2.0, "SOL": 1.5, "BNB": 1.5,
-                        "XRP": 1.0, "ADA": 1.0, "DOGE": 1.0}.get(coin, 1.0)
+            # Lu depuis carry_assets.yaml (BTC/ETH 2x, SOL/BNB 1.5x, majors alts 1x)
+            leverage = self._leverage_for(symbol, coin)
 
             # Maintenance margin rate (Binance standard: ~0.5%–2.5% depending on notional)
             maint_margin_rate = 0.005  # 0.5% conservative

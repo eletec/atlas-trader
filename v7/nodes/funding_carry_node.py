@@ -381,8 +381,10 @@ class FundingCarryNode:
         """
         t0 = time.time()
         
-        # Le symbole peut venir d'un edge (prioritaire) ou de self.params
-        symbol = inputs.get("symbol", self.symbol)
+        # Le noeud est lie a UN SEUL actif : self.symbol fait foi.
+        # L'etat interne (position ouverte, capital engage, historique de funding)
+        # n'est pas reinitialise entre deux appels — les appelants instancient
+        # donc un noeud par actif (run_carry_cycle, backtests).
         
         spot_price = float(inputs.get("spot_price", 0))
         funding_rate = float(inputs.get("funding_rate", 0))
@@ -417,7 +419,6 @@ class FundingCarryNode:
         confidence = 0.5
         reason = ""
         unrealized_pct = 0.0
-        unrealized_usd = 0.0
         economic_hurdle = self.economic_hurdle  # scoped for both open/close branches
         
         # Annualiser — utilise l'intervalle réel de Binance (3 audits, 20/07/2026)
@@ -425,13 +426,14 @@ class FundingCarryNode:
         periods_per_year = (24 / funding_interval_h) * 365
         annual_funding = funding_rate * periods_per_year
         
-        # Basis check
+        # Basis : filtre de qualite d'entree uniquement.
+        # Le basis N'EST PAS annualise dans le rendement attendu (pas de garantie de
+        # convergence, et un basis negatif ne doit pas annuler le funding).
+        # Voir plus bas : expected_return = annual_funding seul.
         if perp_price > 0:
             basis_pct = (perp_price - spot_price) / spot_price
-            basis_annual = basis_pct * periods_per_year
         else:
             basis_pct = 0.0
-            basis_annual = 0.0
         
         if not self.state.position_open:
             # ── Staking sur capital inactif ──
@@ -615,7 +617,6 @@ class FundingCarryNode:
                         pass
             else:
                 unrealized_pct = 0.0
-                unrealized_usd = 0.0
             
             # ── Cross-margin risk monitoring ──
             # En paper trading, on simule le risque de liquidation du short perp

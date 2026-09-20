@@ -35,15 +35,19 @@ _ASSETS_DIR = Path("config/assets")
 
 def load_settings(path: str | Path | None = None) -> dict:
     """
-    Charge settings.yaml et résout les variables d'environnement.
-    Utilise un cache simple — appeler reload_settings() pour invalider.
+    Charge settings.yaml — optionnel, retourne {} s'il est absent.
+
+    settings.yaml est un reliquat de la strategie V2 (directionnel + crawler news).
+    La configuration de la strategie en production est UNIQUEMENT dans
+    config/carry_assets.yaml. On ne leve donc plus d'exception si le fichier
+    manque : l'application doit demarrer sans lui.
     """
     p = Path(path) if path else _SETTINGS_PATH
     if not p.exists():
-        raise FileNotFoundError(f"settings.yaml introuvable : {p.absolute()}")
+        return {}
 
     with open(p, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
 
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
@@ -101,6 +105,15 @@ def save_settings(settings: dict, path: str | Path | None = None) -> None:
 def _asset_slug(asset: str) -> str:
     """'BTC/USDT' → 'BTC_USDT'"""
     return asset.replace("/", "_").replace(" ", "_")
+
+
+def _carry_config_path() -> Path:
+    """Chemin effectif de carry_assets.yaml (runtime en container, depot sinon)."""
+    try:
+        from v7.core.asset_config import config_path
+        return config_path()
+    except Exception:
+        return _SETTINGS_PATH.parent / "carry_assets.yaml"
 
 
 def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
@@ -181,15 +194,16 @@ def export_config_zip() -> bytes:
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # carry_assets.yaml — LA config de la strategie carry (source unique de verite).
+        # Sans elle, la sauvegarde ne protegeait rien d'utile.
+        carry_path = _carry_config_path()
+        if carry_path.exists():
+            zf.write(carry_path, arcname="carry_assets.yaml")
+
         # settings.yaml (ou le fichier actif via SETTINGS_FILE)
         settings_path = _SETTINGS_PATH
         if settings_path.exists():
             zf.write(settings_path, arcname="settings.yaml")
-
-        # prompts.yaml — templates LLM V2
-        prompts_path = _SETTINGS_PATH.parent / "prompts.yaml"
-        if prompts_path.exists():
-            zf.write(prompts_path, arcname="prompts.yaml")
 
         # Tous les fichiers config/assets/*.yaml
         assets_dir = _SETTINGS_PATH.parent / "assets"
@@ -259,13 +273,13 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
         assets_dir.mkdir(parents=True, exist_ok=True)
 
         for name in names:
-            # Seuls settings.yaml, prompts.yaml et assets/*.yaml sont acceptés
+            # Seuls carry_assets.yaml, settings.yaml et assets/*.yaml sont acceptes
             p = Path(name)
-            if p.name == "settings.yaml" and len(p.parts) == 1:
-                # Restaurer vers le fichier actif (SETTINGS_FILE), pas settings.yaml hardcodé
+            if p.name == "carry_assets.yaml" and len(p.parts) == 1:
+                dest = _carry_config_path()
+            elif p.name == "settings.yaml" and len(p.parts) == 1:
+                # Restaurer vers le fichier actif (SETTINGS_FILE), pas settings.yaml hardcode
                 dest = _SETTINGS_PATH
-            elif p.name == "prompts.yaml" and len(p.parts) == 1:
-                dest = config_dir / "prompts.yaml"
             elif len(p.parts) == 2 and p.parts[0] == "assets" and p.suffix == ".yaml":
                 dest = assets_dir / p.name
             else:

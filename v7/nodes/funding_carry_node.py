@@ -209,16 +209,28 @@ class FundingCarryNode:
         """True when the node runs inside the backtester (no live DB access)."""
         return bool(self.params.get("_backtest", False))
 
-    def _funding_period_key(self) -> Optional[str]:
+    def _funding_period_key(self, explicit: Optional[str] = None) -> Optional[str]:
         """The funding period the current rate belongs to, or None in a backtest.
 
-        Binance settles at fixed boundaries (every 8h on the contracts we trade) and
-        the fetched rate is `lastFundingRate`, the one settled at the most recent
-        boundary. Flooring the clock onto that boundary gives every cycle inside one
-        period the same key, so the second one books nothing.
+        Preferred form: the settlement timestamp the exchange reports, passed in by
+        the caller. It is the real period boundary, so it is correct for 4h and 8h
+        contracts alike and survives a clock that is off or a cycle that runs late.
+
+        Fallback: floor the clock onto the 8h boundary. Binance settles at fixed
+        boundaries and the fetched rate is the one settled most recently, so every
+        cycle inside one period lands on the same key and the second books nothing.
         """
         if self._is_backtest():
             return None  # one row per period by construction
+        if explicit:
+            try:
+                dt = datetime.fromisoformat(str(explicit).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                dt = None
+            if dt is not None:
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt.isoformat(timespec="seconds")
         dt = self._now()
         if dt.tzinfo is not None:
             dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
@@ -244,11 +256,13 @@ class FundingCarryNode:
         try:
             import ccxt
             exchange = ccxt.binanceusdm({"enableRateLimit": True})
-            market = exchange.market(self._perp_symbol(self.symbol))
-            market_id = market.get("id") if market else None
-            if not market_id:
-                return
-            rows = exchange.fetch_funding_rate_history(market_id, limit=FUNDING_WINDOW)
+            # Pass the unified symbol: ccxt resolves it itself. The previous version
+            # called exchange.market(...) on a freshly built exchange without ever
+            # calling load_markets(), which is not guaranteed to return anything —
+            # and a silent seed failure is exactly how the percentile filter stays
+            # disabled, since it needs 30 periods and one observation is not enough.
+            rows = exchange.fetch_funding_rate_history(
+                self._perp_symbol(self.symbol), limit=FUNDING_WINDOW)
             if rows:
                 self._funding_rate_history = [
                     float(r.get("fundingRate") or 0) for r in rows
@@ -442,6 +456,36 @@ class FundingCarryNode:
             return float(get_global_params().get("staking_annual", 0.05))
         except Exception:
             return 0.05
+
+    def fetch_latest_settlement(self) -> Optional[tuple[datetime, float]]:
+        """The most recently SETTLED funding period, as (settlement time, rate).
+
+        `fetch_current_funding()` returns 0.0 both when the rate really is zero and
+        when the call fails, and the caller could not tell the two apart. Combined
+        with the idempotency guard that is worse than a wrong number: a failed fetch
+        at 16:00 booked a $0 payment and marked the period done, so the real
+        settlement was never counted at all.
+
+        Returns None on failure so the caller can skip the asset and try again.
+        The timestamp is the exchange's own, which also removes the need to guess
+        whether a contract settles every 4h or every 8h.
+        """
+        try:
+            exchange = self._get_exchange()
+            symbol_perp = self._perp_symbol(self.symbol)
+            rates = exchange.fetch_funding_rates([symbol_perp])
+            row = rates.get(symbol_perp) if rates else None
+            if not row:
+                return None
+            ts = row.get("fundingTimestamp") or row.get("timestamp")
+            rate = row.get("fundingRate")
+            if ts is None or rate is None:
+                return None
+            return (datetime.fromtimestamp(int(ts) / 1000, tz=timezone.utc),
+                    float(rate))
+        except Exception as exc:
+            logger.warning("Settlement fetch failed for %s: %s", self.symbol, exc)
+            return None
 
     def fetch_current_funding(self) -> float:
         """Fetch the current funding rate."""
@@ -840,7 +884,7 @@ class FundingCarryNode:
             # manual POST /carry/run, or the startup cycle right after a restart —
             # would both book the same payment, while the backtest books it exactly
             # once. The key is None in a backtest, so this guards only the live path.
-            period_key = self._funding_period_key()
+            period_key = self._funding_period_key(inputs.get("funding_ts"))
             already_booked = period_key is not None and period_key == self.state.last_funding_ts
 
             if signal == "close_carry":

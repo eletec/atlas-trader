@@ -270,12 +270,12 @@ step 3, parameters frozen, causal universe:
 
 ```
 Traded windows  : 5/10 (50% coverage)
-OOS median      : +0.022%/quarter  ~ +0.09%/yr
-OOS worst/best  : -0.015% / +0.370%
-Total Trading   : $55.48 over 3 years ($12,000 of capital)
+OOS median      : +0.021%/quarter  ~ +0.08%/yr
+OOS worst/best  : -0.016% / +0.377%
+Total Trading   : $56.14 over 3 years ($12,000 of capital)
 Total Staking   : $629.50                      <- 11x the trading
 
-RANGE : 5 windows, median +0.022%
+RANGE : 5 windows, median +0.021%
 
 Verdict: Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)
 ```
@@ -285,15 +285,15 @@ Two things a reader should not skim past:
 - **Half the windows never traded at all.** A window with zero trades proves
   nothing about the edge — it is not evidence of profitability, and the tool now
   reports it as 50% coverage rather than folding it into a "% positive" figure.
-- **+0.09%/yr is ~55x below the hurdle.** The tool's own verdict logic reports
-  `Paper trading only — OOS return +0.09%/yr below the hurdle (5%/yr)` instead of
+- **+0.08%/yr is ~60x below the hurdle.** The tool's own verdict logic reports
+  `Paper trading only — OOS return +0.08%/yr below the hurdle (5%/yr)` instead of
   the "GO for real capital" it used to print for any positive median.
 
 An earlier run of this table segmented two windows as BULL and credited the return
 to those. That split came from the regime classifier reading daily bars while the
 strategy now reads 8h bars; on the same resolution the traded windows all classify
-as RANGE. The share shifted, the P&L did not — +0.022% per quarter either way,
-still ~55x below the hurdle. It is worth knowing that a regime label here is an
+as RANGE. The share shifted, the P&L did not — +0.021% per quarter either way,
+still ~60x below the hurdle. It is worth knowing that a regime label here is an
 artefact of the bar size the classifier is handed.
 
 ### Limits, stated plainly
@@ -312,10 +312,11 @@ artefact of the bar size the classifier is handed.
 - **The entry gate is above the market it trades.** Not a bug, a calibration
   fact: 0 of 69 assets clear the strategy's break-even under its own 30-day
   rotation schedule.
-- **The basis term is not reliably measurable from daily closes.** On thin
-  alts a single bad bar manufactures a double-digit annual return (see §11). The
-  backtests model the basis from daily closes, forward-filled onto funding
-  timestamps; treat basis-sensitive results with suspicion.
+- **The basis term is not reliable on thin alts, whatever the bar size.** A single
+  bad bar manufactured a double-digit annual return on `BANK/USDT` (see §11). Both
+  backtesters now read 8h bars, paginated, shifted so a decision only ever sees a
+  bar that has closed, and neither will invent a perp price from the spot price —
+  but basis-sensitive results on a thin asset still deserve suspicion.
 - **Staking yield is an assumption** (5%/yr), not a realised return. It is
   reported separately for exactly this reason.
 - **Counterparty / venue risk is not modelled.** If Binance halts withdrawals or

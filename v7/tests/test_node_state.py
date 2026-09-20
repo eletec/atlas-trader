@@ -153,18 +153,73 @@ class TestRealizeClose:
 
 
 class TestSeedGuard:
-    """The exchange backfill must never run in a backtest or when already warm."""
+    """The exchange backfill must never run in a backtest or when already warm.
+
+    The exchange is stubbed: the previous version of the "already full" test used 21
+    periods, which was the window size at the time. Once the window grew to 270 the
+    test silently started making a real network call, which is both slow and flaky.
+    """
 
     def test_no_seed_in_a_backtest(self):
         node = FundingCarryNode(node_id="t", symbol="BTC/USDT", params={"_backtest": True})
         node._seed_funding_history()          # must not touch the network
         assert node._funding_rate_history == []
 
-    def test_no_seed_when_the_window_is_already_full(self):
+    def test_no_seed_when_the_window_is_already_full(self, monkeypatch):
+        from v7.nodes.funding_carry_node import FUNDING_WINDOW
+        node = FundingCarryNode(node_id="t", symbol="BTC/USDT")
+        node._funding_rate_history = [0.0001] * FUNDING_WINDOW
+        before = list(node._funding_rate_history)
+
+        called = []
+        monkeypatch.setattr(node, "_is_backtest", lambda: False)
+        monkeypatch.setitem(sys.modules, "ccxt", _stub_ccxt([], called))
+
+        node._seed_funding_history()
+        assert called == [], "the exchange was queried with a full window"
+        assert node._funding_rate_history == before
+
+    def test_seeds_from_the_exchange_when_the_old_bar_was_not_enough(self, monkeypatch):
+        """21 periods satisfied the 7-day MA but left the percentile filter dead:
+        it needs 30 and the live node could never get there."""
+        from v7.nodes.funding_carry_node import FUNDING_WINDOW
         node = FundingCarryNode(node_id="t", symbol="BTC/USDT")
         node._funding_rate_history = [0.0001] * 21
-        node._seed_funding_history()          # must not touch the network
-        assert len(node._funding_rate_history) == 21
+
+        called = []
+        rows = [{"fundingRate": 0.0002}] * FUNDING_WINDOW
+        monkeypatch.setattr(node, "_is_backtest", lambda: False)
+        monkeypatch.setitem(sys.modules, "ccxt", _stub_ccxt(rows, called))
+
+        node._seed_funding_history()
+        assert called, "the exchange was never queried"
+        assert len(node._funding_rate_history) == FUNDING_WINDOW
+
+    def test_a_failed_seed_leaves_the_window_alone(self, monkeypatch):
+        node = FundingCarryNode(node_id="t", symbol="BTC/USDT")
+        node._funding_rate_history = [0.0001] * 21
+        before = list(node._funding_rate_history)
+        monkeypatch.setattr(node, "_is_backtest", lambda: False)
+        monkeypatch.setitem(sys.modules, "ccxt", _stub_ccxt(None, []))
+        node._seed_funding_history()
+        assert node._funding_rate_history == before
+
+
+def _stub_ccxt(rows, called):
+    """A ccxt module whose exchange records that it was built and returns `rows`."""
+    class _Exchange:
+        def fetch_funding_rate_history(self, symbol, limit=None):
+            if rows is None:
+                raise RuntimeError("exchange unavailable")
+            return rows
+
+    class _Module:
+        @staticmethod
+        def binanceusdm(config):
+            called.append(1)
+            return _Exchange()
+
+    return _Module()
 
 
 if __name__ == "__main__":

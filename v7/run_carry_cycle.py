@@ -148,7 +148,10 @@ def run_cycle(
             # Fetch prices + funding
             spot_price = node.fetch_spot_price()
             perp_price = node.fetch_perp_price()
-            funding_rate = node.fetch_current_funding()
+            # The settled period, not the "current rate": the timestamp is what makes
+            # the funding booking idempotent, and 0.0 is a real rate as well as the
+            # failure value, so an unreadable settlement must skip the asset.
+            settlement = node.fetch_latest_settlement()
 
             if spot_price <= 0:
                 logger.warning("  %s: spot price fetch failed, skipping", sym)
@@ -167,11 +170,19 @@ def run_cycle(
                 summary["errors"].append(f"{sym}: perp fetch failed")
                 continue
 
+            if settlement is None:
+                logger.warning("  %s: funding settlement unavailable, skipping", sym)
+                summary["n_errors"] += 1
+                summary["errors"].append(f"{sym}: funding fetch failed")
+                continue
+            funding_ts, funding_rate = settlement
+
             result = node.run({
                 "symbol": sym,
                 "spot_price": spot_price,
                 "funding_rate": funding_rate,
                 "perp_price": perp_price,
+                "funding_ts": funding_ts.isoformat(),
             })
 
             signal = result.get("signal", "flat")

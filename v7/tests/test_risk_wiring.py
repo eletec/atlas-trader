@@ -66,3 +66,41 @@ class TestWiring:
         src = inspect.getsource(run_carry_cycle)
         assert "perp_price if perp_price > 0 else spot_price" not in src
         assert "perp price fetch failed" in src
+
+    def test_the_cycle_uses_the_settled_period_not_the_current_rate(self):
+        """`fetch_current_funding()` returns 0.0 for a real zero rate AND for a
+        failed call, so booking from it can mark a period done with a $0 payment
+        and lose the real settlement for good."""
+        src = inspect.getsource(run_carry_cycle)
+        assert "fetch_latest_settlement()" in src
+        assert "settlement is None" in src
+        assert '"funding_ts": funding_ts.isoformat()' in src
+
+    def test_the_kill_switch_close_uses_the_canonical_pnl(self):
+        """Both monitor close paths must bank the same amount: funding, the exact
+        basis move, and BOTH fee legs. The kill-switch used to bank the mark."""
+        from v7 import position_monitor
+        src = inspect.getsource(position_monitor)
+        assert src.count("_econ = self._compute_carry_economics(pd, max_loss_pct)") >= 2
+
+
+class TestWalkForwardParity:
+    def test_funding_is_not_shifted_by_a_period(self):
+        """The node credits funding_rate[t] to a position already open at t and
+        uses it only for the decision when flat. Shifting put the walk-forward one
+        period behind the single-asset backtest."""
+        from v7 import backtest_walkforward
+        src = inspect.getsource(backtest_walkforward)
+        assert 'funding_rate"].shift(1)' not in src
+
+    def test_a_missing_perp_is_not_replaced_by_spot(self):
+        from v7 import backtest_walkforward
+        src = inspect.getsource(backtest_walkforward)
+        assert "perp_price = spot_price" not in src
+
+    def test_prices_are_paginated_eight_hour_bars(self):
+        from v7 import backtest_walkforward
+        src = inspect.getsource(backtest_walkforward)
+        assert '_paginate(' in src
+        assert '"8h"' in src
+        assert '"1d"' not in src

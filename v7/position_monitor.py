@@ -295,8 +295,14 @@ class PositionMonitor:
             for pd in pos_data:
                 try:
                     if pd["action"] == "carry":
-                        # Real carry P&L (basis+funding) - not the directional spot P&L
-                        pnl = pd["unrealized"]
+                        # Same canonical close as the ordinary path: funding, the
+                        # exact basis move and BOTH fee legs. The kill-switch used
+                        # to bank pd["unrealized"], which carries no exit legs, so
+                        # a forced close and a normal close disagreed.
+                        _econ = self._compute_carry_economics(pd, max_loss_pct)
+                        pnl = _econ.get("realized_usd")
+                        if pnl is None:
+                            pnl = pd["unrealized"]
                     elif pd["action"] in ("short",):
                         pnl = (pd["entry_price"] - pd["current_price"]) / pd["entry_price"] * pd["size_usd"]
                     else:

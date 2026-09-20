@@ -103,8 +103,10 @@ def fetch_funding_history_3y(symbol: str, days: int = 1300) -> pd.DataFrame:
         df = pd.DataFrame(rows).sort_values("timestamp")
         df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
         df = df.set_index("datetime")
-        # Causal shift: funding at t is for period ending at t, known at t
-        df["funding_rate"] = df["funding_rate"].shift(1)
+        # No shift here. The node credits funding_rate[t] to a position that is
+        # ALREADY open at t and uses it for the decision only when flat, which is
+        # the correct rule. Shifting made an open position receive funding_rate[t-1]
+        # and put the walk-forward a period behind the single-asset backtest.
         return df.dropna(subset=["funding_rate"])
     except Exception as e:
         logger.warning("Funding fetch %s: %s", symbol, e)
@@ -430,10 +432,11 @@ def run_walkforward(
                         if not perp_slice.empty:
                             col = "perp_price" if "perp_price" in df_p.columns else df_p.columns[0]
                             perp_price = float(perp_slice.iloc[-1][col])
-                if spot_price is None:
+                # No spot fallback for the perp: substituting it invents basis = 0,
+                # which is the state the entry filter looks for. The live path and
+                # the single-asset backtest both refuse; this one did not.
+                if spot_price is None or perp_price is None or perp_price <= 0:
                     continue
-                if perp_price is None or perp_price <= 0:
-                    perp_price = spot_price
                 
                 result = node.run({
                     "symbol": sym,

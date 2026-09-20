@@ -93,6 +93,33 @@ class TestFundingPeriodKey:
         node._sim_now = datetime(2026, 9, 20, 10, 30, 0)
         assert node._funding_period_key() == "2026-09-20T08:00:00"
 
+    def test_a_real_settlement_timestamp_wins_over_the_clock(self, monkeypatch):
+        """The exchange's own period boundary is authoritative.
+
+        It is correct for 4h and 8h contracts alike, and it cannot be shifted by a
+        cycle that runs early, late, or after a restart.
+        """
+        node = live_node(monkeypatch)
+        node._sim_now = datetime(2026, 9, 20, 10, 30, 0)
+        assert (node._funding_period_key("2026-09-20T08:00:00+00:00")
+                == "2026-09-20T08:00:00")
+        # a 4h contract settles at 08:00 AND 12:00; flooring the clock would merge
+        # the two into one bucket and lose a payment
+        assert (node._funding_period_key("2026-09-20T12:00:00+00:00")
+                == "2026-09-20T12:00:00")
+
+    def test_a_malformed_settlement_falls_back_to_the_clock(self, monkeypatch):
+        node = live_node(monkeypatch)
+        node._sim_now = datetime(2026, 9, 20, 10, 30, 0)
+        assert node._funding_period_key("not-a-timestamp") == "2026-09-20T08:00:00"
+
+    def test_a_reported_settlement_books_under_its_own_timestamp(self, monkeypatch):
+        node = live_node(monkeypatch)
+        open_position(node)
+        node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 0, 0),
+                  "funding_ts": "2026-09-20T08:00:00+00:00"})
+        assert node.state.last_funding_ts == "2026-09-20T08:00:00"
+
 
 class TestOneBookingPerPeriod:
     def test_two_cycles_in_one_period_book_one_payment(self, monkeypatch):

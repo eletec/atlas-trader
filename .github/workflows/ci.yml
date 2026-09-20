@@ -40,8 +40,12 @@ jobs:
         run: |
           set -e
           fail=0
-          # credentials and private keys
-          if git grep -nIE '(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9]{24,}|ssh-rsa AAAA)' -- . ':!*.md'; then
+          # Credentials and private keys. Two exclusions:
+          #   *.example  - templates exist to hold placeholders, and
+          #                config/secrets.yaml.example carries a run of x's.
+          #   this file  - it contains the patterns below as literals, so without
+          #                this the scan matches itself and can never pass.
+          if git grep -nIE '(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9]{24,}|ssh-rsa AAAA)' -- . ':!*.md' ':!*.example' ':!.github/workflows/'; then
             echo "::error::a credential or private key is committed"; fail=1
           fi
           # the live store must never be tracked

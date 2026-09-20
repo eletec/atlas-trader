@@ -18,7 +18,7 @@ logger = logging.getLogger("zeitgeist.cycle_lock")
 _IN_CONTAINER = os.path.exists("/app")
 _LOCK_DIR = Path("/tmp") if _IN_CONTAINER else Path(__file__).resolve().parent.parent / "storage"
 _LOCK_FILE = _LOCK_DIR / "atlas_cycle.lock"  # global fallback (backward compat)
-_MAX_CYCLE_DURATION = 900  # seconds — stale lock threshold (premier refit HMM 8 actifs ~20min)
+_MAX_CYCLE_DURATION = 900  # seconds — stale lock threshold (first HMM refit, 8 assets ~20min)
 
 
 def _lock_path(asset: str | None = None) -> Path:
@@ -78,8 +78,8 @@ def release(asset: str | None = None):
 
 def is_locked(asset: str | None = None) -> bool:
     """Check if a cycle is currently running for `asset` (non-stale lock exists).
-    Si asset=None, retourne True si N'IMPORTE quel actif a un cycle actif
-    (V2 utilise des locks par actif : atlas_cycle_BTC_USDT.lock, etc.)
+    If asset=None, returns True when ANY asset has an active cycle
+    (V2 uses per-asset locks: atlas_cycle_BTC_USDT.lock, etc.)
     """
     if asset is None:
         # Look for any active lock among the V2 assets
@@ -92,7 +92,7 @@ def is_locked(asset: str | None = None) -> bool:
                     return True
             except Exception:
                 pass
-        # Fallback : lock global legacy
+        # Fallback: legacy global lock
         lock_file = _lock_path(None)
         if not lock_file.exists():
             return False

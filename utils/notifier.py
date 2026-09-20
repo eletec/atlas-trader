@@ -1,16 +1,16 @@
 """
-utils/notifier.py — Systeme d'alertes Telegram / Discord.
+utils/notifier.py — Telegram / Discord alert system.
 
-Configuration dans settings.yaml :
+Configuration in settings.yaml:
   logging:
     telegram_enabled: true
-    telegram_token: "BOT_TOKEN"          # ou env var TELEGRAM_BOT_TOKEN
-    telegram_chat_id: "CHAT_ID"          # ou env var TELEGRAM_CHAT_ID
+    telegram_token: "BOT_TOKEN"          # or env var TELEGRAM_BOT_TOKEN
+    telegram_chat_id: "CHAT_ID"          # or env var TELEGRAM_CHAT_ID
     discord_enabled: true
-    discord_webhook_url: "WEBHOOK_URL"   # ou env var DISCORD_WEBHOOK_URL
+    discord_webhook_url: "WEBHOOK_URL"   # or env var DISCORD_WEBHOOK_URL
     alert_score_threshold: 85
 
-Usage :
+Usage:
   from utils.notifier import get_notifier
   notifier = get_notifier()
   if notifier:
@@ -26,7 +26,7 @@ logger = logging.getLogger("zeitgeist.notifier")
 
 
 class TelegramNotifier:
-    """Notificateur Telegram via bot token."""
+    """Telegram notifier via bot token."""
 
     def __init__(self, token: str, chat_id: str) -> None:
         self._url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -43,7 +43,7 @@ class TelegramNotifier:
             )
             resp.raise_for_status()
         except Exception as exc:
-            logger.warning(f"Telegram notify echoue: {exc}")
+            logger.warning(f"Telegram notify failed: {exc}")
 
     def notify_decision(self, decision: dict, score: float) -> None:
         """Format and send a trading decision notification."""
@@ -57,18 +57,18 @@ class TelegramNotifier:
 
         msg = (
             f"{emoji} <b>{action} {asset}</b>\n"
-            f"Score : {score:.0f}/100\n"
-            f"Entree : ${entry:,.0f}\n"
+            f"Score: {score:.0f}/100\n"
+            f"Entry: ${entry:,.0f}\n"
         )
         if sl:
-            msg += f"SL : ${sl:,.0f} | TP : ${tp:,.0f}\n"
+            msg += f"SL: ${sl:,.0f} | TP: ${tp:,.0f}\n"
         if size:
-            msg += f"Taille : ${size:.0f}"
+            msg += f"Size: ${size:.0f}"
         self.notify(msg)
 
 
 class DiscordNotifier:
-    """Notificateur Discord via webhook."""
+    """Discord notifier via webhook."""
 
     def __init__(self, webhook_url: str) -> None:
         self._url = webhook_url
@@ -84,7 +84,7 @@ class DiscordNotifier:
             )
             resp.raise_for_status()
         except Exception as exc:
-            logger.warning(f"Discord notify echoue: {exc}")
+            logger.warning(f"Discord notify failed: {exc}")
 
     def notify_decision(self, decision: dict, score: float) -> None:
         """Format and send a trading decision notification."""
@@ -98,18 +98,18 @@ class DiscordNotifier:
 
         msg = (
             f"{emoji} **{action} {asset}**\n"
-            f"Score : {score:.0f}/100\n"
-            f"Entree : ${entry:,.0f}\n"
+            f"Score: {score:.0f}/100\n"
+            f"Entry: ${entry:,.0f}\n"
         )
         if sl:
-            msg += f"SL : ${sl:,.0f} | TP : ${tp:,.0f}\n"
+            msg += f"SL: ${sl:,.0f} | TP: ${tp:,.0f}\n"
         if size:
-            msg += f"Taille : ${size:.0f}"
+            msg += f"Size: ${size:.0f}"
         self.notify(msg)
 
 
 class CompositeNotifier:
-    """Notificateur composite : Telegram + Discord."""
+    """Composite notifier: Telegram + Discord."""
 
     def __init__(self, notifiers: list[Any]) -> None:
         self._notifiers = notifiers
@@ -129,8 +129,8 @@ _notifier_loaded: bool = False
 
 def get_notifier() -> CompositeNotifier | None:
     """
-    Retourne le notificateur global (singleton) configure depuis settings.yaml.
-    Retourne None si toutes les notifications sont desactivees.
+    Returns the global notifier (singleton) configured from settings.yaml.
+    Returns None when all notifications are disabled.
     """
     global _notifier_instance, _notifier_loaded
     if _notifier_loaded:
@@ -154,10 +154,10 @@ def get_notifier() -> CompositeNotifier | None:
             )
             if token and chat_id:
                 notifiers.append(TelegramNotifier(token=token, chat_id=chat_id))
-                logger.info("Telegram notifications activees")
+                logger.info("Telegram notifications enabled")
             else:
                 logger.warning(
-                    "telegram_enabled=true mais TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID manquants"
+                    "telegram_enabled=true but TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing"
                 )
 
         # --- Discord ---
@@ -168,10 +168,10 @@ def get_notifier() -> CompositeNotifier | None:
             )
             if webhook:
                 notifiers.append(DiscordNotifier(webhook_url=webhook))
-                logger.info("Discord notifications activees")
+                logger.info("Discord notifications enabled")
             else:
                 logger.warning(
-                    "discord_enabled=true mais DISCORD_WEBHOOK_URL manquant"
+                    "discord_enabled=true but DISCORD_WEBHOOK_URL missing"
                 )
 
         _notifier_instance = CompositeNotifier(notifiers) if notifiers else None

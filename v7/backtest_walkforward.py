@@ -44,7 +44,7 @@ except Exception:
     SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT"]
     ALL_SYMBOLS = SYMBOLS
 
-    def normalize_symbol(raw: str) -> str:  # fallback minimal
+    def normalize_symbol(raw: str) -> str:  # minimal fallback
         s = (raw or "").strip().upper()
         return s if "/" in s else f"{s}/USDT"
 
@@ -150,7 +150,7 @@ def classify_regimes(btc_prices: pd.DataFrame) -> pd.DataFrame:
 
     Bull:  price > MA200 and rising over 30 days
     Bear:  price < MA200 and falling over 30 days
-    Range: tout le reste
+    Range: everything else
     """
     df = btc_prices.copy()
     if "spot_price" in df.columns:
@@ -186,11 +186,11 @@ class WFWindow:
     test_end: str
     regime: str                     # majority regime over the test window
     n_assets_available: int         # assets with at least 6 months of history
-    n_assets_traded: int            # actifs ayant ouvert ≥1 trade
+    n_assets_traded: int            # assets that opened ≥1 trade
     total_trading_pnl: float
     total_capital: float
     trading_return_pct: float
-    portfolio_sharpe: float         # Sharpe de l'equity curve portfolio
+    portfolio_sharpe: float         # Sharpe of the portfolio equity curve
     max_dd_pct: float
     capital_utilisation_pct: float
     staking_pnl: float
@@ -246,10 +246,10 @@ def run_walkforward(
     step_months: int = 3,
     quick: bool = False,
 ) -> dict:
-    """Backtest walk-forward complet.
+    """Full walk-forward backtest.
     
     Returns:
-        dict avec windows (liste WFWindow), portfolio_summary, regime_summary.
+        dict with windows (list of WFWindow), portfolio_summary, regime_summary.
     """
     if symbols is None:
         symbols = ALL_SYMBOLS if ALL_SYMBOLS else SYMBOLS

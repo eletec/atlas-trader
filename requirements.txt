@@ -1,16 +1,16 @@
-# Atlas Trader — Dépendances Python
-# Installer avec : pip install -r requirements.txt
-# NOTE: l'image de production (docker-compose.v4.yml) utilise v4/requirements.backend.txt
+# Atlas Trader — Python dependencies
+# Install with: pip install -r requirements.txt
+# NOTE: the production image (docker-compose.v4.yml) uses v4/requirements.backend.txt
 
-# ---- Interface Streamlit ----
+# ---- Streamlit interface ----
 streamlit>=1.37.0
 plotly>=5.20.0
 pandas>=2.2.0
 
-# ---- Authentification (sessions SQLite, 2FA TOTP) ----
-bcrypt>=4.1.0            # hachage des mots de passe
+# ---- Authentication (SQLite sessions, 2FA TOTP) ----
+bcrypt>=4.1.0            # password hashing
 pyotp>=2.9.0             # TOTP 2FA (Google Authenticator, Authy…)
-qrcode[pil]>=7.4.0       # génération du QR code TOTP
+qrcode[pil]>=7.4.0       # TOTP QR code generation
 
 # ---- Market Data ----
 ccxt>=4.3.0
@@ -23,9 +23,9 @@ pyyaml>=6.0
 pydantic>=2.8.0
 python-dotenv>=1.0.0
 
-# ---- Stockage ----
+# ---- Storage ----
 
-# ---- Utilitaires ----
+# ---- Utilities ----
 numpy>=1.26.0
 httpx>=0.27.0
 

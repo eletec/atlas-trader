@@ -1,15 +1,15 @@
 """
-dashboard/auth.py — Authentification username + mot de passe (bcrypt) + TOTP 2FA.
+dashboard/auth.py — Username + password authentication (bcrypt) + TOTP 2FA.
 
-Rôles :
-  "back"  → accès back-office (admin) — TOTP 2FA obligatoire à la première connexion.
-  "front" → accès front uniquement — pas de 2FA.
-  guest_mode (settings) → accès front sans connexion.
+Roles:
+  "back"  → back-office access (admin) — TOTP 2FA required at the first login.
+  "front" → front-office access only — no 2FA.
+  guest_mode (settings) → front access without logging in.
 
-Session : session_state Streamlit + _sid param URL → SQLite store.
+Session : Streamlit session_state + _sid URL param → SQLite store.
 Passwords : bcrypt (rounds=12).
 2FA     : TOTP RFC 6238 (pyotp) — Google Authenticator, Authy, Bitwarden, 1Password.
-Users   : config/users.yaml — géré automatiquement.
+Users   : config/users.yaml — managed automatically.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ if str(_SESSION_DB).startswith("/app/src/"):
 # users.yaml -> /app/data/ for writing (/app/src is a read-only Docker mount)
 _RUNTIME_USERS = Path(_DATA_DIR) / "users.yaml"
 if str(_USERS_FILE).startswith("/app/src/"):
-    # Bootstrap : copier du git-tracked vers /app/data/ au premier lancement
+    # Bootstrap: copy from git-tracked to /app/data/ on first launch
     if not _RUNTIME_USERS.exists():
         _RUNTIME_USERS.parent.mkdir(parents=True, exist_ok=True)
         if _USERS_FILE.is_file():
@@ -116,11 +116,11 @@ def _delete_session(session_id: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Persistence utilisateurs (config/users.yaml)
+# User persistence (config/users.yaml)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_users_config() -> dict:
-    """Charge la configuration utilisateurs. Retourne un dict vide si absent."""
+    """Load the users configuration. Returns an empty dict when absent."""
     if _USERS_FILE.is_file():
         with open(_USERS_FILE, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {"users": {}, "settings": {}}
@@ -134,7 +134,7 @@ def save_users_config(data: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Mots de passe (bcrypt)
+# Passwords (bcrypt)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
@@ -156,12 +156,12 @@ def _verify_password(password: str, hashed: str) -> bool:
 
 def get_session(cm=None) -> dict | None:
     """
-    Retourne {username, roles} si session valide, None sinon.
-    Ordre de vérification :
-      1. session_state (rerun interne — le plus rapide)
-      2. _sid dans query params → store serveur SQLite (persiste après F5)
-    Note: extra_streamlit_components CookieManager supprimé — incompatible
-    avec Streamlit ≥1.35 (cause des reruns intempestifs bloquant le login).
+    Return {username, roles} when the session is valid, None otherwise.
+    Verification order:
+      1. session_state (internal rerun — the fastest)
+      2. _sid in the query params → server-side SQLite store (survives F5)
+    Note: extra_streamlit_components CookieManager removed — incompatible with
+    Streamlit ≥1.35 (the cause of the untimely reruns blocking the login).
     """
     # 1. session_state
     if st.session_state.get("_auth_session"):
@@ -199,14 +199,14 @@ def logout(cm=None) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UI d'authentification
+# Authentication UI
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_auth(cm=None) -> None:
     """
     Render the authentication form matching the current step.
-    Gère : premier lancement, login, TOTP setup, TOTP verify.
-    Cookie manager supprimé (incompatible Streamlit ≥1.35) — session via _sid URL.
+    Handles: first launch, login, TOTP setup, TOTP verify.
+    Cookie manager removed (incompatible with Streamlit ≥1.35) — session via the _sid URL.
     """
     # Global kill-switch: when active, never render auth blocks.
     if st.session_state.get("_suppress_auth_ui", False):
@@ -243,7 +243,7 @@ def render_auth(cm=None) -> None:
         _render_totp_verify(pending_user, cfg, expiry_days)
         return
 
-    # S5: Rate limiting — max 5 tentatives en 5 min
+    # S5: Rate limiting — max 5 attempts in 5 min
     _now = time.time()
     _lockout_until = st.session_state.get("_login_lockout_until", 0.0)
     if _now < _lockout_until:
@@ -253,7 +253,7 @@ def render_auth(cm=None) -> None:
         _centered_close()
         return
 
-    # 2. Formulaire login
+    # 2. Login form
     _centered_open()
     st.markdown("### 🔐 Atlas Trader")
 
@@ -281,7 +281,7 @@ def render_auth(cm=None) -> None:
         roles = user.get("roles", [])
         st.session_state["_auth_pending_user"] = username
 
-        # Admin → TOTP obligatoire
+        # Admin → TOTP required
         if "back" in roles and user.get("totp_enabled", True):
             st.session_state["_auth_step"] = (
                 "totp_setup" if not user.get("totp_secret") else "totp_verify"
@@ -307,7 +307,7 @@ def render_auth(cm=None) -> None:
 def _render_first_setup(cfg: dict) -> None:
     """Admin account creation form on first launch."""
     _centered_open()
-    st.markdown("### ⚙️ Configuration initiale — Atlas Trader")
+    st.markdown("### ⚙️ Initial setup — Atlas Trader")
     st.info(t("setup_info"))
     with st.form("first_setup"):
         username = st.text_input(t("setup_username"), value="admin")
@@ -378,7 +378,7 @@ def _render_totp_setup(username: str, cfg: dict, expiry_days: int) -> None:
 
     _setup_slot = st.empty()
     with _setup_slot.container():
-        st.markdown("### 📱 Configuration 2FA — Google Authenticator")
+        st.markdown("### 📱 2FA setup — Google Authenticator")
         st.info(t("totp_setup_info"))
         col_qr, col_info = st.columns([1, 1])
         with col_qr:
@@ -510,16 +510,16 @@ def _centered_open(width: int = 440) -> None:
 
 
 def _centered_close() -> None:
-    # No-op: voir _centered_open.
+    # No-op: see _centered_open.
     return
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Gestion utilisateurs (onglet Admin)
+# User management (Admin tab)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_users_admin() -> None:
-    """Panneau de gestion des utilisateurs (onglet admin → Utilisateurs)."""
+    """User management panel (admin tab → Users)."""
     import streamlit as st
 
     cfg = load_users_config()
@@ -552,7 +552,7 @@ def render_users_admin() -> None:
     cfg["settings"] = settings
     st.markdown("---")
 
-    # ── Liste des utilisateurs ───────────────────────────────────────────────
+    # ── List of users ───────────────────────────────────────────────
     st.markdown(f"**{t('usr_users_configured')}**")
     if not users:
         st.info(t("usr_no_users"))
@@ -576,7 +576,7 @@ def render_users_admin() -> None:
                     new_roles.append("back")
                 udata["roles"] = new_roles
 
-                # Reset mot de passe
+                # Reset password
                 st.markdown(f"**{t('usr_change_pwd')}**")
                 with st.form(f"reset_pwd_{uname}"):
                     new_pwd = st.text_input(t("usr_new_pwd"), type="password", key=f"npwd_{uname}")
@@ -596,7 +596,7 @@ def render_users_admin() -> None:
                         udata["totp_secret"] = ""
                         st.success(t("usr_reset_2fa_ok"))
 
-                # Supprimer utilisateur
+                # Delete user
                 if st.button(t("usr_delete_btn").format(uname=uname), key=f"del_{uname}", type="secondary"):
                     del cfg["users"][uname]
                     save_users_config(cfg)
@@ -607,7 +607,7 @@ def render_users_admin() -> None:
 
     st.markdown("---")
 
-    # ── Ajouter un utilisateur ───────────────────────────────────────────────
+    # ── Add a user ───────────────────────────────────────────────
     st.markdown(f"**{t('usr_add_title')}**")
     with st.form("add_user"):
         col1, col2 = st.columns(2)

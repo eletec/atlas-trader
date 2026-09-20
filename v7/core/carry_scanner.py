@@ -30,12 +30,12 @@ MIN_FUNDING_HISTORY_DAYS = 90           # at least 90 days of funding history
 # -- Excluded assets (stablecoins, wrapped, problematic tokens) --
 EXCLUDED_BASES = {
     "USDC", "USDT", "DAI", "TUSD", "BUSD", "USDP", "FDUSD",  # stablecoins
-    "WBTC", "WETH", "WBETH",  # wrapped (suivre l'original)
+    "WBTC", "WETH", "WBETH",  # wrapped (track the original)
     "USTC", "LUNC",  # collapsed
 }
 
 # ── Multiplier contracts ──
-# Binance utilise des symboles comme 1000PEPEUSDT, 1000SHIBUSDT, etc.
+# Binance uses symbols like 1000PEPEUSDT, 1000SHIBUSDT, etc.
 # The contractSize field gives the real contract size.
 MULTIPLIER_PREFIXES = [
     ("1000000", 1_000_000.0),
@@ -248,7 +248,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
 
         opt: dict[str, Any] = {}
 
-        # ── 1. Capital proportionnel au volume spot ──
+        # ── 1. Capital proportional to the spot volume ──
         spot_vol = asset.get("spot_volume_24h_usd", 0)
         vol_share = spot_vol / total_spot_vol if total_spot_vol > 0 else 1.0 / len(assets)
         opt["_optimized_capital"] = max(500, min(5000, int(14000 * vol_share)))
@@ -328,7 +328,7 @@ def compute_optimized_params(assets: list[dict[str, Any]]) -> dict[str, dict[str
                 # Backtest-validated: at least 1 trade, MaxDD > -50%, Sharpe >= 0 when >5 trades
                 bt_viable = trades > 0 and max_dd > -50
                 if trades > 5 and sharpe < 0:
-                    bt_viable = False  # sous-performance persistante
+                    bt_viable = False  # persistent under-performance
                 if trades >= 0:
                     opt_data["_optimized_viable"] = opt_data.get("_optimized_viable", True) and bt_viable
                     opt_data["_bt_trades"] = trades
@@ -350,7 +350,7 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
     if data_path.exists():
         config_path = data_path
 
-    # Charger la config existante
+    # Load the existing config
     existing: dict = {}
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
@@ -367,11 +367,11 @@ def _update_carry_config(assets: list[dict[str, Any]], optimize: bool = False) -
 
     # Merge: new assets added with defaults, existing ones preserved
     new_assets: dict = {}
-    # Niveau 1 (top 15 par volume) → capital standard
+    # Tier 1 (top 15 by volume) → standard capital
     tier1_capital = 2000
     # Tier 2 (16-30) -> reduced capital
     tier2_capital = 1000
-    # Niveau 3 (meme coins, 31+) → capital minimal
+    # Tier 3 (meme coins, 31+) → minimal capital
     tier3_capital = 500
 
     meme_coins = {"SHIB", "PEPE", "FLOKI", "BONK", "WIF", "TURBO", "NEIRO"}
@@ -451,7 +451,7 @@ if __name__ == "__main__":
 
     universe = scan_carry_universe(save=save_flag, optimize=optimize_flag)
 
-    # Affichage
+    # Display
     print(f"\n{'='*80}")
     print(f"Funding Carry universe - {len(universe)} eligible assets")
     print(f"{'='*80}")

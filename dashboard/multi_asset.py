@@ -1,9 +1,9 @@
 """
-dashboard/multi_asset.py — Composants UI multi-actifs pour Streamlit.
+dashboard/multi_asset.py — Multi-asset UI components for Streamlit.
 
-Exposés :
-  - render_global_overview()    : tableau consolidé de tous les actifs actifs
-  - render_asset_tabs(main_fn)  : wrapper qui injecte les onglets par actif
+Exposed:
+  - render_global_overview()    : consolidated table of all active assets
+  - render_asset_tabs(main_fn)  : wrapper that injects the per-asset tabs
 """
 from __future__ import annotations
 
@@ -112,12 +112,12 @@ _ACTION_TO_DIR = {"long": 75, "short": 25, "flat": 50, "hold": 50}
 
 def render_global_overview() -> None:
     """
-    Tableau consolidé multi-actifs — V7 Funding Carry.
-    Affiche l'état de chaque actif carry : position, funding, statut.
+    Consolidated multi-asset table — V7 Funding Carry.
+    Shows the state of each carry asset: position, funding, status.
     """
     import streamlit as st
 
-    # V7: utiliser carry_assets.yaml + paper_trader DB (plus de DAGs)
+    # V7: use carry_assets.yaml + paper_trader DB (no more DAGs)
     try:
         from v7.core.asset_config import get_active_assets
         assets = get_active_assets()
@@ -207,19 +207,19 @@ def render_global_overview() -> None:
                 except Exception:
                     pass
             if score is None:
-                score = 75  # fallback si context absent
+                score = 75  # fallback when context is absent
             signal_display = "💸 carry"
             trade_str = f"🟢 CARRY ${size_usd:,.0f}"
             trend = f"entry @ ${entry_price:,.2f}"
         elif net_ret is not None and net_ret > 5:
             score = min(95, int(50 + net_ret * 3))
             signal_display = "⏳ viable"
-            trade_str = f"net {net_ret:.1f}%/an"
+            trade_str = f"net {net_ret:.1f}%/yr"
             trend = f"funding {funding:.4f}%" if funding else "—"
         elif net_ret is not None:
             score = max(5, int(30 + net_ret * 4))
             signal_display = "flat"
-            trade_str = f"net {net_ret:.1f}%/an < 5%"
+            trade_str = f"net {net_ret:.1f}%/yr < 5%"
             trend = f"funding {funding:.4f}%" if funding else "—"
         elif funding is not None:
             score = max(5, min(50, int(20 + funding * 200)))
@@ -267,7 +267,7 @@ def render_global_overview() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Composant 1b : Prix live multi-actifs (cartes) — V4 API
+# Component 1b: multi-asset live prices (cards) — V4 API
 # ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=15)
@@ -288,7 +288,7 @@ def render_global_live_prices() -> None:
     import json as _json
     import traceback as _tb
 
-    # V7 (DeepSeek/GPT audit, 25/07/2026): utiliser carry_assets.yaml, plus de DAGs
+    # V7 (DeepSeek/GPT audit, 25/07/2026): use carry_assets.yaml, no more DAGs
     dag_assets = []
     _load_error = ""
     try:
@@ -370,7 +370,7 @@ def render_global_live_prices() -> None:
     symbols_js = _json.dumps(dag_assets)
     pos_data_js = _json.dumps(pos_data)
     
-    # Hauteur dynamique : ~4.5 cartes par ligne, ~90px par ligne, minimum 200px
+    # Dynamic height: ~4.5 cards per row, ~90px per row, minimum 200px
     cards_per_row = 4.5
     row_h = 90
     n_assets = len(dag_assets)
@@ -419,7 +419,7 @@ function poll(){{
       var card=document.getElementById('card_'+uid);
       if(!el)return;
 
-      // Variation %
+      // Change %
       var first=FIRST[sym];
       if(!first){{first=p;FIRST[sym]=p;}}
       var chgPct=(p-first)/first*100;
@@ -434,7 +434,7 @@ function poll(){{
       LAST[sym]=p;
       el.textContent=fmt(p);
 
-      // Position PnL latent
+      // Position unrealized PnL
       var pos=POSDATA[sym];
       if(pos&&posEl){{
         var pnlPct=pos.action==='short'?(pos.entry-p)/pos.entry*100:(p-pos.entry)/pos.entry*100;
@@ -465,14 +465,14 @@ def _fmt_price(price: float | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Composant 2 : Onglets par actif
+# Component 2: per-asset tabs
 # ---------------------------------------------------------------------------
 
 def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset", theme: str = "dark") -> None:
-    """Injecte une sidebar fixe dans le document parent (indépendante de st.sidebar).
-    items  : liste de dicts {key, icon, text}
-    active_key : clé de l'item actif
-    qparam : nom du query parameter utilisé pour la navigation
+    """Inject a fixed sidebar into the parent document (independent of st.sidebar).
+    items  : list of dicts {key, icon, text}
+    active_key : key of the active item
+    qparam : name of the query parameter used for navigation
     """
     import json as _json
     import streamlit.components.v1 as _cv1
@@ -490,7 +490,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
   var QPARAM = {qparam_js};
   var W = 180, MINI = 44;
 
-  /* Hauteur du header Streamlit (mesurée dynamiquement) */
+  /* Streamlit header height (measured dynamically) */
   function hdrH() {{
     var h = d.querySelector('[data-testid="stHeader"]');
     return (h && h.getBoundingClientRect().height > 10)
@@ -499,7 +499,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
 
   var collapsed = p.localStorage.getItem('atlas_nav_c') === '1';
 
-  /* ── CSS dropdown injecte dans le HEAD parent (les popovers sont portales dans le parent) ── */
+  /* ── Dropdown CSS injected into the parent HEAD (popovers are portaled into the parent) ── */
   if (!d.getElementById('atlas-dropdown-css')) {{
     var dropS = d.createElement('style');
     dropS.id = 'atlas-dropdown-css';
@@ -510,9 +510,9 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
     d.head.appendChild(dropS);
   }}
 
-  /* Lien de navigation : reprend l'URL courante (lang/theme/admin/_sid) en ne
-     changeant que la cle de section. On force menu=0 sinon le hamburger restait
-     ouvert indefiniment : chaque navigation recopiait menu=1 vers la suivante. */
+  /* Navigation link: reuses the current URL (lang/theme/admin/_sid) and only
+     changes the section key. We force menu=0, otherwise the hamburger stayed
+     open indefinitely: each navigation copied menu=1 over to the next one. */
   function navUrl(key) {{
     var u = new URL(p.location.href);
     u.searchParams.set(QPARAM, key);
@@ -522,8 +522,8 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
 
   function setPad(c) {{
     var w = (c ? MINI : W) + 'px';
-    /* Style tag persistant dans <head> — immune aux rerenders React de Streamlit,
-       contrairement aux inline styles qui sont réinitialisés à chaque widget interaction. */
+    /* Persistent style tag in <head> — immune to Streamlit React rerenders,
+       unlike inline styles which are reset on every widget interaction. */
     var padS = d.getElementById('atlas-pad-css');
     if (!padS) {{ padS = d.createElement('style'); padS.id = 'atlas-pad-css'; d.head.appendChild(padS); }}
     padS.textContent = '[data-testid="stAppViewContainer"]{{padding-left:' + w + '!important;}}';
@@ -536,7 +536,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
     nav.style.height = 'calc(100vh - ' + top + 'px)';
   }}
 
-  /* CSS — mis à jour à chaque rendu pour refléter le thème courant */
+  /* CSS — updated on every render to reflect the current theme */
   var IS_LIGHT = {is_light_js};
   var NAV_BG     = IS_LIGHT ? '#f0f2f6'           : '#161b22';
   var NAV_BDR    = IS_LIGHT ? 'rgba(0,0,0,.12)'   : 'rgba(255,255,255,.12)';
@@ -578,7 +578,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
   if (!navCssEl) {{ navCssEl = d.createElement('style'); navCssEl.id = 'atlas-nav-css'; d.head.appendChild(navCssEl); }}
   navCssEl.textContent = navCss;
 
-  /* Construction du nav */
+  /* Build the nav */
   var existing = d.getElementById('atlas-sidenav');
   var wasC = existing ? existing.classList.contains('c') : collapsed;
   var nav = d.createElement('div');
@@ -606,7 +606,7 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
   setTimeout(function() {{ positionNav(d.getElementById('atlas-sidenav')); }}, 700);
   setPad(wasC);
 
-  /* Re-positionner si le header change de taille */
+  /* Re-position when the header changes size */
   var ro = new p.ResizeObserver(function() {{ positionNav(d.getElementById('atlas-sidenav')); }});
   var hdrEl = d.querySelector('[data-testid="stHeader"]');
   if (hdrEl) ro.observe(hdrEl);
@@ -618,9 +618,9 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
     setPad(c);
   }});
 
-  /* ── Fix BaseWeb dropdown width — supprime le width inline injecte par useEffect ── */
+  /* ── BaseWeb dropdown width fix — removes the inline width injected by useEffect ── */
   if (!p._atlasDropMo) {{
-    /* Fixe un popover : supprime width + observe les reecritures ulterieures */
+    /* Fix a popover: remove width + observe later rewrites */
     function _atlasFixPop(el) {{
       el.style.removeProperty('width');
       el.style.minWidth = 'max-content';
@@ -638,15 +638,15 @@ def _inject_custom_sidenav(items: list, active_key: str, qparam: str = "_asset",
       muts.forEach(function(m) {{
         m.addedNodes.forEach(function(node) {{
           if (!node.querySelectorAll) return;
-          /* Cas 1 : le popover lui-meme est ajoute */
+          /* Case 1: the popover itself is added */
           if (node.getAttribute && node.getAttribute('data-baseweb') === 'popover') {{
             _atlasFixPop(node);
           }}
-          /* Cas 1b : popover comme descendant */
+          /* Case 1b: popover as a descendant */
           Array.prototype.slice.call(
             node.querySelectorAll('[data-baseweb="popover"]')
           ).forEach(_atlasFixPop);
-          /* Cas 2 : le menu est ajoute dans un popover deja existant (rendu differe) */
+          /* Case 2: the menu is added into an already existing popover (deferred render) */
           var menus = node.getAttribute && node.getAttribute('data-baseweb') === 'menu'
             ? [node]
             : Array.prototype.slice.call(node.querySelectorAll('ul[data-baseweb="menu"]'));
@@ -669,9 +669,9 @@ def render_asset_tabs(
     pre_global_fn: "Callable[[], None] | None" = None,
 ) -> None:
     """
-    Menu latéral fixe (position:fixed dans le DOM parent) — sticky, pliable/dépliable.
-    Navigation via query param _asset, sans aucune dépendance à st.sidebar.
-    Si un seul actif est actif, passe directement à render_fn sans navigation.
+    Fixed side menu (position:fixed in the parent DOM) — sticky, collapsible/expandable.
+    Navigation through the _asset query param, with no dependency on st.sidebar.
+    When only one asset is active, goes straight to render_fn without navigation.
     """
     import streamlit as st
 

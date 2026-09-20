@@ -1,5 +1,5 @@
 """
-utils/config.py — Chargement et sauvegarde de settings.yaml avec validation Pydantic.
+utils/config.py — Loading and saving of settings.yaml with Pydantic validation.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _SETTINGS_PATH = Path(os.environ.get("SETTINGS_FILE", "config/settings.yaml"))
 if Path("/app/data").is_dir() and str(_SETTINGS_PATH).startswith("config/"):
     _RUNTIME_SETTINGS = Path("/app/data") / "settings.yaml"
     _RUNTIME_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-    # Bootstrap : copier du git-tracked vers /app/data/ au premier lancement
+    # Bootstrap: copy from git-tracked to /app/data/ on first launch
     if not _RUNTIME_SETTINGS.exists():
         _src = Path("/app/src") / _SETTINGS_PATH
         if _src.exists():
@@ -35,12 +35,12 @@ _ASSETS_DIR = Path("config/assets")
 
 def load_settings(path: str | Path | None = None) -> dict:
     """
-    Charge settings.yaml — optionnel, retourne {} s'il est absent.
+    Load settings.yaml — optional, returns {} when it is absent.
 
-    settings.yaml est un reliquat de la strategie V2 (directionnel + crawler news).
-    La configuration de la strategie en production est UNIQUEMENT dans
-    config/carry_assets.yaml. On ne leve donc plus d'exception si le fichier
-    manque : l'application doit demarrer sans lui.
+    settings.yaml is a leftover from the V2 strategy (directional + news crawler).
+    The production strategy configuration is ONLY in
+    config/carry_assets.yaml. We therefore no longer raise an exception when the
+    file is missing: the application must start without it.
     """
     p = Path(path) if path else _SETTINGS_PATH
     if not p.exists():
@@ -51,14 +51,14 @@ def load_settings(path: str | Path | None = None) -> dict:
 
 
 def save_settings(settings: dict, path: str | Path | None = None) -> None:
-    """Sauvegarde un dict settings dans settings.yaml.
+    """Save a settings dict into settings.yaml.
 
-    Stratégie : lecture du fichier disque + deep-merge avec les nouvelles valeurs.
-    Cela préserve les clés non gérées par le dashboard (ex: corrections manuelles,
-    clés ajoutées par git pull pendant que le dashboard tourne).
+    Strategy: read the file from disk + deep-merge with the new values.
+    This preserves the keys not managed by the dashboard (e.g. manual fixes,
+    keys added by git pull while the dashboard is running).
 
-    Sur bind-mount Docker, os.rename() inter-filesystem échoue.
-    On écrit donc via un buffer en mémoire → write direct sur la cible.
+    On a Docker bind-mount, an inter-filesystem os.rename() fails.
+    We therefore write through an in-memory buffer → direct write to the target.
     """
     import io
     import stat as _stat
@@ -108,7 +108,7 @@ def _asset_slug(asset: str) -> str:
 
 
 def _carry_config_path() -> Path:
-    """Chemin effectif de carry_assets.yaml (runtime en container, depot sinon)."""
+    """Effective path of carry_assets.yaml (runtime inside the container, repo otherwise)."""
     try:
         from v7.core.asset_config import config_path
         return config_path()
@@ -118,10 +118,10 @@ def _carry_config_path() -> Path:
 
 def load_asset_config(asset: str, base_path: str | Path | None = None) -> dict:
     """
-    Charge la config spécifique à un actif depuis config/assets/{slug}.yaml
-    et la merge sur settings.yaml (l'asset yaml a priorité sur le global).
+    Load the asset-specific config from config/assets/{slug}.yaml
+    and merge it onto settings.yaml (the asset yaml takes priority over the global one).
 
-    Retourne un dict complet utilisable par DecisionEngine, MarketDataAgent, etc.
+    Returns a complete dict usable by DecisionEngine, MarketDataAgent, etc.
     """
     global_cfg = load_settings(base_path)
 
@@ -170,7 +170,7 @@ def save_asset_config(asset: str, cfg: dict) -> None:
         except PermissionError:
             raise PermissionError(
                 f"Permission denied: {path}\n"
-                f"Sur GX10 : chmod -R 666 /app/config/assets/"
+                f"On GX10: chmod -R 666 /app/config/assets/"
             )
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
@@ -178,15 +178,15 @@ def save_asset_config(asset: str, cfg: dict) -> None:
 
 def export_config_zip() -> bytes:
     """
-    Exporte toute la configuration du trader dans un fichier ZIP en mémoire.
+    Export the whole trader configuration into an in-memory ZIP file.
 
-    Contenu du ZIP :
-        settings.yaml               ← config globale
-        assets/BTC_USDT.yaml        ← configs par actif
+    ZIP content:
+        settings.yaml               ← global config
+        assets/BTC_USDT.yaml        ← per-asset configs
         assets/ETH_USDT.yaml
-        ... (tous les fichiers dans config/assets/)
+        ... (every file in config/assets/)
 
-    Retourne les bytes du ZIP, prêts à être téléchargés (st.download_button).
+    Returns the ZIP bytes, ready to be downloaded (st.download_button).
     """
     import io
     import zipfile
@@ -194,7 +194,7 @@ def export_config_zip() -> bytes:
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # carry_assets.yaml — LA config de la strategie carry (source unique de verite).
+        # carry_assets.yaml — THE carry strategy config (single source of truth).
         # Without it the backup protected nothing useful.
         carry_path = _carry_config_path()
         if carry_path.exists():
@@ -216,21 +216,21 @@ def export_config_zip() -> bytes:
 
 def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
     """
-    Restaure la configuration depuis un ZIP exporté par export_config_zip().
+    Restore the configuration from a ZIP exported by export_config_zip().
 
     Args:
-        zip_bytes: contenu du fichier ZIP à importer
+        zip_bytes: content of the ZIP file to import
         backup_first: when True, back up the current state before overwriting
 
     Returns:
-        dict avec les clés :
-            "restored_files": list[str]  — fichiers restaurés
-            "backup_path": str | None    — chemin de la sauvegarde préalable
-            "errors": list[str]          — erreurs non bloquantes
+        dict with the keys:
+            "restored_files": list[str]  — restored files
+            "backup_path": str | None    — path of the prior backup
+            "errors": list[str]          — non-blocking errors
 
     Raises:
-        ValueError: si le ZIP est invalide ou vide
-        zipfile.BadZipFile: si les bytes ne forment pas un ZIP valide
+        ValueError: when the ZIP is invalid or empty
+        zipfile.BadZipFile: when the bytes do not form a valid ZIP
     """
     import io
     import zipfile
@@ -267,7 +267,7 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
                 errors.append(f"Pre-import backup failed (import aborted): {exc}")
                 raise RuntimeError(errors[-1]) from exc
 
-        # Restauration
+        # Restore
         config_dir = _SETTINGS_PATH.parent
         assets_dir = config_dir / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
@@ -316,9 +316,9 @@ def import_config_zip(zip_bytes: bytes, backup_first: bool = True) -> dict:
 
 def list_config_backups() -> list[dict]:
     """
-    Liste les sauvegardes disponibles dans config/backups/.
+    List the backups available in config/backups/.
 
-    Retourne une liste triée (plus récent en premier) de dicts :
+    Returns a sorted list (most recent first) of dicts:
         {"filename": str, "path": Path, "size_kb": float, "mtime": datetime}
     """
     from datetime import datetime
@@ -350,9 +350,9 @@ def list_config_backups() -> list[dict]:
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Merge récursif : override surcharge base, les sous-dicts sont mergés.
-    Si une clé de base est un dict mais override fournit un scalaire, on conserve
-    la valeur de base (le scalaire de l'asset YAML ne doit pas détruire une config complicate).
+    """Recursive merge: override supersedes base, sub-dicts are merged.
+    When a base key is a dict but override supplies a scalar, the base value is
+    kept (a scalar from the asset YAML must not destroy a complex config).
     """
     for key, val in override.items():
         if key in base and isinstance(base[key], dict) and isinstance(val, dict):
@@ -366,8 +366,8 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def get_active_assets() -> list[str]:
-    """Retourne la liste complète des actifs actifs :
-    project.active_assets (crypto 5m) + quant.daily_active_assets (FX/métaux daily).
+    """Return the complete list of active assets:
+    project.active_assets (5m crypto) + quant.daily_active_assets (FX/metals daily).
     """
     cfg = load_settings()
     intraday = list(cfg.get("project", {}).get("active_assets", []))
@@ -421,7 +421,7 @@ def get_env(key: str, required: bool = True, default: str | None = None) -> str 
     value = os.getenv(key, default)
     if required and not value:
         raise EnvironmentError(
-            f"Variable d'environnement manquante : {key}. "
+            f"Missing environment variable: {key}. "
             f"Check your .env file"
         )
     return value

@@ -239,7 +239,7 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
     if len(trades) == 0 and not no_trade_reason:
         periods_per_year = 365 * 24 / 8
         max_annual = max_funding_seen * periods_per_year
-        no_trade_reason = f"max funding={max_funding_seen*100:.4f}% ({max_annual*100:.1f}%/an) < hurdle=5%"
+        no_trade_reason = f"max funding={max_funding_seen*100:.4f}% ({max_annual*100:.1f}%/yr) < hurdle=5%"
 
     # NAV returns (use trading NAV for Sharpe/MaxDD — staking-free)
     if len(nav_history) > 2:

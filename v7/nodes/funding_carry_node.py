@@ -62,7 +62,7 @@ class FundingCarryNode:
         exit_after_hours: int = 72,    # exit on negative funding after 72h (Grok)
         kelly_fraction: float = 0.35,  # fractional Kelly 35% (Grok)
         max_hold_days: int = 14,        # time-stop: forced exit after N days
-        stop_loss_pct: float = -0.05,   # stop-loss basis : -5%
+        stop_loss_pct: float = -0.05,   # stop-loss on the basis: -5%
         cooldown_hours: int = 24,       # anti-churn: do not reopen within N hours of closing
         exchange_name: str = "binance",  # binance | bybit | okx | kraken
         fee_bps: float = 10.0,       # standard Binance spot fee (0.1% = 10bps)
@@ -102,8 +102,8 @@ class FundingCarryNode:
         # Regime filter: 30d volatility is the minimum to enter (via DAG params or default)
         self.min_volatility_30d = float(self.params.get("min_volatility_30d", 0.02))
         
-        # Hurdle economique (configurable via grid search)
-        # Default 5% = SOFR seul (grid search: 25/26 actifs preferent 5%)
+        # Economic hurdle (configurable via grid search)
+        # Default 5% = SOFR alone (grid search: 25/26 assets prefer 5%)
         self.economic_hurdle = float(self.params.get("economic_hurdle", 0.05))
         
         self.state = FundingCarryState(symbol=symbol)
@@ -399,13 +399,13 @@ class FundingCarryNode:
                 - perp_price (float, optional): perpetual price
         
         Returns:
-            dict avec signal, size_usd, expected_return, confidence, reason
+            dict with signal, size_usd, expected_return, confidence, reason
         """
         t0 = time.time()
         
         # The node is bound to ONE asset: self.symbol is authoritative.
-        # L'etat interne (position ouverte, capital engage, historique de funding)
-        # state is not reset between calls - so callers instantiate
+        # The internal state (open position, committed capital, funding history)
+        # is not reset between calls - so callers instantiate
         # one node per asset (run_carry_cycle, backtests).
 
         # Pick up the simulated timestamp when the caller provides one (backtest).
@@ -422,7 +422,7 @@ class FundingCarryNode:
         funding_rate = float(inputs.get("funding_rate", 0))
         perp_price = float(inputs.get("perp_price", spot_price))
         
-        # Fetch spot/perp price si pas fourni (sauf backtest)
+        # Fetch spot/perp price when not provided (except in backtests)
         if spot_price == 0 and not self.params.get("_backtest", False):
             spot_price = self.fetch_spot_price()
         
@@ -431,7 +431,7 @@ class FundingCarryNode:
         if perp_price == 0:
             perp_price = spot_price
         
-        # Fetch funding rate si pas fourni (sauf backtest: on garde 0)
+        # Fetch funding rate when not provided (except in backtests: keep 0)
         if funding_rate == 0 and not self.params.get("_backtest", False):
             funding_rate = self.fetch_current_funding()
         
@@ -461,7 +461,7 @@ class FundingCarryNode:
         # Basis: entry-quality filter only.
         # The basis is NOT annualised into the expected return (there is no convergence
         # guarantee, and a negative basis must not cancel the funding yield).
-        # Voir plus bas : expected_return = annual_funding seul.
+        # See below: expected_return = annual_funding only.
         if perp_price > 0:
             basis_pct = (perp_price - spot_price) / spot_price
         else:
@@ -656,17 +656,17 @@ class FundingCarryNode:
                 unrealized_pct = 0.0
             
             # ── Cross-margin risk monitoring ──
-            # En paper trading, on simule le risque de liquidation du short perp
-            # Si la perte latente > 80% du capital → alerte liquidation
+            # In paper trading we simulate the short perp liquidation risk
+            # When the unrealised loss > 80% of capital → liquidation alert
             if unrealized_pct < -0.80 and self.state.position_open:
                 logger.error("[%s] ⚠️ LIQUIDATION RISK: loss=%.1f%% → short perp would be liquidated!",
                            self.node_id, unrealized_pct * 100)
-                # En paper, on ne ferme pas automatiquement mais on alerte fortement
+                # In paper mode we do not close automatically but raise a strong alert
             
             if signal == "close_carry":
                 pass  # already handled above
             elif funding_rate > 0:
-                # Recevoir funding
+                # Receive funding
                 payment = self.state.entry_capital * funding_rate
                 self.state.total_funding_received += payment
                 self.state.n_payments += 1
@@ -686,7 +686,7 @@ class FundingCarryNode:
                     hours_neg = 0
                 
                 if hours_neg > self.exit_after_hours:
-                    # Fermer
+                    # Close
                     signal = "close_carry"
                     self.state.position_open = False
                     reason = f"negative funding > {self.exit_after_hours}h -> close"
@@ -701,7 +701,7 @@ class FundingCarryNode:
         elapsed = time.time() - t0
         
         # ── Output ──
-        # Construire un "decision" compatible PaperTrader.
+        # Build a PaperTrader-compatible "decision".
         # For carry trades: NO spot SL/TP (semantically wrong for a delta-neutral book).
         # PositionMonitor uses the unified max_loss_pct (-5%) for the exit.
         # The DAG handles the basis stop-loss and the time-stop.
@@ -766,16 +766,16 @@ if __name__ == "__main__":
     
     node = FundingCarryNode(symbol="BTC/USDT", capital=10_000)
     
-    # Simuler un signal d'ouverture
+    # Simulate an opening signal
     result = node.run({
         "spot_price": 67000,
         "funding_rate": 0.0001,  # 0.01%
         "perp_price": 67005,
     })
     print(f"Signal: {result['signal']} | Size: ${result['size_usd']:.0f} | "
-          f"Expected: {result['expected_return']*100:.1f}%/an | {result['reason']}")
+          f"Expected: {result['expected_return']*100:.1f}%/yr | {result['reason']}")
     
-    # Simuler paiement de funding
+    # Simulate a funding payment
     result2 = node.run({
         "spot_price": 67100,
         "funding_rate": 0.0001,

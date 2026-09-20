@@ -32,7 +32,7 @@ logger = logging.getLogger("grid_search")
 ## cost-of-capital calculation (SOFR + premia), not a trading parameter. The
 ## grid search only optimises the parameters that belong to the strategy.
 COARSE_GRID = {
-    "min_funding":    [0.0001, 0.0002, 0.0003, 0.0005],  # 0.01% → 0.05%/8h (11% → 55%/an)
+    "min_funding":    [0.0001, 0.0002, 0.0003, 0.0005],  # 0.01% → 0.05%/8h (11% → 55%/yr)
     "max_hold_days":  [30, 45, 60],                   # aligned with the zones (DERISK/CLOSE)
     "fraction":       [0.30, 0.50],
     # economic_hurdle is no longer in the grid - fixed at 0.05 (cost of capital)

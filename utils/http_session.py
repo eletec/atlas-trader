@@ -1,7 +1,7 @@
 """
-utils/http_session.py — Session requests partagée (P5).
-Évite la création d'une nouvelle connexion TCP à chaque requête HTTP.
-Pool de connexions + retry automatique avec backoff.
+utils/http_session.py — Shared requests session (P5).
+Avoids opening a new TCP connection on every HTTP request.
+Connection pool + automatic retry with backoff.
 """
 from __future__ import annotations
 

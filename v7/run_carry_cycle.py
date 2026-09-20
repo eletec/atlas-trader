@@ -37,7 +37,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("carry_cycle")
 
-# ── Charger la config ──
+# ── Load the config ──
 try:
     from v7.core.asset_config import get_active_assets
     ASSETS = get_active_assets()
@@ -142,7 +142,7 @@ def run_cycle(
                 exit_after_hours=int(_cfg.get("exit_after_hours", 72)),
                 max_hold_days=int(_cfg.get("max_hold_days", 14)),
                 stop_loss_pct=float(_cfg.get("stop_loss_pct", -0.05)),
-                params={},  # pas de _backtest → mode live
+                params={},  # no _backtest → live mode
             )
 
             # Fetch prices + funding
@@ -318,7 +318,7 @@ def daemon_loop(interval_hours: float = 8.0):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="V7 Funding Carry — Cycle unique")
+    parser = argparse.ArgumentParser(description="V7 Funding Carry — Single cycle")
     parser.add_argument("--assets", type=str, default=None,
                        help="Comma-separated list of assets (default: all active)")
     parser.add_argument("--capital", type=float, default=2000,

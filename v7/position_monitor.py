@@ -213,7 +213,7 @@ class PositionMonitor:
             self._circuit_breaker = False
             logger.info("TIER 0: circuit breaker lifted — prices OK")
 
-        # ── Phase 2 : Kill-switch multi-tier ─────────────────────────────
+        # ── Phase 2: Multi-tier kill-switch ─────────────────────────────
         total_pnl_pct = (total_unrealized / total_capital * 100) if total_capital > 0 else 0
         
         # Tier 1: operational - stale data
@@ -275,7 +275,7 @@ class PositionMonitor:
 
         # ── Kill-switch reset policy (3 audits, 20/07/2026) ──
         # Tier 1 (OPERATIONAL): auto-reset once the data is fresh again
-        # Tier 2+ (MARKET/PORTFOLIO_DD/CORRELATED_LOSS): reset MANUEL requis
+        # Tier 2+ (MARKET/PORTFOLIO_DD/CORRELATED_LOSS): MANUAL reset required
         # -> no auto-reset, the flag stays until a restart or manual intervention
         if self._kill_switch_triggered and kill_tier == "OPERATIONAL":
             if not stale_data:
@@ -343,21 +343,21 @@ class PositionMonitor:
                                 logger.warning("PositionMonitor: %s carry economics degraded — skipping economic stop", pd["symbol"])
                             elif payback_days > 90:
                                 should_close = True
-                                reason = f"ECONOMIC STOP (ZONE CLOSE): payback={payback_days:.0f}j > 90j"
+                                reason = f"ECONOMIC STOP (ZONE CLOSE): payback={payback_days:.0f}d > 90d"
                             elif payback_days > 60 and loss_pct < -1.0:
                                 should_close = True
-                                reason = f"ECONOMIC STOP (ZONE DERISK): payback={payback_days:.0f}j + loss={loss_pct:+.2f}%"
+                                reason = f"ECONOMIC STOP (ZONE DERISK): payback={payback_days:.0f}d + loss={loss_pct:+.2f}%"
                             elif payback_days > 30:
-                                logger.info("PositionMonitor: %s carry WATCH payback=%.0fj (zone 30-60j)",
+                                logger.info("PositionMonitor: %s carry WATCH payback=%.0fd (zone 30-60d)",
                                        pd["symbol"], payback_days)
                             else:
-                                logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fj", pd["symbol"], payback_days)
+                                logger.debug("PositionMonitor: %s carry HEALTHY payback=%.0fd", pd["symbol"], payback_days)
                     else:
                         # Classic time-stop for non-carry - an asset-specific threshold
                         _mhd = self._max_hold_days_for(pd["symbol"])
                         if days_held > _mhd:
                             should_close = True
-                            reason = f"TIME-STOP: {days_held:.1f}j > {_mhd}j max (loss={loss_pct:+.2f}%)"
+                            reason = f"TIME-STOP: {days_held:.1f}d > {_mhd}d max (loss={loss_pct:+.2f}%)"
                 except (ValueError, OSError):
                     pass
 
@@ -451,7 +451,7 @@ class PositionMonitor:
             # Fetch the perp price (mandatory for carry)
             current_perp = self._get_cached_perp(symbol)
             if current_perp <= 0:
-                # Pas de fallback spot ! (3 audits, 20/07/2026)
+                # No spot fallback! (3 audits, 20/07/2026)
                 # When the perp is unavailable the basis is UNKNOWN.
                 # Substituting spot would hide the risk (an artificial basis=0).
                 result["data_degraded"] = True
@@ -508,10 +508,10 @@ class PositionMonitor:
 
     @staticmethod
     def _leverage_for(symbol: str, coin: str) -> float:
-        """Levier du short perp : carry_assets.yaml en priorite, table majors sinon.
+        """Short perp leverage: carry_assets.yaml first, majors table otherwise.
 
-        Source unique de verite — la table codee en dur divergeait silencieusement
-        de la config si un levier y etait modifie.
+        Single source of truth — the hardcoded table silently drifted away
+        from the config whenever a leverage was edited there.
         """
         try:
             from v7.core.asset_config import get_asset_params

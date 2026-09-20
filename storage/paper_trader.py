@@ -1,7 +1,7 @@
 """
-storage/paper_trader.py — Persistance des trades V4 PaperTrader en SQLite.
+storage/paper_trader.py — Persistence of the V4 PaperTrader trades in SQLite.
 
-Utilisé par v4/nodes/quant/output.py (PaperTrader.run).
+Used by v4/nodes/quant/output.py (PaperTrader.run).
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _ensure_table(conn) -> None:
             status          TEXT    DEFAULT 'open', -- open | closed | cancelled
             closed_at       TEXT,
             pnl_usd         REAL    DEFAULT 0,
-            context_json    TEXT,                   -- JSON : décision complète (signal, trend, regime...)
+            context_json    TEXT,                   -- JSON: full decision (signal, trend, regime...)
             testnet         INTEGER DEFAULT 1
         )
     """)
@@ -60,13 +60,13 @@ def persist_trade(
     context: dict | None = None,
 ) -> str:
     """
-    Persiste un trade paper dans la table v4_trades.
+    Persist a paper trade in the v4_trades table.
 
     Args:
-        context: dict optionnel — stocké en JSON dans context_json pour traçabilité
+        context: optional dict — stored as JSON in context_json for traceability
 
     Returns:
-        trade_id (str) — UUID unique du trade.
+        trade_id (str) — unique UUID of the trade.
     """
     from storage.database import get_connection
     import json as _json
@@ -145,16 +145,16 @@ def close_position(
     pnl_usd: float,
     reason: str = "sl",
 ) -> bool:
-    """Ferme une position et enregistre le PnL.
+    """Close a position and record the PnL.
 
     Args:
-        trade_id: UUID du trade
-        close_price: prix de clôture
-        pnl_usd: profit/perte en USD
+        trade_id: trade UUID
+        close_price: closing price
+        pnl_usd: profit/loss in USD
         reason: 'sl' | 'tp' | 'signal_reverse' | 'manual'
 
     Returns:
-        True si la clôture a réussi.
+        True when the close succeeded.
     """
     from storage.database import get_connection
 

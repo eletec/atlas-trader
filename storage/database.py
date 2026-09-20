@@ -1,6 +1,6 @@
 """
-storage/database.py — Couche d'accès SQLite
-Gestion des décisions, simulations, métriques de flux et logs.
+storage/database.py — SQLite access layer
+Management of decisions, simulations, flux metrics and logs.
 """
 from __future__ import annotations
 
@@ -50,10 +50,10 @@ DDL_STATEMENTS = [
         sl_price        REAL,
         tp_price        REAL,
         position_size   REAL,
-        result_24h      REAL,                  -- P&L après 24h (NULL jusqu'au post-mortem)
-        reflection_done INTEGER DEFAULT 0,     -- 1 = leçon LLM déjà générée
-        weights_snapshot TEXT,                 -- JSON des poids au moment de la décision
-        decision_context TEXT,                  -- JSON complet : market_indicators + agent_summaries + effective_weights + reasoning
+        result_24h      REAL,                  -- P&L after 24h (NULL until the post-mortem)
+        reflection_done INTEGER DEFAULT 0,     -- 1 = LLM lesson already generated
+        weights_snapshot TEXT,                 -- JSON of the weights at decision time
+        decision_context TEXT,                  -- full JSON: market_indicators + agent_summaries + effective_weights + reasoning
         llm_tokens      INTEGER DEFAULT 0,
         cycle_duration_ms INTEGER DEFAULT 0,
         errors          TEXT                   -- JSON array
@@ -107,14 +107,14 @@ DDL_STATEMENTS = [
         confidence      REAL,
         score           REAL,
         signal          TEXT,
-        actual_price    REAL,                  -- rempli par post-mortem
-        actual_change   REAL,                  -- rempli par post-mortem
-        direction_hit   INTEGER,               -- 1 = correct, 0 = faux (post-mortem)
-        evaluated_at    TEXT,                  -- timestamp du post-mortem
+        actual_price    REAL,                  -- filled in by post-mortem
+        actual_change   REAL,                  -- filled in by post-mortem
+        direction_hit   INTEGER,               -- 1 = correct, 0 = wrong (post-mortem)
+        evaluated_at    TEXT,                  -- post-mortem timestamp
         latency_ms      INTEGER DEFAULT 0
     )
     """,
-    # ── Shadow Decisions (profils de comparaison) ──
+    # ── Shadow Decisions (comparison profiles) ──
     """
     CREATE TABLE IF NOT EXISTS shadow_decisions (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,9 +139,9 @@ DDL_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS meta_analyses (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp       TEXT    NOT NULL,
-        asset           TEXT,              -- NULL = analyse globale multi-actifs
-        summary_text    TEXT    NOT NULL,  -- Markdown rendu par le LLM
-        patterns_json   TEXT,              -- JSON structuré (patterns, recos, agents_faibles)
+        asset           TEXT,              -- NULL = global multi-asset analysis
+        summary_text    TEXT    NOT NULL,  -- Markdown rendered by the LLM
+        patterns_json   TEXT,              -- structured JSON (patterns, recos, weak agents)
         n_trades        INTEGER DEFAULT 0,
         n_losing        INTEGER DEFAULT 0,
         run_trigger     TEXT    DEFAULT 'auto'  -- 'auto' | 'manual'
@@ -162,10 +162,10 @@ DDL_STATEMENTS = [
         confidence      REAL,
         score           REAL,
         signal          TEXT,
-        actual_price    REAL,                  -- rempli par post-mortem
-        actual_change   REAL,                  -- rempli par post-mortem
-        direction_hit   INTEGER,               -- 1 = correct, 0 = faux (post-mortem)
-        evaluated_at    TEXT,                  -- timestamp du post-mortem
+        actual_price    REAL,                  -- filled in by post-mortem
+        actual_change   REAL,                  -- filled in by post-mortem
+        direction_hit   INTEGER,               -- 1 = correct, 0 = wrong (post-mortem)
+        evaluated_at    TEXT,                  -- post-mortem timestamp
         latency_ms      INTEGER DEFAULT 0
     )
     """,
@@ -185,17 +185,17 @@ DDL_STATEMENTS = [
         asset           TEXT    NOT NULL DEFAULT 'BTC/USDT',
         bar_ts          TEXT,
         close_price     REAL,
-        regime          INTEGER,    -- 1=trending, 0=ranging, NULL=inconnu
-        prob_up         REAL,       -- P(up) ∈ [0,1] ou NULL
+        regime          INTEGER,    -- 1=trending, 0=ranging, NULL=unknown
+        prob_up         REAL,       -- P(up) ∈ [0,1] or NULL
         action          TEXT,       -- long | short | flat
         reason          TEXT,
         atr_14          REAL,
-        position_side   TEXT,       -- long | short | NULL (si pas de position)
+        position_side   TEXT,       -- long | short | NULL (when no position)
         entry_price     REAL,
         sl_price        REAL,
         tp_price        REAL,
         capital         REAL,
-        model_fit_at    TEXT        -- timestamp dernier ré-entraînement
+        model_fit_at    TEXT        -- timestamp of the last re-training
     )
     """,
     # -- V2 equity curve (one row per processed bar) --
@@ -441,11 +441,11 @@ def mark_reflection_done(cycle_id: str) -> None:
 
 
 def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> None:
-    """Clôture une position ouverte en calculant le P&L réalisé.
+    """Close an open position and compute the realised P&L.
 
-    Le P&L = (close_price - entry_price) * (position_size / entry_price)
-    Pour un BUY : gain si close > entry, perte si close < entry.
-    Pour un SELL short : inverse.
+    The P&L = (close_price - entry_price) * (position_size / entry_price)
+    For a BUY: gain when close > entry, loss when close < entry.
+    For a SELL short: the opposite.
     """
     with get_connection() as conn:
         row = conn.execute(
@@ -470,7 +470,7 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
         )
         conn.commit()
 
-    # ── Audit log complet de la transaction ───────────────────────────────
+    # ── Full audit log of the transaction ───────────────────────────────
     pnl_pct = (close_price - entry) / entry * 100 if entry > 0 else 0
     # Position duration
     try:
@@ -495,7 +495,7 @@ def close_position(cycle_id: str, close_price: float, reason: str = "SL/TP") -> 
 
 
 def get_open_positions() -> list[dict]:
-    """Retourne les positions BUY ouvertes (long-only spot, result_24h IS NULL)."""
+    """Return the open BUY positions (long-only spot, result_24h IS NULL)."""
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -540,9 +540,9 @@ def get_last_action_minutes_ago(asset: str, action: str) -> float | None:
 
 
 def get_closed_trade_stats(asset: str | None = None, min_trades: int = 5) -> dict:
-    """Retourne win_rate et rr_ratio réels depuis les trades BUY fermés.
+    """Return the real win_rate and rr_ratio from the closed BUY trades.
 
-    Retourne {} si pas assez de données (< min_trades).
+    Returns {} when there is not enough data (< min_trades).
     """
     with get_connection() as conn:
         if asset:
@@ -836,8 +836,8 @@ def get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 
 def get_assets_summary() -> list[dict]:
     """
-    Retourne une ligne par actif avec son dernier signal, score et P&L.
-    Utilisé par la vue globale multi-actifs du dashboard.
+    Return one row per asset with its latest signal, score and P&L.
+    Used by the dashboard's global multi-asset view.
     """
     with get_connection() as conn:
         rows = conn.execute(
@@ -871,10 +871,10 @@ def get_pending_postmortems(delay_hours: int = 24) -> list[dict]:
             WHERE action NOT IN ('HOLD', 'SELL')
               AND reflection_done = 0
               AND (
-                -- Position encore ouverte après delay_hours (rare en pratique)
+                -- Position still open after delay_hours (rare in practice)
                 (result_24h IS NULL AND datetime(timestamp, '+' || ? || ' hours') < datetime(?))
                 OR
-                -- Position clôturée via SL/TP — reflection jamais déclenchée
+                -- Position closed via SL/TP — reflection never triggered
                 (result_24h IS NOT NULL)
               )
             """,
@@ -899,17 +899,17 @@ def get_pnl_history() -> list[dict]:
 
 def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> list[dict]:
     """
-    Calcule les statistiques de performance par agent individuel.
+    Compute the performance statistics per individual agent.
 
-    Pour chaque agent connu (market_data, fundamental, x_sentiment, etc.) :
-    - signal_count   : nb de fois où il a émis un signal (score ≠ None)
-    - win_rate       : % des fois où son signal (>50=bull, <50=bear) était correct vs résultat réel
-    - avg_score      : score moyen émis
-    - avg_score_wins : score moyen quand il avait raison
-    - brier_score    : erreur quadratique moyenne (0=parfait, 0.25=hasard pur)
-    - current_weight : weight_in_scoring dans settings.yaml
+    For each known agent (market_data, fundamental, x_sentiment, etc.):
+    - signal_count   : number of times it emitted a signal (score ≠ None)
+    - win_rate       : % of times its signal (>50=bull, <50=bear) was correct vs the actual result
+    - avg_score      : average score emitted
+    - avg_score_wins : average score when it was right
+    - brier_score    : mean squared error (0=perfect, 0.25=pure chance)
+    - current_weight : weight_in_scoring in settings.yaml
 
-    Retourne une liste triée par win_rate desc.
+    Returns a list sorted by win_rate desc.
     """
     import json as _json
 
@@ -1018,8 +1018,8 @@ def get_agent_performance_stats(asset: str | None = None, days: int = 30) -> lis
 
 def get_agent_scores_history(asset: str | None = None, hours: int = 24) -> list[dict]:
     """
-    Retourne l'historique des scores par agent sur les N dernières heures.
-    Chaque entrée : {timestamp, action, score, agent_scores: {agent: score}, contrarian_score, mirofish_score, market_score}
+    Return the score history per agent over the last N hours.
+    Each entry: {timestamp, action, score, agent_scores: {agent: score}, contrarian_score, mirofish_score, market_score}
     """
     import json as _json
     cutoff = (datetime.utcnow().replace(microsecond=0)
@@ -1143,9 +1143,9 @@ def _start_sqlite_log_writer() -> None:
 
 
 class SQLiteLogHandler(logging.Handler):
-    """Handler logging qui écrit dans la table logs SQLite via une queue.
-    emit() est non-bloquant et lock-free : enfile le record, le thread writer l'écrit.
-    Évite tout deadlock (AB-BA avec _lock) et toute explosion de threads.
+    """Logging handler that writes into the SQLite logs table through a queue.
+    emit() is non-blocking and lock-free: it queues the record, the writer thread stores it.
+    Avoids any deadlock (AB-BA with _lock) and any thread explosion.
     """
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -1202,9 +1202,9 @@ def log_timesfm_forecast(
 
 def evaluate_timesfm_forecasts() -> int:
     """
-    Post-mortem : évalue les prédictions TimesFM arrivées à échéance.
-    Compare predicted_price vs prix réel après horizon_candles × 15min.
-    Retourne le nombre de forecasts évalués.
+    Post-mortem: evaluate the TimesFM predictions that have reached maturity.
+    Compares predicted_price vs the real price after horizon_candles × 15min.
+    Returns the number of forecasts evaluated.
     """
     import ccxt
 
@@ -1281,14 +1281,14 @@ def evaluate_timesfm_forecasts() -> int:
 
 def get_timesfm_stats() -> dict:
     """
-    Retourne les statistiques de performance TimesFM.
-    - total: nb total de prédictions
-    - evaluated: nb évaluées
-    - direction_accuracy: % de bonnes directions
-    - mae: erreur absolue moyenne (%)
-    - avg_confidence: confiance moyenne
-    - avg_latency_ms: latence moyenne
-    - recent: les 10 dernières prédictions évaluées
+    Return the TimesFM performance statistics.
+    - total: total number of predictions
+    - evaluated: number evaluated
+    - direction_accuracy: % of correct directions
+    - mae: mean absolute error (%)
+    - avg_confidence: average confidence
+    - avg_latency_ms: average latency
+    - recent: the last 10 evaluated predictions
     """
     try:
         with get_connection() as conn:
@@ -1394,9 +1394,9 @@ def log_kronos_forecast(
 
 def evaluate_kronos_forecasts() -> int:
     """
-    Post-mortem : évalue les prédictions Kronos arrivées à échéance.
-    Compare predicted_price vs prix réel après horizon_candles × 15min.
-    Retourne le nombre de forecasts évalués.
+    Post-mortem: evaluate the Kronos predictions that have reached maturity.
+    Compares predicted_price vs the real price after horizon_candles × 15min.
+    Returns the number of forecasts evaluated.
     """
     import ccxt
 
@@ -1493,10 +1493,10 @@ def evaluate_kronos_forecasts() -> int:
 
 def get_kronos_stats() -> dict:
     """
-    Retourne les statistiques de performance Kronos.
+    Return the Kronos performance statistics.
     - total, evaluated, direction_accuracy, mae, avg_confidence, avg_latency_ms
-    - recent: 10 dernières prédictions évaluées
-    - pending: 5 dernières en attente
+    - recent: last 10 evaluated predictions
+    - pending: last 5 still waiting
     """
     try:
         with get_connection() as conn:
@@ -1556,7 +1556,7 @@ def get_kronos_stats() -> dict:
 
 
 # ===========================================================
-# SHADOW DECISIONS — Profils de comparaison
+# SHADOW DECISIONS — Comparison profiles
 # ===========================================================
 
 def log_shadow_decision(
@@ -1677,13 +1677,13 @@ def update_shadow_result(shadow_id: int, result_24h: float) -> None:
 
 def get_shadow_comparison_stats() -> list[dict]:
     """
-    Retourne les statistiques agrégées par profil shadow.
-    Inclut aussi le profil 'baseline' reconstitué depuis la table decisions.
+    Return the aggregated statistics per shadow profile.
+    Also includes the 'baseline' profile rebuilt from the decisions table.
     """
     stats = []
     try:
         with get_connection() as conn:
-            # ── Stats des profils shadow ──
+            # ── Shadow profile stats ──
             rows = conn.execute(
                 """
                 SELECT
@@ -1812,9 +1812,9 @@ _SHADOW_INITIAL_CAPITAL = 10_000.0  # starting capital of each shadow profile
 
 def get_shadow_virtual_capital(profile_name: str) -> float:
     """
-    Retourne le capital virtuel actuel d'un profil shadow.
-    = capital_initial + somme des P&L évalués - somme des positions ouvertes.
-    Utilisé par shadow_runner pour un sizing proportionnel au capital restant.
+    Return the current virtual capital of a shadow profile.
+    = initial_capital + sum of the evaluated P&L - sum of the open positions.
+    Used by shadow_runner for sizing proportional to the remaining capital.
     """
     try:
         with get_connection() as conn:
@@ -1865,7 +1865,7 @@ def get_shadow_recent_decisions(n: int = 20) -> list[dict]:
 
 def get_shadow_pnl_series() -> dict[str, list[dict]]:
     """
-    Retourne les courbes de P&L cumulé par profil shadow.
+    Return the cumulative P&L curves per shadow profile.
     Returns: {profile_name: [{timestamp, pnl, cumulative_pnl}, ...]}
     """
     series: dict[str, list[dict]] = {}
@@ -1925,8 +1925,8 @@ def get_decisions_for_meta(
     asset: str | None = None,
 ) -> list[dict]:
     """
-    Retourne les décisions BUY/SELL évaluées (result_24h NOT NULL) pour la méta-analyse.
-    Extrait les scores de chaque composant depuis weights_snapshot.
+    Return the evaluated BUY/SELL decisions (result_24h NOT NULL) for the meta-analysis.
+    Extracts the scores of each component from weights_snapshot.
     """
     import json as _json
 
@@ -2130,8 +2130,8 @@ def append_v2_equity(
 
 def get_v2_assets_summary() -> list[dict]:
     """
-    Résumé V2 multi-actifs : dernière ligne v2_equity par actif.
-    Utilisé par la vue globale du dashboard (remplacement de get_assets_summary).
+    V2 multi-asset summary: latest v2_equity row per asset.
+    Used by the dashboard's global view (replacement for get_assets_summary).
     """
     try:
         with get_connection() as conn:
@@ -2192,10 +2192,10 @@ def get_v2_recent_trades(n: int = 50, asset: str = "BTC/USDT") -> list[dict]:
 
 
 def get_v2_realized_stats(asset: str | None = None, assets: list[str] | None = None) -> dict:
-    """Calcule PnL réalisé et nb de trades clôturés depuis v2_equity.
+    """Compute the realised PnL and the number of closed trades from v2_equity.
 
-    Un trade clôturé est estimé par un changement d'equity entre deux points
-    consécutifs d'un même actif.
+    A closed trade is estimated by an equity change between two consecutive
+    points of the same asset.
     """
     try:
         with get_connection() as conn:
@@ -2238,9 +2238,9 @@ def get_v2_realized_stats(asset: str | None = None, assets: list[str] | None = N
 
 def get_v2_cumulative_pnl(asset: str | None = None, assets: list[str] | None = None,
                           reset_jump_abs: float = 500.0) -> float:
-    """P&L cumulé V2 basé sur les deltas de capital dans v2_decisions.
+    """V2 cumulative P&L based on the capital deltas in v2_decisions.
 
-    Ignore les sauts anormaux (reset/restart) au-delà de `reset_jump_abs`.
+    Ignores the abnormal jumps (reset/restart) beyond `reset_jump_abs`.
     """
     try:
         with get_connection() as conn:

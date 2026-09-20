@@ -1,6 +1,6 @@
 """
-utils/logger.py — Configuration centralisée du logging
-Rotation de fichiers + handler SQLite + re-export des fonctions utiles.
+utils/logger.py — Centralised logging configuration
+File rotation + SQLite handler + re-export of the useful functions.
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def setup_logging(
             logging.getLogger("zeitgeist").addHandler(sqlite_handler)
         except Exception as exc:
             logging.getLogger("zeitgeist").warning(
-                f"Handler SQLite non disponible: {exc}"
+                f"SQLite handler not available: {exc}"
             )
 
     logging.getLogger("zeitgeist").info("Logging initialised")

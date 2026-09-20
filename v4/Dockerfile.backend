@@ -3,12 +3,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Dépendances système
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Dépendances Python V4 (subset de requirements.txt + ajouts V4)
+# V4 Python dependencies (subset of requirements.txt + V4 additions)
 COPY v4/requirements.backend.txt /tmp/
 RUN pip install --no-cache-dir -r /tmp/requirements.backend.txt
 

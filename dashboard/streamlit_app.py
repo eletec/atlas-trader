@@ -1,6 +1,6 @@
 """
-dashboard/streamlit_app.py — Dashboard principal Atlas Trader
-Interface User (lecture seule) + Interface Admin (protégée par mot de passe).
+dashboard/streamlit_app.py — Main Atlas Trader dashboard
+User interface (read-only) + Admin interface (password-protected).
 """
 from __future__ import annotations
 
@@ -222,7 +222,7 @@ def _inject_theme_css():
         }
         /* Slider labels */
         [data-testid="stSlider"] span { color: #31333F !important; }
-        /* ── Tous les boutons (stBaseButton couvre télécharger, upload, etc.) ── */
+        /* ── All buttons (stBaseButton covers download, upload, etc.) ── */
         .stButton > button,
         .stButton button,
         button[data-testid^="stBaseButton"],
@@ -239,7 +239,7 @@ def _inject_theme_css():
             color: #ffffff !important;
             border: none !important;
         }
-        /* Boutons internes inputs (œil password, etc.) */
+        /* Internal input buttons (password eye, etc.) */
         [data-testid="stTextInput"] button,
         [data-testid="stPasswordInput"] button,
         [data-baseweb="input"] button {
@@ -253,17 +253,17 @@ def _inject_theme_css():
         [data-baseweb="input"] button svg {
             fill: #31333F !important;
         }
-        /* ── Radio buttons — texte sombre, cercle gris (pas noir) ── */
+        /* ── Radio buttons — dark text, grey circle (not black) ── */
         [data-testid="stRadio"] label,
         [data-testid="stRadio"] p { color: #31333F !important; }
-        /* Le cercle utilise currentColor comme border/fill → on le met gris pour éviter noir plein */
+        /* The circle uses currentColor for border/fill → we make it grey to avoid solid black */
         [data-baseweb="radio"] { color: rgba(49,51,63,0.45) !important; }
         [data-baseweb="radio"][aria-checked="true"],
         [data-baseweb="radio"][data-checked="true"] { color: #ff4b4b !important; }
-        /* ── Toggle — piste OFF visible + piste ON rouge ── */
+        /* ── Toggle — visible OFF track + red ON track ── */
         [data-testid="stToggle"] label,
         [data-testid="stToggle"] p { color: #31333F !important; }
-        /* Piste du toggle : plusieurs sélecteurs pour couvrir les versions Streamlit */
+        /* Toggle track: several selectors to cover the Streamlit versions */
         [data-testid="stToggle"] [role="checkbox"],
         [data-testid="stToggle"] label > div:first-child,
         [data-baseweb="toggle"] {
@@ -366,7 +366,7 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #e8f4fd !important; }
         hr { border-color: #dee2e6 !important; }
         code, pre { background-color: #f1f3f5 !important; color: #31333F !important; }
-        /* Selectbox dropdown — min-width + fond blanc sur popover ET liste */
+        /* Selectbox dropdown — min-width + white background on popover AND list */
         [data-baseweb="popover"] { min-width: max-content !important; }
         [data-baseweb="popover"],
         [data-baseweb="popover"] > div,
@@ -420,13 +420,13 @@ def _inject_theme_css():
         [data-testid="stAlert"] { background-color: #1c2128 !important; }
         hr { border-color: rgba(255,255,255,0.1) !important; }
         code, pre { background-color: #161b22 !important; color: #FAFAFA !important; }
-        /* Textarea (listes RSS, Nitter, Reddit…) */
+        /* Textarea (RSS, Nitter, Reddit lists…) */
         textarea, [data-baseweb="textarea"] textarea {
             background-color: #161b22 !important;
             color: #FAFAFA !important;
             border-color: rgba(255,255,255,0.15) !important;
         }
-        /* Icône œil (champ password) et boutons internes des inputs */
+        /* Eye icon (password field) and internal input buttons */
         [data-testid="stTextInput"] button,
         [data-testid="stPasswordInput"] button,
         [data-baseweb="input"] button {
@@ -435,14 +435,14 @@ def _inject_theme_css():
             border: none !important;
             box-shadow: none !important;
         }
-        /* Selectbox : fond du contrôle */
+        /* Selectbox: control background */
         [data-baseweb="select"] > div:first-child {
             background-color: #21262d !important;
             border-color: rgba(255,255,255,0.15) !important;
         }
         [data-baseweb="select"] span,
         [data-baseweb="select"] div { color: #FAFAFA !important; }
-        /* Selectbox dropdown — min-width !important bat le style inline injecte par BaseWeb */
+        /* Selectbox dropdown — min-width !important beats the inline style injected by BaseWeb */
         [data-baseweb="popover"] { min-width: max-content !important; }
         ul[data-baseweb="menu"] {
             background-color: #21262d !important;
@@ -472,13 +472,13 @@ def _inject_theme_css():
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 10px !important;
         }
-        /* Tous les input internes (texte, password) */
+        /* All internal inputs (text, password) */
         input, input[type="text"], input[type="password"] {
             background-color: #21262d !important;
             color: #FAFAFA !important;
             border-color: rgba(255,255,255,0.2) !important;
         }
-        /* Icône œil (visibilité mot de passe) + boutons internes */
+        /* Eye icon (password visibility) + internal buttons */
         [data-testid="stTextInput"] button svg,
         [data-testid="stPasswordInput"] button svg,
         [data-baseweb="input"] button svg {
@@ -491,8 +491,8 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border: none !important;
         }
-        /* Agrandir bouton tooltip pour loger SVG 16px — déplacé dans atlas-tooltip-global */
-        /* Table (st.table) fond sombre */
+        /* Enlarge the tooltip button to fit the 16px SVG — moved to atlas-tooltip-global */
+        /* Table (st.table) dark background */
         [data-testid="stTable"] table {
             background-color: #161b22 !important;
             border-collapse: collapse !important;
@@ -513,7 +513,7 @@ def _inject_theme_css():
         [data-testid="stTable"] tbody tr:hover td {
             background-color: #21262d !important;
         }
-        /* ── Expanders — fond sombre, header focus sans blanc ── */
+        /* ── Expanders — dark background, header focus without white ── */
         [data-testid="stExpander"] {
             background-color: #161b22 !important;
             border: 1px solid rgba(255,255,255,0.1) !important;
@@ -523,7 +523,7 @@ def _inject_theme_css():
             background-color: #161b22 !important;
             color: #FAFAFA !important;
         }
-        /* Supprimer le fond blanc au focus/actif */
+        /* Remove the white background on focus/active */
         [data-testid="stExpanderHeader"]:focus,
         [data-testid="stExpanderHeader"]:active,
         [data-testid="stExpander"] summary:focus,
@@ -539,7 +539,7 @@ def _inject_theme_css():
         [data-testid="stExpanderDetails"] {
             background-color: #0d1117 !important;
         }
-        /* Tabs navigation — sticky sous la navbar */
+        /* Tabs navigation — sticky under the navbar */
         [data-testid="stTabs"] [data-baseweb="tab-list"] {
             background-color: #0e1117 !important;
             box-shadow: 0 2px 8px rgba(0,0,0,0.45) !important;
@@ -552,19 +552,19 @@ def _inject_theme_css():
             color: #FAFAFA !important;
             border-bottom-color: #ff4b4b !important;
         }
-        /* Dialog modal — fond sombre + taille compacte */
+        /* Dialog modal — dark background + compact size */
         div[role="dialog"],
         [data-baseweb="dialog"] {
             background-color: #1c2128 !important;
             border: 1px solid rgba(255,255,255,0.15) !important;
             max-width: 560px !important;
         }
-        /* Texte dans le dialog — SAUF bouton X et ses enfants */
+        /* Text inside the dialog — EXCEPT the X button and its children */
         div[role="dialog"] p,
         div[role="dialog"] label {
             color: #FAFAFA !important;
         }
-        /* Bouton X (fermeture) : fond transparent + icône visible */
+        /* X button (close): transparent background + visible icon */
         div[role="dialog"] button[aria-label="Close"],
         div[role="dialog"] button[data-testid="stBaseButton-headerNoPadding"] {
             background-color: transparent !important;
@@ -595,7 +595,7 @@ def _inject_theme_css():
         </style>
         """, unsafe_allow_html=True)
 
-    # CSS global : onglets scrollables horizontalement + restauration espacement vertical
+    # Global CSS: horizontally scrollable tabs + vertical spacing restoration
     st.markdown("""
     <style>
     div[data-baseweb="tab-list"] {
@@ -610,24 +610,24 @@ def _inject_theme_css():
         flex-shrink: 0 !important;
     }
 
-    /* ── Restauration espacement vertical global ──────────────────────────────
-       Le menu custom (atlas-pad-css dans <head> parent) peut interférer avec
-       les gaps Streamlit. On restaure explicitement l'espacement attendu.     */
+    /* ── Global vertical spacing restoration ──────────────────────────────
+       The custom menu (atlas-pad-css in the parent <head>) can interfere with
+       the Streamlit gaps. We explicitly restore the expected spacing.     */
 
-    /* Gap entre blocs verticaux Streamlit */
+    /* Gap between Streamlit vertical blocks */
     [data-testid="stVerticalBlock"] { gap: 1rem !important; }
 
-    /* Marge basse sur chaque enfant direct (double protection si gap ne s'applique pas) */
+    /* Bottom margin on every direct child (double protection when the gap does not apply) */
     [data-testid="stVerticalBlock"] > div { margin-bottom: 0.5rem; }
     [data-testid="stVerticalBlock"] > div:last-child { margin-bottom: 0; }
 
-    /* Padding haut du conteneur de contenu principal */
+    /* Top padding of the main content container */
     [data-testid="stMainBlockContainer"] {
         padding-top: 2rem !important;
         padding-bottom: 3rem !important;
     }
 
-    /* Titres Markdown h3/h4/h5 — marges explicites */
+    /* Markdown titles h3/h4/h5 — explicit margins */
     [data-testid="stMarkdownContainer"] h3 {
         margin-top: 1.5rem !important;
         margin-bottom: 0.6rem !important;
@@ -641,18 +641,18 @@ def _inject_theme_css():
         margin-bottom: 0.5rem !important;
     }
 
-    /* Blocs info / warning / error */
+    /* Info / warning / error blocks */
     [data-testid="stAlertContainer"] {
         margin-top: 0.25rem !important;
         margin-bottom: 0.75rem !important;
     }
 
-    /* Espace avant les onglets st.tabs */
+    /* Space before the st.tabs tabs */
     [data-testid="stTabs"] {
         margin-top: 0.5rem !important;
     }
 
-    /* Séparateur st.divider */
+    /* st.divider separator */
     [data-testid="stMarkdownContainer"] hr {
         margin-top: 1.25rem !important;
         margin-bottom: 1.25rem !important;
@@ -664,12 +664,12 @@ def _inject_theme_css():
     # Always injected - colours adapted to the current theme
     if theme == "light":
         _t_bg, _t_fg, _t_bdr, _t_sh = "#ffffff", "#31333F", "#dee2e6", "rgba(0,0,0,0.14)"
-        _t_icon_fg   = "#6c757d"   # couleur du ? au repos
-        _t_icon_fg_h = "#31333F"   # couleur au survol
+        _t_icon_fg   = "#6c757d"   # colour of the ? at rest
+        _t_icon_fg_h = "#31333F"   # colour on hover
         _t_icon_bg   = "rgba(0,0,0,0.05)"
         _t_icon_bg_h = "rgba(0,0,0,0.10)"
         _t_icon_bdr  = "rgba(0,0,0,0.18)"
-    else:  # dark ou system
+    else:  # dark or system
         _t_bg, _t_fg, _t_bdr, _t_sh = "#21262d", "#e6edf3", "rgba(255,255,255,0.18)", "rgba(0,0,0,0.55)"
         _t_icon_fg   = "rgba(255,255,255,0.70)"
         _t_icon_fg_h = "#ffffff"
@@ -678,7 +678,7 @@ def _inject_theme_css():
         _t_icon_bdr  = "rgba(255,255,255,0.22)"
     st.markdown(f"""
 <style id="atlas-tooltip-global">
-/* ── Bulle tooltip (portal Radix — hors DOM principal) ── */
+/* ── Tooltip bubble (Radix portal — outside the main DOM) ── */
 div[data-radix-popper-content-wrapper] {{
     background-color: {_t_bg} !important;
     color: {_t_fg} !important;
@@ -701,7 +701,7 @@ div[data-radix-popper-content-wrapper] *,
     margin: 0 !important;
 }}
 
-/* ── Bouton icône ? — sélecteurs Streamlit connus ── */
+/* ── ? icon button — known Streamlit selectors ── */
 button[data-testid="stTooltipHoverTarget"],
 button[data-testid="stTooltipIcon"] {{
     display: inline-flex !important;
@@ -727,7 +727,7 @@ button[data-testid="stTooltipIcon"]:hover {{
     border-color: {_t_icon_fg_h} !important;
     color: {_t_icon_fg_h} !important;
 }}
-/* SVG — taille 16px, couleur héritée du bouton */
+/* SVG — 16px size, colour inherited from the button */
 button[data-testid="stTooltipHoverTarget"] svg,
 button[data-testid="stTooltipIcon"] svg {{
     width: 16px !important;
@@ -735,13 +735,13 @@ button[data-testid="stTooltipIcon"] svg {{
     overflow: visible !important;
     color: inherit !important;
 }}
-/* Masquer le <circle> intégré au SVG — le bouton joue déjà le rôle du cercle.
-   Sans cela, le SVG stroke-based dessine un 2e cercle par-dessus le rond CSS. */
+/* Hide the <circle> built into the SVG — the button already plays the circle role.
+   Without this, the stroke-based SVG draws a 2nd circle over the CSS round shape. */
 button[data-testid="stTooltipHoverTarget"] svg circle,
 button[data-testid="stTooltipIcon"] svg circle {{
     display: none !important;
 }}
-/* Forcer la couleur du glyphe ? (path + point) — stroke ET fill pour les 2 variantes */
+/* Force the colour of the ? glyph (path + dot) — stroke AND fill for both variants */
 button[data-testid="stTooltipHoverTarget"] svg path,
 button[data-testid="stTooltipIcon"] svg path,
 button[data-testid="stTooltipHoverTarget"] svg line,
@@ -950,10 +950,10 @@ def _get_last_cycle() -> dict | None:
 
 @st.cache_data(ttl=60)
 def _carry_asset_list() -> list[str]:
-    """Actifs configurés dans carry_assets.yaml — alimente les filtres du dashboard.
+    """Assets configured in carry_assets.yaml — feeds the dashboard filters.
 
-    Liste dynamique : une liste codée en dur divergeait de la config réelle
-    (AVAX manquant, ADA/DOGE désactivés mais proposés).
+    Dynamic list: a hardcoded list drifted from the real config
+    (AVAX missing, ADA/DOGE disabled but still offered).
     """
     try:
         from v7.core.asset_config import get_all_assets
@@ -968,9 +968,9 @@ def _carry_asset_list() -> list[str]:
 
 def _force_run_background(asset: str, log_q) -> None:
     """
-    Déclenche un cycle Funding Carry immédiat via /carry/run (endpoint non bloquant).
-    Poste des chaînes HTML dans log_q au fur et à mesure.
-    Poste ("__done__", (is_error: bool, message: str)) en dernier.
+    Trigger an immediate Funding Carry cycle through /carry/run (non-blocking endpoint).
+    Posts HTML strings into log_q as they arrive.
+    Posts ("__done__", (is_error: bool, message: str)) last.
     """
     import time as _time
     import logging
@@ -1018,7 +1018,7 @@ def _force_run_background(asset: str, log_q) -> None:
             if shown == 0:
                 _log("  <i>(no log yet - the cycle is starting)</i>")
         except Exception as _e:
-            _log(f"  <i>(logs indisponibles : {str(_e)[:80]})</i>")
+            _log(f"  <i>(logs unavailable: {str(_e)[:80]})</i>")
 
         total_s = _time.time() - t_total
         log_q.put(("__done__", (False, f"Cycle launched in the background ({total_s:.1f}s)")))
@@ -1033,10 +1033,10 @@ def _force_run_background(asset: str, log_q) -> None:
 @st.dialog("⚡ Force Run", width="small")
 def _force_run_dialog(asset: str):
     """
-    Popup modale non-bloquante.
-    - Au premier appel : acquiert le lock et démarre _force_run_background dans un thread daemon.
-    - Aux appels suivants (via st.rerun() toutes les 0.5s) : draine la queue et affiche les logs.
-    - Quand le thread termine : affiche le résultat final et libère les ressources.
+    Non-blocking modal popup.
+    - On the first call: acquires the lock and starts _force_run_background in a daemon thread.
+    - On the following calls (via st.rerun() every 0.5s): drains the queue and shows the logs.
+    - When the thread finishes: shows the final result and releases the resources.
     """
     import time as _time
     import threading as _threading
@@ -1070,7 +1070,7 @@ def _force_run_dialog(asset: str):
         thr.start()
         st.session_state[_KEY] = {"log_q": log_q, "logs": [], "final": None, "thread": thr}
 
-    # ── CSS dialog : compact + scrollable ─────────────────────────────────
+    # ── Dialog CSS: compact + scrollable ─────────────────────────────────
     st.markdown("""<style>
     [data-testid="stDialog"] [data-testid="stMarkdown"] p {
         font-size: 11px; line-height: 1.2; font-family: 'SFMono-Regular',Consolas,monospace;
@@ -1082,7 +1082,7 @@ def _force_run_dialog(asset: str):
     }
     </style>""", unsafe_allow_html=True)
 
-    # ── Drainer la queue des logs ────────────────────────────────────────────
+    # ── Drain the log queue ────────────────────────────────────────────
     s = st.session_state[_KEY]
     try:
         while True:
@@ -1118,8 +1118,8 @@ def _force_run_dialog(asset: str):
 
 def render_header():
     """
-    Barre nav position:fixed + menu hamburger URL-based (100% <a href>, pas de JS).
-    Logo Atlas en base64. Hamburger via ?menu=1/0 query param.
+    position:fixed nav bar + URL-based hamburger menu (100% <a href>, no JS).
+    Atlas logo in base64. Hamburger through the ?menu=1/0 query param.
     """
     theme      = _get_theme()
     lang_param = st.query_params.get("lang",  "fr")
@@ -1187,7 +1187,7 @@ def render_header():
         nav_bg  = "#f8f9fa"; nav_fg = "#31333F"
         nav_bdr = "#dee2e6"; dd_bg  = "#ffffff"; dd_sep = "#dee2e6"
     elif theme == "system":
-        # Sera surcharg\u00e9 par _inject_theme_css via @media
+        # Will be overridden by _inject_theme_css via @media
         nav_bg  = "#0e1117"; nav_fg = "#FAFAFA"
         nav_bdr = "rgba(128,128,128,0.3)"; dd_bg = "#1e2128"; dd_sep = "rgba(255,255,255,0.1)"
     else:
@@ -1212,7 +1212,7 @@ def render_header():
         except Exception:
             pass
     if not _daemon_alive:
-        # Legacy V1 : fichiers heartbeat
+        # Legacy V1: heartbeat files
         import glob as _hb_glob, os as _hb_os, time as _hb_time
         for _hbf in _hb_glob.glob("/tmp/atlas_heartbeat_*"):
             try:
@@ -1293,7 +1293,7 @@ def render_header():
   </a>''' if st.session_state.get('admin_authenticated') else ''}
 </div>"""
 
-    # ─ Rendu final ──────────────────────────────────────────────────────────
+    # ─ Final render ──────────────────────────────────────────────────────────
     # Auto-refresh every 15s while a cycle runs -> stops automatically when done
     st.markdown(f"""
 <style>
@@ -1457,7 +1457,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         except Exception:
             ctx = {}
 
-    # ── Trades anciens ──────────────────────────────────────────────────────────
+    # ── Legacy trades ──────────────────────────────────────────────────────────
     if not ctx:
         st.caption(t("dialog_old_trade"))
         if expl:
@@ -1469,7 +1469,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
         [t("tab_formula"), t("tab_agents_dialog"), t("tab_market_dialog"), t("tab_decision"), t("tab_ai")]
     )
 
-    # ── Tab Formule ─────────────────────────────────────────────────────────────
+    # ── Formula tab ─────────────────────────────────────────────────────────────
     # Shows the exact breakdown: score = sum(component x weight)
     with tab_formula:
         eff_w = ctx.get("effective_weights") or {}
@@ -1580,7 +1580,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                             f"<div style='width:100%;height:5px;background:rgba(128,128,128,.2);border-radius:3px;margin:4px 0'>"
                             f"<div style='width:{sc_float:.0f}%;height:100%;background:{bar_color};border-radius:3px'></div></div>"
                             f"<div style='font-size:11px;opacity:.7'>Signal : <b>{sig}</b></div>"
-                            + (f"<div style='font-size:11px;opacity:.7'>Poids : <b>{float(w):.3f}</b></div>" if w is not None else "")
+                            + (f"<div style='font-size:11px;opacity:.7'>Weight: <b>{float(w):.3f}</b></div>" if w is not None else "")
                             + contrib_str,
                             unsafe_allow_html=True,
                         )
@@ -1674,7 +1674,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                 f"<div style='margin-top:10px;'>"
                 f"<span style='background:{_dbg};color:{_dfg};"
                 f"padding:3px 12px;border-radius:4px;font-size:12px;font-weight:700;"
-                f"border:1px solid {_dfg}40;'>📊 Signal LLM : {_dlg_sig_detail}</span></div>",
+                f"border:1px solid {_dfg}40;'>📊 LLM signal: {_dlg_sig_detail}</span></div>",
                 unsafe_allow_html=True,
             )
 
@@ -1685,7 +1685,7 @@ def _show_trade_detail_dialog(trade: dict) -> None:
                 _dw_clr = "#69f0ae" if "BULL" in str(_dlg_debate_win).upper() else ("#e53935" if "BEAR" in str(_dlg_debate_win).upper() else "#ffb74d")
                 st.markdown(
                     f"<div style='margin-bottom:8px;font-size:12px;'>"
-                    f"Vainqueur : <span style='color:{_dw_clr};font-weight:700;'>{_dlg_debate_win}</span></div>",
+                    f"Winner: <span style='color:{_dw_clr};font-weight:700;'>{_dlg_debate_win}</span></div>",
                     unsafe_allow_html=True,
                 )
             _db_col1, _db_col2 = st.columns(2)
@@ -1726,7 +1726,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
     color = "#2ecc71" if final_pnl >= 0 else "#e74c3c"
 
     fig = go.Figure()
-    # Courbe P&L
+    # P&L curve
     fig.add_trace(go.Scatter(
         x=df["timestamp"], y=df["cumulative_pnl"],
         fill="tozeroy",
@@ -1735,7 +1735,7 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
         name=t("chart_pnl_name"),
         yaxis="y1"
     ))
-    # Prix BTC en overlay si disponible
+    # BTC price overlay when available
     if "entry_price" in df.columns and df["entry_price"].notna().any():
         fig.add_trace(go.Scatter(
             x=df["timestamp"], y=df["entry_price"],
@@ -1800,24 +1800,24 @@ def render_pnl_chart(history: list[dict], key: str = "pnl_chart"):
 
         _hover_buy = (
             "<b>▲ BUY — %{customdata[0]}</b><br>"
-            "Date : %{x|%Y-%m-%d %H:%M}<br>"
+            "Date: %{x|%Y-%m-%d %H:%M}<br>"
             "Cumulative P&L: %{y:+.2f}$<br>"
-            "Entry : %{customdata[2]}<br>"
+            "Entry: %{customdata[2]}<br>"
             "Score: %{customdata[3]} | Regime: %{customdata[4]}<br>"
-            "RSI : %{customdata[5]} | MACD : %{customdata[6]}<br>"
-            "Agents : %{customdata[7]}<br>"
+            "RSI: %{customdata[5]} | MACD: %{customdata[6]}<br>"
+            "Agents: %{customdata[7]}<br>"
             "<i style='opacity:0.6'>🖱 Click for the full detail</i>"
             "<extra></extra>"
         )
         _hover_sell = (
             "<b>▼ SELL — %{customdata[0]}</b><br>"
-            "Date : %{x|%Y-%m-%d %H:%M}<br>"
+            "Date: %{x|%Y-%m-%d %H:%M}<br>"
             "Cumulative P&L: %{y:+.2f}$<br>"
-            "P&L position : %{customdata[1]}<br>"
-            "Entry : %{customdata[2]}<br>"
+            "Position P&L: %{customdata[1]}<br>"
+            "Entry: %{customdata[2]}<br>"
             "Score: %{customdata[3]} | Regime: %{customdata[4]}<br>"
-            "RSI : %{customdata[5]} | MACD : %{customdata[6]}<br>"
-            "Agents : %{customdata[7]}<br>"
+            "RSI: %{customdata[5]} | MACD: %{customdata[6]}<br>"
+            "Agents: %{customdata[7]}<br>"
             "<i style='opacity:0.6'>🖱 Click for the full detail</i>"
             "<extra></extra>"
         )
@@ -1930,7 +1930,7 @@ def render_trades_list_sortable(trades: list[dict]):
         action = trade.get("action", "")
         bg     = row_alt if i % 2 == 1 else tbl_bg
 
-        # Extraire signal_detail
+        # Extract signal_detail
         _sig_detail = ""
         _raw_dc = trade.get("decision_context")
         if _raw_dc:
@@ -1940,7 +1940,7 @@ def render_trades_list_sortable(trades: list[dict]):
             except Exception:
                 pass
 
-        # Couleurs action
+        # Action colours
         if action == "BUY":
             action_html = f'<span style="color:#2ecc71;font-weight:bold;">BUY</span>'
         elif action == "SELL":
@@ -1948,7 +1948,7 @@ def render_trades_list_sortable(trades: list[dict]):
         else:
             action_html = f'<span style="color:{tbl_fg};">{action}</span>'
 
-        # Couleur Signal
+        # Signal colour
         if _sig_detail in ("STRONG_BUY",):
             sig_html = f'<span style="color:#00e676;font-weight:700;">{_sig_detail}</span>'
         elif _sig_detail in ("BUY",):
@@ -1976,7 +1976,7 @@ def render_trades_list_sortable(trades: list[dict]):
 
         # Funding (open CARRY - actually collected, static)
         funding_str = "—"
-        # Progression (P&L latent — live via JS)
+        # Progression (unrealised P&L — live via JS)
         progress_str = "—"
         entry_price = trade.get("entry_price", 0) or 0
         size_usd = trade.get("position_size_usd") or trade.get("position_size") or 0
@@ -2002,7 +2002,7 @@ def render_trades_list_sortable(trades: list[dict]):
                 if total_funding > 0:
                     funding_str = f'<span style="color:#2ecc71;font-size:11px;">💰 ${total_funding:.4f} ({n_payments}p × {days_held:.0f}d)</span>'
                 else:
-                    funding_str = f'<span style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}j · wait funding</span>'
+                    funding_str = f'<span style="color:#f39c12;font-size:11px;">⏳ {days_held:.0f}d · wait funding</span>'
                 # Real unrealised P&L (basis + funding), filled in by the JS via /v7/carry-pnl
                 progress_str = f'<span id="aprog-{_tid}" data-atlas-symbol="{_ast}" data-atlas-entry="{entry_price}" data-atlas-size="{size_usd}" data-atlas-action="{action}" data-atlas-open="1" style="opacity:.45;">—</span>'
             elif entry_price > 0 and current_price > 0 and size_usd > 0:
@@ -2102,7 +2102,7 @@ def render_trades_list_sortable(trades: list[dict]):
         # Col 9: P&L (realized if any)
         f'<td style="padding:8px 12px;font-size:13px;color:{tbl_fg};white-space:nowrap;'
         f'border-top:2px solid {border};background:{head_bg};">{"${:+,.2f}".format(_sum_realized) if _n_closed > 0 else "—"}</td>'
-        # Col 10: Funding total (statique)
+        # Col 10: Funding total (static)
         f'<td id="atlas-summary-funding" style="padding:8px 12px;font-size:13px;font-weight:600;color:#2ecc71;'
         f'white-space:nowrap;border-top:2px solid {border};background:{head_bg};">{"💰 ${:.4f}".format(_sum_funding) if _sum_funding > 0 else "—"}</td>'
         # Col 11: Progression (TOTAL latent $ + %)
@@ -2126,11 +2126,11 @@ def render_trades_list_sortable(trades: list[dict]):
 
 
 def _inject_live_trade_prices_js() -> None:
-    """Injecte un poller JS (iframe invisible) qui met à jour les colonnes
-    Progression et la ligne synthèse en temps réel, sans rechargement de page.
+    """Inject a JS poller (invisible iframe) that updates the Progression
+    columns and the summary row in real time, without a page reload.
     
-    Utilise st.components.v1.html() comme les cartes de prix — le JS s'exécute
-    dans un iframe srcdoc (même origine) et accède au DOM parent.
+    Uses st.components.v1.html() like the price cards — the JS runs
+    in a srcdoc iframe (same origin) and accesses the parent DOM.
     """
     import streamlit.components.v1 as _cv1
     _cv1.html("""<!DOCTYPE html>
@@ -2168,7 +2168,7 @@ def _inject_live_trade_prices_js() -> None:
     el.textContent = (unrealized >= 0 ? '+' : '') + unrealized.toFixed(2) + '$ (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)';
   }
 
-  // Mise à jour du P&L réel carry (basis + funding) via /v7/carry-pnl
+  // Update of the real carry P&L (basis + funding) via /v7/carry-pnl
   function updateCarryCells(carryData) {
     if (!carryData || !carryData.trades) return;
     var parentDoc = window.top.document;
@@ -2262,7 +2262,7 @@ def _inject_live_trade_prices_js() -> None:
   }
 
   setInterval(pollSpot, 3000);
-  setInterval(pollCarry, 30000);  // carry P&L évolue lentement (funding 8h, basis) + endpoint ccxt lourd
+  setInterval(pollCarry, 30000);  // carry P&L moves slowly (8h funding, basis) + heavy ccxt endpoint
   pollSpot();
   setTimeout(pollCarry, 1000);
 })();
@@ -2271,11 +2271,11 @@ def _inject_live_trade_prices_js() -> None:
 
 
 def _apply_optimized_params(cfg: dict) -> int:
-    """Copie les _optimized_* vers les params réels (actifs non verrouillés).
+    """Copy the _optimized_* values onto the real params (non-locked assets).
 
     NOTE: `capital` is NOT copied - the optimiser overwrote it to $500,
-    écrasant le capital cible de $2,000/actif. Le safety_cap garde un
-    plancher de $100.
+    clobbering the $2,000/asset target capital. The safety_cap keeps a
+    $100 floor.
     """
     assets = cfg.get("assets", {})
     count = 0
@@ -2303,11 +2303,11 @@ def _apply_optimized_params(cfg: dict) -> int:
 
 
 def _reload_api_config():
-    """POST /carry/reload-config — applique carry_assets.yaml au process API.
+    """POST /carry/reload-config — applies carry_assets.yaml to the API process.
 
-    Le dashboard écrit le fichier, mais l'API en garde une copie en cache :
+    The dashboard writes the file, but the API keeps a cached copy:
     without this call, an asset enabled here was only picked up after
-    redémarrage du container.
+    a container restart.
     """
     import urllib.request, json
     try:
@@ -2324,9 +2324,9 @@ def _reload_api_config():
 
 
 def _carry_logo_md(sym: str, params: dict) -> str:
-    """Retourne un logo Markdown pour la barre d'expander (compatible label Streamlit).
+    """Return a Markdown logo for the expander bar (Streamlit label compatible).
     
-    Fallback : upload local > SVG git > initiales texte.
+    Fallback: local upload > git SVG > text initials.
     """
     from pathlib import Path as _P
     import base64 as _b64
@@ -2351,7 +2351,7 @@ def _carry_logo_md(sym: str, params: dict) -> str:
             data = _b64.b64encode(git_path.read_bytes()).decode()
             return f"![icon](data:{mime};base64,{data})"
 
-    # 3) Fallback texte (initiales entre crochets)
+    # 3) Text fallback (initials in brackets)
     initial = ticker[:2].upper() if len(ticker) > 1 else ticker[0].upper()
     return f"[{initial}]"
 
@@ -2422,7 +2422,7 @@ def _render_carry_config():
                      help=t("carry_apply_reload_help")):
             _reload_api_config()
 
-    # ── Warning: actifs non viables ──
+    # ── Warning: non-viable assets ──
     non_viable = [sym for sym, p in assets.items() 
                   if p.get("_optimized_viable") is False and p.get("enabled", True) and not p.get("locked", False)]
     if non_viable:
@@ -2504,7 +2504,7 @@ def _render_carry_config():
         # Markdown logo for the expander bar (HTML does not work in labels)
         logo_md = _carry_logo_md(sym, params)
         ticker = sym.split("/")[0]
-        # Expand si expand_default=True, collapse si False, sinon comportement normal (enabled)
+        # Expand when expand_default=True, collapse when False, otherwise normal behaviour (enabled)
         expanded = expand_default if expand_default is not None else enabled
 
         with st.expander(f"{icon} {logo_md} {sym}", expanded=expanded):
@@ -2809,7 +2809,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
 
         total_pages = max(1, (total_rows + _LOGS_PAGE_SIZE - 1) // _LOGS_PAGE_SIZE)
 
-        # ── Barre de navigation ──────────────────────────────────────────────────
+        # ── Navigation bar ──────────────────────────────────────────────────
         col_info, col_nav = st.columns([3, 2])
         with col_info:
             st.caption(t("logs_lines_pages").format(n=total_rows, p=total_pages, ps="s" if total_pages > 1 else ""))
@@ -2820,7 +2820,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
                 label_visibility="collapsed",
             )
 
-        # ── Tranche de la page courante ──────────────────────────────────────────
+        # ── Current page slice ──────────────────────────────────────────
         start = (page - 1) * _LOGS_PAGE_SIZE
         page_rows = all_rows[start : start + _LOGS_PAGE_SIZE]
 
@@ -2851,7 +2851,7 @@ def render_live_logs(key: str = "global", asset: str | None = None):
 
 
 # ===========================================================
-# INTERFACE ADMIN
+# ADMIN INTERFACE
 # ===========================================================
 
 ## render_admin_login() replaced by dashboard.auth.render_auth(cm)
@@ -2865,7 +2865,7 @@ def render_admin_panel():
     st.session_state.pop("_auth_pending_user", None)
     st.session_state.pop("_auth_totp_new_secret", None)
 
-    # ── Navigation admin via sidebar custom ───────────────────────────────────────
+    # ── Admin navigation via custom sidebar ───────────────────────────────────────
     from dashboard.multi_asset import _inject_custom_sidenav
 
     _ADMIN_SECTIONS = [
@@ -2896,14 +2896,14 @@ def render_admin_panel():
         _atab = "v4_monitor"
     _inject_custom_sidenav(_admin_items, _atab, qparam="_atab", theme=_get_theme())
 
-    if _atab == "users":  # Utilisateurs
-        st.markdown('<h4><i class="fas fa-user" style="margin-right:7px;color:#7986cb;"></i> Utilisateurs</h4>', unsafe_allow_html=True)
+    if _atab == "users":  # Users
+        st.markdown('<h4><i class="fas fa-user" style="margin-right:7px;color:#7986cb;"></i> Users</h4>', unsafe_allow_html=True)
         st.info(t("cfg_users_info"))
         from dashboard.auth import render_users_admin
         render_users_admin()
         # backup handled in render_users_admin
 
-    elif _atab == "backup":  # Sauvegarde / Restauration
+    elif _atab == "backup":  # Backup / Restore
         st.markdown(f'<h4><i class="fas fa-floppy-disk" style="margin-right:7px;color:#7986cb;"></i>{t("bkp_title")}</h4>', unsafe_allow_html=True)
         st.info(t("bkp_info"))
 
@@ -2948,7 +2948,7 @@ def render_admin_panel():
                 except Exception as _imp_exc:
                     st.error(f"{t('bkp_restore_error')} {_imp_exc}")
 
-        # Liste des sauvegardes automatiques disponibles
+        # List of the automatic backups available
         st.markdown("---")
         st.subheader(t("bkp_list_title"))
         try:
@@ -2960,7 +2960,7 @@ def render_admin_panel():
                 for _bk in _backups[:10]:  # at most 10 shown
                     _bcol1, _bcol2, _bcol3 = st.columns([4, 1, 1])
                     with _bcol1:
-                        st.caption(f"🗂 `{_bk['filename']}` — {_bk['mtime'].strftime('%d/%m/%Y %H:%M')} UTC — {_bk['size_kb']} Ko")
+                        st.caption(f"🗂 `{_bk['filename']}` — {_bk['mtime'].strftime('%d/%m/%Y %H:%M')} UTC — {_bk['size_kb']} KB")
                     with _bcol2:
                         _bk_bytes = _bk["path"].read_bytes()
                         st.download_button(
@@ -3004,7 +3004,7 @@ def render_admin_panel():
             use_container_width=True,
             disabled=not confirm,
         ):
-            # 1) Effacer l'historique des trades
+            # 1) Clear the trade history
             try:
                 from storage.database import get_connection
                 from storage.paper_trader import _ensure_table
@@ -3042,7 +3042,7 @@ def render_admin_panel():
             from storage.paper_trader import get_v4_trades
             from storage.database import get_connection as _hget_conn
 
-            # Filtres
+            # Filters
             _h_col1, _h_col2, _h_col3 = st.columns([2, 1, 1])
             with _h_col1:
                 _h_asset = st.selectbox(
@@ -3069,7 +3069,7 @@ def render_admin_panel():
                 st.info(t("no_transactions"))
                 return
 
-            # Filtrer
+            # Filter
             filtered = all_trades
             if _h_asset is not None:
                 filtered = [tr for tr in filtered if tr.get("symbol") == _h_asset]
@@ -3093,9 +3093,9 @@ def render_admin_panel():
 
             _hc1, _hc2, _hc3, _hc4, _hc5, _hc6 = st.columns(6)
             _hc1.metric("Total", n_total)
-            _hc2.metric("Ouverts", n_open)
+            _hc2.metric("Open", n_open)
             _hc3.metric("Closed", n_closed)
-            _hc4.metric("P&L total", f"${total_pnl:+,.2f}")
+            _hc4.metric("Total P&L", f"${total_pnl:+,.2f}")
             _hc5.metric("Won", wins)
             _hc6.metric("Win rate", f"{win_rate:.0f}%")
 
@@ -3114,7 +3114,7 @@ def render_admin_panel():
 
             st.markdown("---")
 
-            # Tableau
+            # Table
             # HTML table (theme-aware, no white background)
             theme = _get_theme()
             if theme == "light":
@@ -3196,7 +3196,7 @@ def render_admin_panel():
             st.caption(t("emergency_close_caption"))
             _n_open_hist = sum(1 for tr in filtered if tr.get("status") == "open")
             if _n_open_hist > 0:
-                if st.button(f"🔴 {t('emergency_close_btn')} {_n_open_hist} position(s) ouverte(s)", type="secondary", use_container_width=True):
+                if st.button(f"🔴 {t('emergency_close_btn')} {_n_open_hist} open position(s)", type="secondary", use_container_width=True):
                     try:
                         import urllib.request as _ur_close, json as _j_close
                         _resp = _ur_close.urlopen(_ur_close.Request(
@@ -3282,7 +3282,7 @@ def render_admin_panel():
                     dag = d.get("dag_id", "?")
                     trade_link = d.get("trade_id", "")
 
-                    # Couleur selon signal
+                    # Colour by signal
                     sig_color = "#2ecc71" if signal in ("open_carry", "carry", "long") else (
                         "#e74c3c" if signal in ("close_carry", "short") else "#ffb74d")
                     
@@ -3398,10 +3398,10 @@ def render_admin_panel():
 
 def _inject_session_persistence_js(has_valid_session: bool) -> None:
     """
-    Persiste _sid dans localStorage pour survivre aux rechargements sans cookie.
-    - _sid présent + session valide  → sauvegarde localStorage
-    - _sid présent + session invalide → efface localStorage (logout / expiration)
-    - _sid absent + localStorage contient un sid → redirige avec _sid dans l'URL
+    Persist _sid in localStorage to survive reloads without a cookie.
+    - _sid present + valid session  → save to localStorage
+    - _sid present + invalid session → clear localStorage (logout / expiry)
+    - _sid absent + localStorage holds a sid → redirect with _sid in the URL
     """
     import streamlit.components.v1 as _cv1
     valid_js = "true" if has_valid_session else "false"
@@ -3432,7 +3432,7 @@ def _inject_session_persistence_js(has_valid_session: bool) -> None:
 
 
 # ===========================================================
-# PAGE PRINCIPALE
+# MAIN PAGE
 # ===========================================================
 
 
@@ -3440,7 +3440,7 @@ def _inject_session_persistence_js(has_valid_session: bool) -> None:
 def main():
     _init_session()
 
-    # ── Authentification ──────────────────────────────────────────────────────
+    # ── Authentication ──────────────────────────────────────────────────────
     # Strategy: session_state + the _sid URL param (SQLite store).
     # The session is created in _finalize_login() and torn down by logout().
     from dashboard.auth import get_session, has_role, render_auth, logout, load_users_config
@@ -3472,11 +3472,11 @@ def main():
     show_admin = st.query_params.get("admin", "0") == "1"
 
     if show_admin:
-        # ── VUE ADMINISTRATION ──
+        # ── ADMIN VIEW ──
         if not has_role(session, "back"):
             # All the auth content lives in a SINGLE clearable slot.
-            # _render_totp_verify / _render_totp_setup appellent
-            # use st.session_state['_auth_slot'].empty() before st.rerun()
+            # _render_totp_verify / _render_totp_setup call
+            # st.session_state['_auth_slot'].empty() before st.rerun()
             # to clear title + info + form atomically -> no artefact.
             _auth_slot = st.empty()
             st.session_state["_auth_slot"] = _auth_slot
@@ -3493,7 +3493,7 @@ def main():
             render_admin_panel()
             return
     else:
-        # ── VUE DASHBOARD ──
+        # ── DASHBOARD VIEW ──
         if not guest_mode and not has_role(session, "front"):
             # Protected front office
             render_auth()

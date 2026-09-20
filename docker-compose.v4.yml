@@ -1,12 +1,12 @@
 # ============================================================
 # Atlas Trader V7 — Docker Compose
 # ============================================================
-# Usage :
+# Usage:
 #   docker compose -f docker-compose.v4.yml up -d
 #   docker compose -f docker-compose.v4.yml logs -f
 #
-# Services :
-#   atlas-v4-api       : FastAPI :8000 — carry cycle + PositionMonitor + prix
+# Services:
+#   atlas-v4-api       : FastAPI :8000 — carry cycle + PositionMonitor + price
 #   atlas-v4-dashboard : Streamlit :8502 — BO + FO unified
 # ============================================================
 

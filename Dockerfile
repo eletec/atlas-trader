@@ -1,7 +1,7 @@
 # ============================================================
 # Atlas Trader — Dockerfile multi-stage
-# Stage 1 : builder (installation des dépendances + wheels)
-# Stage 2 : runtime (image finale légère)
+# Stage 1: builder (dependency and wheel installation)
+# Stage 2: runtime (lightweight final image)
 # ============================================================
 
 # ----- Stage 1 : Builder -----
@@ -9,7 +9,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Dépendances système pour la compilation des wheels Python
+# System dependencies for compiling the Python wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -19,27 +19,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier uniquement le requirements pour bénéficier du cache Docker
+# Copy only the requirements file to take advantage of the Docker cache
 COPY requirements.txt .
 
-# Installer les dépendances dans un répertoire isolé
-# NOTE: on installe d'abord pip/wheel/packaging avec --prefix pour éviter qu'ils
-# restent uniquement au niveau système et soient absents du stage runtime.
+# Install the dependencies into an isolated directory
+# NOTE: pip/wheel/packaging are installed first with --prefix so that they do not
+# stay at system level only and end up missing from the runtime stage.
 RUN pip install --upgrade pip && \
     pip install --prefix=/install --no-cache-dir wheel packaging && \
     pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# (MiroFish, TimesFM, Playwright supprimés — V2 pipeline ne les utilise pas)
+# (MiroFish, TimesFM, Playwright removed — the V2 pipeline does not use them)
 
 
 # ----- Stage 2 : Runtime -----
 FROM python:3.11-slim AS runtime
 
 LABEL maintainer="Atlas Trader"
-LABEL description="Système de trading IA autonome — MiroFish + LangGraph"
+LABEL description="Autonomous AI trading system — MiroFish + LangGraph"
 LABEL version="1.0.0-MVP"
 
-# Variables d'environnement par défaut
+# Default environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
@@ -48,7 +48,7 @@ ENV PYTHONUNBUFFERED=1 \
     LOG_LEVEL=INFO \
     ENVIRONMENT=production
 
-# Dépendances système runtime uniquement
+# Runtime system dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     curl \
@@ -57,16 +57,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les wheels installés depuis le builder
+# Copy the installed wheels from the builder
 COPY --from=builder /install /usr/local
 
-# Créer l'utilisateur non-root pour la sécurité
+# Create the non-root user for security
 RUN groupadd -r atlas && useradd -r -g atlas -d /app -s /bin/bash atlas
 
-# Répertoire de travail
+# Working directory
 WORKDIR /app
 
-# Copier le code source
+# Copy the source code
 COPY --chown=atlas:atlas backtest/         ./backtest/
 COPY --chown=atlas:atlas comparison/       ./comparison/
 COPY --chown=atlas:atlas config/           ./config/
@@ -75,26 +75,26 @@ COPY --chown=atlas:atlas execution/        ./execution/
 COPY --chown=atlas:atlas graph/            ./graph/
 COPY --chown=atlas:atlas quant/            ./quant/
 COPY --chown=atlas:atlas storage/          ./storage/
-# Copie de staging pour les fichiers Python de storage — injectés dans le volume
-# au démarrage par l'entrypoint (le volume named masquerait sinon les .py de l'image)
+# Staging copy of the storage Python files — injected into the volume
+# at startup by the entrypoint (a named volume would otherwise hide the image's .py files)
 COPY --chown=atlas:atlas storage/*.py      ./_storage_src/
 COPY --chown=atlas:atlas utils/            ./utils/
 COPY --chown=atlas:atlas main.py ./
 
-# Copier les scripts Docker
+# Copy the Docker scripts
 COPY --chown=atlas:atlas docker/           ./docker/
 RUN chmod +x ./docker/entrypoint.sh ./docker/healthcheck.sh ./docker/watchdog.sh
 
-# Créer les répertoires persistables (montés en volumes)
+# Create the persistable directories (mounted as volumes)
 RUN mkdir -p /app/logs /app/storage /data && \
     chown -R atlas:atlas /app /data
 EXPOSE 8501
 
-# Healthcheck sur le dashboard
+# Healthcheck on the dashboard
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD /app/docker/healthcheck.sh
 
-# Volumes pour la persistance des données
+# Volumes for data persistence
 VOLUME ["/app/storage", "/app/logs", "/app/config"]
 
 USER atlas

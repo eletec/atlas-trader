@@ -144,7 +144,7 @@ def update_asset_params(symbol: str, params: dict) -> None:
         save_config(cfg)
 
 
-# ── Normalisation des symboles ────────────────────────────────────────────────
+# ── Symbol normalisation ────────────────────────────────────────────────────
 # Backtests accept freely typed CLI symbols (BTC, btcusdt,
 # BTC/USDT, BTC/USDT:USDT). Without normalisation a short symbol makes the
 # spot fetch fail and the backtest silently fell back to fabricated P&L.
@@ -152,9 +152,9 @@ _QUOTES = ("USDT", "USDC", "BUSD", "FDUSD")
 
 
 def normalize_symbol(raw: str) -> str:
-    """Normalise un symbole utilisateur vers le format CCXT spot « BASE/USDT ».
+    """Normalise a user symbol to the CCXT spot format "BASE/USDT".
 
-    Accepte : BTC, btc, BTCUSDT, BTC/USDT, BTC/USDT:USDT, SHIB, 1000SHIB.
+    Accepts: BTC, btc, BTCUSDT, BTC/USDT, BTC/USDT:USDT, SHIB, 1000SHIB.
     """
     s = (raw or "").strip().upper().replace(" ", "")
     if not s:

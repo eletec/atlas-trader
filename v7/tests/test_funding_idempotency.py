@@ -13,6 +13,7 @@ live seed provided 21, so live silently ran without a filter the backtest applie
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -183,6 +184,80 @@ class TestOneBookingPerSettlement:
         for hour in (0, 8, 16, 24):
             node.run({**INPUTS, "now": datetime(2026, 9, 20 + hour // 24, hour % 24, 0, 0)})
         assert node.state.n_payments == 4
+
+
+class TestOpenPersistence:
+    """OPEN -> context_json -> a fresh node must restore everything.
+
+    The suite already covered `CarryState.to_dict() -> load_position_dict()`, which
+    is only half the trip. The cycle persisted `context=decision`, and
+    `carry_state` lives at the TOP LEVEL of the node's output, so the position
+    state was written for the first time on the next HOLD. A restart in between
+    rebuilt the position from the trade row alone and lost `fees_paid` and
+    `last_funding_ts_ms`; the degraded state was then written back on that HOLD,
+    so the entry fees were gone from the live P&L for good.
+    """
+
+    def test_the_node_emits_carry_state_outside_decision(self, monkeypatch):
+        """The shape that caused it: `decision` is a sub-dict and lacks it."""
+        node = live_node(monkeypatch)
+        open_position(node)
+        r = node.run({**INPUTS, "now": datetime(2026, 9, 20, 9, 0, 0)})
+        assert "carry_state" in r
+        assert "carry_state" not in r["decision"]
+
+    def test_the_open_context_round_trips_into_a_fresh_node(self, monkeypatch):
+        from v7.run_carry_cycle import build_open_context
+
+        node = live_node(monkeypatch)
+        open_position(node)
+        node.state.entry_perp = 100.5
+        node.state.fees_paid = 2.40
+        node.state.total_funding_received = 1.25
+        node.state.n_payments = 3
+        node.state.funding_history = [0.0001] * 60
+        node.state.last_funding_ts_ms = ms(S08)
+
+        result = node.run({**INPUTS, "funding_ts": S16,
+                           "now": datetime(2026, 9, 20, 17, 0, 0)})
+        ctx = build_open_context(result)
+
+        fresh = FundingCarryState(symbol="BTC/USDT")
+        assert fresh.load_position_dict(ctx["carry_state"]) is True
+        assert fresh.entry_capital == pytest.approx(node.state.entry_capital)
+        assert fresh.entry_spot == pytest.approx(node.state.entry_spot)
+        assert fresh.entry_perp == pytest.approx(node.state.entry_perp)
+        assert fresh.entry_time == node.state.entry_time
+        assert fresh.fees_paid == pytest.approx(node.state.fees_paid)
+        assert fresh.last_funding_ts_ms == node.state.last_funding_ts_ms
+        assert len(fresh.funding_history) == len(node.state.funding_history)
+
+    def test_a_legacy_row_restores_the_entry_fees(self, monkeypatch):
+        """A row persisted before the fix carries no `carry_state`, so the fallback
+        builds what it can. The entry legs are charged on open from the leg notional
+        alone, so they are reconstructible - dropping them made the live P&L look
+        24bps better than it was."""
+        import storage.paper_trader as pt
+
+        rows = [{
+            "symbol": "BTC/USDT", "action": "carry", "size_usd": 1000.0,
+            "entry_price": 100.0, "timestamp": "2026-09-20T00:00:00",
+            "context_json": json.dumps({"entry_perp_price": 100.5}),
+        }]
+        monkeypatch.setattr(pt, "get_open_positions", lambda symbol=None: rows)
+
+        node = live_node(monkeypatch)
+        node._restore_state()
+        assert node.state.position_open is True
+        assert node.state.entry_perp == pytest.approx(100.5)
+        assert node.state.fees_paid == pytest.approx(1000.0 * 0.0012 * 2)
+
+    def test_the_cycle_no_longer_persists_the_bare_decision(self):
+        import inspect
+        from v7 import run_carry_cycle
+        src = inspect.getsource(run_carry_cycle)
+        assert "context=decision," not in src
+        assert "context=build_open_context(result)" in src
 
 
 class TestFundingWindow:

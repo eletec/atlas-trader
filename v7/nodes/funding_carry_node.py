@@ -332,8 +332,14 @@ class FundingCarryNode:
                 # for positions written before that state existed.
                 persisted = (ctx or {}).get("carry_state") or {}
                 if not persisted:
+                    # A row written before the cycle started persisting the full
+                    # state at open. The entry legs are reconstructible - they are
+                    # always charged on open, from the leg notional alone - so they
+                    # are restored rather than silently dropped, which is what made
+                    # the live P&L look 24bps better than it was.
+                    leg = float(pos.get("size_usd", 0) or 0)
                     persisted = {
-                        "leg_notional": pos.get("size_usd", 0),
+                        "leg_notional": leg,
                         "entry_spot": pos.get("entry_price", 0),
                         "entry_perp": ctx.get("entry_perp_price", 0),
                         "entry_time": pos.get("timestamp", ""),
@@ -341,6 +347,8 @@ class FundingCarryNode:
                         "n_payments": ctx.get("n_payments", 0),
                         "negative_since": ctx.get("negative_since"),
                         "funding_history": ctx.get("funding_history"),
+                        "fees_paid": ctx.get("fees_paid") or entry_fee_usd(leg),
+                        "last_funding_ts_ms": ctx.get("last_funding_ts_ms"),
                     }
                 if self.state.load_position_dict(persisted):
                     logger.info(

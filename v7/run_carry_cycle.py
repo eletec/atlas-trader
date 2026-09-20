@@ -49,6 +49,27 @@ except Exception:
     logger.warning("Could not load asset config, using defaults: %s", ASSETS)
 
 
+def build_open_context(result: dict) -> dict:
+    """What gets written to context_json when a carry position is opened.
+
+    `carry_state` sits at the TOP LEVEL of the node's output; `decision` is a
+    separate sub-dict that does not contain it. The cycle used to persist
+    `context=decision`, so the position state was written for the first time on the
+    next HOLD. A restart in between rebuilt the position from the trade row alone:
+    `fees_paid` and `last_funding_ts_ms` were lost, and once the degraded state was
+    written back on that HOLD the entry fees were gone from the live P&L for good.
+
+    Module-level on purpose: the test calls this, so the test covers the real path
+    instead of a copy of it.
+    """
+    context = dict(result.get("decision") or {})
+    if result.get("carry_state"):
+        context["carry_state"] = result["carry_state"]
+    context["total_funding_received"] = result.get("total_funding_received", 0)
+    context["n_payments"] = result.get("n_payments", 0)
+    return context
+
+
 def _log_to_db(level: str, dag_id: str, node_id: str, message: str):
     """Write a log row into the dag_logs table for dashboard compatibility."""
     try:
@@ -273,7 +294,7 @@ def run_cycle(
                                 take_profit=decision.get("take_profit", 0),
                                 size_usd=decision.get("size_usd", 0),
                                 dag_id=dag_id,
-                                context=decision,
+                                context=build_open_context(result),
                             )
                             logger.info("  💾 %s OPEN saved to DB", sym)
                         elif signal == "close_carry":

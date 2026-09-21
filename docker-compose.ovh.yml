@@ -119,7 +119,12 @@ services:
       # Lower than atlas-api (100) on purpose: this router matches every path on
       # the host, so it has to lose to the more specific /api/ router.
       - "traefik.http.routers.atlas-web.priority=10"
-      - "traefik.http.routers.atlas-web.rule=Host(`atlastrader.org`) || Host(`www.atlastrader.org`)"
+      # Belt and braces: the rule also EXCLUDES /api/, so the two routers never
+      # overlap and nothing depends on priority arbitration working. Relying on
+      # the explicit priority alone was not enough -- with identical labels the
+      # dashboard still answered /api/health -- so the overlap is removed
+      # outright rather than argued about.
+      - "traefik.http.routers.atlas-web.rule=(Host(`atlastrader.org`) || Host(`www.atlastrader.org`)) && !PathPrefix(`/api/`)"
       - "traefik.http.routers.atlas-web.entrypoints=websecure"
       - "traefik.http.routers.atlas-web.tls.certresolver=letsencrypt"
       - "traefik.http.routers.atlas-web.tls.domains[0].main=atlastrader.org"

@@ -106,10 +106,19 @@ services:
           memory: 3g
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.atlas-web.rule=Host(`atlastrader.org`)"
+      # Both names answer, and www redirects to the apex. The `www` A record exists
+      # today (it resolves to the old host) but the nginx vhost only ever declared
+      # `atlastrader.org`, so www fell through to the default site and was broken.
+      # Same shape as the easypacking router on this host.
+      - "traefik.http.routers.atlas-web.rule=Host(`atlastrader.org`) || Host(`www.atlastrader.org`)"
       - "traefik.http.routers.atlas-web.entrypoints=websecure"
       - "traefik.http.routers.atlas-web.tls.certresolver=letsencrypt"
       - "traefik.http.routers.atlas-web.tls.domains[0].main=atlastrader.org"
+      - "traefik.http.routers.atlas-web.tls.domains[0].sans=www.atlastrader.org"
+      - "traefik.http.middlewares.atlas-www-redirect.redirectregex.regex=^https://www\\.(.+)"
+      - "traefik.http.middlewares.atlas-www-redirect.redirectregex.replacement=https://$${1}"
+      - "traefik.http.middlewares.atlas-www-redirect.redirectregex.permanent=true"
+      - "traefik.http.routers.atlas-web.middlewares=atlas-www-redirect"
       - "traefik.http.services.atlas-web.loadbalancer.server.port=8501"
 
 networks:

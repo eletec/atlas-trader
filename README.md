@@ -432,12 +432,13 @@ container restart is no longer required.
                       /app/data/v4.db  (trades, decisions, logs)
                                       ▲
                       ┌───────────────┴─────────────────────────┐
-                      │  atlas-v4-dashboard  (Streamlit :8502)  │
+                      │  atlas-v4-dashboard  (Streamlit :8501)  │
                       │   FO: portfolio, prices, trades, logs   │
                       │   BO: Carry Assets, History, Backup…    │
                       └─────────────────────────────────────────┘
                                       ▲
-                          Nginx + Let's Encrypt
+                  Reverse proxy terminating TLS (Traefik
+                  or nginx) + Let's Encrypt certificates
 ```
 
 Each 8-hour cycle is a single deterministic pass, no DAG engine:
@@ -472,7 +473,15 @@ production.
 git clone https://github.com/eletec/atlas-trader.git
 cd atlas-trader
 
+# Deployment A — the host runs its own reverse proxy on port 80/443.
 docker compose -f docker-compose.v4.yml up -d --build
+
+# Deployment B — a reverse proxy (Traefik v3) ALREADY owns 80/443 on the host,
+# shared with other sites. Nothing is published: the proxy reaches both
+# containers over the external docker network `traefik` and obtains the
+# certificates itself. Do not install nginx alongside it. See the header of
+# docker-compose.ovh.yml for the full rationale.
+docker compose -f docker-compose.ovh.yml up -d --build
 
 # Run one carry cycle manually
 docker exec atlas-v4-api python -B /app/src/v7/run_carry_cycle.py
@@ -520,6 +529,7 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
 | `v4/api/main.py` | FastAPI app, scheduler threads, `/carry/*` endpoints |
 | `dashboard/streamlit_app.py` | Streamlit UI (FO + BO) |
 | `dashboard/multi_asset.py` | Live price cards, sidebar navigation |
+| `docker-compose.ovh.yml` | Deployment where a Traefik proxy owns 80/443 (nothing published) |
 | `utils/i18n.py` | 8-language UI strings (FR/EN/DE/ES/IT/PT/NL/ZH) |
 
 ---
@@ -533,11 +543,15 @@ docker exec atlas-v4-api python -m pytest /app/src/v7/tests/test_carry_accountin
   reports 2.3% because its funding is zero on most periods.
 - The no-trade diagnostic prints the funding of the period that produced the last
   rejection, not the maximum reached over the series.
-- The API has no authentication. It is bound to loopback (`127.0.0.1:8000`, with
-  nginx proxying `/api/`), so it is not reachable from outside the host — but
-  anything that can already reach the host can call `POST /carry/run`,
-  `POST /carry/reload-config` and `POST /dag/reset-kill-switch`. Add auth before
-  putting it anywhere else.
+- **The API has no authentication and is reachable from the internet.** An
+  earlier version of this section claimed otherwise, on the grounds that the API
+  binds to loopback. That was wrong: the reverse proxy forwards `/api/*` to it,
+  so `POST /carry/run`, `POST /carry/reload-config` and
+  `POST /dag/reset-kill-switch` are callable by anyone who finds the host.
+  External scanners have already probed `/dag/reset-kill-switch`. Nothing outside
+  the host needs that path — the dashboard calls the API directly over the docker
+  network, not through the proxy — so it does not have to be published at all.
+  Add authentication, or stop exposing `/api/`, before this goes anywhere real.
 - The exit zones scale with `max_hold_days`, but the *entry* gate's DERISK test
   uses the instantaneous funding rate of one period rather than its 7-day mean,
   so a single noisy period can close a position. The entry side already uses the
@@ -586,6 +600,7 @@ Kept because the failure modes are instructive:
 | 20 Sep 2026 | **The funding history was truncated to 333 days.** One call with `limit=1000` at three periods per day covers 333 days; a 3-year run fetched the same three years as a 1-year run | Every "3-year" walk-forward was a 333-day walk-forward repeated over 10 windows, and the report said otherwise | Paginated. The 3-year walk-forward now loads **3,915 periods per asset** (2023-02-23 → 2026-09-20) |
 | 20 Sep 2026 | **`max_hold_days` set no holding period.** The exits were hardcoded at 14/30/60 days, so the parameter only affected the entry gate's fee amortisation | A grid search over the holding period varied the gate and never the exit it was named after. Setting it to 5 still held for 60 days | Zones scale from `max_hold_days`: forced exit at `max_hold_days`, derisk at half, review at a quarter |
 | 20 Sep 2026 | **Walk-forward Sharpe and drawdown were literals.** `portfolio_sharpe=0.0, max_dd_pct=0.0` | Every window of every walk-forward report showed a Sharpe of zero and a drawdown of zero | Computed from the window's own equity curve |
+| 21 Sep 2026 | **A 200 response served the wrong application.** The dashboard router (`Host(a) \|\| Host(b)`, 54 chars) and the API router (`Host(a) && PathPrefix(/api/)`, 46 chars) both matched `/api/*`. Traefik's default priority is the length of the rule, so the dashboard won every request | `GET /api/health` returned Streamlit's HTML page with a **200**, so checking the status code showed a healthy deploy. The dashboard's live-P&L widget was silently handed HTML where it expected JSON. Setting explicit `priority` labels (100 and 10) was confirmed present on the containers and **changed nothing** | The dashboard rule now excludes the path (`&& !PathPrefix(/api/)`), so the routers no longer overlap and correctness does not rest on priority arbitration. The fix is verified by asserting the **body** parses as JSON, not merely that the status is 200 |
 
 ---
 

@@ -62,8 +62,14 @@ services:
           memory: 3g
     labels:
       - "traefik.enable=true"
-      # The rule is longer than the dashboard's, so Traefik gives it priority and
-      # /api/* never falls through to Streamlit.
+      # Do NOT rely on rule length here. Traefik's default priority is the length
+      # of the rule string, and the dashboard's rule -- "Host(a) || Host(b)", 53
+      # characters -- is LONGER than this one -- "Host(a) && PathPrefix(p)", 46 --
+      # so the dashboard won every request, /api/* included. Measured on the first
+      # deploy: /api/health returned Streamlit's HTML page with a 200, and the
+      # dashboard's live-P&L widget silently received HTML instead of JSON.
+      # Explicit priorities, not string length, decide this.
+      - "traefik.http.routers.atlas-api.priority=100"
       - "traefik.http.routers.atlas-api.rule=Host(`atlastrader.org`) && PathPrefix(`/api/`)"
       - "traefik.http.routers.atlas-api.entrypoints=websecure"
       - "traefik.http.routers.atlas-api.tls.certresolver=letsencrypt"
@@ -110,6 +116,9 @@ services:
       # today (it resolves to the old host) but the nginx vhost only ever declared
       # `atlastrader.org`, so www fell through to the default site and was broken.
       # Same shape as the easypacking router on this host.
+      # Lower than atlas-api (100) on purpose: this router matches every path on
+      # the host, so it has to lose to the more specific /api/ router.
+      - "traefik.http.routers.atlas-web.priority=10"
       - "traefik.http.routers.atlas-web.rule=Host(`atlastrader.org`) || Host(`www.atlastrader.org`)"
       - "traefik.http.routers.atlas-web.entrypoints=websecure"
       - "traefik.http.routers.atlas-web.tls.certresolver=letsencrypt"

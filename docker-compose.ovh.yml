@@ -22,7 +22,13 @@
 name: atlas-trader-v4
 
 volumes:
-  v4_storage:          # SQLite, carry_assets.yaml, sessions, logs
+  # External on purpose. The volume holds the migrated live data (the SQLite
+  # database, the 77-asset config, sessions) and was created by hand during the
+  # migration, so compose must never consider itself its owner — `down -v` would
+  # otherwise delete the database.
+  v4_storage:
+    external: true
+    name: atlas-trader-v4_v4_storage
 
 services:
   atlas-v4-api:

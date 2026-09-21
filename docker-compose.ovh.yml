@@ -63,12 +63,16 @@ services:
     labels:
       - "traefik.enable=true"
       # Do NOT rely on rule length here. Traefik's default priority is the length
-      # of the rule string, and the dashboard's rule -- "Host(a) || Host(b)", 53
+      # of the rule string, and the dashboard's rule -- "Host(a) || Host(b)", 54
       # characters -- is LONGER than this one -- "Host(a) && PathPrefix(p)", 46 --
       # so the dashboard won every request, /api/* included. Measured on the first
-      # deploy: /api/health returned Streamlit's HTML page with a 200, and the
-      # dashboard's live-P&L widget silently received HTML instead of JSON.
-      # Explicit priorities, not string length, decide this.
+      # deploy: /api/health returned Streamlit's HTML page with a 200.
+      # Setting explicit priorities below (100 vs 10) did NOT change that: the
+      # labels were confirmed present with `docker inspect` and Traefik still sent
+      # /api/* to the dashboard. What actually fixed it is that the dashboard rule
+      # now excludes /api/ outright, so the two routers no longer overlap. The
+      # priorities are kept to document the intent, but correctness does not
+      # depend on them.
       - "traefik.http.routers.atlas-api.priority=100"
       - "traefik.http.routers.atlas-api.rule=Host(`atlastrader.org`) && PathPrefix(`/api/`)"
       - "traefik.http.routers.atlas-api.entrypoints=websecure"

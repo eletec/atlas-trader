@@ -1,0 +1,111 @@
+# Atlas Trader — deployment on the OVH VPS (Traefik front end)
+#
+# This host already runs a reverse proxy (Traefik v3) that owns ports 80 and 443
+# and issues Let's Encrypt certificates for every container that opts in with a
+# label. There is NO nginx here and there must not be one: installing it would
+# fight Traefik for the ports.
+#
+# Usage:
+#   cd /opt/atlastrader
+#   docker compose -f docker-compose.ovh.yml up -d --build
+#
+# Adds itself to the existing `traefik` network and declares two routers for
+# atlastrader.org: / -> the dashboard, /api/ -> the API. It touches nothing in
+# /opt/easypacking, which is a separate compose project on the same host.
+#
+# Difference from docker-compose.v4.yml (the Infomaniak deployment): neither
+# service publishes a port. Traefik reaches them over the docker network, so the
+# API is not listening on the host at all — it has no authentication, and on the
+# previous host it was briefly exposed to the internet before being bound to
+# loopback.
+
+name: atlas-trader-v4
+
+volumes:
+  v4_storage:          # SQLite, carry_assets.yaml, sessions, logs
+
+services:
+  atlas-v4-api:
+    build:
+      context: .
+      dockerfile: v4/Dockerfile.backend
+    container_name: atlas-v4-api
+    restart: unless-stopped
+    networks: [traefik]
+    volumes:
+      - v4_storage:/app/data
+      - ./config:/app/src/config:ro
+      - .:/app/src:ro
+    environment:
+      - V4_ENV=development
+      - V4_TESTNET=true
+      - TZ=Europe/Paris
+      - DATABASE_URL=sqlite:////app/data/v4.db
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # A cap so a runaway backtest cannot starve easypacking.be, which shares the
+    # host. The 77-asset sweep takes ~6 minutes of one core and peaks well below
+    # this; the limit exists for the bad day, not the normal one.
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    labels:
+      - "traefik.enable=true"
+      # The rule is longer than the dashboard's, so Traefik gives it priority and
+      # /api/* never falls through to Streamlit.
+      - "traefik.http.routers.atlas-api.rule=Host(`atlastrader.org`) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.atlas-api.entrypoints=websecure"
+      - "traefik.http.routers.atlas-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.atlas-api.tls.domains[0].main=atlastrader.org"
+      # nginx used to do `proxy_pass http://127.0.0.1:8000/;`, whose trailing
+      # slash strips /api/. The dashboard talks to the API directly over the
+      # network and the browser only ever hits /api/health, so the prefix has to
+      # be stripped here instead.
+      - "traefik.http.middlewares.atlas-strip-api.stripprefix.prefixes=/api"
+      - "traefik.http.routers.atlas-api.middlewares=atlas-strip-api"
+      - "traefik.http.services.atlas-api.loadbalancer.server.port=8000"
+
+  atlas-v4-dashboard:
+    build:
+      context: .
+      dockerfile: v4/Dockerfile.backend
+    container_name: atlas-v4-dashboard
+    restart: unless-stopped
+    networks: [traefik]
+    command: >
+      streamlit run /app/src/dashboard/streamlit_app.py
+      --server.port=8501 --server.address=0.0.0.0
+    volumes:
+      - v4_storage:/app/data
+      - ./config:/app/src/config:ro
+      - .:/app/src:ro
+    environment:
+      - PYTHONPATH=/app/src
+      - V4_ENV=development
+      - V4_TESTNET=true
+      - TZ=Europe/Paris
+      - DATABASE_URL=sqlite:////app/data/v4.db
+      - STREAMLIT_SERVER_PORT=8501
+      - V4_API_URL=http://atlas-v4-api:8000
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.atlas-web.rule=Host(`atlastrader.org`)"
+      - "traefik.http.routers.atlas-web.entrypoints=websecure"
+      - "traefik.http.routers.atlas-web.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.atlas-web.tls.domains[0].main=atlastrader.org"
+      - "traefik.http.services.atlas-web.loadbalancer.server.port=8501"
+
+networks:
+  traefik:
+    external: true

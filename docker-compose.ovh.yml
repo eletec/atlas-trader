@@ -48,6 +48,14 @@ services:
       - TZ=Europe/Paris
       - DATABASE_URL=sqlite:////app/data/v4.db
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    # Bound the logs. The default json-file driver does NOT rotate: on a host that
+    # runs for months an error loop can fill the disk, and this disk is shared
+    # with easypacking.be. 10 MB x 3 files caps each container at 30 MB.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -110,6 +118,12 @@ services:
       - V4_API_URL=http://atlas-v4-api:8000
       - STREAMLIT_SERVER_ENABLE_CORS=false
       - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true
+    # Same cap as the API: 30 MB per container instead of unbounded growth.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:

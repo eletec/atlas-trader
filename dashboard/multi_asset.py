@@ -103,6 +103,27 @@ def _score_bar(score: float, theme: str = "dark") -> str:
     )
 
 
+def _asset_min_funding_pct(asset: str) -> float | None:
+    """The asset's real entry floor, in percent per funding period.
+
+    `carry_assets.yaml` stores `min_funding` as a fraction (0.0002 = 0.02%/8h)
+    whereas this module displays percentages, so the value is scaled here.
+
+    This is only a FALLBACK. The node writes its own floor into the rejection
+    message it logs, and that text is preferred because it records the gate the
+    node actually evaluated, not what the config happens to say now.
+    """
+    try:
+        from v7.core.asset_config import get_asset_params
+
+        value = (get_asset_params(asset) or {}).get("min_funding")
+        if value is None:
+            return None
+        return float(value) * 100.0
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Component 1: global view (live data from the active DAGs)
 # ---------------------------------------------------------------------------
@@ -165,11 +186,16 @@ def render_global_overview() -> None:
             net_ret = float(m.group(1)) if m else None
             m = re.search(r'funding=(-?[\d.]+)%', msg)
             funding = float(m.group(1)) if m else None
+            # The node states its own floor in the rejection message, e.g.
+            # "outside [min=0.0200%, max=0.30%]". That text is the authority.
+            m = re.search(r'\[min=([\d.]+)%', msg)
+            min_pct = float(m.group(1)) if m else None
             m = re.search(r'retour net ([\d.]+)%/an', msg)
             ret_net = float(m.group(1)) if m else None
             asset_status[sym] = {
                 "net_return": net_ret or ret_net,
                 "funding_rate": funding,
+                "min_funding_pct": min_pct,
                 "signal": "open_carry" if "open_carry" in msg else "flat",
             }
         conn.close()
@@ -225,7 +251,18 @@ def render_global_overview() -> None:
             score = max(5, min(50, int(20 + funding * 200)))
             signal_display = "flat"
             trade_str = f"funding {funding:.4f}%"
-            trend = f"outside [min=0.0050%]" if funding < 0.005 else "—"
+            # The floor used to be the literal 0.0050 written straight into this
+            # label. The real gate is 0.0200%/8h -- four times higher -- so assets
+            # whose funding sat between the two values showed no rejection at all
+            # and looked tradeable while the node kept rejecting them. Report the
+            # real floor so the display cannot disagree with the node.
+            floor = st_info.get("min_funding_pct")
+            if floor is None:
+                floor = _asset_min_funding_pct(asset)
+            if floor is not None and funding < floor:
+                trend = f"outside [min={floor:.4f}%]"
+            else:
+                trend = "—"
         else:
             score = 50
             signal_display = "flat"

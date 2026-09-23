@@ -762,13 +762,18 @@ class FundingCarryNode:
                     # carry_assets.yaml carries it, so editing it there did nothing:
                     # the same defect class as the allocator's hardcoded limits.
                     round_trip_cost = self._round_trip_cost_bps() / 10_000.0
-                    # The annualised cost depends on the real time-stop: a short hold
-                    # makes the fees prohibitive (48bps amortised over very few days).
-                    # Ex: max_hold_days=14 -> 12.5%/yr in fees; 60d -> 2.9%/yr.
-                    # This is truthful only because the DERISK exit no longer closes at
-                    # half the horizon; before that, the real hold was max_hold_days/2
-                    # and the true cost was twice this number.
-                    estimated_hold = max(self.max_hold_days, 1)
+                    # The hold to amortise over is the DERISK threshold, NOT
+                    # max_hold_days. The previous version amortised over the full
+                    # horizon and justified it with "this is truthful only because the
+                    # DERISK exit no longer closes at half the horizon". Measurement
+                    # contradicts that: on the 365-day ACTIVE run the three trades
+                    # closed after 15.3, 15.7 and 16.0 days against max_hold_days=30.
+                    # The DERISK zone opens at half the horizon and the forward funding
+                    # sits below the 5% hurdle often enough that it fires almost as soon
+                    # as it opens, so the gate was budgeting half the fee burden it
+                    # actually pays. Half the horizon is also the earliest an economic
+                    # close can happen, which makes it the honest floor for this number.
+                    estimated_hold = max(self.max_hold_days / 2.0, 1)
                     annualized_cost = round_trip_cost * 365 / estimated_hold
                     net_expected_return = expected_return - annualized_cost
                     

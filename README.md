@@ -358,10 +358,23 @@ artefact of the bar size the classifier is handed.
 
 ## 6. Configuration
 
-`config/carry_assets.yaml` is the **single source of truth** —
 `get_active_assets()` / `get_asset_params()` are used by the live cycle, the
 monitor, the backtests and the grid search, so a backtest always tests the
-strategy that is actually running.
+strategy that is actually running. **But the file exists in two places, and they
+have silently diverged before:**
+
+| Where | Path | Who writes it |
+|---|---|---|
+| Repository | `config/carry_assets.yaml` | you, by commit |
+| Container | `/app/data/carry_assets.yaml` (a docker volume) | the dashboard's *Carry Assets* panel |
+
+Inside a container the volume copy wins, and that is what production runs. A
+backtest launched outside a container reads the repository copy. The two held
+different `safety_cap` values (200 against 100), `stress_loss_pct` and `leverage`
+for the same six assets, which halved the position size and therefore every fee
+and every P&L figure: the same command returned two different answers depending
+on where it ran. If you edit one copy, edit the other — and read the first line
+of any backtest output, which names the file it loaded.
 
 ```yaml
 global:
@@ -369,21 +382,21 @@ global:
   max_total_exposure_pct: 0.6   # ≤ 60% of capital deployed at once
   max_simultaneous_positions: 6 # one per major
   round_trip_cost_bps: 48       # 4 legs × 12 bps
-  estimated_hold_days: 30       # fee-amortisation horizon
+  estimated_hold_days: 30       # INERT: written by the dashboard, read by nothing
   staking_annual: 0.05          # idle-capital yield (reported separately)
 
 assets:
   BTC/USDT:
     enabled: true
-    capital: 2000               # notional allocated to this asset
+    capital: 5000               # notional allocated to this asset
     fraction: 0.5               # share of that capital actually deployed
-    safety_cap: 400             # hard ceiling on position size
-    stress_loss_pct: 0.04       # denominator of the risk-budgeting score
-    max_hold_days: 30           # fee-amortisation + time-stop horizon
+    safety_cap: 500             # hard ceiling on position size
+    stress_loss_pct: 0.25       # denominator of the risk-budgeting score
+    max_hold_days: 30           # time-stop horizon
     min_funding: 0.0002         # 0.02% per 8h
     max_funding: 0.003          # 0.30% per 8h
     exit_after_hours: 72
-    leverage: 2.0               # used by the margin/liquidation check
+    leverage: 1.0               # used by the margin/liquidation check
 ```
 
 **Why 6 majors and not 77?** `carry_scanner.py` returns **77 eligible Spot∩Perp
@@ -399,10 +412,16 @@ from the dashboard once its funding history justifies it.
 **not** optimised. Grid-searching the hurdle reintroduces data mining: whatever
 value maximises the backtest is, by construction, fitted to the past.
 
-**Why 30 days max hold?** 48 bps of round-trip fees amortised over 30 days is
-~5.8%/yr of drag — the point where the hurdle and the cost structure are
-consistent. The earlier hardcoded 60-day assumption understated the real cost
-~4×.
+**Why 30 days max hold?** Two different holds matter here and they are not the
+same number. `max_hold_days` is the forced exit. The DERISK zone opens at **half**
+that horizon and closes as soon as the forward funding falls under the hurdle, so
+in practice a position is held about 16 days — measured on the 365-day ACTIVE
+run: 15.3, 15.7 and 16.0 days against `max_hold_days = 30`. The entry gate
+amortises the 48 bps over that shorter, real hold: 48 bps over 30 days is
+5.84%/yr, over 15 days it is 11.68%/yr. Amortising over the full horizon while
+the exit closed at half of it made the gate budget half the fee burden it
+actually pays, on every single entry. The earlier hardcoded 60-day assumption
+understated the cost roughly 4×.
 
 ### Editing the configuration at runtime
 
@@ -601,6 +620,9 @@ Kept because the failure modes are instructive:
 | 20 Sep 2026 | **`max_hold_days` set no holding period.** The exits were hardcoded at 14/30/60 days, so the parameter only affected the entry gate's fee amortisation | A grid search over the holding period varied the gate and never the exit it was named after. Setting it to 5 still held for 60 days | Zones scale from `max_hold_days`: forced exit at `max_hold_days`, derisk at half, review at a quarter |
 | 20 Sep 2026 | **Walk-forward Sharpe and drawdown were literals.** `portfolio_sharpe=0.0, max_dd_pct=0.0` | Every window of every walk-forward report showed a Sharpe of zero and a drawdown of zero | Computed from the window's own equity curve |
 | 21 Sep 2026 | **A 200 response served the wrong application.** The dashboard router (`Host(a) \|\| Host(b)`, 54 chars) and the API router (`Host(a) && PathPrefix(/api/)`, 46 chars) both matched `/api/*`. Traefik's default priority is the length of the rule, so the dashboard won every request | `GET /api/health` returned Streamlit's HTML page with a **200**, so checking the status code showed a healthy deploy. The dashboard's live-P&L widget was silently handed HTML where it expected JSON. Setting explicit `priority` labels (100 and 10) was confirmed present on the containers and **changed nothing** | The dashboard rule now excludes the path (`&& !PathPrefix(/api/)`), so the routers no longer overlap and correctness does not rest on priority arbitration. The fix is verified by asserting the **body** parses as JSON, not merely that the status is 200 |
+| 23 Sep 2026 | **The global view displayed a threshold the strategy did not use.** The dashboard printed `outside [min=0.0050%]` from the literal `0.005` written into the label, while the real entry gate sat at `0.0200%/8h` — four times higher | Assets whose funding fell between the two values (ETH 0.0057%, XRP 0.0100%, AVAX 0.0086%) showed **no rejection marker at all** and looked tradeable, while the node rejected all three. The site appeared to be doing nothing for no visible reason | The dashboard now reads the floor from the node's own rejection message — the text that records the gate actually applied — falling back to the asset config. A display that recomputes a business rule instead of reading the engine's output will eventually contradict it |
+| 23 Sep 2026 | **A comment asserted a property the code did not have.** The entry gate amortised the round-trip fee over the full `max_hold_days` and justified it in-line: *"this is truthful only because the DERISK exit no longer closes at half the horizon."* The DERISK zone opens at exactly half the horizon | Measured on the 365-day ACTIVE run, the three trades closed after 15.3, 15.7 and 16.0 days against `max_hold_days = 30`. The gate budgeted 5.84%/yr of fees where it pays 11.68%/yr — half the real cost, on every entry. The strategy loses money either way, so this makes the case worse, not better | Amortised over `max_hold_days / 2`, the earliest an economic close can happen. **The existing tests could not have caught it**: both asserted arithmetic on literals (`0.0048 * 365 / max_hold_days`) and never drove the node. Two tests now do, and were confirmed to fail against the old rule before the fix was kept |
+| 23 Sep 2026 | **The repository and production configs had drifted apart.** Two copies of `carry_assets.yaml` — 13 assets in the repository, 77 in the container volume — carried different `safety_cap` (200 against 100), `stress_loss_pct` and `leverage` for the same six live assets | The same backtest command produced two different answers depending on where it ran: the position size halved, so every fee and P&L figure halved with it. Checking a real result against a local reproduction was impossible until the cause was identified | The repository copy is regenerated from the volume and §6 now states which one wins where. The README had called the repository file the "single source of truth", which it had not been for months |
 
 ---
 

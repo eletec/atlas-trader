@@ -269,7 +269,12 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
             no_trade_reason = reason[:120]
 
         if signal == "open_carry" and size_usd > 0:
-            trades.append({"open_ts": ts, "size": size_usd, "open_fee": 0.0, "close_fee": 0.0})
+            # fees_paid is SET to the entry legs on open, so at this instant it holds
+            # the open cost and nothing else. It used to be recorded as a literal 0.0
+            # while close_fee carried the entire round trip, which made the per-trade
+            # breakdown show an entry that was free.
+            trades.append({"open_ts": ts, "size": size_usd,
+                           "open_fee": node.state.fees_paid, "close_fee": 0.0})
 
         if signal == "close_carry":
             realized = float(result.get("realized_pnl_usd", 0) or 0)
@@ -277,7 +282,10 @@ def backtest_asset(symbol: str, days: int = 365, capital: float = 2_000,
             funding_closed += node.state.total_funding_received
             fees_closed += node.state.fees_paid
             if trades:
-                trades[-1]["close_fee"] = node.state.fees_paid
+                # fees_paid now holds the entry legs plus the exit legs; keep only the
+                # exit part here so open_fee + close_fee still totals the round trip
+                # instead of counting the entry twice.
+                trades[-1]["close_fee"] = node.state.fees_paid - trades[-1]["open_fee"]
                 trades[-1]["close_ts"] = ts
                 trades[-1]["realized"] = realized
 

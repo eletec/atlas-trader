@@ -286,5 +286,56 @@ class TestDeriskRule:
         assert "ZONE CLOSE" in r2["reason"]
 
 
+class TestEntryFeeAmortisation:
+    """The entry gate must amortise the round trip over the hold the EXIT allows.
+
+    The DERISK zone opens at ``max_hold_days / 2``, so half the horizon is the
+    earliest an economic close can ever happen. The gate amortised over the full
+    horizon instead, justified by a comment claiming this was "truthful only
+    because the DERISK exit no longer closes at half the horizon". Measurement
+    contradicts that comment: the three trades of the 365-day ACTIVE run closed
+    after 15.3, 15.7 and 16.0 days against ``max_hold_days = 30``, so the gate was
+    budgeting half the fee burden it actually pays.
+
+    48 bps over 30 days is 5.84%/yr; over 15 days it is 11.68%/yr. The two rules
+    therefore disagree on any carry whose annual funding lands between 10.84% and
+    16.68%/yr -- which is exactly where the majors trade, and why this is worth a
+    test rather than a comment. The two tests below are the two sides of that
+    boundary; neither could pass under the other rule.
+    """
+
+    def _entry(self, annual_funding_pct: float, max_hold_days: int = 30):
+        """Drive the entry path with a controlled funding rate.
+
+        The funding window is pre-filled so the 7-day MA filter and the percentile
+        filter cannot mask whatever the fee amortisation decides.
+        """
+        node = FundingCarryNode(
+            node_id="t_entry", symbol="BTC/USDT", capital=2000.0,
+            fraction=0.5, min_funding=0.00001, max_funding=0.01,
+            max_hold_days=max_hold_days, params={"_backtest": True},
+        )
+        rate = annual_funding_pct / 100.0 / (365 * 3)   # 8h funding periods
+        node._funding_rate_history = [rate] * 300
+        node.state.funding_history = list(node._funding_rate_history)
+        return node.run({
+            "symbol": "BTC/USDT", "spot_price": 100.0, "perp_price": 100.0,
+            "funding_rate": rate, "now": datetime(2026, 9, 20, 12, 0, 0),
+        })
+
+    def test_a_carry_below_the_doubled_cost_does_not_open(self):
+        # 15%/yr clears the hurdle under the old 30-day amortisation
+        # (15 - 5.84 = 9.16% > 5%) but not under the real 15-day one
+        # (15 - 11.68 = 3.32% < 5%). Only one of the two can be correct.
+        r = self._entry(15.0)
+        assert r["signal"] != "open_carry", r["reason"]
+        assert r["position_open"] is False
+
+    def test_a_carry_above_the_doubled_cost_still_opens(self):
+        # 25%/yr clears both: 25 - 11.68 = 13.32% > 5%.
+        r = self._entry(25.0)
+        assert r["signal"] == "open_carry", r["reason"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

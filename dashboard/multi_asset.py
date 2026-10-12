@@ -248,20 +248,28 @@ def render_global_overview() -> None:
             trade_str = f"net {net_ret:.1f}%/yr < 5%"
             trend = f"funding {funding:.4f}%" if funding else "—"
         elif funding is not None:
-            score = max(5, min(50, int(20 + funding * 200)))
-            signal_display = "flat"
-            trade_str = f"funding {funding:.4f}%"
-            # The floor used to be the literal 0.0050 written straight into this
-            # label. The real gate is 0.0200%/8h -- four times higher -- so assets
-            # whose funding sat between the two values showed no rejection at all
-            # and looked tradeable while the node kept rejecting them. Report the
-            # real floor so the display cannot disagree with the node.
+            # The floor is needed by both the score and the status label, so it
+            # is resolved before either. `min_funding_pct` comes from the node's
+            # own rejection message when available (that text records the gate
+            # the node actually evaluated), and from the config otherwise.
             floor = st_info.get("min_funding_pct")
             if floor is None:
                 floor = _asset_min_funding_pct(asset)
-            if floor is not None and funding < floor:
-                trend = f"outside [min={floor:.4f}%]"
+
+            signal_display = "flat"
+            trade_str = f"funding {funding:.4f}%"
+
+            if floor is not None and floor > 0:
+                # Progress toward the entry gate, on the same 0-100 scale the
+                # other branches use. The previous formula (20 + funding * 200)
+                # was just a rescaling of the funding number: every realistic
+                # rate produced 20-23, and reaching 50 would have required
+                # 0.15%/8h (164%/yr), so the column carried no information.
+                score = max(0, min(100, int(round(funding / floor * 100))))
+                trend = (f"outside [min={floor:.4f}%]" if funding < floor
+                         else f"at gate [min={floor:.4f}%]")
             else:
+                score = 0
                 trend = "—"
         else:
             score = 50

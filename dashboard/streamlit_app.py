@@ -903,7 +903,21 @@ def _get_recent_trades(n: int = 200, asset: str | None = None) -> list[dict]:
 @st.cache_data(ttl=30)
 def _get_portfolio(asset: str | None = None) -> dict:
     """Consolidated portfolio - open positions + cumulative PnL from the DB."""
-    portfolio = {"capital": 10000, "current_value": 10000, "total_pnl": 0,
+    # Capital comes from carry_assets.yaml (global.total_capital). It used to be
+    # the literal 10_000, so exposure_pct and total_pnl_pct were divided by a
+    # denominator that could disagree with the config (14_000) -> the exposure
+    # share was reported 40% too high. The config wins; 10_000 is only the
+    # fallback when it cannot be read.
+    capital = 10000.0
+    try:
+        from v7.core.asset_config import get_global_params
+        _cfg_capital = (get_global_params() or {}).get("total_capital")
+        if _cfg_capital is not None and float(_cfg_capital) > 0:
+            capital = float(_cfg_capital)
+    except Exception:
+        pass
+
+    portfolio = {"capital": capital, "current_value": capital, "total_pnl": 0,
                  "total_pnl_pct": 0, "n_trades": 0, "asset": asset or "ALL",
                  "live_mode": False, "exposure": 0, "exposure_pct": 0}
 
